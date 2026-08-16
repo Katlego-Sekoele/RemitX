@@ -85,3 +85,14 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_container_app.this.identity[0].principal_id
 }
+
+resource "azurerm_container_app_custom_domain" "this" {
+  count = var.custom_domain != "" && var.ingress_external ? 1 : 0
+
+  name             = var.custom_domain
+  container_app_id = azurerm_container_app.this.id
+
+  lifecycle {
+    ignore_changes = [certificate_binding_type, container_app_environment_certificate_id]
+  }
+}

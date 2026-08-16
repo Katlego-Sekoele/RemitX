@@ -55,6 +55,49 @@ Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `
 Clerk applications/instances are still created in the dashboard. Allowed origins
 and redirect URLs are configured manually until a future provider version or auth plan.
 
+### Production custom domains
+
+Set `api_custom_domain` and `swa_custom_domain` in `infra/envs/prod/terraform.tfvars`
+before applying prod. Terraform binds the domains to Container Apps (API) and Static
+Web Apps (frontend) and outputs the verification records:
+
+```bash
+cd infra/envs/prod && terraform apply
+terraform output api_custom_domain_dns_records
+terraform output swa_custom_domain_dns_records
+```
+
+Create the TXT and CNAME records at your domain registrar (or Azure DNS). Azure
+provisions managed TLS once DNS validates. For apex frontend domains (`example.com`),
+SWA uses `dns-txt-token` validation; subdomains (`api.example.com`) use CNAME
+delegation. Container Apps require both an `asuid.<hostname>` TXT record and a
+CNAME to the default `*.azurecontainerapps.io` hostname.
+
+After HTTPS is live, verify:
+
+```bash
+curl https://api.example.com/health
+```
+
+Leave `api_custom_domain` and `swa_custom_domain` empty in QA to use default Azure URLs.
+
+### Clerk allowed origins (manual, prod)
+
+After custom domains are live, open the **Production** Clerk application in the
+[Clerk Dashboard](https://dashboard.clerk.com) and add these allowed origins
+(and matching redirect URLs if prompted):
+
+| Origin | Purpose |
+|---|---|
+| `https://<your-domain>` | Production frontend (SWA custom domain) |
+| `https://api.<your-domain>` | Production API (Container Apps custom domain) |
+
+Example for `example.com`: `https://example.com` and `https://api.example.com`.
+
+Repeat for QA and Development apps with their respective URLs (`localhost:5173`,
+QA SWA default hostname, etc.). This is not Terraform-managed until the Clerk
+provider supports application settings.
+
 ## GitHub Actions — Azure OIDC
 
 Terraform QA and Prod workflows (`.github/workflows/terraform-qa.yml`, `terraform-prod.yml`) authenticate to Azure via **OIDC federation** — no long-lived `AZURE_CLIENT_SECRET` in GitHub.

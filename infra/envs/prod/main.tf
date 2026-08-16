@@ -99,6 +99,7 @@ module "api" {
   memory                       = "0.5Gi"
   key_vault_id                 = module.key_vault.id
   secrets                      = local.container_app_secrets
+  custom_domain                = var.api_custom_domain
 }
 
 module "worker" {
@@ -121,4 +122,5 @@ module "static_web_app" {
   name                = "relyo-${var.environment}-swa"
   resource_group_name = module.resource_group.name
   location            = module.resource_group.location
+  custom_domain       = var.swa_custom_domain
 }

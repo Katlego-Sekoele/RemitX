@@ -11,7 +11,7 @@ budget_start_date  = "2026-08-01T00:00:00Z"
 
 api_min_replicas = 1
 
-# Custom domains (set before prod apply; wired in a later task)
+# Production custom domains — create DNS records from terraform output after apply
 api_custom_domain = "api.example.com"
 swa_custom_domain = "example.com"
 

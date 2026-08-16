@@ -83,11 +83,11 @@ variable "api_min_replicas" {
 variable "api_custom_domain" {
   type        = string
   default     = ""
-  description = "Optional API custom domain (e.g. api.example.com); wired in a later task"
+  description = "Optional API custom domain (e.g. api.example.com); set in prod tfvars"
 }
 
 variable "swa_custom_domain" {
   type        = string
   default     = ""
-  description = "Optional frontend custom domain (e.g. example.com); wired in a later task"
+  description = "Optional frontend custom domain (e.g. example.com); set in prod tfvars"
 }

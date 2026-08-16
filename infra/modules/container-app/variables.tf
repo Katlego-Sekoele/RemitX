@@ -70,3 +70,9 @@ variable "key_vault_id" {
   default     = null
   description = "Key Vault resource ID; required when secrets are set (for RBAC)"
 }
+
+variable "custom_domain" {
+  type        = string
+  default     = ""
+  description = "Optional custom domain hostname (e.g. api.example.com); requires ingress_external = true"
+}
