@@ -1,0 +1,190 @@
+title = "Relyo gitleaks config"
+
+# Defaults (useDefault = true) already cover GitHub PAT/OAuth, GitLab, Slack,
+# Discord, npm/PyPI, JWT, PEM private keys, OpenAI, Anthropic, SendGrid, etc.
+# Custom rules below replace permissive defaults and add infra/crypto patterns
+# that defaults miss (DB URLs, Redis passwords, Supabase/Neon, XRPL seeds).
+
+[extend]
+useDefault = true
+disabledRules = [
+    "aws-access-token",
+    "gcp-api-key",
+    "stripe-access-token",
+    "github-fine-grained-pat",
+]
+
+[[allowlists]]
+description = "env templates with placeholder credentials"
+paths = ['''\.env\.example$''']
+
+# --- Cloud provider credentials (strict; no documentation-example allowlists) ---
+
+[[rules]]
+id = "relyo-aws-access-key-id"
+description = "AWS access key ID (including documentation-style EXAMPLE keys)"
+regex = '''\b((?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16})\b'''
+entropy = 3
+keywords = [
+    "a3t",
+    "akia",
+    "asia",
+    "abia",
+    "acca",
+]
+
+[[rules]]
+id = "relyo-aws-secret-access-key"
+description = "AWS secret access key (40-char base64-like value)"
+regex = '''(?i)(?:aws[_-]?secret[_-]?access[_-]?key|secret[_-]?access[_-]?key)[\s'"]{0,3}(?:=|:|\|)[\x60'"\s=]{0,5}([A-Za-z0-9/+=]{40})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3
+keywords = [
+    "aws_secret_access_key",
+    "secret_access_key",
+]
+
+[[rules]]
+id = "relyo-gcp-api-key"
+description = "Google Cloud / Firebase API key (AIza…)"
+regex = '''\b(AIza[0-9A-Za-z\-_]{35})\b'''
+entropy = 3.5
+keywords = ["aiza"]
+
+# --- Payments ---
+
+[[rules]]
+id = "relyo-stripe-secret-key"
+description = "Stripe secret or restricted key (sk_/rk_ test, live, or prod; underscores allowed)"
+regex = '''(?i)\b((?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9_]{10,128})\b'''
+keywords = [
+    "sk_test",
+    "sk_live",
+    "sk_prod",
+    "rk_test",
+    "rk_live",
+    "rk_prod",
+]
+
+# --- Source control ---
+
+[[rules]]
+id = "relyo-github-fine-grained-pat"
+description = "GitHub fine-grained personal access token (variable length)"
+regex = '''\bgithub_pat_[0-9a-zA-Z_]{20,}\b'''
+entropy = 3
+keywords = ["github_pat_"]
+
+# --- Messaging (Twilio adds account SID; default only matches API keys) ---
+
+[[rules]]
+id = "relyo-twilio-credentials"
+description = "Twilio account SID (AC…) or API key (SK…)"
+regex = '''\b(?:AC[a-f0-9]{32}|SK[0-9a-fA-F]{32})\b'''
+entropy = 3
+keywords = ["ac", "sk"]
+
+# --- Database & cache connection strings (not covered by gitleaks defaults) ---
+
+[[rules]]
+id = "relyo-database-url-with-credentials"
+description = "SQL/NoSQL connection URL with embedded username and password"
+regex = '''(?i)\b(?:postgres(?:ql)?(?:\+[\w]+)?|mysql|mariadb|mongodb(?:\+srv)?)://[^:]+:[^@\s/]{3,}@[^\s'"]+'''
+entropy = 2.5
+keywords = [
+    "postgresql://",
+    "postgres://",
+    "mysql://",
+    "mongodb://",
+    "mongodb+srv://",
+]
+
+[[rules]]
+id = "relyo-redis-url-with-password"
+description = "Redis URL with embedded password (redis://:pass@ or redis://user:pass@)"
+regex = '''(?i)\bredis(?:s)?://(?:[^:@\s/]+:[^@\s/]+@|:[^@\s/]+@)[^\s'"]+'''
+entropy = 2.5
+keywords = ["redis://", "rediss://"]
+
+[[rules]]
+id = "relyo-supabase-db-url"
+description = "Supabase Postgres connection string"
+regex = '''(?i)\bpostgres(?:ql)?://[^:@\s/]+:[^@\s/]+@[a-z0-9.-]+\.supabase\.(?:co|com)(?::[0-9]+)?/[^\s'"]*'''
+entropy = 2.5
+keywords = ["supabase.co", "supabase.com"]
+
+[[rules]]
+id = "relyo-neon-db-url"
+description = "Neon Postgres connection string"
+regex = '''(?i)\bpostgres(?:ql)?://[^:@\s/]+:[^@\s/]+@[a-z0-9.-]+\.neon\.tech(?::[0-9]+)?/[^\s'"]*'''
+entropy = 2.5
+keywords = ["neon.tech"]
+
+[[rules]]
+id = "relyo-planetscale-connection"
+description = "PlanetScale MySQL connection string"
+regex = '''(?i)\bmysql://[^:@\s/]+:[^@\s/]+@[a-z0-9.-]+\.psdb\.cloud[^\s'"]*'''
+entropy = 2.5
+keywords = ["psdb.cloud"]
+
+# --- Hosting / deployment ---
+
+[[rules]]
+id = "relyo-vercel-token"
+description = "Vercel bearer or OIDC token (vercel_… prefix)"
+regex = '''\b(vercel_[a-zA-Z0-9_]{20,})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3
+keywords = ["vercel_"]
+
+[[rules]]
+id = "relyo-render-api-key"
+description = "Render API key (rnd_… prefix)"
+regex = '''\b(rnd_[a-zA-Z0-9]{20,})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3
+keywords = ["rnd_"]
+
+# --- Auth headers & env-style secrets ---
+
+[[rules]]
+id = "relyo-authorization-bearer"
+description = "Authorization Bearer token in code or config (high-entropy value)"
+regex = '''(?i)(?:authorization|auth[_-]?token)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}Bearer\s+([A-Za-z0-9_\-.=~+/]{20,})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3.5
+keywords = ["bearer", "authorization"]
+
+[[rules]]
+id = "relyo-env-secret-assignment"
+description = "High-entropy secret assigned to common env var names in code or config"
+regex = '''(?i)(?:secret[_-]?key|api[_-]?key|auth[_-]?token|access[_-]?token|client[_-]?secret|password|passwd|database[_-]?url)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}['"]([^'"\s]{16,})['"]'''
+entropy = 3.5
+keywords = [
+    "secret_key",
+    "api_key",
+    "client_secret",
+    "access_token",
+    "database_url",
+]
+
+# --- Cryptographic material ---
+
+[[rules]]
+id = "relyo-ethereum-private-key"
+description = "Ethereum-style hex private key (0x + 64 hex digits)"
+regex = '''(?i)(?:private[_-]?key|eth[_-]?key|wallet[_-]?key)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}(0x[a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3
+keywords = ["0x", "private_key", "wallet_key"]
+
+# --- XRPL / remittance (project-specific) ---
+
+[[rules]]
+id = "relyo-xrpl-family-seed"
+description = "XRPL family seed / secret with explicit env var name"
+regex = '''(?i)(?:xrpl[_-]?(?:seed|secret|wallet)|family[_-]?seed|wallet[_-]?seed)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}(s[a-zA-Z0-9]{28,35})(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3
+keywords = ["xrpl", "family_seed", "wallet_seed"]
+
+[[rules]]
+id = "relyo-xrpl-secret-inline"
+description = "Inline XRPL secret starting with s (e.g. sEd… family seed)"
+regex = '''(?i)(?:secret|seed|wallet)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}['"]?(s[a-zA-Z0-9]{28,35})['"]?(?:[\x60'"\s;]|\\[nr]|$)'''
+entropy = 3.5
+keywords = ["seed", "secret"]

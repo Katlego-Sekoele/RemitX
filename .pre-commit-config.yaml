@@ -1,0 +1,37 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: Detect hardcoded secrets
+        entry: scripts/hooks/run-gitleaks.sh
+        language: script
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: block committed .env files
+        entry: scripts/hooks/block-env-files.sh
+        language: script
+        pass_filenames: false
+
+      - id: api-lint
+        name: api lint (ruff fix + format)
+        entry: scripts/hooks/run-api-lint.sh
+        language: script
+        files: ^api/
+        pass_filenames: false
+
+      - id: api-tests
+        name: api tests (pytest)
+        entry: scripts/hooks/run-api-tests.sh
+        language: script
+        files: ^api/
+        pass_filenames: false
+
+      - id: frontend-lint
+        name: frontend lint (prettier fix + typecheck)
+        entry: scripts/hooks/run-frontend-lint.sh
+        language: script
+        pass_filenames: false
+        always_run: true
