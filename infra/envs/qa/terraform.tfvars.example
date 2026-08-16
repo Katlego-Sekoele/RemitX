@@ -4,3 +4,7 @@ tags = {
   project     = "relyo"
   environment = "qa"
 }
+
+alert_emails       = ["team@example.com"]
+monthly_budget_cap = 20
+budget_start_date  = "2026-08-01T00:00:00Z"
