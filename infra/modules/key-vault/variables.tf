@@ -24,6 +24,14 @@ variable "clerk_secret_key" {
   sensitive = true
 }
 
+variable "clerk_publishable_key" {
+  type = string
+}
+
+variable "clerk_jwks_url" {
+  type = string
+}
+
 variable "xrpl_encryption_key" {
   type      = string
   sensitive = true

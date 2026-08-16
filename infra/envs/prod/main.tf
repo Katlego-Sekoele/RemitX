@@ -57,14 +57,23 @@ module "redis" {
 }
 
 module "key_vault" {
-  source              = "../../modules/key-vault"
-  name                = "relyo-${var.environment}-kv"
-  resource_group_name = module.resource_group.name
-  location            = module.resource_group.location
-  database_url        = module.postgresql.connection_string
-  redis_url           = module.redis.internal_url
-  clerk_secret_key    = var.clerk_secret_key
-  xrpl_encryption_key = var.xrpl_encryption_key
+  source                = "../../modules/key-vault"
+  name                  = "relyo-${var.environment}-kv"
+  resource_group_name   = module.resource_group.name
+  location              = module.resource_group.location
+  database_url          = module.postgresql.connection_string
+  redis_url             = module.redis.internal_url
+  clerk_secret_key      = var.clerk_secret_key
+  clerk_publishable_key = var.clerk_publishable_key
+  clerk_jwks_url        = var.clerk_jwks_url
+  xrpl_encryption_key   = var.xrpl_encryption_key
+}
+
+module "clerk" {
+  source            = "../../modules/clerk"
+  organization_name = "Relyo ${title(var.environment)}"
+  organization_slug = "relyo-${var.environment}"
+  environment       = var.environment
 }
 
 locals {

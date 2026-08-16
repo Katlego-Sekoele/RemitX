@@ -37,6 +37,24 @@ Per-dollar Azure billing alerts fire on **Actual** spend at each whole dollar ($
 
 Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `2026-08-01T00:00:00Z`).
 
+## Clerk (Terraform)
+
+1. Create a Clerk application per environment in the [Clerk Dashboard](https://dashboard.clerk.com).
+2. Export keys at apply time (never commit):
+
+   ```bash
+   export TF_VAR_clerk_api_key="sk_test_..."
+   export TF_VAR_clerk_secret_key="sk_test_..."   # same value as api_key for Key Vault runtime
+   export TF_VAR_clerk_publishable_key="pk_test_..."
+   export TF_VAR_clerk_jwks_url="https://<instance>.clerk.accounts.dev/.well-known/jwks.json"
+   ```
+
+3. `terraform apply` creates `clerk_organization.relyo-<env>` in that Clerk application.
+
+**Provider limitation:** bertie-technology/clerk v0.1 only manages organizations.
+Clerk applications/instances are still created in the dashboard. Allowed origins
+and redirect URLs are configured manually until a future provider version or auth plan.
+
 ## Layout
 
 - `modules/` — reusable Terraform modules

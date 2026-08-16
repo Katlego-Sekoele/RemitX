@@ -5,9 +5,17 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    clerk = {
+      source  = "bertie-technology/clerk"
+      version = "~> 0.1.0"
+    }
   }
 }
 
 provider "azurerm" {
   features {}
+}
+
+provider "clerk" {
+  api_key = var.clerk_api_key
 }

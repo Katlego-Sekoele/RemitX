@@ -40,10 +40,26 @@ variable "database_name" {
   description = "PostgreSQL database name; override via TF_VAR_database_name if needed"
 }
 
+variable "clerk_api_key" {
+  type        = string
+  sensitive   = true
+  description = "Clerk Secret Key (sk_test_... or sk_live_...) for this environment's Clerk application"
+}
+
 variable "clerk_secret_key" {
   type        = string
   sensitive   = true
-  description = "Clerk secret key; pass via TF_VAR_clerk_secret_key at apply time"
+  description = "Clerk secret key for Key Vault runtime; pass via TF_VAR_clerk_secret_key at apply time"
+}
+
+variable "clerk_publishable_key" {
+  type        = string
+  description = "Clerk Publishable Key (pk_...) for frontend — stored in Key Vault for later use"
+}
+
+variable "clerk_jwks_url" {
+  type        = string
+  description = "Clerk JWKS URL for JWT verification — stored in Key Vault for later use"
 }
 
 variable "xrpl_encryption_key" {
