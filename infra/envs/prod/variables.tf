@@ -35,7 +35,7 @@ variable "postgres_admin_password" {
 
 variable "database_name" {
   type        = string
-  default     = "relyo_qa"
+  default     = "relyo_prod"
   sensitive   = true
   description = "PostgreSQL database name; override via TF_VAR_database_name if needed"
 }
@@ -60,7 +60,7 @@ variable "ghcr_org" {
 
 variable "api_min_replicas" {
   type        = number
-  default     = 0
+  default     = 1
   description = "Minimum API Container App replicas (0 for QA scale-to-zero, 1 for prod)"
 }
 

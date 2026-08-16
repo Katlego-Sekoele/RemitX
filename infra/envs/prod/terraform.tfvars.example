@@ -1,23 +1,23 @@
-environment = "qa"
+environment = "prod"
 location    = "southafricanorth"
 tags = {
   project     = "relyo"
-  environment = "qa"
+  environment = "prod"
 }
 
 alert_emails       = ["team@example.com"]
 monthly_budget_cap = 20
 budget_start_date  = "2026-08-01T00:00:00Z"
 
-api_min_replicas = 0
+api_min_replicas = 1
 
-# Optional custom domains (empty for QA; set in prod tfvars)
-# api_custom_domain = ""
-# swa_custom_domain = ""
+# Custom domains (set before prod apply; wired in a later task)
+api_custom_domain = "api.example.com"
+swa_custom_domain = "example.com"
 
 # Sensitive values are NOT set in committed tfvars. Pass at apply time:
 #   TF_VAR_postgres_admin_password='...'
 #   TF_VAR_clerk_secret_key='...'
 #   TF_VAR_xrpl_encryption_key='...'
-# Optional override (default is relyo_qa):
-#   TF_VAR_database_name='relyo_qa'
+# Optional override (default is relyo_prod):
+#   TF_VAR_database_name='relyo_prod'
