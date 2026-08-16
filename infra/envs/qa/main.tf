@@ -38,3 +38,18 @@ module "key_vault" {
   clerk_secret_key    = var.clerk_secret_key
   xrpl_encryption_key = var.xrpl_encryption_key
 }
+
+module "application_insights" {
+  source              = "../../modules/application-insights"
+  name                = "relyo-${var.environment}-ai"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+}
+
+module "container_apps_env" {
+  source                     = "../../modules/container-apps-env"
+  name                       = "relyo-${var.environment}-cae"
+  resource_group_name        = module.resource_group.name
+  location                   = module.resource_group.location
+  log_analytics_workspace_id = module.application_insights.log_analytics_workspace_id
+}
