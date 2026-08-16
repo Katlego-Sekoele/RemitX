@@ -1,0 +1,41 @@
+name: Terraform QA
+
+on:
+  pull_request:
+    branches: [qa]
+    paths: ["infra/**"]
+  push:
+    branches: [qa]
+    paths: ["infra/**"]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: qa
+    defaults:
+      run:
+        working-directory: infra/envs/qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform plan
+        if: github.event_name == 'pull_request'
+      - run: terraform apply -auto-approve
+        if: github.event_name == 'push'
+        env:
+          TF_VAR_postgres_admin_password: ${{ secrets.TF_VAR_postgres_admin_password }}
+          TF_VAR_clerk_api_key: ${{ secrets.TF_VAR_clerk_api_key }}
+          TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
+          TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
+          TF_VAR_clerk_jwks_url: ${{ secrets.TF_VAR_clerk_jwks_url }}
+          TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}

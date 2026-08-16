@@ -55,8 +55,86 @@ Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `
 Clerk applications/instances are still created in the dashboard. Allowed origins
 and redirect URLs are configured manually until a future provider version or auth plan.
 
+## GitHub Actions — Azure OIDC
+
+Terraform QA and Prod workflows (`.github/workflows/terraform-qa.yml`, `terraform-prod.yml`) authenticate to Azure via **OIDC federation** — no long-lived `AZURE_CLIENT_SECRET` in GitHub.
+
+### One-time Azure AD app registration
+
+Replace `<org>` with your GitHub org or username (e.g. `Katlego-Sekoele`).
+
+```bash
+# Create app registration (note appId in output — this is AZURE_CLIENT_ID)
+az ad app create --display-name "relyo-github-actions"
+
+APP_ID="<app-id-from-above>"
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+TENANT_ID=$(az account show --query tenantId -o tsv)
+
+# Federated credential for GitHub environment: qa
+az ad app federated-credential create \
+  --id "$APP_ID" \
+  --parameters '{
+    "name": "relyo-github-qa",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:<org>/Relyo:environment:qa",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+
+# Federated credential for GitHub environment: prod
+az ad app federated-credential create \
+  --id "$APP_ID" \
+  --parameters '{
+    "name": "relyo-github-prod",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:<org>/Relyo:environment:prod",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+
+# Service principal + Contributor on environment resource groups
+az ad sp create --id "$APP_ID"
+SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
+
+az role assignment create --assignee-object-id "$SP_OBJECT_ID" --assignee-principal-type ServicePrincipal \
+  --role Contributor --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/relyo-qa-rg"
+az role assignment create --assignee-object-id "$SP_OBJECT_ID" --assignee-principal-type ServicePrincipal \
+  --role Contributor --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/relyo-prod-rg"
+
+# Remote state storage (bootstrap section above)
+az role assignment create --assignee-object-id "$SP_OBJECT_ID" --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/relyo-tfstate-rg"
+```
+
+First `terraform apply` creates `relyo-qa-rg` / `relyo-prod-rg` if they do not exist yet — until then, assign **Contributor** at subscription scope (or pre-create the resource groups), then narrow to RG scope above.
+
+### GitHub repository configuration
+
+**Repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `AZURE_CLIENT_ID` | App registration `appId` |
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Target subscription ID |
+
+**Environment secrets** (Settings → Environments → `qa` / `prod`):
+
+| Secret | Used at |
+|---|---|
+| `TF_VAR_postgres_admin_password` | `terraform apply` |
+| `TF_VAR_clerk_api_key` | `terraform apply` |
+| `TF_VAR_clerk_secret_key` | `terraform apply` |
+| `TF_VAR_clerk_publishable_key` | `terraform apply` |
+| `TF_VAR_clerk_jwks_url` | `terraform apply` |
+| `TF_VAR_xrpl_encryption_key` | `terraform apply` |
+
+Workflow behaviour:
+
+- **Pull request** to `qa` or `main` (with `infra/**` changes) → `terraform plan`
+- **Push** to `qa` or `main` (merge) → `terraform apply -auto-approve`
+
 ## Layout
 
 - `modules/` — reusable Terraform modules
 - `envs/qa/` — QA environment root module
-- `envs/prod/` — Prod environment (added in a later task)
+- `envs/prod/` — Prod environment root module
