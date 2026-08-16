@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [api/**]
+
+variables:
+  - group: relyo-prod-secrets
+  - name: azureServiceConnection
+    value: azure-relyo
+  - name: ghcrOrg
+    value: Katlego-Sekoele/Relyo
+  - name: deployEnv
+    value: prod
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - bash: |
+      set -euo pipefail
+      echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      IMAGE="ghcr.io/$(ghcrOrg)/relyo-worker"
+      docker build -f ./api/Dockerfile.worker -t "${IMAGE}:$(deployEnv)" -t "${IMAGE}:$(Build.SourceVersion)" ./api
+      docker push "${IMAGE}:$(deployEnv)"
+      docker push "${IMAGE}:$(Build.SourceVersion)"
+    displayName: Build and push worker image
+    env:
+      GHCR_PAT: $(GHCR_PAT)
+      GHCR_USER: $(GHCR_USER)
+
+  - task: AzureCLI@2
+    displayName: Update Container App
+    inputs:
+      azureSubscription: $(azureServiceConnection)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        az containerapp update \
+          --name "relyo-$(deployEnv)-worker" \
+          --resource-group "relyo-$(deployEnv)-rg" \
+          --image "ghcr.io/$(ghcrOrg)/relyo-worker:$(deployEnv)"

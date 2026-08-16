@@ -1,0 +1,32 @@
+environment = "prod"
+location    = "spaincentral"
+tags = {
+  project     = "relyo"
+  environment = "prod"
+}
+
+alert_emails       = ["team@example.com"]
+monthly_budget_cap = 20
+budget_start_date  = "2026-08-01T00:00:00Z"
+
+api_min_replicas = 1
+
+# Production custom domains — create DNS records from terraform output after apply
+api_custom_domain = "api.example.com"
+swa_custom_domain = "example.com"
+
+# GHCR image path — must match github.repository (owner/repo) used in deploy workflows
+ghcr_org = "ORG/Relyo"
+
+# GitHub OIDC service principal object ID — see infra/README.md
+azure_deployer_object_id = "00000000-0000-0000-0000-000000000000"
+
+# Sensitive values are NOT set in committed tfvars. Pass at apply time:
+#   TF_VAR_postgres_admin_password='...'
+#   TF_VAR_clerk_api_key='...'          # Clerk Secret Key (Terraform provider auth)
+#   TF_VAR_clerk_secret_key='...'       # same value as clerk_api_key (Key Vault runtime)
+#   TF_VAR_clerk_publishable_key='...'
+#   TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'
+#   TF_VAR_xrpl_encryption_key='...'
+# Optional override (default is relyo_prod):
+#   TF_VAR_database_name='relyo_prod'
