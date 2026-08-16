@@ -1,0 +1,38 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [qa, main]
+    paths: ["api/**"]
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'qa' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: ghcr.io/${{ github.repository }}/relyo-api:${{ github.sha }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az containerapp update \
+            --name relyo-${{ github.ref_name == 'main' && 'prod' || 'qa' }}-api \
+            --resource-group relyo-${{ github.ref_name == 'main' && 'prod' || 'qa' }}-rg \
+            --image ghcr.io/${{ github.repository }}/relyo-api:${{ github.sha }}
