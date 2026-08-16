@@ -1,0 +1,6 @@
+environment = "qa"
+location    = "southafricanorth"
+tags = {
+  project     = "relyo"
+  environment = "qa"
+}
