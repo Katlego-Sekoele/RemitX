@@ -67,6 +67,7 @@ module "key_vault" {
   clerk_publishable_key = var.clerk_publishable_key
   clerk_jwks_url        = var.clerk_jwks_url
   xrpl_encryption_key   = var.xrpl_encryption_key
+  deployer_object_id    = var.azure_deployer_object_id
 }
 
 module "clerk" {
@@ -82,6 +83,10 @@ locals {
     REDIS_URL           = module.key_vault.secret_ids["redis-url"]
     CLERK_SECRET_KEY    = module.key_vault.secret_ids["clerk-secret-key"]
     XRPL_ENCRYPTION_KEY = module.key_vault.secret_ids["xrpl-encryption-key"]
+  }
+
+  container_app_env_vars = {
+    APPLICATIONINSIGHTS_CONNECTION_STRING = module.application_insights.connection_string
   }
 }
 
@@ -99,6 +104,7 @@ module "api" {
   memory                       = "0.5Gi"
   key_vault_id                 = module.key_vault.id
   secrets                      = local.container_app_secrets
+  env_vars                     = local.container_app_env_vars
 }
 
 module "worker" {
@@ -114,6 +120,7 @@ module "worker" {
   memory                       = "0.5Gi"
   key_vault_id                 = module.key_vault.id
   secrets                      = local.container_app_secrets
+  env_vars                     = local.container_app_env_vars
 }
 
 module "static_web_app" {

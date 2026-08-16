@@ -70,8 +70,12 @@ variable "xrpl_encryption_key" {
 
 variable "ghcr_org" {
   type        = string
-  default     = "ORG"
-  description = "GHCR owner/org placeholder for container images (ghcr.io/<org>/relyo-api:<env>)"
+  description = "GitHub repository path for GHCR images (owner/repo), e.g. my-org/Relyo — matches github.repository in deploy workflows"
+}
+
+variable "azure_deployer_object_id" {
+  type        = string
+  description = "Object ID of the GitHub OIDC service principal running Terraform; grants Key Vault Secrets Officer on apply"
 }
 
 variable "api_min_replicas" {

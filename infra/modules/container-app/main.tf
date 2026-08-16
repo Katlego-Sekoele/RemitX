@@ -74,7 +74,8 @@ resource "azurerm_container_app" "this" {
   }
 
   lifecycle {
-    ignore_changes = [secret]
+    # CI deploy workflows update the image tag after initial provisioning.
+    ignore_changes = [secret, template[0].container[0].image]
   }
 }
 

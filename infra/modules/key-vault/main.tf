@@ -46,3 +46,11 @@ resource "azurerm_key_vault_secret" "xrpl_encryption_key" {
   value        = var.xrpl_encryption_key
   key_vault_id = azurerm_key_vault.this.id
 }
+
+resource "azurerm_role_assignment" "deployer_secrets_officer" {
+  count = var.deployer_object_id != null ? 1 : 0
+
+  scope                = azurerm_key_vault.this.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = var.deployer_object_id
+}

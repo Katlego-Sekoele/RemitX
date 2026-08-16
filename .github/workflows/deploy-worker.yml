@@ -14,6 +14,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'prod' || 'qa' }}
+    env:
+      DEPLOY_ENV: ${{ github.ref_name == 'main' && 'prod' || 'qa' }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -26,7 +28,9 @@ jobs:
           context: ./api
           file: ./api/Dockerfile.worker
           push: true
-          tags: ghcr.io/${{ github.repository }}/relyo-worker:${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}/relyo-worker:${{ env.DEPLOY_ENV }}
+            ghcr.io/${{ github.repository }}/relyo-worker:${{ github.sha }}
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -34,6 +38,6 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - run: |
           az containerapp update \
-            --name relyo-${{ github.ref_name == 'main' && 'prod' || 'qa' }}-worker \
-            --resource-group relyo-${{ github.ref_name == 'main' && 'prod' || 'qa' }}-rg \
-            --image ghcr.io/${{ github.repository }}/relyo-worker:${{ github.sha }}
+            --name relyo-${{ env.DEPLOY_ENV }}-worker \
+            --resource-group relyo-${{ env.DEPLOY_ENV }}-rg \
+            --image ghcr.io/${{ github.repository }}/relyo-worker:${{ env.DEPLOY_ENV }}

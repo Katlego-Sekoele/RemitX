@@ -150,6 +150,19 @@ az role assignment create --assignee-object-id "$SP_OBJECT_ID" --assignee-princi
 
 First `terraform apply` creates `relyo-qa-rg` / `relyo-prod-rg` if they do not exist yet — until then, assign **Contributor** at subscription scope (or pre-create the resource groups), then narrow to RG scope above.
 
+Key Vault uses RBAC. Terraform grants the deployer **Key Vault Secrets Officer** via `azure_deployer_object_id` (wired from `AZURE_DEPLOYER_OBJECT_ID` in GitHub Actions). Set that variable to the service principal object ID (`$SP_OBJECT_ID` above):
+
+```bash
+# GitHub → Settings → Environments → qa / prod → Variables
+AZURE_DEPLOYER_OBJECT_ID = <service-principal-object-id>
+```
+
+For local `terraform apply`, pass `azure_deployer_object_id` in `non-secret.tfvars` or `TF_VAR_azure_deployer_object_id` with your user or SP object ID.
+
+### Container image tags
+
+Terraform provisions Container Apps with placeholder images tagged `:qa` or `:prod` (`ghcr.io/<owner>/<repo>/relyo-api:<env>`). CI deploy workflows build, push `:qa`/`:prod` plus an immutable `:sha` tag, then update the running revision with the environment tag. Terraform ignores image changes after initial apply so deploys are not reverted.
+
 ### GitHub repository configuration
 
 **Repository secrets** (Settings → Secrets and variables → Actions):
@@ -164,17 +177,25 @@ First `terraform apply` creates `relyo-qa-rg` / `relyo-prod-rg` if they do not e
 
 | Secret | Used at |
 |---|---|
-| `TF_VAR_postgres_admin_password` | `terraform apply` |
-| `TF_VAR_clerk_api_key` | `terraform apply` |
-| `TF_VAR_clerk_secret_key` | `terraform apply` |
-| `TF_VAR_clerk_publishable_key` | `terraform apply` |
-| `TF_VAR_clerk_jwks_url` | `terraform apply` |
-| `TF_VAR_xrpl_encryption_key` | `terraform apply` |
+| `TF_VAR_postgres_admin_password` | `terraform plan` / `apply` |
+| `TF_VAR_clerk_api_key` | `terraform plan` / `apply` |
+| `TF_VAR_clerk_secret_key` | `terraform plan` / `apply` |
+| `TF_VAR_clerk_publishable_key` | `terraform plan` / `apply` |
+| `TF_VAR_clerk_jwks_url` | `terraform plan` / `apply` |
+| `TF_VAR_xrpl_encryption_key` | `terraform plan` / `apply` |
+
+**Environment variables** (Settings → Environments → `qa` / `prod`):
+
+| Variable | Used at |
+|---|---|
+| `AZURE_DEPLOYER_OBJECT_ID` | `terraform plan` / `apply` — GitHub OIDC SP object ID for Key Vault Secrets Officer |
+
+Non-sensitive Terraform inputs (`environment`, `alert_emails`, `budget_start_date`, custom domains, etc.) live in committed `non-secret.tfvars` per environment. Workflows also set `TF_VAR_ghcr_org` from `github.repository` so image paths match deploy workflows.
 
 Workflow behaviour:
 
-- **Pull request** to `qa` or `main` (with `infra/**` changes) → `terraform plan`
-- **Push** to `qa` or `main` (merge) → `terraform apply -auto-approve`
+- **Pull request** to `qa` or `main` (with `infra/**` changes) → `terraform plan -var-file=non-secret.tfvars`
+- **Push** to `qa` or `main` (merge) → `terraform apply -auto-approve -var-file=non-secret.tfvars`
 
 ## Layout
 
