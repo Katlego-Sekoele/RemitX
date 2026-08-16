@@ -1,5 +1,5 @@
 environment = "qa"
-location    = "southafricanorth"
+location    = "spaincentral"
 tags = {
   project     = "relyo"
   environment = "qa"

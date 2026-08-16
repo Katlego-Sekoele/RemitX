@@ -4,7 +4,7 @@ variable "environment" {
 
 variable "location" {
   type    = string
-  default = "southafricanorth"
+  default = "spaincentral"
 }
 
 variable "tags" {

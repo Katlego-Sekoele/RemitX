@@ -1,5 +1,5 @@
 environment = "prod"
-location    = "southafricanorth"
+location    = "spaincentral"
 tags = {
   project     = "relyo"
   environment = "prod"

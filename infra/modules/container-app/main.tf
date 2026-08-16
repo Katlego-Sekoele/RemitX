@@ -80,7 +80,7 @@ resource "azurerm_container_app" "this" {
 }
 
 resource "azurerm_role_assignment" "key_vault_secrets_user" {
-  count = local.use_key_vault_secrets && var.key_vault_id != null ? 1 : 0
+  count = local.use_key_vault_secrets ? 1 : 0
 
   scope                = var.key_vault_id
   role_definition_name = "Key Vault Secrets User"

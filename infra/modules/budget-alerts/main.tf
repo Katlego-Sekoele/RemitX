@@ -29,7 +29,7 @@ resource "azurerm_consumption_budget_resource_group" "segment" {
     for_each = each.value.dollars
     content {
       enabled        = true
-      threshold      = (notification.value / each.value.amount) * 100
+      threshold = floor((notification.value / each.value.amount) * 100)
       operator       = "GreaterThanOrEqualTo"
       threshold_type = "Actual"
       contact_emails = var.alert_emails
@@ -54,7 +54,7 @@ resource "azurerm_consumption_budget_subscription" "segment" {
     for_each = each.value.dollars
     content {
       enabled        = true
-      threshold      = (notification.value / each.value.amount) * 100
+      threshold = floor((notification.value / each.value.amount) * 100)
       operator       = "GreaterThanOrEqualTo"
       threshold_type = "Actual"
       contact_emails = var.alert_emails
