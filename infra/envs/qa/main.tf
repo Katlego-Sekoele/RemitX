@@ -17,3 +17,24 @@ module "budget_alerts" {
   monthly_budget_cap  = var.monthly_budget_cap
   budget_start_date   = var.budget_start_date
 }
+
+module "postgresql" {
+  source              = "../../modules/postgresql"
+  server_name         = "relyo-${var.environment}-pg"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  admin_username      = "relyoadmin"
+  admin_password      = var.postgres_admin_password
+  database_name       = var.database_name
+}
+
+module "key_vault" {
+  source              = "../../modules/key-vault"
+  name                = "relyo-${var.environment}-kv"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  database_url        = module.postgresql.connection_string
+  redis_url           = "redis://placeholder:6379/0"
+  clerk_secret_key    = var.clerk_secret_key
+  xrpl_encryption_key = var.xrpl_encryption_key
+}

@@ -8,3 +8,10 @@ tags = {
 alert_emails       = ["team@example.com"]
 monthly_budget_cap = 20
 budget_start_date  = "2026-08-01T00:00:00Z"
+
+# Sensitive values are NOT set in committed tfvars. Pass at apply time:
+#   TF_VAR_postgres_admin_password='...'
+#   TF_VAR_clerk_secret_key='...'
+#   TF_VAR_xrpl_encryption_key='...'
+# Optional override (default is relyo_qa):
+#   TF_VAR_database_name='relyo_qa'
