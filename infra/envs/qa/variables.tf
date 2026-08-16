@@ -51,3 +51,9 @@ variable "xrpl_encryption_key" {
   sensitive   = true
   description = "XRPL private key encryption key; pass via TF_VAR_xrpl_encryption_key at apply time"
 }
+
+variable "ghcr_org" {
+  type        = string
+  default     = "ORG"
+  description = "GHCR owner/org placeholder for container images (ghcr.io/<org>/relyo-api:qa)"
+}
