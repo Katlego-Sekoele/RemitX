@@ -63,7 +63,13 @@ variable "xrpl_encryption_key" {
 
 variable "ghcr_org" {
   type        = string
-  description = "GitHub repository path for GHCR images (owner/repo), e.g. my-org/RemitX — matches github.repository in deploy workflows"
+  description = "GitHub repository path for GHCR images (owner/repo) — used by deploy.yml, not Terraform"
+}
+
+variable "bootstrap_container_image" {
+  type        = string
+  default     = "mcr.microsoft.com/k8se/quickstart:latest"
+  description = "Public placeholder image for initial Container App create; deploy workflows replace with GHCR"
 }
 
 variable "api_min_replicas" {

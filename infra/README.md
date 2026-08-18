@@ -237,7 +237,14 @@ Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `
 
 ## Container image tags
 
-Terraform provisions Container Apps with placeholder images `ghcr.io/<owner>/<repo>/remitx-api:qa` or `:prod`. Deploy workflows push images and update revisions. Terraform ignores image drift after initial apply.
+Terraform creates API and worker Container Apps with a **public bootstrap image** (`mcr.microsoft.com/k8se/quickstart:latest`) because GHCR images do not exist yet and private packages cannot be pulled during first apply.
+
+After `terraform apply`, push a change under `api/**` (or re-run deploy) so `deploy.yml` builds and pushes:
+
+- `ghcr.io/<owner>/<repo>/remitx-api:qa` (or `:prod`)
+- `ghcr.io/<owner>/<repo>/remitx-worker:qa` (or `:prod`)
+
+…and updates each Container App revision. Terraform ignores image drift after initial provisioning (`lifecycle.ignore_changes` on the container image).
 
 ## Troubleshooting apply failures
 
