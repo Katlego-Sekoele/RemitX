@@ -1,0 +1,116 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+RemitX is a prototype cross-border FX remittance platform (ZAR → RLUSD on the XRP Ledger **Testnet**) built for UCT ECO5040W. The full brief — user journey, fee model, limits, KYC, queue/worker requirements, deliverables — is in [docs/project-brief.md](docs/project-brief.md). Read it before designing any domain feature; requirements there are graded criteria, not suggestions.
+
+Hard constraints from the brief:
+
+- XRPL **Testnet only**. No mainnet accounts, no real funds, no production blockchain credentials.
+- XRPL private keys stored in the DB must be encrypted, with the encryption key held outside that database. Keys must never be returned via the API, logged, or committed.
+- RLUSD settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting).
+- RLUSD transfer may not start until the simulated ZAR cash-in is confirmed.
+
+Cloud deployment uses **Azure** (Static Web Apps, Container Apps, Key Vault), **Neon** (Postgres), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md](docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md).
+
+**Cloud environments:** `qa` branch → QA stack; `main` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud **Container Apps worker** with internal Redis.
+
+## Layout
+
+Monorepo with two apps sharing one env file:
+
+- [api/](api/) — FastAPI JSON REST API (`remitx_api` package)
+- [frontend/](frontend/) — React Router v7 (SPA) + Tailwind v4 + shadcn/ui
+- [infra/](infra/) — Terraform (Azure Container Apps, SWA, Key Vault)
+- [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Azure + Neon + Clerk setup
+- [.github/workflows/](.github/workflows/) — CI and Azure deploy on `qa` / `main`
+
+## Environment configuration
+
+**A single root `.env` is the only source of config** for the API, the frontend, and both compose files. [api/remitx_api/config.py](api/remitx_api/config.py) walks up from the package to load the *repo-root* `.env` explicitly — there is no `api/.env`. Copy `.env.example` to `.env` on first setup; adding a new setting means updating `.env.example` too.
+
+`.env` is gitignored and a pre-commit hook hard-blocks committing any file named `.env`.
+
+## Commands
+
+### Docker (full stack: API + frontend + Postgres + Redis)
+
+```bash
+docker compose -f docker-compose.dev.yml up --build   # foreground logs
+docker compose -f docker-compose.dev.yml down
+```
+
+`docker-compose.yml` (no `-f`) is API + frontend only, no infrastructure.
+
+### API
+
+```bash
+cd api && source .venv/bin/activate
+pip install -e '.[dev]'
+
+python -m remitx_api                 # dev server on 0.0.0.0:$PORT (4200)
+uvicorn asgi:app --host 0.0.0.0 --port 4200   # production-style entry point
+
+pytest                              # all tests
+pytest tests/test_health.py::test_health_returns_ok   # single test
+ruff check --fix . && ruff format . # lint + format (config in pyproject.toml)
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev          # vite dev server on 5173
+npm run lint         # typecheck + prettier --check
+npm run typecheck    # react-router typegen && tsc
+npm run format       # prettier --write
+npx shadcn@latest add <component>
+```
+
+### Git hooks
+
+```bash
+./scripts/setup-hooks.sh                  # installs pre-commit + prints prereqs
+python3 -m pre_commit run --all-files
+```
+
+Pre-commit runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
+
+## API architecture
+
+Application-factory FastAPI app ([api/remitx_api/app.py](api/remitx_api/app.py)) with a strict four-layer split:
+
+```
+routes/       HTTP only — APIRouter handlers, no logic
+controllers/  use-case orchestration
+repositories/ SQLAlchemy data access via the generic Repository
+models/orm/   SQLAlchemy ORM entities (Base)
+extensions.py shared `db` session + DeclarativeBase
+```
+
+Adding an endpoint means: ORM model → repository (if needed) → controller → thin route in `routes/`, registered in [api/remitx_api/routes/\_\_init\_\_.py](api/remitx_api/routes/__init__.py) via `register_routers`.
+
+Things that bite:
+
+- **Every ORM model must inherit from `Base` in [api/remitx_api/extensions.py](api/remitx_api/extensions.py) and be imported in [api/remitx_api/models/orm/\_\_init\_\_.py](api/remitx_api/models/orm/__init__.py)** or its table is invisible to SQLAlchemy metadata and never created.
+- `db.create_all()` runs **only when `DEBUG` is true**. There is no migration tool wired up yet; a non-debug environment needs schema created another way.
+- `Repository[T, ID]` ([api/remitx_api/repositories/repository.py](api/remitx_api/repositories/repository.py)) commits inside `save`/`delete`. Multi-entity use cases that need one transaction should not chain repository calls — use `db.session` directly in the controller.
+- Config classes are the switch for environments: `Config` reads env vars; `TestConfig` forces in-memory SQLite. Tests get a client via the `client` fixture in [api/tests/conftest.py](api/tests/conftest.py), which builds a fresh app per test.
+- `DATABASE_URL` unset falls back to SQLite at `api/remitx.db`; compose overrides it to Postgres.
+
+**Python version:** `requires-python >= 3.9` and ruff targets `py39`, but the Docker image is `python:3.11`. Write 3.9-compatible code (no `match`, no PEP 604 `X | Y` at runtime) so local venvs on 3.9 keep working.
+
+## Frontend architecture
+
+React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/react-router.config.ts)) — static client build deployed to Azure Static Web Apps.
+
+- Routes are declared explicitly in [frontend/app/routes.ts](frontend/app/routes.ts), not by file-system convention. New pages must be added there.
+- Route types come from `react-router typegen` into `.react-router/types` and are imported as `./+types/<route>`. Run `npm run typecheck` (which regenerates them) after adding a route, or types will be stale/missing.
+- Path alias `~/*` → `app/*`.
+- Tailwind v4 configured entirely in CSS ([frontend/app/app.css](frontend/app/app.css)) — no `tailwind.config`. shadcn uses the `base-lyra` style over `@base-ui/react`, Phosphor icons, and CSS variables.
+- Prettier enforces **no semicolons**, double quotes, 2-space indent, 80 cols, with Tailwind class sorting (`cn`, `cva` aware). Match it; the hook rewrites files otherwise.
+- API base URL reaches the client via `VITE_API_URL`.

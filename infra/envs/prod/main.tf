@@ -1,6 +1,6 @@
 module "resource_group" {
   source   = "../../modules/resource-group"
-  name     = "relyo-${var.environment}-rg"
+  name     = "remitx-${var.environment}-rg"
   location = var.location
   tags     = var.tags
 }
@@ -9,7 +9,7 @@ data "azurerm_subscription" "current" {}
 
 module "budget_alerts" {
   source                     = "../../modules/budget-alerts"
-  name_prefix                = "relyo-${var.environment}"
+  name_prefix                = "remitx-${var.environment}"
   resource_group_name        = module.resource_group.name
   resource_group_id          = module.resource_group.id
   subscription_id            = data.azurerm_subscription.current.id
@@ -19,26 +19,16 @@ module "budget_alerts" {
   enable_subscription_budget = true
 }
 
-module "postgresql" {
-  source              = "../../modules/postgresql"
-  server_name         = "relyo-${var.environment}-pg"
-  resource_group_name = module.resource_group.name
-  location            = module.resource_group.location
-  admin_username      = "relyoadmin"
-  admin_password      = var.postgres_admin_password
-  database_name       = var.database_name
-}
-
 module "application_insights" {
   source              = "../../modules/application-insights"
-  name                = "relyo-${var.environment}-ai"
+  name                = "remitx-${var.environment}-ai"
   resource_group_name = module.resource_group.name
   location            = module.resource_group.location
 }
 
 module "container_apps_env" {
   source                     = "../../modules/container-apps-env"
-  name                       = "relyo-${var.environment}-cae"
+  name                       = "remitx-${var.environment}-cae"
   resource_group_name        = module.resource_group.name
   location                   = module.resource_group.location
   log_analytics_workspace_id = module.application_insights.log_analytics_workspace_id
@@ -46,7 +36,7 @@ module "container_apps_env" {
 
 module "redis" {
   source                       = "../../modules/container-app"
-  name                         = "relyo-${var.environment}-redis"
+  name                         = "remitx-${var.environment}-redis"
   resource_group_name          = module.resource_group.name
   container_app_environment_id = module.container_apps_env.id
   image                        = "redis:7-alpine"
@@ -59,23 +49,16 @@ module "redis" {
 
 module "key_vault" {
   source                = "../../modules/key-vault"
-  name                  = "relyo-${var.environment}-kv"
+  name                  = "remitx-${var.environment}-kv"
   resource_group_name   = module.resource_group.name
   location              = module.resource_group.location
-  database_url          = module.postgresql.connection_string
+  database_url          = var.database_url
   redis_url             = module.redis.internal_url
   clerk_secret_key      = var.clerk_secret_key
   clerk_publishable_key = var.clerk_publishable_key
   clerk_jwks_url        = var.clerk_jwks_url
   xrpl_encryption_key   = var.xrpl_encryption_key
   deployer_object_id    = var.azure_deployer_object_id
-}
-
-module "clerk" {
-  source            = "../../modules/clerk"
-  organization_name = "Relyo ${title(var.environment)}"
-  organization_slug = "relyo-${var.environment}"
-  environment       = var.environment
 }
 
 locals {
@@ -93,10 +76,10 @@ locals {
 
 module "api" {
   source                       = "../../modules/container-app"
-  name                         = "relyo-${var.environment}-api"
+  name                         = "remitx-${var.environment}-api"
   resource_group_name          = module.resource_group.name
   container_app_environment_id = module.container_apps_env.id
-  image                        = "ghcr.io/${var.ghcr_org}/relyo-api:${var.environment}"
+  image                        = "ghcr.io/${var.ghcr_org}/remitx-api:${var.environment}"
   ingress_external             = true
   ingress_target_port          = 4200
   min_replicas                 = var.api_min_replicas
@@ -111,10 +94,10 @@ module "api" {
 
 module "worker" {
   source                       = "../../modules/container-app"
-  name                         = "relyo-${var.environment}-worker"
+  name                         = "remitx-${var.environment}-worker"
   resource_group_name          = module.resource_group.name
   container_app_environment_id = module.container_apps_env.id
-  image                        = "ghcr.io/${var.ghcr_org}/relyo-worker:${var.environment}"
+  image                        = "ghcr.io/${var.ghcr_org}/remitx-worker:${var.environment}"
   ingress_external             = false
   min_replicas                 = 1
   max_replicas                 = 1
@@ -127,7 +110,7 @@ module "worker" {
 
 module "static_web_app" {
   source              = "../../modules/static-web-app"
-  name                = "relyo-${var.environment}-swa"
+  name                = "remitx-${var.environment}-swa"
   resource_group_name = module.resource_group.name
   location            = module.resource_group.location
   custom_domain       = var.swa_custom_domain

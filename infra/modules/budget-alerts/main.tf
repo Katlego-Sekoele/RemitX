@@ -1,7 +1,7 @@
 resource "azurerm_monitor_action_group" "billing" {
   name                = "${var.name_prefix}-billing"
   resource_group_name = var.resource_group_name
-  short_name          = "relyobill"
+  short_name          = "remitxbill"
 
   dynamic "email_receiver" {
     for_each = toset(var.alert_emails)

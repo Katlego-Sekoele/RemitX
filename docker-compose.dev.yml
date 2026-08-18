@@ -5,6 +5,11 @@
 #
 # Stop:
 #   docker compose -f docker-compose.dev.yml down
+#
+# After changing POSTGRES_USER/POSTGRES_DB, reset volumes:
+#   docker compose -f docker-compose.dev.yml down -v
+
+name: remitx
 
 services:
   postgres:
@@ -54,7 +59,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "pip install -e . && python -m relyo_api"
+    command: sh -c "pip install -e . && python -m remitx_api"
     stdin_open: true
     tty: true
 

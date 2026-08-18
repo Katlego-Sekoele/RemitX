@@ -27,23 +27,10 @@ variable "budget_start_date" {
   description = "ISO8601 start date for monthly budgets, e.g. 2026-08-01T00:00:00Z"
 }
 
-variable "postgres_admin_password" {
+variable "database_url" {
   type        = string
   sensitive   = true
-  description = "PostgreSQL admin password; pass via TF_VAR_postgres_admin_password at apply time"
-}
-
-variable "database_name" {
-  type        = string
-  default     = "relyo_qa"
-  sensitive   = true
-  description = "PostgreSQL database name; override via TF_VAR_database_name if needed"
-}
-
-variable "clerk_api_key" {
-  type        = string
-  sensitive   = true
-  description = "Clerk Secret Key (sk_test_... or sk_live_...) for this environment's Clerk application"
+  description = "Neon Postgres connection string; pass via TF_VAR_database_url at apply time"
 }
 
 variable "clerk_secret_key" {
@@ -70,7 +57,7 @@ variable "xrpl_encryption_key" {
 
 variable "ghcr_org" {
   type        = string
-  description = "GitHub repository path for GHCR images (owner/repo), e.g. my-org/Relyo — matches github.repository in deploy workflows"
+  description = "GitHub repository path for GHCR images (owner/repo), e.g. my-org/RemitX — matches github.repository in deploy workflows"
 }
 
 variable "azure_deployer_object_id" {

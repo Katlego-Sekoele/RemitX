@@ -8,7 +8,7 @@ services:
       - "${PORT}:${PORT}"
     volumes:
       - ./api:/app
-    command: sh -c "pip install -e . && python -m relyo_api"
+    command: sh -c "pip install -e . && python -m remitx_api"
 
   frontend:
     build:

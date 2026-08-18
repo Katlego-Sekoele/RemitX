@@ -6,11 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 COPY pyproject.toml .
-COPY relyo_api/ relyo_api/
-COPY relyo_worker/ relyo_worker/
+COPY remitx_api/ remitx_api/
+COPY remitx_worker/ remitx_worker/
+COPY asgi.py .
 
 RUN pip install --upgrade pip && pip install -e .
 
 EXPOSE 4200
 
-CMD ["gunicorn", "--bind", "0.0.0.0:4200", "--workers", "2", "wsgi:app"]
+CMD ["uvicorn", "asgi:app", "--host", "0.0.0.0", "--port", "4200"]
