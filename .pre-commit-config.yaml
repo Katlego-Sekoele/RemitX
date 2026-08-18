@@ -30,7 +30,7 @@ repos:
         pass_filenames: false
 
       - id: frontend-lint
-        name: frontend lint (prettier fix + typecheck)
+        name: frontend lint (prettier fix all + lint)
         entry: scripts/hooks/run-frontend-lint.sh
         language: script
         pass_filenames: false

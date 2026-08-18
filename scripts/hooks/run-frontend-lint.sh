@@ -14,28 +14,14 @@ if [[ ! -d node_modules ]]; then
   exit 1
 fi
 
-staged=()
+# Format the whole frontend tree so CI (format:check on all files) stays in sync,
+# not only paths staged for this commit.
+npm run format
+
+cd "$root"
 while IFS= read -r file; do
-  staged+=("$file")
-done < <(git diff --cached --name-only --diff-filter=ACM | grep '^frontend/' || true)
+  [[ -n "$file" ]] && git add "$file"
+done < <(git diff --name-only HEAD -- frontend/ || true)
 
-if ((${#staged[@]} > 0)); then
-  rel=()
-  for file in "${staged[@]}"; do
-    case "$file" in
-      frontend/*.ts | frontend/*.tsx | frontend/*.js | frontend/*.jsx | frontend/*.json | frontend/*.css | frontend/*.md | frontend/*.yaml | frontend/*.yml | frontend/*.html)
-        rel+=("${file#frontend/}")
-        ;;
-    esac
-  done
-  if ((${#rel[@]} > 0)); then
-    npx prettier --write "${rel[@]}"
-  fi
-  cd "$root"
-  for file in "${staged[@]}"; do
-    git add "$file"
-  done
-  cd "$root/frontend"
-fi
-
-npm run typecheck
+cd "$root/frontend"
+npm run lint

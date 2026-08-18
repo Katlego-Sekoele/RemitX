@@ -67,10 +67,7 @@ export function ThemeToggle() {
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => setTheme(value)}
-            className={cn(
-              "rounded-none",
-              !isActive && "text-muted-foreground"
-            )}
+            className={cn("rounded-none", !isActive && "text-muted-foreground")}
           >
             <Icon weight="bold" />
           </Button>
