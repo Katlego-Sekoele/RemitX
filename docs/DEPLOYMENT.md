@@ -63,9 +63,21 @@ Per **qa** and **prod** environments:
 | `TF_VAR_clerk_publishable_key` | Clerk dashboard |
 | `TF_VAR_clerk_jwks_url` | Clerk dashboard |
 | `TF_VAR_xrpl_encryption_key` | `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `VITE_API_URL` | Container App API FQDN after first deploy |
+| `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** (Container Apps pull from private GHCR) |
+| `VITE_API_URL` | `terraform output api_url` after first infra apply (e.g. `https://remitx-qa-api….azurecontainerapps.io`) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | From `terraform output` after SWA is created |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` after SWA is created |
+
+**GHCR pull token:** GitHub → Settings → Developer settings → Personal access tokens → fine-grained or classic with `read:packages`. Username for GHCR is your GitHub username (owner of the repo).
+
+**SWA deployment token:** after `terraform apply`:
+
+```bash
+cd infra/envs/qa
+terraform output -raw static_web_app_deployment_token
+```
+
+Paste into GitHub **qa** environment secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
 
 ### 5. Deploy QA infrastructure
 
