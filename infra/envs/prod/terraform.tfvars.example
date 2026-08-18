@@ -18,8 +18,8 @@ swa_custom_domain = "example.com"
 # GHCR image path — must match github.repository (owner/repo) used in deploy workflows
 ghcr_org = "org/remitx"
 
-# GitHub OIDC service principal object ID — see infra/README.md
-azure_deployer_object_id = "00000000-0000-0000-0000-000000000000"
+# Static Web Apps region (must be one of: centralus, eastus2, westus2, westeurope, eastasia)
+swa_location = "westeurope"
 
 # Sensitive values are NOT set in committed tfvars. Pass at apply time:
 #   TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'

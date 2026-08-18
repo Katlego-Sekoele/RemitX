@@ -51,7 +51,6 @@ Grant **Contributor** on the subscription or resource groups. Store in GitHub:
 | `AZURE_CLIENT_ID` | App (client) ID |
 | `AZURE_TENANT_ID` | Directory tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Subscription ID |
-| `AZURE_DEPLOYER_OBJECT_ID` | GitHub environment **variable** — SP object ID for Key Vault |
 
 ### 4. GitHub environment secrets
 

@@ -68,7 +68,7 @@ variable "secrets" {
 variable "key_vault_id" {
   type        = string
   default     = null
-  description = "Key Vault resource ID; required when secrets are set (for RBAC)"
+  description = "Key Vault resource ID; required when secrets are set (for access policy)"
 }
 
 variable "custom_domain" {

@@ -58,7 +58,6 @@ module "key_vault" {
   clerk_publishable_key = var.clerk_publishable_key
   clerk_jwks_url        = var.clerk_jwks_url
   xrpl_encryption_key   = var.xrpl_encryption_key
-  deployer_object_id    = var.azure_deployer_object_id
 }
 
 locals {
@@ -112,6 +111,6 @@ module "static_web_app" {
   source              = "../../modules/static-web-app"
   name                = "remitx-${var.environment}-swa"
   resource_group_name = module.resource_group.name
-  location            = module.resource_group.location
+  location            = var.swa_location
   custom_domain       = var.swa_custom_domain
 }

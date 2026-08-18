@@ -36,9 +36,3 @@ variable "xrpl_encryption_key" {
   type      = string
   sensitive = true
 }
-
-variable "deployer_object_id" {
-  type        = string
-  default     = null
-  description = "Object ID of the Terraform deployer (e.g. GitHub OIDC service principal); grants Key Vault Secrets Officer"
-}
