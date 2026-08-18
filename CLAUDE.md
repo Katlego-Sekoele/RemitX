@@ -114,3 +114,22 @@ React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/reac
 - Tailwind v4 configured entirely in CSS ([frontend/app/app.css](frontend/app/app.css)) — no `tailwind.config`. shadcn uses the `base-lyra` style over `@base-ui/react`, Phosphor icons, and CSS variables.
 - Prettier enforces **no semicolons**, double quotes, 2-space indent, 80 cols, with Tailwind class sorting (`cn`, `cva` aware). Match it; the hook rewrites files otherwise.
 - API base URL reaches the client via `VITE_API_URL`.
+- Theme: `next-themes` in [frontend/app/components/theme-provider.tsx](frontend/app/components/theme-provider.tsx); light / dark / auto toggle in [frontend/app/components/theme-toggle.tsx](frontend/app/components/theme-toggle.tsx). Palette tokens live in `app.css` (`:root` and `.dark`).
+
+### UI component standard
+
+**Default approach for all frontend UI work:** compose pages from **shadcn/ui** and **Aceternity UI** components. Use **Tailwind and CSS for layout only** — not for ad-hoc component styling.
+
+| Layer | Use for | Install / location |
+|-------|---------|-------------------|
+| **shadcn/ui** | Buttons, cards, badges, forms, dialogs, and other interactive UI; component look-and-feel via variants and theme tokens | `npx shadcn@latest add <component>` → [frontend/app/components/ui/](frontend/app/components/ui/) |
+| **Aceternity UI** | Motion, backgrounds, spotlight, 3D tilt, and other stylized effects | `npx shadcn@latest add @aceternity/<name>` → [frontend/app/components/aceternity/](frontend/app/components/aceternity/) (move from `frontend/components/` if the CLI writes there) |
+| **Tailwind / CSS** | Page and section layout: `flex`, `grid`, `gap`, `max-w-*`, `px-*`, `w-full`, positioning, responsive breakpoints | Route files and thin layout wrappers only |
+| **Theme tokens** | Colors, radius, typography | [frontend/app/app.css](frontend/app/app.css) CSS variables; consume via shadcn classes (`bg-background`, `text-muted-foreground`, etc.) |
+
+Rules:
+
+- Prefer an existing shadcn or Aceternity component over a custom styled element.
+- Do **not** use Tailwind color, border, shadow, or typography utilities to reinvent what a shadcn variant or Aceternity component already provides.
+- Icons: `@phosphor-icons/react` (project default in [frontend/components.json](frontend/components.json)).
+- More detail: [frontend/README.md](frontend/README.md) and [.cursor/rules/frontend-ui.mdc](.cursor/rules/frontend-ui.mdc).

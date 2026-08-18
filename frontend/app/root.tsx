@@ -7,20 +7,30 @@ import {
   isRouteErrorResponse,
 } from "react-router"
 
+import { ThemeProvider } from "~/components/theme-provider"
+import { ThemeToggle } from "~/components/theme-toggle"
 import type { Route } from "./+types/root"
 import "./app.css"
 
+const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");var d=window.matchMedia("(prefers-color-scheme: dark)").matches;var theme=t||"system";if(theme==="dark"||(theme==="system"&&d)){document.documentElement.classList.add("dark")}}catch(e){}})()`
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <Meta />
         <Links />
       </head>
       <body>
-        {children}
+        <ThemeProvider>
+          <div className="fixed top-4 right-4 z-50">
+            <ThemeToggle />
+          </div>
+          {children}
+        </ThemeProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
