@@ -13,7 +13,7 @@ python3 -m pre_commit install
 echo "Git pre-commit hooks installed."
 echo "  - gitleaks, block-env-files"
 echo "  - api: ruff (auto-fix + format), pytest"
-echo "  - frontend: prettier (auto-fix), typecheck"
+echo "  - frontend: prettier (auto-fix all), lint (typecheck + format:check)"
 echo ""
 echo "Dev setup:"
 echo "  brew install gitleaks    # if secret scan hook cannot find a binary"

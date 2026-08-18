@@ -1,11 +1,11 @@
 "use client"
 
-import type { HTMLAttributes, MouseEvent as ReactMouseEvent, ReactNode } from "react"
-import {
-  motion,
-  useMotionTemplate,
-  useMotionValue,
-} from "motion/react"
+import type {
+  HTMLAttributes,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from "react"
+import { motion, useMotionTemplate, useMotionValue } from "motion/react"
 
 import { cn } from "~/lib/utils"
 
