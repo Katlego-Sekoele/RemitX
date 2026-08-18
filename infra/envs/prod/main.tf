@@ -61,6 +61,9 @@ module "key_vault" {
 }
 
 locals {
+  # Public image for first ACA revision — deploy.yml pushes GHCR images after apply.
+  bootstrap_image = var.bootstrap_container_image
+
   container_app_secrets = {
     DATABASE_URL        = module.key_vault.secret_ids["database-url"]
     REDIS_URL           = module.key_vault.secret_ids["redis-url"]
@@ -78,7 +81,7 @@ module "api" {
   name                         = "remitx-${var.environment}-api"
   resource_group_name          = module.resource_group.name
   container_app_environment_id = module.container_apps_env.id
-  image                        = "ghcr.io/${var.ghcr_org}/remitx-api:${var.environment}"
+  image                        = local.bootstrap_image
   ingress_external             = true
   ingress_target_port          = 4200
   min_replicas                 = var.api_min_replicas
@@ -96,7 +99,7 @@ module "worker" {
   name                         = "remitx-${var.environment}-worker"
   resource_group_name          = module.resource_group.name
   container_app_environment_id = module.container_apps_env.id
-  image                        = "ghcr.io/${var.ghcr_org}/remitx-worker:${var.environment}"
+  image                        = local.bootstrap_image
   ingress_external             = false
   min_replicas                 = 1
   max_replicas                 = 1
