@@ -85,7 +85,7 @@ Grant **Contributor** on the subscription (or per resource group). Store on **ea
 | `TF_VAR_clerk_jwks_url` | Clerk JWKS URL |
 | `TF_VAR_xrpl_encryption_key` | XRPL encryption key (`python -c "import secrets; print(secrets.token_hex(32))"`) |
 
-Workflows: `terraform-qa.yml`, `terraform-prod.yml`, `deploy-api.yml`, `deploy-worker.yml`, `deploy-frontend.yml`.
+Workflow: `.github/workflows/deploy.yml` (Terraform + app deploys with `needs` ordering).
 
 See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist.
 
@@ -97,7 +97,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 **Terraform root:** `infra/envs/qa/`  
 **Neon branch:** `qa`  
 **Clerk app:** QA  
-**Workflow:** `.github/workflows/terraform-qa.yml` (plan on PR, apply on push)
+**Workflow:** `.github/workflows/deploy.yml` (plan on PR, apply + deploy on push)
 
 ### QA-specific settings
 
@@ -134,7 +134,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
    terraform apply -var-file=non-secret.tfvars
    ```
 
-4. Push app changes to `qa` to trigger deploy workflows (`deploy-api.yml`, etc.).
+4. Push app changes to `qa` to trigger `deploy.yml` (API, worker, and/or frontend jobs as paths dictate).
 
 ### Deploy QA via CI (typical path)
 
@@ -142,7 +142,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 git push origin qa
 ```
 
-`terraform-qa.yml` applies infra; deploy workflows update Container Apps and Static Web Apps when app paths change.
+`deploy.yml` applies infra when `infra/**` changed, then runs deploy jobs for changed app paths.
 
 ### Destroy QA
 
@@ -161,7 +161,7 @@ Delete the Neon **qa** branch separately in the Neon console if you want to remo
 **Terraform root:** `infra/envs/prod/`  
 **Neon branch:** `main` (or `production`)  
 **Clerk app:** Production  
-**Workflow:** `.github/workflows/terraform-prod.yml`
+**Workflow:** `.github/workflows/deploy.yml` (prod environment)
 
 Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys, and GitHub environment secrets.
 

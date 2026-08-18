@@ -75,20 +75,28 @@ git checkout -b qa   # if not exists
 git push origin qa
 ```
 
-Merge infra changes to `qa` → `terraform-qa.yml` runs `terraform apply`.
+Merge infra changes to `qa` → `deploy.yml` runs `terraform apply`, then any changed app deploy jobs.
 
-Then push API/worker/frontend changes to trigger deploy workflows.
+Then push API/worker/frontend changes to trigger the corresponding deploy jobs (Terraform runs first when `infra/**` changed in the same push).
 
 ## CI/CD
 
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | PR, push | pytest, ruff, frontend lint/typecheck |
-| `terraform-qa.yml` | push `qa`, `infra/**` | Terraform plan/apply QA |
-| `terraform-prod.yml` | push `main`, `infra/**` | Terraform plan/apply Prod |
-| `deploy-api.yml` | push `qa`/`main`, `api/**` | GHCR push + Container App update |
-| `deploy-worker.yml` | push `qa`/`main`, `api/**` | GHCR worker image + update |
-| `deploy-frontend.yml` | push `qa`/`main`, `frontend/**` | SPA build → Static Web Apps |
+| `deploy.yml` | PR `infra/**`; push `qa`/`main` on `infra/**`, `api/**`, or `frontend/**` | Path-filtered pipeline: Terraform plan/apply → deploy API, worker, and/or frontend |
+
+### `deploy.yml` job order
+
+```text
+changes
+   └── terraform (if infra/** changed)
+          ├── deploy-api      (if api/** changed, after terraform success/skip)
+          ├── deploy-worker   (if api/** changed, after terraform success/skip)
+          └── deploy-frontend (if frontend/** changed, after terraform success/skip)
+```
+
+API and worker deploy in parallel; frontend is independent of API/worker but waits for Terraform when infra changed.
 
 ## Local development
 
