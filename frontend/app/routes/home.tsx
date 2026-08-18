@@ -13,18 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
-import type { Route } from "./+types/home"
-
-export function meta(): Route.MetaDescriptors {
-  return [
-    { title: "RemitX — Coming soon" },
-    {
-      name: "description",
-      content:
-        "Cross-border remittance from South African rand to RLUSD on the XRP Ledger Testnet.",
-    },
-  ]
-}
 
 export default function Home() {
   return (
