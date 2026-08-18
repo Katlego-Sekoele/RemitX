@@ -29,6 +29,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       deploy_env: ${{ steps.env.outputs.deploy_env }}
       ghcr_repository: ${{ steps.ghcr.outputs.repository }}
+      ghcr_owner: ${{ steps.ghcr.outputs.owner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +60,10 @@ jobs:
 
       - name: Normalize GHCR repository name (must be lowercase)
         id: ghcr
-        run: echo "repository=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "repository=${repo}" >> "$GITHUB_OUTPUT"
+          echo "owner=${repo%%/*}" >> "$GITHUB_OUTPUT"
         shell: bash
 
   ci:
@@ -135,6 +139,21 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Configure GHCR pull on Container App
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          if [ -z "$GHCR_PULL_TOKEN" ]; then
+            echo "ERROR: Set GHCR_PULL_TOKEN (GitHub PAT with read:packages) on the ${{ env.DEPLOY_ENV }} environment." >&2
+            exit 1
+          fi
+          az containerapp registry set \
+            --name remitx-${{ env.DEPLOY_ENV }}-api \
+            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
+            --server ghcr.io \
+            --username "${{ needs.changes.outputs.ghcr_owner }}" \
+            --password "$GHCR_PULL_TOKEN"
+
       - run: |
           az containerapp update \
             --name remitx-${{ env.DEPLOY_ENV }}-api \
@@ -175,6 +194,21 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Configure GHCR pull on Container App
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          if [ -z "$GHCR_PULL_TOKEN" ]; then
+            echo "ERROR: Set GHCR_PULL_TOKEN (GitHub PAT with read:packages) on the ${{ env.DEPLOY_ENV }} environment." >&2
+            exit 1
+          fi
+          az containerapp registry set \
+            --name remitx-${{ env.DEPLOY_ENV }}-worker \
+            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
+            --server ghcr.io \
+            --username "${{ needs.changes.outputs.ghcr_owner }}" \
+            --password "$GHCR_PULL_TOKEN"
+
       - run: |
           az containerapp update \
             --name remitx-${{ env.DEPLOY_ENV }}-worker \
@@ -199,7 +233,6 @@ jobs:
           action: upload
           app_location: frontend
           output_location: build/client
-          skip_api_build: true
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}

@@ -85,6 +85,10 @@ Grant **Contributor** on the subscription (or per resource group). Store on **ea
 | `TF_VAR_clerk_publishable_key` | Clerk publishable key |
 | `TF_VAR_clerk_jwks_url` | Clerk JWKS URL |
 | `TF_VAR_xrpl_encryption_key` | XRPL encryption key (`python -c "import secrets; print(secrets.token_hex(32))"`) |
+| `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** — ACA pulls private GHCR images |
+| `VITE_API_URL` | From `terraform output api_url` after apply |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` |
 
 Workflow: `.github/workflows/deploy.yml` (Terraform + app deploys with `needs` ordering).
 
