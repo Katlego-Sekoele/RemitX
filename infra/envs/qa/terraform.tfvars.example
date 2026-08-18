@@ -15,7 +15,7 @@ api_min_replicas = 0
 ghcr_org = "org/remitx"
 
 # Static Web Apps region (must be one of: centralus, eastus2, westus2, westeurope, eastasia)
-swa_location = "westeurope"
+swa_location = "eastus2"
 
 # Optional custom domains (empty for QA; set in prod tfvars)
 # api_custom_domain = ""

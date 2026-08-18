@@ -9,6 +9,8 @@ resource "azurerm_key_vault" "this" {
   soft_delete_retention_days = 7
   purge_protection_enabled   = false
   rbac_authorization_enabled = false
+
+  purge_soft_delete_on_destroy = true
 }
 
 resource "azurerm_key_vault_access_policy" "deployer" {

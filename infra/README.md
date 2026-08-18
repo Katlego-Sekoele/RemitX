@@ -36,7 +36,7 @@ Do this once before either environment is deployed.
 
 ### Terraform state backend
 
-Default compute region is `spaincentral`. **Static Web Apps** use `swa_location` (`westeurope` by default) because SWA is unavailable in several compute regions.
+Default compute region is `spaincentral`. **Static Web Apps** use `swa_location` (`eastus2` by default) because SWA is unavailable in several compute regions and some SWA regions (e.g. West Europe) block new tenants.
 
 Use a region allowed on your subscription if bootstrap fails.
 
@@ -105,7 +105,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 | Setting | QA value |
 |---------|----------|
 | `api_min_replicas` | `0` (API scales to zero) |
-| `swa_location` | `westeurope` (SWA not available in `spaincentral`) |
+| `swa_location` | `eastus2` (SWA not in `spaincentral`; change if region is ineligible) |
 | Custom domains | Usually empty — default Azure URLs |
 | Resource group | `remitx-qa-rg` |
 
@@ -238,3 +238,30 @@ Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `
 ## Container image tags
 
 Terraform provisions Container Apps with placeholder images `ghcr.io/<owner>/<repo>/remitx-api:qa` or `:prod`. Deploy workflows push images and update revisions. Terraform ignores image drift after initial apply.
+
+## Troubleshooting apply failures
+
+### Key Vault: "Caller is not allowed to change permission model"
+
+The first failed apply created `remitx-*-kv` with **RBAC** enabled. Terraform now uses **access policies**, which requires a fresh vault — Azure cannot convert permission models with a Contributor-only identity.
+
+Delete the vault, purge soft-delete, drop it from state, then re-apply:
+
+```bash
+az keyvault delete --name remitx-qa-kv --resource-group remitx-qa-rg
+az keyvault purge --name remitx-qa-kv
+
+cd infra/envs/qa
+terraform state rm 'module.key_vault.azurerm_key_vault.this'
+terraform apply -var-file=non-secret.tfvars
+```
+
+Or replace in one step (requires `purge_soft_delete_on_destroy` on the vault resource):
+
+```bash
+terraform apply -replace='module.key_vault.azurerm_key_vault.this' -var-file=non-secret.tfvars
+```
+
+### Static Web Apps: "region is currently not accepting new customers"
+
+Azure blocks new SWA deployments in some regions (e.g. West Europe). Edit `swa_location` in `non-secret.tfvars` to another [supported SWA region](https://learn.microsoft.com/azure/static-web-apps/overview#regions): `eastus2`, `westus2`, `centralus`, or `eastasia`.
