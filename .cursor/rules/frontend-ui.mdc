@@ -1,0 +1,35 @@
+---
+description: Frontend UI — shadcn + Aceternity for components; Tailwind for layout only
+globs: frontend/**/*
+alwaysApply: false
+---
+
+# Frontend UI standard
+
+When adding or changing UI in `frontend/`:
+
+## Component sources
+
+1. **shadcn/ui** (`app/components/ui/`) — buttons, cards, badges, forms, dialogs, and all standard interactive UI. Install with `npx shadcn@latest add <component>`.
+2. **Aceternity UI** (`app/components/aceternity/`) — motion, backgrounds, spotlight, 3D effects, and other stylized visuals. Install with `npx shadcn@latest add @aceternity/<name>`. Move files from `frontend/components/` into `app/components/aceternity/` if the CLI uses the wrong path.
+3. **Tailwind / CSS** — **layout only** on routes and wrappers: flex, grid, gap, width, max-width, padding, positioning, breakpoints.
+
+## Do
+
+- Compose pages from shadcn + Aceternity components
+- Use shadcn variants and theme tokens (`bg-background`, `text-foreground`, `variant="outline"`)
+- Use Aceternity for effects; keep shadcn for the underlying UI primitives
+- Put palette changes in `app/app.css` (`:root` / `.dark`)
+- Use `@phosphor-icons/react` for icons
+
+## Do not
+
+- Build custom styled buttons, cards, or badges from scratch when shadcn has them
+- Use Tailwind color, border, shadow, or typography utilities to style leaf UI instead of shadcn/Aceternity
+- Add heavy animation libraries for effects Aceternity already provides
+- Commit Aceternity files under `frontend/components/` — they belong in `app/components/aceternity/`
+
+## References
+
+- [frontend/README.md](../../frontend/README.md)
+- [CLAUDE.md](../../CLAUDE.md) — Frontend architecture → UI component standard
