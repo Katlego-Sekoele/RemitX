@@ -90,13 +90,14 @@ Then push API/worker/frontend changes to trigger the corresponding deploy jobs (
 
 ```text
 changes
-   └── terraform (if infra/** changed)
-          ├── deploy-api      (if api/** changed, after terraform success/skip)
-          ├── deploy-worker   (if api/** changed, after terraform success/skip)
-          └── deploy-frontend (if frontend/** changed, after terraform success/skip)
+   └── ci
+          └── terraform (if infra/** changed)
+                 ├── deploy-api      (if api/** changed, after terraform success/skip)
+                 ├── deploy-worker   (if api/** changed, after terraform success/skip)
+                 └── deploy-frontend (if frontend/** changed, after terraform success/skip)
 ```
 
-API and worker deploy in parallel; frontend is independent of API/worker but waits for Terraform when infra changed.
+CI must pass before Terraform or any deploy job runs. The standalone `ci.yml` workflow still runs on every PR and push for branch protection; `deploy.yml` re-invokes it via `workflow_call` so deploy cannot proceed on a failing commit.
 
 ## Local development
 
