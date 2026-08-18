@@ -90,6 +90,7 @@ module "api" {
   key_vault_id                 = module.key_vault.id
   secrets                      = local.container_app_secrets
   env_vars                     = local.container_app_env_vars
+  custom_domain                = var.api_custom_domain
 }
 
 module "worker" {
@@ -113,4 +114,5 @@ module "static_web_app" {
   name                = "remitx-${var.environment}-swa"
   resource_group_name = module.resource_group.name
   location            = var.swa_location
+  custom_domain       = var.swa_custom_domain
 }

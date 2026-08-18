@@ -1,9 +1,19 @@
 output "api_url" {
-  value = "https://${module.api.fqdn}"
+  value = var.api_custom_domain != "" ? "https://${var.api_custom_domain}" : "https://${module.api.fqdn}"
 }
 
 output "frontend_url" {
-  value = "https://${module.static_web_app.default_hostname}"
+  value = var.swa_custom_domain != "" ? "https://${var.swa_custom_domain}" : "https://${module.static_web_app.default_hostname}"
+}
+
+output "api_custom_domain_dns_records" {
+  description = "Registrar DNS records for API custom domain verification (qa)"
+  value       = module.api.custom_domain_dns_records
+}
+
+output "swa_custom_domain_dns_records" {
+  description = "Registrar DNS records for frontend custom domain verification (qa)"
+  value       = module.static_web_app.custom_domain_dns_records
 }
 
 output "static_web_app_deployment_token" {
