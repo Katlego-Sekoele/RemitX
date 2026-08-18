@@ -1,12 +1,12 @@
 [project]
-name = "relyo-api"
+name = "remitx-api"
 version = "0.1.0"
-description = "Relyo JSON API"
+description = "RemitX JSON API"
 requires-python = ">=3.9"
 dependencies = [
-    "flask>=3.1.0",
-    "flask-sqlalchemy>=3.1.0",
-    "gunicorn>=22.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
     "celery>=5.4.0",
@@ -16,23 +16,24 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "httpx>=0.27.0",
     "ruff>=0.9.0",
 ]
 
 [project.scripts]
-relyo-api = "relyo_api:main"
+remitx-api = "remitx_api:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["relyo_api", "relyo_worker"]
+packages = ["remitx_api", "remitx_worker"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-src = ["relyo_api", "relyo_worker", "tests"]
+src = ["remitx_api", "remitx_worker", "tests", "asgi.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

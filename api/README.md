@@ -1,6 +1,6 @@
-# Relyo API
+# RemitX API
 
-JSON REST API for the Relyo FX remittance platform. Built with Flask.
+JSON REST API for the RemitX FX remittance platform. Built with FastAPI.
 
 ## Requirements
 
@@ -15,14 +15,14 @@ cp .env.example .env
 cd api
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e '.[dev]'
 ```
 
 ## Configuration
 
 All environment variables live in the repo root `.env` (see `.env.example`). The API, frontend, and docker compose all read from that single file.
 
-Docker injects the same variables into containers; SQLite defaults to `api/relyo.db` when `DATABASE_URL` is unset.
+Docker injects the same variables into containers; SQLite defaults to `api/remitx.db` when `DATABASE_URL` is unset.
 
 **Dev stack** (API + frontend + Postgres + Redis, foreground logs):
 
@@ -34,10 +34,10 @@ docker compose -f docker-compose.dev.yml up --build
 | Variable           | Description                                | Default                                      |
 | ------------------ | ------------------------------------------ | -------------------------------------------- |
 | `PORT`             | HTTP port the dev server listens on        | `4200`                                       |
-| `DEBUG`            | Enable Flask debug mode (`true` / `false`) | `false`                                      |
-| `DATABASE_URL`     | SQLAlchemy database URI                    | `sqlite:///<api>/relyo.db`                   |
-| `REDIS_URL`        | Redis connection URI for queues            | `redis://localhost:6379/0`                   |
-| `POSTGRES_*`       | Postgres credentials (see root `.env`)     | `relyo` / `relyo` / `relyo`                  |
+| `DEBUG`            | Enable auto-reload and `create_all()`      | `false`                                      |
+| `DATABASE_URL`     | SQLAlchemy database URI                    | `sqlite:///<api>/remitx.db`                   |
+| `REDIS_URL`        | Redis URI for Celery broker/backend       | `redis://localhost:6379/0`                   |
+| `POSTGRES_*`       | Postgres credentials (see root `.env`)     | `remitx` / `remitx` / `remitx`                  |
 
 
 ## Run
@@ -45,19 +45,24 @@ docker compose -f docker-compose.dev.yml up --build
 Development server:
 
 ```bash
-python -m relyo_api
+python -m remitx_api
 # or
-relyo-api
+remitx-api
 ```
 
-The API listens on `http://0.0.0.0:<PORT>`.
+The API listens on `http://0.0.0.0:<PORT>`. OpenAPI docs at `/docs`.
 
-Production-style entry point (e.g. with Gunicorn):
+Production-style entry point (e.g. with Uvicorn locally):
 
 ```bash
-gunicorn wsgi:app
+uvicorn asgi:app --host 0.0.0.0 --port 4200
 ```
 
+## Cloud (Azure Container Apps)
+
+Deploy as a container image to GHCR; Uvicorn entry point via `Dockerfile`. See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+
+- Async settlement: Celery producer in API; Redis + worker on Container Apps
 
 
 ## Endpoints
@@ -81,17 +86,17 @@ curl http://localhost:4200/health
 ```
 api/
   pyproject.toml
-  wsgi.py
-  relyo_api/
+  asgi.py
+  remitx_api/
     app.py              # Application factory
     config.py           # Environment-based settings
-    extensions.py       # Flask extensions (SQLAlchemy db)
+    extensions.py       # SQLAlchemy Base + session
     controllers/        # Request handling / business logic
     models/
-      orm/              # SQLAlchemy ORM models (db.Model)
+      orm/              # SQLAlchemy ORM models (Base)
     repositories/       # Data access layer
-    routes/             # HTTP blueprints (thin handlers)
-      __init__.py       # Blueprint registration
+    routes/             # HTTP routers (thin handlers)
+      __init__.py       # Router registration
       health.py
 ```
 
@@ -100,9 +105,9 @@ api/
 - `routes/` — HTTP concerns only; delegates to controllers
 - `controllers/` — orchestrates use cases
 - `repositories/` — SQLAlchemy data access via `Repository`
-- `models/orm/` — SQLAlchemy entities (`db.Model`)
-- `extensions.db` — shared SQLAlchemy instance
+- `models/orm/` — SQLAlchemy entities (`Base`)
+- `extensions.db` — shared database session
 
-ORM models inherit from `db.Model` in `extensions.py`. In debug mode, tables are created automatically on startup.
+ORM models inherit from `Base` in `extensions.py`. In debug mode, tables are created automatically on startup.
 
-Add new endpoints by creating a controller, optional repository, and a thin route blueprint registered in `routes/__init__.py`.
+Add new endpoints by creating a controller, optional repository, and a thin route registered in `routes/__init__.py`.
