@@ -19,7 +19,7 @@ swa_custom_domain = "example.com"
 ghcr_org = "org/remitx"
 
 # Static Web Apps region (must be one of: centralus, eastus2, westus2, westeurope, eastasia)
-swa_location = "westeurope"
+swa_location = "eastus2"
 
 # Sensitive values are NOT set in committed tfvars. Pass at apply time:
 #   TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'

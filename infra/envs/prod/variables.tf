@@ -9,8 +9,8 @@ variable "location" {
 
 variable "swa_location" {
   type        = string
-  default     = "westeurope"
-  description = "Azure region for Static Web Apps (limited SKUs; not all regions support SWA)"
+  default     = "eastus2"
+  description = "Azure region for Static Web Apps (limited SKUs; pick a region your subscription can provision — try eastus2, westus2, or centralus)"
 }
 
 variable "tags" {

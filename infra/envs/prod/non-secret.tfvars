@@ -1,6 +1,6 @@
 environment = "prod"
 location    = "spaincentral"
-swa_location = "westeurope"
+swa_location = "eastus2"
 tags = {
   project     = "remitx"
   environment = "prod"
