@@ -65,6 +65,7 @@ Per **qa** and **prod** environments:
 | `TF_VAR_xrpl_encryption_key` | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** (Container Apps pull from private GHCR) |
 | `VITE_API_URL` | `terraform output api_url` after first infra apply (e.g. `https://remitx-qa-api….azurecontainerapps.io`) |
+| `VITE_SITE_URL` | Public frontend URL for Open Graph / social metadata (`https://qa.remitx.tech` for QA, `https://remitx.tech` for prod) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` after SWA is created |
 

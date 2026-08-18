@@ -87,6 +87,7 @@ Grant **Contributor** on the subscription (or per resource group). Store on **ea
 | `TF_VAR_xrpl_encryption_key` | XRPL encryption key (`python -c "import secrets; print(secrets.token_hex(32))"`) |
 | `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** — ACA pulls private GHCR images |
 | `VITE_API_URL` | From `terraform output api_url` after apply |
+| `VITE_SITE_URL` | Public SWA URL (`https://qa.remitx.tech` / `https://remitx.tech`) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` |
 
