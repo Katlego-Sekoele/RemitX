@@ -272,3 +272,38 @@ terraform apply -replace='module.key_vault.azurerm_key_vault.this' -var-file=non
 ### Static Web Apps: "region is currently not accepting new customers"
 
 Azure blocks new SWA deployments in some regions (e.g. West Europe). Edit `swa_location` in `non-secret.tfvars` to another [supported SWA region](https://learn.microsoft.com/azure/static-web-apps/overview#regions): `eastus2`, `westus2`, `centralus`, or `eastasia`.
+
+### Container Apps: "already exists - needs to be imported"
+
+A prior failed apply can create `remitx-*-api` / `remitx-*-worker` in Azure without writing them to remote state. Terraform then tries to create them again.
+
+**Option A — delete orphans and re-apply (simplest):**
+
+```bash
+az containerapp delete --name remitx-qa-api --resource-group remitx-qa-rg --yes
+az containerapp delete --name remitx-qa-worker --resource-group remitx-qa-rg --yes
+```
+
+Re-run `deploy.yml` or `terraform apply -var-file=non-secret.tfvars` from `infra/envs/qa`.
+
+**Option B — import into state (keeps existing apps):**
+
+```bash
+cd infra/envs/qa
+terraform init
+
+SUB=$(az account show --query id -o tsv)
+RG=remitx-qa-rg
+
+terraform import -var-file=non-secret.tfvars \
+  'module.api.azurerm_container_app.this' \
+  "/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.App/containerApps/remitx-qa-api"
+
+terraform import -var-file=non-secret.tfvars \
+  'module.worker.azurerm_container_app.this' \
+  "/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.App/containerApps/remitx-qa-worker"
+
+terraform apply -var-file=non-secret.tfvars
+```
+
+Pass the same `TF_VAR_*` secrets you use in GitHub when running import/apply locally.
