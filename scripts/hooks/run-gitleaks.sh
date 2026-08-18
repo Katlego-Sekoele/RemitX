@@ -21,7 +21,7 @@ fi
 
 staged=()
 while IFS= read -r file; do
-  if [[ -f "$file" ]]; then
+  if [[ -f "$file" ]] && ! git check-ignore -q "$file"; then
     staged+=("$file")
   fi
 done < <(git diff --cached --name-only --diff-filter=ACM)
@@ -31,4 +31,7 @@ if ((${#staged[@]} == 0)); then
 fi
 
 "${gitleaks}" git --pre-commit --staged --redact --verbose --config .gitleaks.toml .
-"${gitleaks}" dir "${staged[@]}" --redact --verbose --config .gitleaks.toml
+
+for file in "${staged[@]}"; do
+  "${gitleaks}" dir "$file" --redact --verbose --config .gitleaks.toml
+done
