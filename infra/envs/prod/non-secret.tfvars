@@ -1,5 +1,6 @@
 environment = "prod"
 location    = "spaincentral"
+swa_location = "westeurope"
 tags = {
   project     = "remitx"
   environment = "prod"
@@ -14,6 +15,3 @@ swa_custom_domain = "remitx.sekoele.co.za"
 
 # Container image registry path (GitHub owner/repo). Pipelines set TF_VAR_ghcr_org in CI.
 ghcr_org = "katlego-sekoele/remitx"
-
-# Pipeline service connection principal or your user object ID (see infra/README.md).
-azure_deployer_object_id = "34e5788b-0531-4b7a-ac2b-d8d7bc5eff3e"

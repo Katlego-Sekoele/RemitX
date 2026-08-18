@@ -26,7 +26,7 @@ Each env directory has three tfvars-related files:
 
 **CI and local apply both use `-var-file=non-secret.tfvars`.** Sensitive values are never in tfvars files; pass them as `TF_VAR_*` environment variables or GitHub environment secrets.
 
-Edit `non-secret.tfvars` directly for values like `alert_emails`, `ghcr_org`, and `azure_deployer_object_id`. Only create `terraform.tfvars` if you prefer a private local file instead of shell exports.
+Edit `non-secret.tfvars` directly for values like `alert_emails`, `ghcr_org`, and `swa_location`. Only create `terraform.tfvars` if you prefer a private local file instead of shell exports.
 
 ---
 
@@ -36,7 +36,9 @@ Do this once before either environment is deployed.
 
 ### Terraform state backend
 
-Default region is `spaincentral`. Use a region allowed on your subscription if bootstrap fails.
+Default compute region is `spaincentral`. **Static Web Apps** use `swa_location` (`westeurope` by default) because SWA is unavailable in several compute regions.
+
+Use a region allowed on your subscription if bootstrap fails.
 
 ```bash
 az group create --name remitx-tfstate-rg --location spaincentral
@@ -78,7 +80,6 @@ Grant **Contributor** on the subscription (or per resource group). Store on **ea
 | `AZURE_CLIENT_ID` | OIDC app client ID |
 | `AZURE_TENANT_ID` | Tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Subscription ID |
-| `AZURE_DEPLOYER_OBJECT_ID` | Environment **variable** — SP object ID for Key Vault Secrets Officer |
 | `TF_VAR_database_url` | Neon connection string **for that environment's branch** |
 | `TF_VAR_clerk_secret_key` | Clerk secret key for that environment's app |
 | `TF_VAR_clerk_publishable_key` | Clerk publishable key |
@@ -104,6 +105,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 | Setting | QA value |
 |---------|----------|
 | `api_min_replicas` | `0` (API scales to zero) |
+| `swa_location` | `westeurope` (SWA not available in `spaincentral`) |
 | Custom domains | Usually empty — default Azure URLs |
 | Resource group | `remitx-qa-rg` |
 
@@ -113,7 +115,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 
    ```bash
    # infra/envs/qa/non-secret.tfvars
-   # alert_emails, ghcr_org, azure_deployer_object_id
+   # alert_emails, ghcr_org, swa_location
    ```
 
 2. Add GitHub **environment secrets** on the `qa` environment (Neon **qa** branch URL, Clerk QA keys, etc.).

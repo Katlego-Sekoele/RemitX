@@ -7,6 +7,8 @@ locals {
   }
 }
 
+data "azurerm_client_config" "current" {}
+
 resource "azurerm_container_app" "this" {
   name                         = var.name
   resource_group_name          = var.resource_group_name
@@ -79,12 +81,16 @@ resource "azurerm_container_app" "this" {
   }
 }
 
-resource "azurerm_role_assignment" "key_vault_secrets_user" {
+resource "azurerm_key_vault_access_policy" "container_app" {
   count = local.use_key_vault_secrets ? 1 : 0
 
-  scope                = var.key_vault_id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_container_app.this.identity[0].principal_id
+  key_vault_id = var.key_vault_id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = azurerm_container_app.this.identity[0].principal_id
+
+  secret_permissions = ["Get"]
+
+  depends_on = [azurerm_container_app.this]
 }
 
 resource "azurerm_container_app_custom_domain" "this" {

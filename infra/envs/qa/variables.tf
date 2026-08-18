@@ -7,6 +7,12 @@ variable "location" {
   default = "spaincentral"
 }
 
+variable "swa_location" {
+  type        = string
+  default     = "westeurope"
+  description = "Azure region for Static Web Apps (limited SKUs; not all regions support SWA)"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -58,11 +64,6 @@ variable "xrpl_encryption_key" {
 variable "ghcr_org" {
   type        = string
   description = "GitHub repository path for GHCR images (owner/repo), e.g. my-org/RemitX — matches github.repository in deploy workflows"
-}
-
-variable "azure_deployer_object_id" {
-  type        = string
-  description = "Object ID of the GitHub OIDC service principal running Terraform; grants Key Vault Secrets Officer on apply"
 }
 
 variable "api_min_replicas" {
