@@ -8,11 +8,13 @@ output "frontend_url" {
 
 output "api_custom_domain_dns_records" {
   description = "Registrar DNS records for API custom domain verification (qa)"
+  sensitive   = true
   value       = module.api.custom_domain_dns_records
 }
 
 output "swa_custom_domain_dns_records" {
   description = "Registrar DNS records for frontend custom domain verification (qa)"
+  sensitive   = true
   value       = module.static_web_app.custom_domain_dns_records
 }
 
