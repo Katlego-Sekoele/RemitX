@@ -22,9 +22,15 @@ done < <(git diff --cached --name-only --diff-filter=ACM | grep '^frontend/' || 
 if ((${#staged[@]} > 0)); then
   rel=()
   for file in "${staged[@]}"; do
-    rel+=("${file#frontend/}")
+    case "$file" in
+      frontend/*.ts | frontend/*.tsx | frontend/*.js | frontend/*.jsx | frontend/*.json | frontend/*.css | frontend/*.md | frontend/*.yaml | frontend/*.yml | frontend/*.html)
+        rel+=("${file#frontend/}")
+        ;;
+    esac
   done
-  npx prettier --write "${rel[@]}"
+  if ((${#rel[@]} > 0)); then
+    npx prettier --write "${rel[@]}"
+  fi
   cd "$root"
   for file in "${staged[@]}"; do
     git add "$file"

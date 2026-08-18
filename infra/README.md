@@ -124,7 +124,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
    cd infra/envs/qa
    terraform init
 
-   export TF_VAR_database_url='postgresql+psycopg2://...@ep-....neon.tech/neondb?sslmode=require'
+   export TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
    export TF_VAR_clerk_secret_key='sk_test_...'
    export TF_VAR_clerk_publishable_key='pk_test_...'
    export TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'
@@ -191,7 +191,7 @@ Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys,
    cd infra/envs/prod
    terraform init
 
-   export TF_VAR_database_url='postgresql+psycopg2://...@ep-....neon.tech/neondb?sslmode=require'
+   export TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
    export TF_VAR_clerk_secret_key='sk_live_...'
    export TF_VAR_clerk_publishable_key='pk_live_...'
    export TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'

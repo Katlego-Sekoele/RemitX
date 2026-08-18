@@ -18,6 +18,10 @@ disabledRules = [
 description = "env templates with placeholder credentials"
 paths = ['''\.env\.example$''']
 
+[[allowlists]]
+description = "documentation placeholders explicitly marked REDACTED"
+stopwords = ["redacted"]
+
 # --- Cloud provider credentials (strict; no documentation-example allowlists) ---
 
 [[rules]]
