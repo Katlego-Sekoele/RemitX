@@ -20,6 +20,7 @@ output "custom_domain_verification_id" {
 
 output "custom_domain_dns_records" {
   description = "DNS records to create at your registrar before Azure managed TLS can bind"
+  sensitive   = true
   value = var.custom_domain != "" && var.ingress_external ? {
     txt = {
       name  = "asuid.${var.custom_domain}"
