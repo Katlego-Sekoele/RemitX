@@ -62,8 +62,12 @@ jobs:
         run: echo "repository=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
         shell: bash
 
-  terraform:
+  ci:
     needs: changes
+    uses: ./.github/workflows/ci.yml
+
+  terraform:
+    needs: [changes, ci]
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
@@ -100,7 +104,7 @@ jobs:
         run: terraform apply -auto-approve -var-file=non-secret.tfvars
 
   deploy-api:
-    needs: [changes, terraform]
+    needs: [changes, ci, terraform]
     if: |
       github.event_name == 'push' &&
       needs.changes.outputs.api == 'true' &&
@@ -139,7 +143,7 @@ jobs:
             --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-api:${{ env.DEPLOY_ENV }}
 
   deploy-worker:
-    needs: [changes, terraform]
+    needs: [changes, ci, terraform]
     if: |
       github.event_name == 'push' &&
       needs.changes.outputs.api == 'true' &&
@@ -179,7 +183,7 @@ jobs:
             --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-worker:${{ env.DEPLOY_ENV }}
 
   deploy-frontend:
-    needs: [changes, terraform]
+    needs: [changes, ci, terraform]
     if: |
       github.event_name == 'push' &&
       needs.changes.outputs.frontend == 'true' &&
