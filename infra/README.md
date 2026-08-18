@@ -256,7 +256,7 @@ terraform state rm 'module.key_vault.azurerm_key_vault.this'
 terraform apply -var-file=non-secret.tfvars
 ```
 
-Or replace in one step (requires `purge_soft_delete_on_destroy` on the vault resource):
+Or replace in one step after deleting the vault in Azure (see above):
 
 ```bash
 terraform apply -replace='module.key_vault.azurerm_key_vault.this' -var-file=non-secret.tfvars
