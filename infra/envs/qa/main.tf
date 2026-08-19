@@ -40,10 +40,14 @@ module "redis" {
   container_app_environment_id = module.container_apps_env.id
   image                        = "redis:7-alpine"
   ingress_external             = false
-  min_replicas                 = 1
-  max_replicas                 = 1
-  cpu                          = 0.25
-  memory                       = "0.5Gi"
+  # Internal TCP ingress, or the api and worker cannot resolve the name at all.
+  ingress_internal    = true
+  ingress_transport   = "tcp"
+  ingress_target_port = 6379
+  min_replicas        = 1
+  max_replicas        = 1
+  cpu                 = 0.25
+  memory              = "0.5Gi"
 }
 
 module "key_vault" {
