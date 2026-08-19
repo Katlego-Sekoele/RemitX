@@ -9,6 +9,10 @@ terraform {
       source  = "bertie-technology/clerk"
       version = "~> 0.1.0"
     }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
+    }
   }
 }
 

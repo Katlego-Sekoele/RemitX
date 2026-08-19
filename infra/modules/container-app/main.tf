@@ -1,5 +1,7 @@
 locals {
   use_key_vault_secrets = length(var.secrets) > 0
+  custom_domain_enabled = var.custom_domain != "" && var.ingress_external
+  managed_certificate_name = "${var.name}-tls"
 
   secret_names = {
     for env_name in keys(var.secrets) :
@@ -94,7 +96,7 @@ resource "azurerm_key_vault_access_policy" "container_app" {
 }
 
 resource "azurerm_container_app_custom_domain" "this" {
-  count = var.custom_domain != "" && var.ingress_external ? 1 : 0
+  count = local.custom_domain_enabled ? 1 : 0
 
   name             = var.custom_domain
   container_app_id = azurerm_container_app.this.id
@@ -102,4 +104,46 @@ resource "azurerm_container_app_custom_domain" "this" {
   lifecycle {
     ignore_changes = [certificate_binding_type, container_app_environment_certificate_id]
   }
+}
+
+resource "azurerm_container_app_environment_managed_certificate" "this" {
+  count = local.custom_domain_enabled ? 1 : 0
+
+  name                         = local.managed_certificate_name
+  container_app_environment_id = var.container_app_environment_id
+  subject_name                 = var.custom_domain
+  domain_control_validation    = var.custom_domain_tls_validation
+
+  depends_on = [azurerm_container_app_custom_domain.this]
+}
+
+# azurerm creates the custom domain and managed cert separately; Azure does not
+# always bind them. PATCH the container app ingress so HTTPS works on the hostname.
+resource "azapi_resource_action" "custom_domain_tls_binding" {
+  count = local.custom_domain_enabled ? 1 : 0
+
+  type        = "Microsoft.App/containerApps@2024-03-01"
+  resource_id = azurerm_container_app.this.id
+  method      = "PATCH"
+
+  body = {
+    properties = {
+      configuration = {
+        ingress = {
+          customDomains = [
+            {
+              name          = var.custom_domain
+              certificateId = azurerm_container_app_environment_managed_certificate.this[0].id
+              bindingType   = "SniEnabled"
+            }
+          ]
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    azurerm_container_app_custom_domain.this,
+    azurerm_container_app_environment_managed_certificate.this,
+  ]
 }
