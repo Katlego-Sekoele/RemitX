@@ -6,16 +6,14 @@ Create Date: ${create_date}
 
 """
 
-from typing import Optional, Union
-
 import sqlalchemy as sa
 from alembic import op
 ${imports if imports else ""}
 # revision identifiers, used by Alembic.
 revision: str = ${repr(up_revision)}
-down_revision: Optional[str] = ${repr(down_revision)}
-branch_labels: Union[str, tuple, None] = ${repr(branch_labels)}
-depends_on: Union[str, tuple, None] = ${repr(depends_on)}
+down_revision: str | None = ${repr(down_revision)}
+branch_labels: str | tuple | None = ${repr(branch_labels)}
+depends_on: str | tuple | None = ${repr(depends_on)}
 
 
 def upgrade() -> None:
