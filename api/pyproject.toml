@@ -5,8 +5,10 @@ description = "RemitX JSON API"
 requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.115.0",
+    "pydantic>=2.0",
     "uvicorn[standard]>=0.32.0",
     "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
     "celery>=5.4.0",
@@ -33,10 +35,15 @@ packages = ["remitx_api", "remitx_worker"]
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-src = ["remitx_api", "remitx_worker", "tests", "asgi.py"]
+src = ["remitx_api", "remitx_worker", "tests", "alembic", "asgi.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Alembic writes these; generated op.* calls run long, and the pre-commit
+# hook lints before it formats, so E501 here would block every migration.
+"alembic/versions/*.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

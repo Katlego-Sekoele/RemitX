@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query"
 import {
   Links,
   Meta,
@@ -9,6 +10,7 @@ import {
 
 import { ThemeProvider } from "~/components/theme-provider"
 import { ThemeToggle } from "~/components/theme-toggle"
+import { queryClient } from "~/lib/query-client"
 import {
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -77,12 +79,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <ThemeProvider>
-          <div className="fixed top-4 right-4 z-50">
-            <ThemeToggle />
-          </div>
-          {children}
-        </ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <div className="fixed top-4 right-4 z-50">
+              <ThemeToggle />
+            </div>
+            {children}
+          </ThemeProvider>
+        </QueryClientProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

@@ -24,6 +24,7 @@ Monorepo with two apps sharing one env file:
 - [api/](api/) — FastAPI JSON REST API (`remitx_api` package)
 - [frontend/](frontend/) — React Router v7 (SPA) + Tailwind v4 + shadcn/ui
 - [infra/](infra/) — Terraform (Azure Container Apps, SWA, Key Vault)
+- [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Azure + Neon + Clerk setup
 - [.github/workflows/](.github/workflows/) — CI and Azure deploy on `qa` / `main`
@@ -57,7 +58,15 @@ uvicorn asgi:app --host 0.0.0.0 --port 4200   # production-style entry point
 pytest                              # all tests
 pytest tests/test_health.py::test_health_returns_ok   # single test
 ruff check --fix . && ruff format . # lint + format (config in pyproject.toml)
+
+alembic upgrade head                # apply migrations
+alembic check                       # ORM vs schema drift check
+alembic revision --autogenerate -m "..."   # new migration (review before committing)
 ```
+
+Migrations are applied automatically by the one-shot `migrate` service in
+`docker-compose.dev.yml`; the api and worker wait for it. See
+[api/alembic/README.md](api/alembic/README.md).
 
 ### Frontend
 
@@ -97,7 +106,8 @@ Adding an endpoint means: ORM model → repository (if needed) → controller �
 Things that bite:
 
 - **Every ORM model must inherit from `Base` in [api/remitx_api/extensions.py](api/remitx_api/extensions.py) and be imported in [api/remitx_api/models/orm/\_\_init\_\_.py](api/remitx_api/models/orm/__init__.py)** or its table is invisible to SQLAlchemy metadata and never created.
-- `db.create_all()` runs **only when `DEBUG` is true**. There is no migration tool wired up yet; a non-debug environment needs schema created another way.
+- **Alembic owns the Postgres schema in every environment** ([api/alembic/](api/alembic/), see [api/alembic/README.md](api/alembic/README.md)). `db.create_all()` runs only when `CREATE_ALL` is true, which is `TestConfig` only — tests build a throwaway SQLite schema. Adding a table means an ORM model *and* a migration; `alembic check` must report no drift.
+- **`remitx_api/__init__.py` eagerly imports `create_app`**, so importing any `remitx_api` submodule drags in the whole route tree. `remitx_worker` may import `remitx_api`; the reverse creates a circular import at worker boot. The API talks to the worker by task name over the broker, never by importing it.
 - `Repository[T, ID]` ([api/remitx_api/repositories/repository.py](api/remitx_api/repositories/repository.py)) commits inside `save`/`delete`. Multi-entity use cases that need one transaction should not chain repository calls — use `db.session` directly in the controller.
 - Config classes are the switch for environments: `Config` reads env vars; `TestConfig` forces in-memory SQLite. Tests get a client via the `client` fixture in [api/tests/conftest.py](api/tests/conftest.py), which builds a fresh app per test.
 - `DATABASE_URL` unset falls back to SQLite at `api/remitx.db`; compose overrides it to Postgres.

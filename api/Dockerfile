@@ -8,6 +8,8 @@ ENV PYTHONUNBUFFERED=1
 COPY pyproject.toml .
 COPY remitx_api/ remitx_api/
 COPY remitx_worker/ remitx_worker/
+COPY alembic.ini .
+COPY alembic/ alembic/
 COPY asgi.py .
 
 RUN pip install --upgrade pip && pip install -e .
