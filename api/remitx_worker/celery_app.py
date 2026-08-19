@@ -1,10 +1,12 @@
-import os
-
 from celery import Celery
+from remitx_api.config import Config
 
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-celery = Celery("remitx_worker", broker=redis_url, backend=redis_url)
-celery.conf.task_default_queue = "settlement"
+# Config, not os.getenv, so the worker loads the same root .env as the API.
+celery = Celery(
+    "remitx_worker",
+    broker=Config.REDIS_URL,
+    backend=Config.REDIS_URL,
+)
+celery.conf.task_default_queue = Config.CELERY_QUEUE
 celery.conf.task_acks_late = True
 celery.autodiscover_tasks(["remitx_worker"])

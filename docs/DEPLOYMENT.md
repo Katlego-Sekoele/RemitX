@@ -59,6 +59,7 @@ Per **qa** and **prod** environments:
 | Secret | Source |
 |--------|--------|
 | `TF_VAR_database_url` | Neon branch connection string |
+| `MIGRATIONS_DATABASE_URL` | Neon connection string, SQLAlchemy format (`postgresql+psycopg2://…?sslmode=require`), used by the `migrate` job. Kept separate from `TF_VAR_database_url` so migrations can run as a role that owns the schema while the app runs as a more restricted one. If you are not doing that split yet, set both to the same value — but keep them in sync, or migrations and the app will target different databases. |
 | `TF_VAR_clerk_secret_key` | Clerk dashboard |
 | `TF_VAR_clerk_publishable_key` | Clerk dashboard |
 | `TF_VAR_clerk_jwks_url` | Clerk dashboard |
@@ -68,6 +69,8 @@ Per **qa** and **prod** environments:
 | `VITE_SITE_URL` | Public frontend URL for Open Graph / social metadata (`https://qa.remitx.tech` for QA, `https://remitx.tech` for prod) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` after SWA is created |
+
+**Database migrations:** the `migrate` job in `deploy.yml` runs `alembic upgrade head` against Neon and gates `deploy-api` / `deploy-worker`, so a failed migration blocks the rollout instead of leaving a running app on a schema it does not match. If `MIGRATIONS_DATABASE_URL` is unset the job fails loudly rather than silently skipping. See [../api/alembic/README.md](../api/alembic/README.md).
 
 **GHCR pull token:** GitHub → Settings → Developer settings → Personal access tokens → fine-grained or classic with `read:packages`. Username for GHCR is your GitHub username (owner of the repo).
 
@@ -95,8 +98,8 @@ Then push API/worker/frontend changes to trigger the corresponding deploy jobs (
 
 | Workflow | Trigger | Action |
 |----------|---------|--------|
-| `ci.yml` | PR, push | pytest, ruff, frontend lint/typecheck |
-| `deploy.yml` | PR `infra/**`; push `qa`/`main` on `infra/**`, `api/**`, or `frontend/**` | Path-filtered pipeline: Terraform plan/apply → deploy API, worker, and/or frontend |
+| `ci.yml` | PR, push | pytest, ruff, `alembic upgrade head` + `alembic check` against a Postgres service, frontend lint/typecheck |
+| `deploy.yml` | PR `infra/**`; push `qa`/`main` on `infra/**`, `api/**`, or `frontend/**` | Path-filtered pipeline: Terraform plan/apply → Alembic migrate → deploy API, worker, and/or frontend |
 
 ### `deploy.yml` job order
 
@@ -104,12 +107,31 @@ Then push API/worker/frontend changes to trigger the corresponding deploy jobs (
 changes
    └── ci
           └── terraform (if infra/** changed)
-                 ├── deploy-api      (if api/** changed, after terraform success/skip)
-                 ├── deploy-worker   (if api/** changed, after terraform success/skip)
-                 └── deploy-frontend (if frontend/** changed, after terraform success/skip)
+                 └── migrate (if api/** changed — alembic upgrade head against Neon)
+                        ├── deploy-api      (if api/** changed, requires migrate success)
+                        ├── deploy-worker   (if api/** changed, requires migrate success)
+                        └── deploy-frontend (if frontend/** changed, migrate success or skipped)
 ```
 
-CI must pass before Terraform or any deploy job runs. The standalone `ci.yml` workflow still runs on every PR and push for branch protection; `deploy.yml` re-invokes it via `workflow_call` so deploy cannot proceed on a failing commit.
+CI must pass before Terraform, the migration, or any deploy job runs.
+The standalone `ci.yml` workflow still runs on every PR and push for branch
+protection; `deploy.yml` re-invokes it via `workflow_call` so deploy cannot
+proceed on a failing commit.
+
+`migrate` runs *before* the images roll out, so a failed migration blocks the
+rollout instead of leaving a running app on a schema it does not match. The
+corollary is that the currently-deployed app version keeps serving traffic
+against the new schema until the rollout finishes — see rule 5 in
+[../api/alembic/README.md](../api/alembic/README.md) for what that means when
+writing a migration.
+
+**A note on the `if` conditions.** Every dependent job starts with
+`!cancelled()`. GitHub applies an implicit `success()` to any job `if` that has
+no status-check function, and a *skipped* dependency fails that check just as a
+failed one does — so without `!cancelled()`, any push that does not touch
+`infra/**` would skip `terraform`, then silently skip every deploy job, and
+still report the run green. Because `!cancelled()` also disables the implicit
+CI gate, each job now checks `needs.ci.result == 'success'` explicitly.
 
 ## Local development
 
