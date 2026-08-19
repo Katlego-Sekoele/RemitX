@@ -1,8 +1,8 @@
 """Request/response schemas for the integration smoke-test endpoints."""
 
 import uuid
-from datetime import datetime, timezone
-from typing import Annotated, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_serializer
 
@@ -29,10 +29,10 @@ class IntegrationMessageRead(BaseModel):
     body: str
     status: str
     created_at: datetime
-    processed_at: Optional[datetime] = None
+    processed_at: datetime | None = None
 
     @field_serializer("created_at", "processed_at")
-    def _as_utc(self, value: Optional[datetime]) -> Optional[str]:
+    def _as_utc(self, value: datetime | None) -> str | None:
         """Always emit an offset, whatever the backend stored.
 
         Postgres TIMESTAMPTZ round-trips as aware, but SQLite silently drops
@@ -44,5 +44,5 @@ class IntegrationMessageRead(BaseModel):
         if value is None:
             return None
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).isoformat()

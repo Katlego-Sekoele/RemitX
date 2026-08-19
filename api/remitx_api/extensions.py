@@ -1,5 +1,4 @@
 from contextvars import ContextVar
-from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -40,7 +39,7 @@ def build_engine(database_url: str):
 # through — losing writes and raising "session is not active" under load.
 # ContextVars are copied into anyio worker threads, so sync routes see the
 # session opened for their own request and nothing else.
-_session_cv: ContextVar[Optional[Session]] = ContextVar(
+_session_cv: ContextVar[Session | None] = ContextVar(
     "remitx_db_session",
     default=None,
 )
