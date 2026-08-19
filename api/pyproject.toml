@@ -46,5 +46,13 @@ select = ["E", "F", "I", "UP", "B"]
 # hook lints before it formats, so E501 here would block every migration.
 "alembic/versions/*.py" = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI calls Depends()'s argument once per request via its own DI
+# mechanism, not at function-definition time, so B008's "reused mutable
+# default" concern does not apply. Only needed for non-builtin-typed
+# parameters (e.g. `User`); `int`/`str` defaults like Query(...) are already
+# exempt because B008 ignores immutable-annotated parameters.
+extend-immutable-calls = ["fastapi.Depends"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
