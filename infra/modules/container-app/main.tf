@@ -1,6 +1,7 @@
 locals {
-  use_key_vault_secrets = length(var.secrets) > 0
-  custom_domain_enabled = var.custom_domain != "" && var.ingress_external
+  use_key_vault_secrets    = length(var.secrets) > 0
+  ingress_enabled          = var.ingress_external || var.ingress_internal
+  custom_domain_enabled    = var.custom_domain != "" && var.ingress_external
   managed_certificate_name = "${var.name}-tls"
 
   secret_names = {
@@ -34,11 +35,14 @@ resource "azurerm_container_app" "this" {
   }
 
   dynamic "ingress" {
-    for_each = var.ingress_external ? [1] : []
+    for_each = local.ingress_enabled ? [1] : []
     content {
-      external_enabled = true
+      external_enabled = var.ingress_external
       target_port      = var.ingress_target_port
-      transport        = "auto"
+      transport        = var.ingress_transport
+      # Only meaningful for TCP, where the listening port and the published
+      # port are configured separately.
+      exposed_port = var.ingress_transport == "tcp" ? var.ingress_target_port : null
 
       traffic_weight {
         percentage      = 100
