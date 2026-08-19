@@ -78,15 +78,6 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        if connection.dialect.name == "postgresql":
-            # Serialises concurrent migrators — a deploy and a developer laptop
-            # both running upgrade. Transaction-scoped, so it releases itself
-            # on commit or rollback.
-            connection.execute(
-                text("SELECT pg_advisory_xact_lock(:key)"),
-                {"key": MIGRATION_LOCK_KEY},
-            )
-
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -95,6 +86,22 @@ def run_migrations_online() -> None:
         )
 
         with context.begin_transaction():
+            if connection.dialect.name == "postgresql":
+                # Serialises concurrent migrators — a deploy and a developer
+                # laptop both running upgrade.
+                #
+                # This must be acquired *inside* begin_transaction, not before
+                # it. Executing anything first opens an implicit SQLAlchemy 2.0
+                # transaction; Alembic then sees the connection is already in
+                # one, declines to manage it, and the migration is rolled back
+                # when the connect() block exits — while `upgrade` still exits
+                # 0. Being inside the transaction is also what makes the
+                # xact-scoped lock release itself on commit or rollback.
+                connection.execute(
+                    text("SELECT pg_advisory_xact_lock(:key)"),
+                    {"key": MIGRATION_LOCK_KEY},
+                )
+
             context.run_migrations()
 
 
