@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowClockwise, PaperPlaneTilt, Warning } from "@phosphor-icons/react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { FadeIn } from "~/components/aceternity/fade-in"
 import { GridBackground } from "~/components/aceternity/grid-background"
@@ -23,6 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table"
+import { cn } from "~/lib/utils"
+import type { Route } from "./+types/integration-test"
 import {
   MESSAGE_MAX_LENGTH,
   listIntegrationMessages,
@@ -32,7 +34,13 @@ import {
 
 const MESSAGES_KEY = ["integration-messages"]
 
-export function meta() {
+// Stop polling if the worker never picks the message up, rather than
+// hammering the API for as long as the tab stays open.
+const POLL_TIMEOUT_MS = 60_000
+
+const COUNTER_ID = "message-character-count"
+
+export function meta(): Route.MetaDescriptors {
   return [
     { title: "Integration test — RemitX" },
     { name: "robots", content: "noindex" },
@@ -55,11 +63,16 @@ function errorMessage(error: unknown) {
 export default function IntegrationTest() {
   const [draft, setDraft] = useState("")
   const [listRequested, setListRequested] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
+  // Spread to count code points, matching Python's len() and Postgres's
+  // length(). String.length counts UTF-16 units, so an emoji would read as 2
+  // and the client would refuse input the server accepts.
   const trimmed = draft.trim()
-  const tooLong = trimmed.length > MESSAGE_MAX_LENGTH
-  const canSend = trimmed.length > 0 && !tooLong
+  const length = [...trimmed].length
+  const tooLong = length > MESSAGE_MAX_LENGTH
+  const canSend = length > 0 && !tooLong
 
   const messages = useQuery({
     queryKey: MESSAGES_KEY,
@@ -67,22 +80,43 @@ export default function IntegrationTest() {
     enabled: listRequested,
     // Poll only while the worker still owes us something, then stop on its
     // own. No timers to clean up, and no polling once everything is settled.
-    refetchInterval: (query) =>
-      query.state.data?.some((message) => message.status === "PENDING")
-        ? 1000
-        : false,
+    //
+    // Both bail-outs matter on a page whose job is diagnosing a broken stack:
+    // a stopped worker leaves a row PENDING forever, and an API that dies
+    // mid-poll keeps its last payload in the cache, so a naive check would
+    // retry at 1Hz indefinitely in exactly the situations we built this for.
+    refetchInterval: (query) => {
+      if (query.state.status === "error") return false
+      const startedWaiting = query.state.data?.some(
+        (message) => message.status === "PENDING"
+      )
+      if (!startedWaiting) return false
+      const waitedFor = Date.now() - query.state.dataUpdatedAt
+      return waitedFor > POLL_TIMEOUT_MS ? false : 1000
+    },
   })
 
   const send = useMutation({
     mutationFn: sendIntegrationMessage,
-    onSuccess: () => {
+    onSuccess: (created) => {
       setDraft("")
       setListRequested(true)
+      // Seed the row so the PENDING state is always visible, even when the
+      // worker beats the first list fetch. Invalidating alone is a no-op on
+      // the very first send, because the query is still disabled at that
+      // instant; it is the enable-transition that fetches.
+      queryClient.setQueryData<IntegrationMessage[]>(
+        MESSAGES_KEY,
+        (previous) => (previous ? [created, ...previous] : undefined)
+      )
       queryClient.invalidateQueries({ queryKey: MESSAGES_KEY })
+      inputRef.current?.focus()
     },
   })
 
   const awaitingWorker = messages.data?.some((m) => m.status === "PENDING")
+  const pollTimedOut =
+    awaitingWorker && Date.now() - messages.dataUpdatedAt > POLL_TIMEOUT_MS
 
   return (
     <GridBackground>
@@ -108,12 +142,13 @@ export default function IntegrationTest() {
                   }}
                 >
                   <Input
+                    ref={inputRef}
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     placeholder="Type a message to send through the queue"
                     aria-label="Message"
                     aria-invalid={tooLong || undefined}
-                    disabled={send.isPending}
+                    aria-describedby={COUNTER_ID}
                   />
                   <div className="flex gap-2">
                     <Button type="submit" disabled={!canSend || send.isPending}>
@@ -129,7 +164,10 @@ export default function IntegrationTest() {
                           queryKey: MESSAGES_KEY,
                         })
                       }}
-                      disabled={messages.isFetching}
+                      // isLoading, not isFetching: while polling at 1Hz the
+                      // latter flips every second, and disabling a focused
+                      // button drops keyboard focus to the body each time.
+                      disabled={messages.isLoading}
                     >
                       <ArrowClockwise />
                       List messages
@@ -138,11 +176,14 @@ export default function IntegrationTest() {
                 </form>
 
                 <p
-                  className={`text-xs ${
+                  id={COUNTER_ID}
+                  aria-live="polite"
+                  className={cn(
+                    "text-xs",
                     tooLong ? "text-destructive" : "text-muted-foreground"
-                  }`}
+                  )}
                 >
-                  {trimmed.length} / {MESSAGE_MAX_LENGTH} characters
+                  {length} / {MESSAGE_MAX_LENGTH} characters
                   {tooLong && " — too long to send"}
                 </p>
 
@@ -163,16 +204,21 @@ export default function IntegrationTest() {
             <FadeIn>
               <Card>
                 <CardHeader>
+                  {/* The PENDING -> PROCESSED flip is the whole point of this
+                      page, and it happens with no interaction — without a live
+                      region a screen reader would never learn it occurred. */}
                   <CardTitle>Messages</CardTitle>
-                  <CardDescription>
-                    {awaitingWorker
-                      ? "Waiting for the worker to pick up pending messages…"
-                      : "Newest first, straight from the database."}
+                  <CardDescription role="status" aria-live="polite">
+                    {pollTimedOut
+                      ? "Stopped waiting — messages are still pending, so the worker may be down."
+                      : awaitingWorker
+                        ? "Waiting for the worker to pick up pending messages…"
+                        : "All messages processed. Newest first, straight from the database."}
                   </CardDescription>
                 </CardHeader>
 
-                <CardContent>
-                  {messages.isError ? (
+                <CardContent className="flex flex-col gap-4">
+                  {messages.isError && (
                     <Alert variant="destructive">
                       <Warning />
                       <AlertTitle>Could not load messages</AlertTitle>
@@ -180,12 +226,14 @@ export default function IntegrationTest() {
                         {errorMessage(messages.error)}
                       </AlertDescription>
                     </Alert>
-                  ) : (
-                    <MessageTable
-                      messages={messages.data}
-                      loading={messages.isPending}
-                    />
                   )}
+                  {/* Rendered alongside the error, not instead of it: v5 keeps
+                      the last good data, so replacing the table would blank it
+                      on a single blip mid-poll. */}
+                  <MessageTable
+                    messages={messages.data}
+                    loading={messages.isPending && !messages.isError}
+                  />
                 </CardContent>
               </Card>
             </FadeIn>
@@ -216,37 +264,35 @@ function MessageTable({
   }
 
   return (
-    <div className="w-full overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Message</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead>Processed</TableHead>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Message</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Created</TableHead>
+          <TableHead>Processed</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {messages.map((message) => (
+          <TableRow key={message.id}>
+            <TableCell className="max-w-xs truncate" title={message.body}>
+              {message.body}
+            </TableCell>
+            <TableCell>
+              <Badge
+                variant={
+                  message.status === "PROCESSED" ? "default" : "secondary"
+                }
+              >
+                {message.status}
+              </Badge>
+            </TableCell>
+            <TableCell>{formatTime(message.created_at)}</TableCell>
+            <TableCell>{formatTime(message.processed_at)}</TableCell>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {messages.map((message) => (
-            <TableRow key={message.id}>
-              <TableCell className="max-w-xs truncate">
-                {message.body}
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    message.status === "PROCESSED" ? "default" : "secondary"
-                  }
-                >
-                  {message.status}
-                </Badge>
-              </TableCell>
-              <TableCell>{formatTime(message.created_at)}</TableCell>
-              <TableCell>{formatTime(message.processed_at)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+        ))}
+      </TableBody>
+    </Table>
   )
 }

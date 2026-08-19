@@ -12,6 +12,21 @@ jobs:
     defaults:
       run:
         working-directory: api
+    services:
+      # Migrations are the one thing pytest cannot cover: the suite builds its
+      # schema from Base.metadata on SQLite and never touches alembic/versions,
+      # so a broken migration would otherwise first surface in the QA deploy.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +42,13 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      - name: Migrations apply, and the ORM still matches them
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+        run: |
+          alembic upgrade head
+          alembic check
 
   frontend:
     runs-on: ubuntu-latest

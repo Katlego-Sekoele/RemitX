@@ -10,7 +10,16 @@ _DB_PATH = Path(__file__).resolve().parent.parent / "remitx.db"
 
 
 def _split_csv(value: str) -> list:
-    return [item.strip() for item in value.split(",") if item.strip()]
+    origins = [item.strip() for item in value.split(",") if item.strip()]
+    if "*" in origins:
+        # CORS is configured with allow_credentials=True, and Starlette
+        # reflects the caller's Origin back when origins is "*" - which
+        # would let any site make credentialed cross-origin calls.
+        raise ValueError(
+            "CORS_ORIGINS cannot be '*' while credentials are allowed; "
+            "list the exact origins instead"
+        )
+    return origins
 
 
 class Config:

@@ -30,15 +30,30 @@ def process_integration_message(message_id: str) -> str:
     The Celery app sets ``acks_late``, so redelivery after a worker crash is
     expected rather than exceptional: a duplicate simply matches no rows and
     the original ``processed_at`` is left untouched.
+
+    This relies on READ COMMITTED, Postgres's default: a concurrent duplicate
+    blocks on the row lock, then re-evaluates its WHERE against the committed
+    row and matches nothing. Under REPEATABLE READ or SERIALIZABLE the second
+    transaction would instead raise a serialization error, redeliver, and skip
+    on the retry — still correct, just noisier.
     """
+    try:
+        target_id = uuid.UUID(message_id)
+    except (AttributeError, TypeError, ValueError):
+        # Same contract as an unknown id: nothing to do, and raising would only
+        # turn a bad message into a task failure.
+        logger.warning("integration message %r is not a valid id; skipping", message_id)
+        return "skipped"
+
     with session_scope() as session:
         result = session.execute(
             update(IntegrationMessage)
             .where(
-                IntegrationMessage.id == uuid.UUID(message_id),
+                IntegrationMessage.id == target_id,
                 IntegrationMessage.status == STATUS_PENDING,
             )
             .values(status=STATUS_PROCESSED, processed_at=utcnow())
+            .execution_options(synchronize_session=False)
         )
         updated = result.rowcount
 

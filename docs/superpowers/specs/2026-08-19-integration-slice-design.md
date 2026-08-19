@@ -305,6 +305,52 @@ Beyond the unit suite, the running stack was exercised directly:
   flipped it to PROCESSED with no interaction, confirming the poll both runs and
   stops.
 
+## Code review outcomes
+
+Three reviewers covered the backend, the migration/CI surface, and the
+frontend. Four issues were serious enough to change the design; all were
+reproduced before being fixed.
+
+**The shared session lost concurrent writes (backend, critical).** The
+module-level `db` object held one session in a single attribute. FastAPI runs
+sync routes in an anyio worker thread and serves requests concurrently, so one
+request closed the session another was still writing through. Measured against
+real Postgres: 24 concurrent POSTs produced 6 successes, 18 500s, and 15 rows.
+Latent before this branch only because nothing wrote to the database. Fixed by
+backing the session with a `ContextVar`; the same probe now returns 24/24 with
+24 rows, and `tests/test_concurrent_requests.py` locks it in — verified to fail
+against the pre-fix code.
+
+**The deploy pipeline would have been a silent green no-op (infra, critical).**
+GitHub applies an implicit `success()` to any job `if` without a status-check
+function, and a *skipped* dependency fails it exactly as a failed one does. Any
+push not touching `infra/**` would skip `terraform`, then skip `migrate` and
+every deploy job, and still report the run green. All five previously
+successful runs had `terraform` actually execute, so the path had never been
+exercised. Every dependent job now leads with `!cancelled()`, which also means
+the CI gate had to become explicit.
+
+**CORS was never configured in Terraform (infra, critical).** `CORS_ORIGINS`
+appeared nowhere in `infra/`, so the deployed API would fall back to its
+`http://localhost:5173` default and reject every call from `qa.remitx.tech`.
+Now derived in both environments from `swa_custom_domain` plus the SWA default
+hostname.
+
+**The poll never terminated when the worker was down (frontend, important).**
+`refetchInterval` only checked for a `PENDING` row, so a stopped worker or a
+dead API meant polling at 1 Hz forever — precisely the situations this page
+exists to diagnose. Now bails out on query error and after a 60s ceiling, and
+says so in the UI.
+
+Also fixed: the worker raised instead of skipping on a malformed id; timestamps
+serialized naive on SQLite and aware on Postgres, so the API contract differed
+between tests and production; nothing verified that the producer's task name
+matched the worker's registered task; CI never applied the migration at all
+(now runs `alembic upgrade head` and `alembic check` against a Postgres
+service); `env.py` would silently migrate a local SQLite file when
+`DATABASE_URL` was unset; and the README's autogenerate recipe told you to diff
+against an empty database, which emits `create_table` for every table.
+
 ## Accepted trade-offs
 
 - Tests run on SQLite, so they validate application logic but not the migration

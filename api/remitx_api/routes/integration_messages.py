@@ -27,4 +27,4 @@ def create_integration_message(payload: IntegrationMessageCreate):
 def list_integration_messages(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
 ):
-    return controller.list(limit)
+    return controller.list_recent(limit)

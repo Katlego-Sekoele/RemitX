@@ -108,11 +108,19 @@ jobs:
 
   migrate:
     needs: [changes, ci, terraform]
+    # `!cancelled()` disables the implicit success() gate GitHub adds to any
+    # `if` without a status function. Without it a *skipped* `terraform` (any
+    # push that does not touch infra/**) skips this job and every deploy job
+    # below it, and the run still reports green — a silent no-op deploy.
+    # Because that also disables the implicit CI gate, `ci` is now explicit.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
+      needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: ${{ needs.changes.outputs.deploy_env }}
     defaults:
       run:
@@ -136,15 +144,22 @@ jobs:
             echo "ERROR: Set MIGRATIONS_DATABASE_URL on the ${{ needs.changes.outputs.deploy_env }} environment." >&2
             exit 1
           fi
+          echo "before: $(alembic current 2>&1 | tail -1)"
           alembic upgrade head
+          echo "after:  $(alembic current 2>&1 | tail -1)"
 
   deploy-api:
     needs: [changes, ci, terraform, migrate]
+    # migrate shares this job's `api == 'true'` precondition, so it can never
+    # legitimately be skipped here — require success outright rather than
+    # leaving a hole an unmigrated deploy could pass through.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
+      needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
-      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+      needs.migrate.result == 'success'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
@@ -195,11 +210,16 @@ jobs:
 
   deploy-worker:
     needs: [changes, ci, terraform, migrate]
+    # migrate shares this job's `api == 'true'` precondition, so it can never
+    # legitimately be skipped here — require success outright rather than
+    # leaving a hole an unmigrated deploy could pass through.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
+      needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
-      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+      needs.migrate.result == 'success'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
@@ -250,11 +270,17 @@ jobs:
             --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-worker:${{ env.DEPLOY_ENV }}
 
   deploy-frontend:
-    needs: [changes, ci, terraform]
+    needs: [changes, ci, terraform, migrate]
+    # `skipped` is legitimate for migrate here: a frontend-only push has
+    # api == 'false' and has no migration to run. But a *failed* migration
+    # must not ship a new frontend against the old API and old schema.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
+      needs.ci.result == 'success' &&
       needs.changes.outputs.frontend == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     steps:

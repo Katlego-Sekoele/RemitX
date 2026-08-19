@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 import pytest
 
@@ -48,6 +49,18 @@ def test_create_rejects_invalid_bodies(client, enqueued, body):
 
 def test_create_requires_a_body_field(client, enqueued):
     assert client.post(ENDPOINT, json={}).status_code == 422
+
+
+def test_timestamps_always_carry_a_utc_offset(client, enqueued):
+    """SQLite drops tzinfo, Postgres keeps it; the API contract must not vary.
+
+    Without normalisation the same row serializes as "...T00:40:00" on SQLite
+    and "...+00:00" on Postgres, and a JS client reads the first as local time.
+    """
+    created = client.post(ENDPOINT, json={"body": "stamped"}).json()
+
+    assert created["created_at"].endswith("+00:00")
+    datetime.fromisoformat(created["created_at"])  # raises if malformed
 
 
 def test_list_is_empty_before_anything_is_sent(client):

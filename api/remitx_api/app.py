@@ -34,11 +34,11 @@ def create_app(config_class: type[Config] = Config) -> FastAPI:
 
     @app.middleware("http")
     async def db_session_middleware(request: Request, call_next):
-        db.open_session()
+        token = db.open_session()
         try:
             return await call_next(request)
         finally:
-            db.close_session()
+            db.close_session(token)
 
     register_routers(app)
     return app

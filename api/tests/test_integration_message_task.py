@@ -66,3 +66,10 @@ def test_running_twice_does_not_reprocess(session_factory, pending_message):
 
 def test_unknown_message_is_skipped_not_an_error(session_factory):
     assert process_integration_message(str(uuid.uuid4())) == "skipped"
+
+
+@pytest.mark.parametrize(
+    "message_id", ["not-a-uuid", "", None], ids=["junk", "empty", "none"]
+)
+def test_malformed_message_id_is_skipped_not_an_error(session_factory, message_id):
+    assert process_integration_message(message_id) == "skipped"

@@ -29,7 +29,8 @@ class IntegrationMessageController:
 
         return IntegrationMessageRead.model_validate(message)
 
-    def list(self, limit: int = DEFAULT_LIMIT) -> list:
-        limit = max(1, min(limit, MAX_LIMIT))
+    def list_recent(self, limit: int = DEFAULT_LIMIT) -> list:
+        # The route validates the range and returns 422 outside it; silently
+        # clamping here would give the same input two different contracts.
         messages = self._repository.list_recent(limit)
         return [IntegrationMessageRead.model_validate(m) for m in messages]

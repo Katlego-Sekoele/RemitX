@@ -41,13 +41,23 @@ cd api && source .venv/bin/activate
 alembic revision --autogenerate -m "add transfers status index"
 ```
 
-Autogenerate needs a database to compare against. Point it at the local
-Compose Postgres (the default `DATABASE_URL`), or at a scratch SQLite file if
-Postgres is not running:
+Autogenerate compares the models against a **live, already-migrated** database,
+so start the local Postgres first:
 
 ```bash
-alembic -x url=sqlite:////tmp/autogen.db revision --autogenerate -m "..."
+docker compose -f docker-compose.dev.yml up -d postgres
+cd api && alembic upgrade head        # bring it to the current head first
+alembic revision --autogenerate -m "add transfers status index"
 ```
+
+Bringing it to head first is not optional. Autogenerating against an empty
+database diffs the entire ORM against nothing and emits `create_table` for
+*every* table, which then fails on Postgres with `relation ... already exists`.
+
+Use Postgres, not a scratch SQLite file. The dialects genuinely differ —
+`sa.Uuid` is a native UUID on Postgres and `CHAR(32)` on SQLite, and CHECK
+constraint reflection is not the same — so a SQLite-derived diff can encode the
+wrong thing in a project whose whole point is eliminating drift.
 
 **Always read the generated file before committing it.** Autogenerate is a
 strong first draft, not gospel. It reliably detects tables, columns, indexes
@@ -76,7 +86,37 @@ ruff check --fix alembic/ && ruff format alembic/
    `NotImplementedError` rather than leaving `pass`, which silently lies.
 4. **Keep the ORM and the migration in step.** After applying, `alembic check`
    must report "No new upgrade operations detected". Anything else means the
-   model and the schema have drifted.
+   model and the schema have drifted. CI enforces this on every PR.
+5. **Every migration must be safe against the app version already running.**
+   Migrations are applied *before* the new image rolls out, and Container Apps
+   does a rolling update, so the old code keeps serving traffic against the new
+   schema for the duration. Additive changes are safe in a single release: new
+   tables, new nullable columns, new indexes. Anything destructive or narrowing
+   — dropping a column, renaming, adding `NOT NULL`, tightening a type — splits
+   across two releases:
+
+   **expand** (add the new shape, write to both) → deploy code that uses it →
+   **contract** (drop the old shape) in a later migration.
+
+   Never pair a rename with the code change that depends on it.
+
+## Operational notes
+
+- `alembic upgrade head` runs the whole chain in **one transaction**
+  (`transaction_per_migration` is left at its default), so on Postgres a
+  mid-chain failure rolls everything back — you can never land half-migrated.
+- That also means `CREATE INDEX CONCURRENTLY` will not work as-is; it cannot
+  run inside a transaction. It needs `transaction_per_migration = True` plus an
+  autocommit block.
+- Long DDL takes an `ACCESS EXCLUSIVE` lock. Set a `lock_timeout` in the
+  migration so it queues behind a slow query instead of stalling the table.
+- Two branches that each add a migration produce **two heads** on merge, and
+  `alembic upgrade head` then fails with "Multiple head revisions are present".
+  That failure is loud and safely blocks the deploy; resolve it with
+  `alembic merge heads`.
+- If a migration succeeds but `deploy-api` then fails, the new schema is live
+  under old code. Rule 5 is what makes that survivable — follow it and the old
+  code keeps working until you roll forward.
 
 ## Common commands
 

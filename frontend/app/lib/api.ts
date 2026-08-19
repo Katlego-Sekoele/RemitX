@@ -1,4 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4200"
+// `||`, not `??`: an unset GitHub secret expands to "" in the deploy
+// workflow, and Vite inlines that empty string. `??` would keep it, making
+// every request same-origin-relative and 404 against Static Web Apps.
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4200"
 
 /** Mirrors BODY_MAX_LENGTH on the API. */
 export const MESSAGE_MAX_LENGTH = 280
@@ -51,8 +54,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_URL}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: {
+        // Only when there is a body to describe. `application/json` is not a
+        // CORS-safelisted content type, so sending it on a bodyless GET forces
+        // an OPTIONS preflight — two round trips per poll, once a second.
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
     })
   } catch {
     // fetch only rejects on network-level failure, which for this app almost

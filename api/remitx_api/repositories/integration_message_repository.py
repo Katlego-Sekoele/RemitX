@@ -12,7 +12,12 @@ class IntegrationMessageRepository(Repository[IntegrationMessage, str]):
     def list_recent(self, limit: int) -> list:
         statement = (
             select(IntegrationMessage)
-            .order_by(IntegrationMessage.created_at.desc())
+            # id breaks ties: created_at alone leaves rows written in the same
+            # clock tick in arbitrary order, which makes ordering flaky on
+            # coarse-clock platforms and unstable for future pagination.
+            .order_by(
+                IntegrationMessage.created_at.desc(), IntegrationMessage.id.desc()
+            )
             .limit(limit)
         )
         return list(db.session.scalars(statement))

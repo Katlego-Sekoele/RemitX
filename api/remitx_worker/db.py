@@ -8,11 +8,25 @@ tests can substitute one.
 
 from contextlib import contextmanager
 
+from celery.signals import worker_process_init
 from remitx_api.config import Config
 from remitx_api.extensions import build_engine
 from sqlalchemy.orm import sessionmaker
 
 _session_factory = None
+
+
+@worker_process_init.connect
+def _reset_engine_after_fork(**_kwargs) -> None:
+    """Never let a forked child inherit the parent's connections.
+
+    Nothing builds the engine before fork today, so this is currently a no-op
+    — but that safety is incidental. Any future pre-fork call (a warm-up hook,
+    a health probe) would fork live sockets into every child and corrupt them
+    intermittently. Cheaper to make the guarantee explicit than to debug that.
+    """
+    global _session_factory
+    _session_factory = None
 
 
 def configure(session_factory) -> None:

@@ -71,8 +71,18 @@ locals {
     XRPL_ENCRYPTION_KEY = module.key_vault.secret_ids["xrpl-encryption-key"]
   }
 
+  # Browser origins allowed to call the API. Without this the API falls back to
+  # its localhost default and rejects every call from the deployed frontend.
+  # Not "*": the API sets allow_credentials, which Starlette refuses to combine
+  # with a wildcard.
+  cors_origins = join(",", compact([
+    var.swa_custom_domain != "" ? "https://${var.swa_custom_domain}" : "",
+    "https://${module.static_web_app.default_hostname}",
+  ]))
+
   container_app_env_vars = {
     APPLICATIONINSIGHTS_CONNECTION_STRING = module.application_insights.connection_string
+    CORS_ORIGINS                          = local.cors_origins
   }
 }
 
