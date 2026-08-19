@@ -16,9 +16,20 @@ class _FakeRequest:
         self.headers = headers or {}
 
 
-def _stub_sdk(monkeypatch, state):
-    """Replace the Clerk SDK with one returning a fixed request state."""
-    sdk = SimpleNamespace(authenticate_request=lambda request, options: state)
+def _stub_sdk(monkeypatch, state, captured=None):
+    """Replace the Clerk SDK with one returning a fixed request state.
+
+    When `captured` is a list, the `AuthenticateRequestOptions` passed to
+    `authenticate_request` is appended to it so a test can assert on what
+    was actually sent to the SDK.
+    """
+
+    def _authenticate(request, options):
+        if captured is not None:
+            captured.append(options)
+        return state
+
+    sdk = SimpleNamespace(authenticate_request=_authenticate)
     monkeypatch.setattr(clerk_module, "_sdk", lambda secret_key: sdk)
 
 
@@ -34,6 +45,29 @@ def test_returns_claims_for_a_signed_in_request(monkeypatch):
     claims = verify_request(_FakeRequest(), TestConfig())
 
     assert claims == ClerkClaims(clerk_user_id="user_abc", email="a@example.com")
+
+
+def test_passes_authorized_parties_and_restricts_token_type(monkeypatch):
+    """Both SDK defaults fail OPEN, so these options must actually be sent.
+
+    Omitting `authorized_parties` makes the SDK skip the azp check entirely
+    (any origin on the same Clerk instance would validate); omitting
+    `accepts_token` defaults to `["any"]`, which would accept API keys,
+    OAuth tokens, and M2M tokens as if they were user sessions. Neither is
+    exercised by the other tests, since the stub there ignores `options`.
+    """
+    captured = []
+    _stub_sdk(
+        monkeypatch,
+        SimpleNamespace(is_signed_in=True, payload={"sub": "user_abc"}),
+        captured=captured,
+    )
+
+    verify_request(_FakeRequest(), TestConfig())
+
+    assert len(captured) == 1
+    assert captured[0].authorized_parties == TestConfig().CORS_ORIGINS
+    assert captured[0].accepts_token == ["session_token"]
 
 
 def test_email_is_optional(monkeypatch):

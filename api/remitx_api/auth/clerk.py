@@ -8,13 +8,18 @@ converts Clerk's request state into a small domain object. Nothing
 outside this module needs to know Clerk exists.
 """
 
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
 import httpx
 from clerk_backend_api import Clerk
 from clerk_backend_api.security.types import AuthenticateRequestOptions
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
+
+from remitx_api.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -36,15 +41,19 @@ def _unauthorized() -> HTTPException:
 
 @lru_cache(maxsize=1)
 def _sdk(secret_key: str) -> Clerk:
-    """One SDK instance per secret key.
+    """Build (and memoize) the process-wide Clerk SDK client.
 
-    Cached because the client holds a connection pool and Clerk's JWKS cache;
-    building one per request would refetch signing keys constantly.
+    `maxsize=1` means only the most recently seen secret key gets a live
+    client — fine in practice since a process runs against a single Clerk
+    instance, and a key rotation simply evicts and rebuilds on next call.
+    Cached at all because the client holds a connection pool and Clerk's
+    JWKS cache; building one per request would refetch signing keys
+    constantly.
     """
     return Clerk(bearer_auth=secret_key)
 
 
-def _to_httpx(request) -> httpx.Request:
+def _to_httpx(request: Request) -> httpx.Request:
     """Adapt a Starlette request to the httpx one the Clerk SDK expects.
 
     Deliberately bodyless: verification reads only the method, URL, and
@@ -58,7 +67,7 @@ def _to_httpx(request) -> httpx.Request:
     )
 
 
-def verify_request(request, config) -> ClerkClaims:
+def verify_request(request: Request, config: Config) -> ClerkClaims:
     """Return the caller's claims, or raise 401.
 
     Raises RuntimeError — not 401 — when the secret key is missing: that is a
@@ -94,7 +103,7 @@ def verify_request(request, config) -> ClerkClaims:
     )
 
 
-def fetch_user_email(clerk_user_id: str, config) -> str | None:
+def fetch_user_email(clerk_user_id: str, config: Config) -> str | None:
     """Look up a user's primary email via Clerk's Backend API.
 
     Email is not a default session-token claim, so it cannot come from
@@ -104,16 +113,24 @@ def fetch_user_email(clerk_user_id: str, config) -> str | None:
     Returns None rather than raising: a profile lookup failing is not a reason
     to reject an otherwise valid session, and the column is nullable.
     """
+    sdk = _sdk(config.CLERK_SECRET_KEY)
     try:
-        user = _sdk(config.CLERK_SECRET_KEY).users.get(user_id=clerk_user_id)
+        user = sdk.users.get(user_id=clerk_user_id)
         primary_id = getattr(user, "primary_email_address_id", None)
         addresses = getattr(user, "email_addresses", None) or []
         for address in addresses:
             if address.id == primary_id:
                 return address.email_address
         return addresses[0].email_address if addresses else None
-    except Exception:
+    except Exception as exc:
         # Deliberately broad: any SDK or transport failure (network error,
         # auth failure, unexpected response shape, ...) degrades to "no email
-        # on file" rather than blocking an otherwise-valid sign-in.
+        # on file" rather than blocking an otherwise-valid sign-in. Log only
+        # the user id and exception type — never the secret key, the token,
+        # or the full exception, which could carry response bodies/headers.
+        logger.warning(
+            "fetch_user_email failed for clerk_user_id=%s: %s",
+            clerk_user_id,
+            type(exc).__name__,
+        )
         return None
