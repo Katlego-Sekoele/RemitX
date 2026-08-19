@@ -81,6 +81,27 @@ Use `@phosphor-icons/react` (configured in `components.json`).
 
 Declare routes in [app/routes.ts](app/routes.ts). Run `npm run typecheck` after adding a route.
 
+### Deep links and Azure Static Web Apps
+
+This is an SPA (`ssr: false`), so the build emits a single `index.html` and
+React Router resolves routes in the browser. Azure Static Web Apps serves
+files, so without help a request for `/some-route` finds no such file and
+returns the platform 404 — the route only works if you navigate to it
+client-side from `/`.
+
+[public/staticwebapp.config.json](public/staticwebapp.config.json) fixes that
+with a `navigationFallback` rewriting unmatched paths to `/index.html`. Vite
+copies `public/` to the build output root, which is the deployed artifact root
+(`output_location: build/client`), so the file lands where SWA looks for it.
+
+The `exclude` list keeps real assets out of the fallback: a missing image
+should 404, not return an HTML page that the browser then fails to parse as
+CSS or JavaScript.
+
+Adding a route needs no change here — the fallback is generic. But if you ever
+move `public/` or change `output_location`, make sure that file still ends up
+at the artifact root, or every deep link 404s again.
+
 ## References
 
 - [CLAUDE.md](../CLAUDE.md) — monorepo overview
