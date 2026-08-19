@@ -7,7 +7,12 @@ output "fqdn" {
 }
 
 output "internal_url" {
-  value = "redis://${var.name}:6379/0"
+  description = <<-EOT
+    Redis URL for siblings in the same environment. Null unless ingress is
+    enabled: without it the name does not resolve, and returning a URL anyway
+    hands callers an address that silently fails at runtime.
+  EOT
+  value       = local.ingress_enabled ? "redis://${var.name}:6379/0" : null
 }
 
 output "custom_domain" {

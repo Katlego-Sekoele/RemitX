@@ -29,6 +29,30 @@ variable "ingress_external" {
   default = false
 }
 
+variable "ingress_internal" {
+  description = <<-EOT
+    Expose the app inside the Container Apps environment only.
+
+    Required for any app that siblings address by name. A Container App with no
+    ingress at all has no listener and no internal DNS record, so callers fail
+    to resolve it entirely ("Name or service not known") even while the
+    container itself is healthy.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "ingress_transport" {
+  description = "auto/http/http2 for web apps, tcp for things like Redis."
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "http", "http2", "tcp"], var.ingress_transport)
+    error_message = "ingress_transport must be one of: auto, http, http2, tcp."
+  }
+}
+
 variable "ingress_target_port" {
   type    = number
   default = 4200
