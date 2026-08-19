@@ -8,6 +8,9 @@
 #
 # After changing POSTGRES_USER/POSTGRES_DB, reset volumes:
 #   docker compose -f docker-compose.dev.yml down -v
+#
+# Schema is owned by Alembic (api/alembic/versions) via the one-shot `migrate`
+# service. See api/alembic/README.md.
 
 name: remitx
 
@@ -42,6 +45,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: applies Alembic migrations, then exits. The api and worker
+  # services wait for it to complete, so neither boots on a stale schema.
+  migrate:
+    build:
+      context: ./api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: alembic upgrade head
+    volumes:
+      - ./api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ./api
@@ -59,6 +78,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command: sh -c "pip install -e . && python -m remitx_api"
     stdin_open: true
     tty: true
@@ -97,6 +118,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

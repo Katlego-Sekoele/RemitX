@@ -1,9 +1,26 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
     pass
+
+
+def build_engine(database_url: str):
+    """Create an engine, pinning in-memory SQLite to a single connection.
+
+    Without StaticPool every connection to ``sqlite:///:memory:`` opens its own
+    empty database, so tables created during setup are invisible to the next
+    caller.
+    """
+    if database_url == "sqlite:///:memory:":
+        return create_engine(
+            database_url,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+    return create_engine(database_url)
 
 
 class Database:
@@ -19,7 +36,7 @@ class Database:
         return self._session
 
     def init(self, database_url: str) -> None:
-        self.engine = create_engine(database_url)
+        self.engine = build_engine(database_url)
         self._session_factory = sessionmaker(
             bind=self.engine,
             autoflush=False,

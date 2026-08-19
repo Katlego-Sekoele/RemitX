@@ -106,12 +106,45 @@ jobs:
         if: github.event_name == 'push'
         run: terraform apply -auto-approve -var-file=non-secret.tfvars
 
-  deploy-api:
+  migrate:
     needs: [changes, ci, terraform]
     if: |
       github.event_name == 'push' &&
       needs.changes.outputs.api == 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -e .
+
+      # Runs before deploy-api/deploy-worker so a failed migration blocks the
+      # rollout rather than leaving a new image on a stale schema.
+      - name: Apply Alembic migrations
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "ERROR: Set MIGRATIONS_DATABASE_URL on the ${{ needs.changes.outputs.deploy_env }} environment." >&2
+            exit 1
+          fi
+          alembic upgrade head
+
+  deploy-api:
+    needs: [changes, ci, terraform, migrate]
+    if: |
+      github.event_name == 'push' &&
+      needs.changes.outputs.api == 'true' &&
+      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
@@ -161,11 +194,12 @@ jobs:
             --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-api:${{ env.DEPLOY_ENV }}
 
   deploy-worker:
-    needs: [changes, ci, terraform]
+    needs: [changes, ci, terraform, migrate]
     if: |
       github.event_name == 'push' &&
       needs.changes.outputs.api == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:

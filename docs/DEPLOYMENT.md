@@ -59,6 +59,7 @@ Per **qa** and **prod** environments:
 | Secret | Source |
 |--------|--------|
 | `TF_VAR_database_url` | Neon branch connection string |
+| `MIGRATIONS_DATABASE_URL` | Neon branch connection string, SQLAlchemy format (`postgresql+psycopg2://…?sslmode=require`). Used by the `migrate` job to run `alembic upgrade head` before the api/worker roll out. Usually the same value as `TF_VAR_database_url`. |
 | `TF_VAR_clerk_secret_key` | Clerk dashboard |
 | `TF_VAR_clerk_publishable_key` | Clerk dashboard |
 | `TF_VAR_clerk_jwks_url` | Clerk dashboard |
@@ -68,6 +69,8 @@ Per **qa** and **prod** environments:
 | `VITE_SITE_URL` | Public frontend URL for Open Graph / social metadata (`https://qa.remitx.tech` for QA, `https://remitx.tech` for prod) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (frontend build) |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `terraform output -raw static_web_app_deployment_token` after SWA is created |
+
+**Database migrations:** the `migrate` job in `deploy.yml` runs `alembic upgrade head` against Neon and gates `deploy-api` / `deploy-worker`, so a failed migration blocks the rollout instead of leaving a running app on a schema it does not match. If `MIGRATIONS_DATABASE_URL` is unset the job fails loudly rather than silently skipping. See [../api/alembic/README.md](../api/alembic/README.md).
 
 **GHCR pull token:** GitHub → Settings → Developer settings → Personal access tokens → fine-grained or classic with `read:packages`. Username for GHCR is your GitHub username (owner of the repo).
 

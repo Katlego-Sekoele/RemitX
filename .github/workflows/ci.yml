@@ -23,7 +23,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Ruff
-        run: ruff check remitx_api remitx_worker tests
+        run: ruff check remitx_api remitx_worker tests alembic
 
       - name: Pytest
         run: pytest
