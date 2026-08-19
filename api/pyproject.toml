@@ -2,7 +2,7 @@
 name = "remitx-api"
 version = "0.1.0"
 description = "RemitX JSON API"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "pydantic>=2.0",
@@ -13,6 +13,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "celery>=5.4.0",
     "redis>=5.0.0",
+    "clerk-backend-api>=7.0.0,<8",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ packages = ["remitx_api", "remitx_worker"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py311"
 src = ["remitx_api", "remitx_worker", "tests", "alembic", "asgi.py"]
 
 [tool.ruff.lint]

@@ -40,9 +40,20 @@ class Config:
     # test databases do.
     CREATE_ALL = False
 
+    # Read per-instance rather than at class-definition time: tests
+    # monkeypatch the environment after import, and a class attribute would
+    # freeze whatever was set when the module first loaded.
+    @property
+    def CLERK_SECRET_KEY(self) -> str:
+        return os.getenv("CLERK_SECRET_KEY", "")
+
 
 class TestConfig(Config):
     TESTING = True
     DEBUG = False
     DATABASE_URL = "sqlite:///:memory:"
     CREATE_ALL = True
+
+    # Verification is always mocked in tests; this only has to be non-empty
+    # so the "not configured" guard in auth/clerk.py does not trip.
+    CLERK_SECRET_KEY = "sk_test_fake"

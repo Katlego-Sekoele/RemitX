@@ -112,7 +112,11 @@ Things that bite:
 - Config classes are the switch for environments: `Config` reads env vars; `TestConfig` forces in-memory SQLite. Tests get a client via the `client` fixture in [api/tests/conftest.py](api/tests/conftest.py), which builds a fresh app per test.
 - `DATABASE_URL` unset falls back to SQLite at `api/remitx.db`; compose overrides it to Postgres.
 
-**Python version:** `requires-python >= 3.9` and ruff targets `py39`, but the Docker image is `python:3.11`. Write 3.9-compatible code (no `match`, no PEP 604 `X | Y` at runtime) so local venvs on 3.9 keep working.
+**Python version:** `requires-python >= 3.11`, ruff targets `py311`, and the
+Docker image is `python:3.11` — local venvs, CI, and production all run the
+same minor. The floor is 3.11 because `clerk-backend-api` requires >= 3.10;
+match the Docker image rather than the SDK minimum so no version gap can open
+between local and production.
 
 ## Frontend architecture
 
