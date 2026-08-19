@@ -90,15 +90,35 @@ AuthenticateRequestOptions(
 and validated (it refuses `*` while credentials are allowed). This avoids a
 second per-environment origin list that could drift out of sync with the first.
 
+The SDK's `authenticate_request` takes an **`httpx.Request`**, not a Starlette
+one, so `clerk.py` adapts between them. Only the method, URL, and headers are
+read during verification — the body is never inspected — so the adapter builds
+a bodyless `httpx.Request` and no request stream is consumed. This matters:
+reading the body in a dependency would leave the route handler with an empty
+stream.
+
 On failure it raises `HTTPException(401)` with a `WWW-Authenticate: Bearer`
 header. It returns the validated claims — never the raw token.
+
+**Email is not a default session-token claim.** Clerk's default token carries
+`sub`, `sid`, `iss`, `exp`, `iat`, `nbf`, and `azp` — no email. Two ways to get
+one: add a custom JWT template claim, or call the Backend API. This design
+takes the second: `fetch_user_email(clerk_user_id, config)` wraps the SDK's
+user lookup, and provisioning calls it **lazily, only on the insert path**.
+
+The alternative — a JWT template — would need identical dashboard
+configuration across three Clerk applications with no way to detect drift,
+which is the same failure mode this design already avoids for CORS origins.
+Fetching costs one call per user lifetime and nothing on the hot path, since
+returning users short-circuit before the resolver is invoked.
 
 ### `auth/dependencies.py`
 
 `get_current_user(request) -> User`:
 
 1. Verify the token via `clerk.py`.
-2. JIT-provision (below) using the `sub` claim as `clerk_user_id`.
+2. JIT-provision (below) using the `sub` claim as `clerk_user_id`, passing a
+   lazy email resolver that only runs if a row must be inserted.
 3. Return the `User` ORM row.
 
 Routes declare `user: User = Depends(get_current_user)`. Handlers receive a
@@ -113,7 +133,7 @@ Clerk exists.
 |---|---|---|
 | `id` | UUID | Primary key |
 | `clerk_user_id` | str | Unique, indexed — the `sub` claim |
-| `email` | str | From claims; nullable, as not every Clerk strategy supplies one |
+| `email` | str | Fetched from Clerk's Backend API on insert; nullable, as not every Clerk strategy supplies one |
 | `created_at` | datetime | |
 | `updated_at` | datetime | |
 
@@ -139,7 +159,8 @@ the race returns the winner's row instead of a 500.
 ### Config
 
 `Config` gains `CLERK_SECRET_KEY`. `pyproject.toml` adds
-`clerk-backend-api>=6.0.1`.
+`clerk-backend-api>=7.0.0,<8` — the SDK's own docs recommend pinning, and the
+major is held to avoid an unreviewed breaking change reaching production.
 
 `CLERK_JWKS_URL` becomes dead configuration — the SDK authenticates with the
 secret key and manages JWKS fetching and caching internally. It is removed
@@ -226,10 +247,15 @@ to use in a TanStack Query `queryFn` without retriggering fetches.
 
 ### Error handling
 
-A 401 surfaces as the existing `ApiError` with `status: 401`. The protected
-layout treats it as a lapsed session and returns the user to sign-in rather
-than showing a generic error card — an expired token is an expected condition,
-not a failure.
+A 401 surfaces as the existing `ApiError` with `status: 401`. A TanStack Query
+`QueryCache`/`MutationCache` `onError` handler catches it globally and calls
+Clerk's `redirectToSignIn()`, rather than each route rendering a generic error
+card — an expired session is an expected condition, not a failure.
+
+Handling it in the cache rather than per-query means a route added later
+inherits the behaviour instead of having to remember it. The handler must
+also skip the redirect when already signed out, or a failed call on a public
+page would loop.
 
 ## Testing
 
