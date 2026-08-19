@@ -22,6 +22,13 @@ import {
 } from "~/lib/site"
 import type { Route } from "./+types/root"
 import "./app.css"
+import {
+  ClerkProvider,
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/react-router"
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");var d=window.matchMedia("(prefers-color-scheme: dark)").matches;var theme=t||"system";if(theme==="dark"||(theme==="system"&&d)){document.documentElement.classList.add("dark")}}catch(e){}})()`
 
@@ -95,7 +102,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />
+  return (
+    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+      <header className="flex items-center justify-center px-4 py-8">
+        <Show when="signed-out">
+          <SignInButton />
+          <SignUpButton />
+        </Show>
+        <Show when="signed-in">
+          <UserButton />
+        </Show>
+      </header>
+      <Outlet />
+    </ClerkProvider>
+  )
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
