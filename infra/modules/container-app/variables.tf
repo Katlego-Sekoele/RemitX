@@ -76,3 +76,14 @@ variable "custom_domain" {
   default     = ""
   description = "Optional custom domain hostname (e.g. api.example.com); requires ingress_external = true"
 }
+
+variable "custom_domain_tls_validation" {
+  type        = string
+  default     = "CNAME"
+  description = "Domain validation for the ACA managed certificate (CNAME or HTTP). Use CNAME when DNS points at the app FQDN."
+
+  validation {
+    condition     = contains(["CNAME", "HTTP"], var.custom_domain_tls_validation)
+    error_message = "custom_domain_tls_validation must be CNAME or HTTP."
+  }
+}

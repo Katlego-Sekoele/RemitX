@@ -21,7 +21,7 @@ output "custom_domain_verification_id" {
 output "custom_domain_dns_records" {
   description = "DNS records to create at your registrar before Azure managed TLS can bind"
   sensitive   = true
-  value = var.custom_domain != "" && var.ingress_external ? {
+  value = local.custom_domain_enabled ? {
     txt = {
       name  = "asuid.${var.custom_domain}"
       value = azurerm_container_app.this.custom_domain_verification_id
@@ -31,4 +31,9 @@ output "custom_domain_dns_records" {
       target = azurerm_container_app.this.ingress[0].fqdn
     }
   } : null
+}
+
+output "custom_domain_managed_certificate_id" {
+  description = "Azure managed certificate ID for the custom domain (after DNS validation)"
+  value       = try(azurerm_container_app_environment_managed_certificate.this[0].id, null)
 }
