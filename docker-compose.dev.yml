@@ -120,6 +120,7 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    command: sh -c "pip install -e . && celery -A remitx_worker.celery_app worker --loglevel=info"
 
 volumes:
   postgres_data:
