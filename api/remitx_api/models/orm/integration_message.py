@@ -9,8 +9,7 @@ throwaway SQLite under test.
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import CheckConstraint, DateTime, Index, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,7 +23,7 @@ STATUS_PROCESSED = "PROCESSED"
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class IntegrationMessage(Base):
@@ -59,7 +58,7 @@ class IntegrationMessage(Base):
         nullable=False,
         default=utcnow,
     )
-    processed_at: Mapped[Optional[datetime]] = mapped_column(
+    processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

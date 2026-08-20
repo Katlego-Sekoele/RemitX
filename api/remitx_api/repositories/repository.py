@@ -1,4 +1,4 @@
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from sqlalchemy import select
 
@@ -12,7 +12,7 @@ class Repository(Generic[T, ID]):
     def __init__(self, model: type[T]) -> None:
         self._model = model
 
-    def get_by_id(self, id: ID) -> Optional[T]:
+    def get_by_id(self, id: ID) -> T | None:
         return db.session.get(self._model, id)
 
     def list(self) -> list[T]:

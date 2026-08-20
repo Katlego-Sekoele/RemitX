@@ -50,7 +50,15 @@ async function describeFailure(response: Response): Promise<string> {
   return response.statusText || `Request failed with status ${response.status}`
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export type GetToken = () => Promise<string | null>
+
+async function request<T>(
+  getToken: GetToken,
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const token = await getToken()
+
   let response: Response
   try {
     response = await fetch(`${API_URL}${path}`, {
@@ -60,6 +68,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         // CORS-safelisted content type, so sending it on a bodyless GET forces
         // an OPTIONS preflight — two round trips per poll, once a second.
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        // Authorization is never CORS-safelisted, so this preflights
+        // regardless. The response is cacheable, so it costs one extra round
+        // trip per origin per max-age, not one per request.
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
     })
@@ -76,14 +88,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function listIntegrationMessages(): Promise<IntegrationMessage[]> {
-  return request<IntegrationMessage[]>("/integration-messages")
+export function listIntegrationMessages(
+  getToken: GetToken
+): Promise<IntegrationMessage[]> {
+  return request<IntegrationMessage[]>(getToken, "/integration-messages")
 }
 
 export function sendIntegrationMessage(
+  getToken: GetToken,
   body: string
 ): Promise<IntegrationMessage> {
-  return request<IntegrationMessage>("/integration-messages", {
+  return request<IntegrationMessage>(getToken, "/integration-messages", {
     method: "POST",
     body: JSON.stringify({ body }),
   })

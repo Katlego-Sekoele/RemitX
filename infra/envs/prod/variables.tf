@@ -50,11 +50,6 @@ variable "clerk_publishable_key" {
   description = "Clerk Publishable Key (pk_...) for frontend — stored in Key Vault for later use"
 }
 
-variable "clerk_jwks_url" {
-  type        = string
-  description = "Clerk JWKS URL for JWT verification — stored in Key Vault for later use"
-}
-
 variable "xrpl_encryption_key" {
   type        = string
   sensitive   = true

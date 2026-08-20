@@ -60,7 +60,6 @@ module "key_vault" {
   redis_url             = module.redis.internal_url
   clerk_secret_key      = var.clerk_secret_key
   clerk_publishable_key = var.clerk_publishable_key
-  clerk_jwks_url        = var.clerk_jwks_url
   xrpl_encryption_key   = var.xrpl_encryption_key
 }
 

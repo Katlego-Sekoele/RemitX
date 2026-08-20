@@ -25,5 +25,4 @@ swa_location = "eastus2"
 #   TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
 #   TF_VAR_clerk_secret_key='...'
 #   TF_VAR_clerk_publishable_key='...'
-#   TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'
 #   TF_VAR_xrpl_encryption_key='...'

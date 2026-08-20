@@ -58,14 +58,6 @@ resource "azurerm_key_vault_secret" "clerk_publishable_key" {
   depends_on = [azurerm_key_vault_access_policy.deployer]
 }
 
-resource "azurerm_key_vault_secret" "clerk_jwks_url" {
-  name         = "clerk-jwks-url"
-  value        = var.clerk_jwks_url
-  key_vault_id = azurerm_key_vault.this.id
-
-  depends_on = [azurerm_key_vault_access_policy.deployer]
-}
-
 resource "azurerm_key_vault_secret" "xrpl_encryption_key" {
   name         = "xrpl-encryption-key"
   value        = var.xrpl_encryption_key
