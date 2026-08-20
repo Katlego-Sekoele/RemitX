@@ -22,13 +22,9 @@ import {
 } from "~/lib/site"
 import type { Route } from "./+types/root"
 import "./app.css"
-import {
-  ClerkProvider,
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/react-router"
+import { ClerkProvider } from "@clerk/react-router"
+
+import { AuthErrorBridge } from "~/components/auth-error-bridge"
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");var d=window.matchMedia("(prefers-color-scheme: dark)").matches;var theme=t||"system";if(theme==="dark"||(theme==="system"&&d)){document.documentElement.classList.add("dark")}}catch(e){}})()`
 
@@ -101,18 +97,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
   )
 }
 
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+
+if (!PUBLISHABLE_KEY) {
+  // Fail at boot with a readable message. ClerkProvider's own error surfaces
+  // deep in a render and reads like a library bug rather than missing config.
+  throw new Error(
+    "VITE_CLERK_PUBLISHABLE_KEY is not set. Copy .env.example to .env and " +
+      "fill it in from the Clerk dashboard."
+  )
+}
+
 export default function App() {
   return (
-    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
-      <header className="flex items-center justify-center px-4 py-8">
-        <Show when="signed-out">
-          <SignInButton />
-          <SignUpButton />
-        </Show>
-        <Show when="signed-in">
-          <UserButton />
-        </Show>
-      </header>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      afterSignOutUrl="/"
+      // Without these, RedirectToSignIn / RedirectToSignUp fall back to
+      // Clerk's hosted Account Portal (accounts.dev) instead of our own
+      // /sign-in and /sign-up routes — verified against a running instance.
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+    >
+      <AuthErrorBridge />
       <Outlet />
     </ClerkProvider>
   )
