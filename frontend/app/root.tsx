@@ -8,6 +8,7 @@ import {
   isRouteErrorResponse,
 } from "react-router"
 
+import { AppChrome, ChromeBar, HomeLink } from "~/components/app-chrome"
 import { ThemeProvider } from "~/components/theme-provider"
 import { ThemeToggle } from "~/components/theme-toggle"
 import { queryClient } from "~/lib/query-client"
@@ -23,6 +24,7 @@ import {
 import type { Route } from "./+types/root"
 import "./app.css"
 import { ClerkProvider } from "@clerk/react-router"
+import { shadcn } from "@clerk/themes"
 
 import { AuthErrorBridge } from "~/components/auth-error-bridge"
 
@@ -83,12 +85,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider>
-            <div className="fixed top-4 right-4 z-50">
-              <ThemeToggle />
-            </div>
-            {children}
-          </ThemeProvider>
+          <ThemeProvider>{children}</ThemeProvider>
         </QueryClientProvider>
         <ScrollRestoration />
         <Scripts />
@@ -118,8 +115,12 @@ export default function App() {
       // /sign-in and /sign-up routes — verified against a running instance.
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      appearance={{
+        theme: shadcn,
+      }}
     >
       <AuthErrorBridge />
+      <AppChrome />
       <Outlet />
     </ClerkProvider>
   )
@@ -142,14 +143,20 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="container mx-auto p-4 pt-16">
-      <h1>{message}</h1>
-      <p>{details}</p>
-      {stack && (
-        <pre className="w-full overflow-x-auto p-4">
-          <code>{stack}</code>
-        </pre>
-      )}
-    </main>
+    <>
+      <HomeLink />
+      <ChromeBar>
+        <ThemeToggle />
+      </ChromeBar>
+      <main className="container mx-auto p-4 pt-16">
+        <h1>{message}</h1>
+        <p>{details}</p>
+        {stack && (
+          <pre className="w-full overflow-x-auto p-4">
+            <code>{stack}</code>
+          </pre>
+        )}
+      </main>
+    </>
   )
 }
