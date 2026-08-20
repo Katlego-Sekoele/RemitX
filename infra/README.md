@@ -83,7 +83,6 @@ Grant **Contributor** on the subscription (or per resource group). Store on **ea
 | `TF_VAR_database_url` | Neon connection string **for that environment's branch** |
 | `TF_VAR_clerk_secret_key` | Clerk secret key for that environment's app |
 | `TF_VAR_clerk_publishable_key` | Clerk publishable key |
-| `TF_VAR_clerk_jwks_url` | Clerk JWKS URL |
 | `TF_VAR_xrpl_encryption_key` | XRPL encryption key (`python -c "import secrets; print(secrets.token_hex(32))"`) |
 | `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** — ACA pulls private GHCR images |
 | `VITE_API_URL` | From `terraform output api_url` after apply |
@@ -134,7 +133,6 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
    export TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
    export TF_VAR_clerk_secret_key='sk_test_...'
    export TF_VAR_clerk_publishable_key='pk_test_...'
-   export TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'
    export TF_VAR_xrpl_encryption_key='...'
 
    terraform plan -var-file=non-secret.tfvars
@@ -201,7 +199,6 @@ Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys,
    export TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
    export TF_VAR_clerk_secret_key='sk_live_...'
    export TF_VAR_clerk_publishable_key='pk_live_...'
-   export TF_VAR_clerk_jwks_url='https://<instance>.clerk.accounts.dev/.well-known/jwks.json'
    export TF_VAR_xrpl_encryption_key='...'
 
    terraform plan -var-file=non-secret.tfvars

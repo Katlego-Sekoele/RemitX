@@ -62,7 +62,6 @@ Per **qa** and **prod** environments:
 | `MIGRATIONS_DATABASE_URL` | Neon connection string, SQLAlchemy format (`postgresql+psycopg2://…?sslmode=require`), used by the `migrate` job. Kept separate from `TF_VAR_database_url` so migrations can run as a role that owns the schema while the app runs as a more restricted one. If you are not doing that split yet, set both to the same value — but keep them in sync, or migrations and the app will target different databases. |
 | `TF_VAR_clerk_secret_key` | Clerk dashboard |
 | `TF_VAR_clerk_publishable_key` | Clerk dashboard |
-| `TF_VAR_clerk_jwks_url` | Clerk dashboard |
 | `TF_VAR_xrpl_encryption_key` | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `GHCR_PULL_TOKEN` | GitHub PAT with **`read:packages`** (Container Apps pull from private GHCR) |
 | `VITE_API_URL` | `terraform output api_url` after first infra apply (e.g. `https://remitx-qa-api….azurecontainerapps.io`) |
@@ -156,7 +155,22 @@ cd api && SKIP_REDIS_TESTS=0 pytest tests/test_celery_ping.py -v
 | QA | QA | Key Vault + GitHub secrets for frontend |
 | Prod | Production | Key Vault + GitHub secrets for frontend |
 
-Configure allowed origins in the Clerk dashboard (not Terraform).
+Configure allowed origins in the Clerk dashboard (not Terraform). Each
+application needs the origins that will call it:
+
+| Environment | Origins |
+|-------------|---------|
+| Development | `http://localhost:5173` |
+| QA | `https://qa.remitx.tech` |
+| Production | `https://remitx.tech` |
+
+The API sends the same list to Clerk as `authorized_parties`, sourced from
+`CORS_ORIGINS`. If an origin is missing from either side, verification fails
+with a 401 that looks like a bad token rather than a misconfiguration.
+
+**Removing a Key Vault secret:** deleting the `clerk_jwks_url` resource leaves
+the secret soft-deleted in the vault rather than purged. That is expected and
+harmless; it stays recoverable for the vault's retention period.
 
 ## Destroy (cost saving)
 

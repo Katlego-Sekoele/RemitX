@@ -83,7 +83,6 @@ jobs:
       TF_VAR_database_url: ${{ secrets.TF_VAR_database_url }}
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
       TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
-      TF_VAR_clerk_jwks_url: ${{ secrets.TF_VAR_clerk_jwks_url }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
       TF_VAR_ghcr_org: ${{ needs.changes.outputs.ghcr_repository }}
     defaults:
