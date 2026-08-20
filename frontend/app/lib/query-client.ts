@@ -1,9 +1,39 @@
-import { QueryClient } from "@tanstack/react-query"
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query"
+
+import { ApiError } from "~/lib/api"
+
+// Set by <AuthErrorBridge /> once Clerk context exists. The QueryClient is a
+// module singleton built outside React — QueryClientProvider lives in root's
+// Layout, outside ClerkProvider — so it cannot call Clerk hooks itself.
+let onSessionExpired: (() => void) | null = null
+
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  onSessionExpired = handler
+}
+
+function handleError(error: unknown) {
+  if (error instanceof ApiError && error.status === 401) {
+    onSessionExpired?.()
+  }
+}
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleError }),
+  mutationCache: new MutationCache({ onError: handleError }),
   defaultOptions: {
     queries: {
-      retry: 1,
+      // Never retry a 4xx: the answer will not change, and retrying a 401
+      // doubles every request made with a dead session.
+      retry: (failureCount, error) => {
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
+          return false
+        }
+        return failureCount < 1
+      },
       refetchOnWindowFocus: false,
     },
   },

@@ -12,7 +12,6 @@ output "secret_ids" {
     "redis-url"             = azurerm_key_vault_secret.redis_url.versionless_id
     "clerk-secret-key"      = azurerm_key_vault_secret.clerk_secret_key.versionless_id
     "clerk-publishable-key" = azurerm_key_vault_secret.clerk_publishable_key.versionless_id
-    "clerk-jwks-url"        = azurerm_key_vault_secret.clerk_jwks_url.versionless_id
     "xrpl-encryption-key"   = azurerm_key_vault_secret.xrpl_encryption_key.versionless_id
   }
 }

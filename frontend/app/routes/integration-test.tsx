@@ -25,12 +25,8 @@ import {
 } from "~/components/ui/table"
 import { cn } from "~/lib/utils"
 import type { Route } from "./+types/integration-test"
-import {
-  MESSAGE_MAX_LENGTH,
-  listIntegrationMessages,
-  sendIntegrationMessage,
-  type IntegrationMessage,
-} from "~/lib/api"
+import { MESSAGE_MAX_LENGTH, type IntegrationMessage } from "~/lib/api"
+import { useApi } from "~/lib/use-api"
 
 const MESSAGES_KEY = ["integration-messages"]
 
@@ -65,6 +61,7 @@ export default function IntegrationTest() {
   const [listRequested, setListRequested] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+  const api = useApi()
 
   // Spread to count code points, matching Python's len() and Postgres's
   // length(). String.length counts UTF-16 units, so an emoji would read as 2
@@ -76,7 +73,7 @@ export default function IntegrationTest() {
 
   const messages = useQuery({
     queryKey: MESSAGES_KEY,
-    queryFn: listIntegrationMessages,
+    queryFn: api.listIntegrationMessages,
     enabled: listRequested,
     // Poll only while the worker still owes us something, then stop on its
     // own. No timers to clean up, and no polling once everything is settled.
@@ -97,7 +94,7 @@ export default function IntegrationTest() {
   })
 
   const send = useMutation({
-    mutationFn: sendIntegrationMessage,
+    mutationFn: api.sendIntegrationMessage,
     onSuccess: (created) => {
       setDraft("")
       setListRequested(true)

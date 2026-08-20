@@ -2,7 +2,7 @@
 name = "remitx-api"
 version = "0.1.0"
 description = "RemitX JSON API"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "pydantic>=2.0",
@@ -13,6 +13,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "celery>=5.4.0",
     "redis>=5.0.0",
+    "clerk-backend-api>=7.0.0,<8",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ packages = ["remitx_api", "remitx_worker"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py311"
 src = ["remitx_api", "remitx_worker", "tests", "alembic", "asgi.py"]
 
 [tool.ruff.lint]
@@ -44,6 +45,14 @@ select = ["E", "F", "I", "UP", "B"]
 # Alembic writes these; generated op.* calls run long, and the pre-commit
 # hook lints before it formats, so E501 here would block every migration.
 "alembic/versions/*.py" = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI calls Depends()'s argument once per request via its own DI
+# mechanism, not at function-definition time, so B008's "reused mutable
+# default" concern does not apply. Only needed for non-builtin-typed
+# parameters (e.g. `User`); `int`/`str` defaults like Query(...) are already
+# exempt because B008 ignores immutable-annotated parameters.
+extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

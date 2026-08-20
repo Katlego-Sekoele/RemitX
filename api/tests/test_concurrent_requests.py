@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 from remitx_api.app import create_app
+from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
 
 CONCURRENCY = 24
@@ -25,11 +26,15 @@ ENDPOINT = "/integration-messages"
 
 
 @pytest.fixture
-def concurrent_client(tmp_path):
+def concurrent_client(tmp_path, current_user):
+    """Builds its own app (a file-backed DB, not the shared in-memory one —
+    see module docstring), so it needs its own auth override too."""
+
     class FileDbConfig(TestConfig):
         DATABASE_URL = f"sqlite:///{tmp_path / 'concurrency.db'}"
 
     app = create_app(FileDbConfig)
+    app.dependency_overrides[get_current_user] = lambda: current_user
     with TestClient(app) as test_client:
         yield test_client
 
