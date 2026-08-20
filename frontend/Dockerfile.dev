@@ -3,10 +3,20 @@ FROM node:24-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# The stamp lets the entrypoint skip a redundant install on the first start,
+# when Docker seeds the empty node_modules volume from this layer.
+RUN npm ci \
+  && cat package.json package-lock.json | md5sum | cut -d' ' -f1 \
+    >node_modules/.manifest-hash
 
 COPY . .
 
+# Kept outside /app so the bind mount over it cannot hide the script or
+# strip its exec bit.
+COPY docker-entrypoint.dev.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.dev.sh
+
 EXPOSE 5173
 
+ENTRYPOINT ["docker-entrypoint.dev.sh"]
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
