@@ -31,7 +31,7 @@ export function ThemeToggle() {
     return (
       <div
         aria-hidden
-        className="inline-flex border border-border bg-background"
+        className="inline-flex overflow-hidden rounded-md border border-border bg-background"
       >
         {themeOptions.map((option) => (
           <Button
@@ -54,7 +54,7 @@ export function ThemeToggle() {
     <div
       role="group"
       aria-label="Theme"
-      className="inline-flex border border-border bg-background"
+      className="inline-flex overflow-hidden rounded-md border border-border bg-background"
     >
       {themeOptions.map(({ value, label, icon: Icon }) => {
         const isActive = activeTheme === value
