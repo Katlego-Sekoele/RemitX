@@ -1,6 +1,6 @@
 import { SignUp } from "@clerk/react-router"
 
-import { GridBackground } from "~/components/aceternity/grid-background"
+import { AuthSplitLayout } from "~/components/auth-split-layout"
 import type { Route } from "./+types/sign-up"
 
 export function meta(): Route.MetaDescriptors {
@@ -9,10 +9,8 @@ export function meta(): Route.MetaDescriptors {
 
 export default function SignUpPage() {
   return (
-    <GridBackground>
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <SignUp signInUrl="/sign-in" />
-      </div>
-    </GridBackground>
+    <AuthSplitLayout>
+      <SignUp signInUrl="/sign-in" />
+    </AuthSplitLayout>
   )
 }
