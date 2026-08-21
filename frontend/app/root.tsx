@@ -8,7 +8,8 @@ import {
   isRouteErrorResponse,
 } from "react-router"
 
-import { AppChrome, ChromeBar, HomeLink } from "~/components/app-chrome"
+import { AppShell } from "~/components/app-shell"
+import { ChromeBar, HomeLink } from "~/components/app-chrome"
 import { ThemeProvider } from "~/components/theme-provider"
 import { ThemeToggle } from "~/components/theme-toggle"
 import { queryClient } from "~/lib/query-client"
@@ -23,14 +24,22 @@ import {
 } from "~/lib/site"
 import type { Route } from "./+types/root"
 import "./app.css"
-import { ClerkProvider } from "@clerk/react-router"
-import { shadcn } from "@clerk/themes"
 
-import { AuthErrorBridge } from "~/components/auth-error-bridge"
-
-const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");var d=window.matchMedia("(prefers-color-scheme: dark)").matches;var theme=t||"system";if(theme==="dark"||(theme==="system"&&d)){document.documentElement.classList.add("dark")}}catch(e){}})()`
+const themeInitScript = `(function(){try{var storedTheme=localStorage.getItem("theme");var prefersDark=window.matchMedia("(prefers-color-scheme: dark)").matches;var theme=storedTheme||"system";if(theme==="dark"||(theme==="system"&&prefersDark)){document.documentElement.classList.add("dark")}}catch(_error){}})()`
 
 export const links: Route.LinksFunction = () => [
+  {
+    rel: "icon",
+    href: "/favicon-light.svg",
+    type: "image/svg+xml",
+    media: "(prefers-color-scheme: light)",
+  },
+  {
+    rel: "icon",
+    href: "/favicon-dark.svg",
+    type: "image/svg+xml",
+    media: "(prefers-color-scheme: dark)",
+  },
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
   {
     rel: "icon",
@@ -94,35 +103,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   )
 }
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!PUBLISHABLE_KEY) {
-  // Fail at boot with a readable message. ClerkProvider's own error surfaces
-  // deep in a render and reads like a library bug rather than missing config.
-  throw new Error(
-    "VITE_CLERK_PUBLISHABLE_KEY is not set. Copy .env.example to .env and " +
-      "fill it in from the Clerk dashboard."
-  )
-}
-
 export default function App() {
   return (
-    <ClerkProvider
-      publishableKey={PUBLISHABLE_KEY}
-      afterSignOutUrl="/"
-      // Without these, RedirectToSignIn / RedirectToSignUp fall back to
-      // Clerk's hosted Account Portal (accounts.dev) instead of our own
-      // /sign-in and /sign-up routes — verified against a running instance.
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      appearance={{
-        theme: shadcn,
-      }}
-    >
-      <AuthErrorBridge />
-      <AppChrome />
+    <AppShell>
       <Outlet />
-    </ClerkProvider>
+    </AppShell>
   )
 }
 

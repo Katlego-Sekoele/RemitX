@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Academic prototype — index the marketing surface.
+Disallow: /protected
+Disallow: /internal
+Disallow: /integration-test

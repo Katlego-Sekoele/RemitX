@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type ElementType,
   type MouseEvent,
   type ReactNode,
   type SetStateAction,
@@ -35,11 +34,15 @@ export function CardContainer({
 
   function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
     if (!containerRef.current) return
-    const { left, top, width, height } =
-      containerRef.current.getBoundingClientRect()
-    const x = (event.clientX - left - width / 2) / 25
-    const y = (event.clientY - top - height / 2) / 25
-    containerRef.current.style.transform = `rotateY(${x}deg) rotateX(${-y}deg)`
+    const {
+      left,
+      top: offsetTop,
+      width,
+      height,
+    } = containerRef.current.getBoundingClientRect()
+    const rotateY = (event.clientX - left - width / 2) / 25
+    const rotateX = (event.clientY - offsetTop - height / 2) / 25
+    containerRef.current.style.transform = `rotateY(${rotateY}deg) rotateX(${-rotateX}deg)`
   }
 
   function handleMouseLeave() {
@@ -94,7 +97,6 @@ export function CardBody({ children, className }: CardBodyProps) {
 }
 
 type CardItemProps = {
-  as?: ElementType
   children: ReactNode
   className?: string
   translateX?: number | string
@@ -106,7 +108,6 @@ type CardItemProps = {
 }
 
 export function CardItem({
-  as: Tag = "div",
   children,
   className,
   translateX = 0,
@@ -116,15 +117,15 @@ export function CardItem({
   rotateY = 0,
   rotateZ = 0,
 }: CardItemProps) {
-  const ref = useRef<HTMLDivElement>(null)
+  const itemRef = useRef<HTMLDivElement>(null)
   const [isMouseEntered] = useMouseEnter()
 
   useEffect(() => {
-    if (!ref.current) return
+    if (!itemRef.current) return
     if (isMouseEntered) {
-      ref.current.style.transform = `translateX(${translateX}px) translateY(${translateY}px) translateZ(${translateZ}px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg)`
+      itemRef.current.style.transform = `translateX(${translateX}px) translateY(${translateY}px) translateZ(${translateZ}px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg)`
     } else {
-      ref.current.style.transform =
+      itemRef.current.style.transform =
         "translateX(0px) translateY(0px) translateZ(0px) rotateX(0deg) rotateY(0deg) rotateZ(0deg)"
     }
   }, [
@@ -138,12 +139,12 @@ export function CardItem({
   ])
 
   return (
-    <Tag
-      ref={ref}
+    <div
+      ref={itemRef}
       className={cn("w-fit transition duration-200 ease-linear", className)}
     >
       {children}
-    </Tag>
+    </div>
   )
 }
 
