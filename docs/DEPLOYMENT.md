@@ -1,6 +1,6 @@
 # RemitX cloud deployment (Azure + Neon + Clerk)
 
-This guide covers the **Azure + Neon + Clerk** stack for QA (`qa` branch) and Production (`main`). Local development uses Docker Compose with Postgres + Redis + Celery — no cloud required day-to-day.
+This guide covers the **Azure + Neon + Clerk** stack for QA (`main` branch) and Production (`stable` branch). Local development uses Docker Compose with Postgres + Redis + Celery — no cloud required day-to-day.
 
 **Design spec:** [docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md](superpowers/specs/2026-08-18-azure-neon-deployment-design.md)
 
@@ -30,7 +30,8 @@ This guide covers the **Azure + Neon + Clerk** stack for QA (`qa` branch) and Pr
 ### 1. Neon
 
 1. Create a Neon project (e.g. `remitx`).
-2. Create branches: **`qa`** (for git `qa`) and **`main`** or **`production`** (for git `main`).
+2. Create branches: **`qa`** (for git `main`) and **`main`** or **`production`** (for git `stable`).
+   Neon branch names are independent of the git branch names.
 3. Copy each branch connection string (`postgresql+psycopg2://…?sslmode=require`).
 
 ### 2. Terraform backend (Azure)
@@ -84,21 +85,40 @@ Paste into GitHub **qa** environment secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
 
 ### 5. Deploy QA infrastructure
 
+QA deploys from `main`, so merging a PR is all it takes:
+
 ```bash
-git checkout -b qa   # if not exists
-git push origin qa
+git push origin main
 ```
 
-Merge infra changes to `qa` → `deploy.yml` runs `terraform apply`, then any changed app deploy jobs.
+Merge infra changes to `main` → `deploy.yml` runs `terraform apply`, then any changed app deploy jobs.
 
 Then push API/worker/frontend changes to trigger the corresponding deploy jobs (Terraform runs first when `infra/**` changed in the same push).
+
+## Branch model
+
+| Git branch | Role | Deploys to | Protection |
+|------------|------|-----------|------------|
+| `main` | Quality assurance / integration. Default branch, always current. | QA stack (`qa` environment, `infra/envs/qa/`) | PR required, no force-push, no deletion |
+| `stable` | Releases. Lags `main` and only moves on a deliberate promotion. | Production (`prod` environment, `infra/envs/prod/`) | PR required, no force-push, no deletion |
+
+Feature branches target `main`. Releasing means opening a PR from `main` into
+`stable`; merging it is what triggers a production deploy.
+
+```bash
+gh pr create --base stable --head main --title "Release: <summary>"
+```
+
+Note that the environment names (`qa`, `prod`), the Terraform roots, the Azure
+resource names, the Neon branches, and the Clerk apps all keep their existing
+names. Only the git branch that feeds each environment changed.
 
 ## CI/CD
 
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | PR, push | pytest, ruff, `alembic upgrade head` + `alembic check` against a Postgres service, frontend lint/typecheck |
-| `deploy.yml` | PR `infra/**`; push `qa`/`main` on `infra/**`, `api/**`, or `frontend/**` | Path-filtered pipeline: Terraform plan/apply → Alembic migrate → deploy API, worker, and/or frontend |
+| `deploy.yml` | PR `infra/**`; push `main`/`stable` on `infra/**`, `api/**`, or `frontend/**` | Path-filtered pipeline: Terraform plan/apply → Alembic migrate → deploy API, worker, and/or frontend |
 
 ### `deploy.yml` job order
 

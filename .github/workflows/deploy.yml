@@ -2,10 +2,10 @@ name: Deploy
 
 on:
   pull_request:
-    branches: [qa, main]
+    branches: [main, stable]
     paths: ["infra/**"]
   push:
-    branches: [qa, main]
+    branches: [main, stable]
     paths:
       - "infra/**"
       - "api/**"
@@ -56,11 +56,18 @@ jobs:
           else
             branch="${{ github.ref_name }}"
           fi
-          if [ "$branch" = "main" ]; then
-            echo "deploy_env=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy_env=qa" >> "$GITHUB_OUTPUT"
-          fi
+          # `main` is the QA/integration branch, `stable` is the release
+          # branch. Map explicitly and fail closed: an unrecognised branch
+          # must not fall through into an environment, because the cheap
+          # default here used to be `qa` and the expensive one is `prod`.
+          case "$branch" in
+            stable) echo "deploy_env=prod" >> "$GITHUB_OUTPUT" ;;
+            main)   echo "deploy_env=qa" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::No deploy environment is mapped for branch '$branch'"
+              exit 1
+              ;;
+          esac
 
       - name: Normalize GHCR repository name (must be lowercase)
         id: ghcr
