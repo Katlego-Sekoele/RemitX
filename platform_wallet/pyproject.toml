@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
