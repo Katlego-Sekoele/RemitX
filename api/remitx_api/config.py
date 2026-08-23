@@ -47,6 +47,19 @@ class Config:
     def CLERK_SECRET_KEY(self) -> str:
         return os.getenv("CLERK_SECRET_KEY", "")
 
+    # Written by platform_wallet/scripts/create_xprl_platform_wallet.py.
+    @property
+    def XRPL_ENCRYPTION_KEY(self) -> str:
+        return os.getenv("XRPL_ENCRYPTION_KEY", "")
+
+    @property
+    def PLATFORM_WALLET_ADDRESS(self) -> str:
+        return os.getenv("PLATFORM_WALLET_ADDRESS", "")
+
+    @property
+    def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
+        return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
+
 
 class TestConfig(Config):
     TESTING = True
