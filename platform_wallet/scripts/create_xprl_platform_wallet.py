@@ -181,6 +181,16 @@ def create_trust_line(
     return response.result["hash"]
 
 
+def trust_line_exists(client: JsonRpcClient, address: str, issuer: str) -> bool:
+    """Whether `address` already has a trust line to `issuer` for CURRENCY_HEX."""
+    lines = client.request(
+        AccountLines(account=address, peer=issuer, ledger_index="validated")
+    ).result["lines"]
+    return any(
+        line["currency"] == CURRENCY_HEX for line in lines
+    )  # return True if any trust line exists for the specified currency and issuer
+
+
 def uctusd_balance(client: JsonRpcClient, address: str, issuer: str) -> str:
     """Current UCTUSD balance, or '0' if the trust line holds nothing."""
     lines = client.request(
@@ -221,10 +231,14 @@ def main() -> None:
     # 2. Look up info about the wallet's account
     get_account_info(client, wallet.address)
 
-    # 3. Establish a trust line to the issuer UCTUSD
-    print(f"\nOpening UCTUSD trust line (limit {TRUST_LIMIT})...")
-    tx_hash = create_trust_line(client, wallet, CURRENCY_HEX, issuer, TRUST_LIMIT)
-    print(f"  ok  {tx_hash}")
+    # 3. Establish a trust line to the issuer UCTUSD, unless one is already open
+    if trust_line_exists(client, wallet.address, issuer):
+        print("\nUCTUSD trust line already open; skipping TrustSet.")
+        tx_hash = "(none - trust line already existed)"
+    else:
+        print(f"\nOpening UCTUSD trust line (limit {TRUST_LIMIT})...")
+        tx_hash = create_trust_line(client, wallet, CURRENCY_HEX, issuer, TRUST_LIMIT)
+        print(f"  ok  {tx_hash}")
 
     balance = uctusd_balance(client, wallet.address, issuer)
 
