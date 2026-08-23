@@ -15,7 +15,7 @@ Hard constraints from the brief:
 
 Cloud deployment uses **Azure** (Static Web Apps, Container Apps, Key Vault), **Neon** (Postgres), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md](docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md).
 
-**Cloud environments:** `qa` branch → QA stack; `main` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud **Container Apps worker** with internal Redis.
+**Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud **Container Apps worker** with internal Redis.
 
 ## Layout
 
@@ -27,7 +27,7 @@ Monorepo with two apps sharing one env file:
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Azure + Neon + Clerk setup
-- [.github/workflows/](.github/workflows/) — CI and Azure deploy on `qa` / `main`
+- [.github/workflows/](.github/workflows/) — CI and Azure deploy on `main` / `stable`
 
 ## Environment configuration
 
