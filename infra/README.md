@@ -11,8 +11,8 @@ QA and Prod share modules under `modules/`; each environment has its own root un
 | Path | Purpose |
 |------|---------|
 | `modules/` | Reusable Terraform modules (no Azure Postgres — Neon replaces it) |
-| `envs/qa/` | QA root module — git branch `qa` |
-| `envs/prod/` | Production root module — git branch `main` |
+| `envs/qa/` | QA root module — git branch `main` |
+| `envs/prod/` | Production root module — git branch `stable` |
 
 ## Tfvars files (both environments)
 
@@ -51,7 +51,8 @@ State keys are separate per environment: `qa.terraform.tfstate` and `prod.terraf
 ### Neon
 
 1. Create one Neon project (e.g. `remitx`).
-2. Create two branches: **`qa`** and **`main`** (or `production`).
+2. Create two branches: **`qa`** and **`main`** (or `production`). These are Neon branch
+   names and are independent of the git branches.
 3. Save each branch connection string — you will use a different one per environment.
 
 ### Clerk
@@ -98,7 +99,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 
 ## QA
 
-**Git branch:** `qa`  
+**Git branch:** `main`  
 **Terraform root:** `infra/envs/qa/`  
 **Neon branch:** `qa`  
 **Clerk app:** QA  
@@ -124,7 +125,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 
 2. Add GitHub **environment secrets** on the `qa` environment (Neon **qa** branch URL, Clerk QA keys, etc.).
 
-3. **Local apply** (optional — CI does this on push to `qa`):
+3. **Local apply** (optional — CI does this on push to `main`):
 
    ```bash
    cd infra/envs/qa
@@ -139,12 +140,12 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
    terraform apply -var-file=non-secret.tfvars
    ```
 
-4. Push app changes to `qa` to trigger `deploy.yml` (API, worker, and/or frontend jobs as paths dictate).
+4. Push app changes to `main` to trigger `deploy.yml` (API, worker, and/or frontend jobs as paths dictate).
 
 ### Deploy QA via CI (typical path)
 
 ```bash
-git push origin qa
+git push origin main
 ```
 
 `deploy.yml` applies infra when `infra/**` changed, then runs deploy jobs for changed app paths.
@@ -162,7 +163,7 @@ Delete the Neon **qa** branch separately in the Neon console if you want to remo
 
 ## Production
 
-**Git branch:** `main`  
+**Git branch:** `stable`  
 **Terraform root:** `infra/envs/prod/`  
 **Neon branch:** `main` (or `production`)  
 **Clerk app:** Production  
