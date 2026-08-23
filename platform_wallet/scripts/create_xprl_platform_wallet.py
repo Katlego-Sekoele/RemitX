@@ -30,18 +30,25 @@ from xrpl.models.transactions import TrustSet
 from xrpl.transaction import submit_and_wait
 from xrpl.wallet import Wallet, generate_faucet_wallet
 
-_ROOT = Path(__file__).resolve().parent.parent.parent # Root of the repo
-_ENV_PATH = _ROOT / ".env" # Path to the .env file
-load_dotenv(_ENV_PATH) # Load env vars from .env so we can read/write them in this script
+_ROOT = Path(__file__).resolve().parent.parent.parent  # Root of the repo
+_ENV_PATH = _ROOT / ".env"  # Path to the .env file
+load_dotenv(
+    _ENV_PATH
+)  # Load env vars from .env so we can read/write them in this script
 
 
-XRPL_TESTNET_URL = os.environ.get("XRPL_TESTNET_URL", "https://s.altnet.rippletest.net:51234/") # Testnet RPC URL
-EXPLORER = "https://testnet.xrpl.org" # XRPL Testnet Explorer URL
+XRPL_TESTNET_URL = os.environ.get(
+    "XRPL_TESTNET_URL", "https://s.altnet.rippletest.net:51234/"
+)  # Testnet RPC URL
+EXPLORER = "https://testnet.xrpl.org"  # XRPL Testnet Explorer URL
 
 # Constants for the IOU token
-CURRENCY_HEX = os.environ.get("UCTUSD_CURRENCY_CODE_HEX", "5543545553440000000000000000000000000000")
+CURRENCY_HEX = os.environ.get(
+    "UCTUSD_CURRENCY_CODE_HEX", "5543545553440000000000000000000000000000"
+)
 ISSUER = os.environ.get("UCTUSD_ISSUER", "rELez4x4Zqv3KYqboYVfrYPF8521Ycbxa5")
 TRUST_LIMIT = os.environ.get("UCTUSD_TRUST_LIMIT", "1000000")  # 1 million UCTUSD
+
 
 # Helper functions for encryption and .env management
 def _get_encryption_key() -> str:
@@ -49,16 +56,20 @@ def _get_encryption_key() -> str:
     key = os.environ.get("XRPL_ENCRYPTION_KEY")
     if key:
         return key
-    key = Fernet.generate_key().decode() # if no key, generate one and persist it to .env
+    key = (
+        Fernet.generate_key().decode()
+    )  # if no key, generate one and persist it to .env
     set_key(str(_ENV_PATH), "XRPL_ENCRYPTION_KEY", key)
     print("No XRPL_ENCRYPTION_KEY found; generated a new one and saved it to .env.")
     return key
+
 
 # Helper function to encrypt the XRPL seed before writing it to .env
 def _encrypt_secret(plaintext: str, key: str) -> str:
     """
     Fernet-encrypt `plaintext`, returning a base64 token.
-    Use to encrypt the XRPL seed before writing it to .env. The key is stored in .env too.
+    Use to encrypt the XRPL seed before writing it to .env. The key is stored
+    in .env too.
     """
     return Fernet(key.encode()).encrypt(plaintext.encode()).decode()
 
@@ -92,17 +103,20 @@ def create_platform_wallet(client: JsonRpcClient) -> Wallet:
     """Return the existing platform wallet from .env, or create and fund a new one."""
     existing = _load_existing_wallet()
     if existing:
-        print(f"Platform wallet already exists: {existing.address} - using stored seed.")
+        print(
+            f"Platform wallet already exists: {existing.address} - using stored seed."
+        )
         return existing
 
     print("\nCreating a new platform wallet and funding it with Testnet XRP...")
-    wallet = generate_faucet_wallet(client) # funds the wallet with testnet XRP
+    wallet = generate_faucet_wallet(client)  # funds the wallet with testnet XRP
     print(f"Created new wallet with address: {wallet.address}")
     print(f"Account Testnet Explorer URL: {EXPLORER}/accounts/{wallet.address}")
 
     _write_seed_backup(wallet)
 
-    # Encrypt the seed at rest; only the address and the encrypted blob ever touch disk or stdout.
+    # Encrypt the seed at rest; only the address and the encrypted blob ever
+    # touch disk or stdout.
     encryption_key = _get_encryption_key()
     encrypted_seed = _encrypt_secret(wallet.seed, encryption_key)
     set_key(str(_ENV_PATH), "PLATFORM_WALLET_ADDRESS", wallet.address)
@@ -110,6 +124,7 @@ def create_platform_wallet(client: JsonRpcClient) -> Wallet:
     print("Wrote PLATFORM_WALLET_ADDRESS and PLATFORM_WALLET_SEED_ENCRYPTED to .env.")
 
     return wallet
+
 
 # 2. Look up info about the wallet's account
 def get_account_info(client: JsonRpcClient, address: str) -> dict:
@@ -148,9 +163,9 @@ def create_trust_line(
     """
     trust_set_tx = TrustSet(
         account=wallet.address,
-        # 
+        #
         limit_amount=IssuedCurrencyAmount(
-            currency= currency,
+            currency=currency,
             issuer=issuer,
             value=limit,
         ),
@@ -158,9 +173,11 @@ def create_trust_line(
     response = submit_and_wait(trust_set_tx, client, wallet)
     result = response.result.get("meta", {}).get("TransactionResult")
     if result != "tesSUCCESS":
-            raise RuntimeError(f"TrustSet failed: {result}")
+        raise RuntimeError(f"TrustSet failed: {result}")
     else:
-        print(f"TrustSet result: {result} | validated: {response.result.get('validated')}")
+        print(
+            f"TrustSet result: {result} | validated: {response.result.get('validated')}"
+        )
     return response.result["hash"]
 
 
@@ -175,13 +192,15 @@ def uctusd_balance(client: JsonRpcClient, address: str, issuer: str) -> str:
     return "0"
 
 
-def print_wallet_summary(wallet: Wallet, issuer: str, tx_hash: str, balance: str) -> None:
+def print_wallet_summary(
+    wallet: Wallet, issuer: str, tx_hash: str, balance: str
+) -> None:
     """Print what the API's config would need to use this platform wallet."""
     print("\n" + "=" * 62)
     print("  Platform wallet ready")
     print("=" * 62)
     print(f"  Address       : {wallet.address}")
-    print(f"  Seed          : stored encrypted in .env (PLATFORM_WALLET_SEED_ENCRYPTED)")
+    print("  Seed          : stored encrypted in .env (PLATFORM_WALLET_SEED_ENCRYPTED)")
     print(f"  Issuer        : {issuer}")
     print(f"  Currency      : {CURRENCY_HEX}")
     print(f"  Trust limit   : {TRUST_LIMIT}")
@@ -192,21 +211,20 @@ def print_wallet_summary(wallet: Wallet, issuer: str, tx_hash: str, balance: str
 
 
 def main() -> None:
-    client = JsonRpcClient(XRPL_TESTNET_URL) # get the testnet client
+    client = JsonRpcClient(XRPL_TESTNET_URL)  # get the testnet client
     issuer = ISSUER
 
     # 1. Create a wallet using the Testnet faucet
     wallet = create_platform_wallet(client)
     print(f"\n    Wallet address: {wallet.address}")
-    
+
     # 2. Look up info about the wallet's account
     get_account_info(client, wallet.address)
-    
+
     # 3. Establish a trust line to the issuer UCTUSD
     print(f"\nOpening UCTUSD trust line (limit {TRUST_LIMIT})...")
     tx_hash = create_trust_line(client, wallet, CURRENCY_HEX, issuer, TRUST_LIMIT)
     print(f"  ok  {tx_hash}")
-
 
     balance = uctusd_balance(client, wallet.address, issuer)
 
