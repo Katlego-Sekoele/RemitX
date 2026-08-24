@@ -111,3 +111,24 @@ variable "custom_domain_tls_validation" {
     error_message = "custom_domain_tls_validation must be CNAME or HTTP."
   }
 }
+
+variable "scale_schedule" {
+  description = <<-EOT
+    Optional cron window during which the app runs; zero replicas outside it.
+
+    Implemented as a KEDA cron scale rule. Defining it replaces the implicit
+    HTTP/TCP scale rule, so outside the window nothing wakes the app — not even
+    an inbound connection. Requires min_replicas = 0.
+
+    `start`/`end` are 5-field cron expressions read in `timezone` (an IANA
+    name, e.g. Africa/Johannesburg). The window may wrap midnight.
+  EOT
+
+  type = object({
+    timezone         = string
+    start            = string
+    end              = string
+    desired_replicas = number
+  })
+  default = null
+}

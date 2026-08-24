@@ -110,6 +110,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 | Setting | QA value |
 |---------|----------|
 | `api_min_replicas` | `0` (API scales to zero) |
+| `scale_schedule` | Redis + worker run `20:00`–`02:00` SAST only; zero replicas otherwise |
 | `swa_location` | `eastus2` (SWA not in `spaincentral`; change if region is ineligible) |
 | Custom domains | Usually empty — default Azure URLs |
 | Resource group | `remitx-qa-rg` |
@@ -175,7 +176,8 @@ Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys,
 
 | Setting | Prod value |
 |---------|------------|
-| `api_min_replicas` | `1` (API always on) |
+| `api_min_replicas` | `0` (API scales to zero, same as QA) |
+| `scale_schedule` | Unset — Redis and the worker run 24/7 |
 | Custom domains | Set `api_custom_domain` and `swa_custom_domain` in `non-secret.tfvars` |
 | Resource group | `remitx-prod-rg` |
 | Subscription budget | Optional `enable_subscription_budget = true` in prod tfvars |
@@ -237,6 +239,31 @@ Per-dollar Azure billing alerts fire on **Actual** spend at each whole dollar up
 - Neon and Clerk costs are **not** included in Azure budgets.
 
 Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `2026-08-01T00:00:00Z`).
+
+## Cost
+
+Container Apps bills **idle** replicas, not just busy ones, so anything with a
+replica floor above zero costs money around the clock. At the QA sizing
+(0.25 vCPU / 0.5 GiB) one always-on replica runs roughly **$0.32/day** once the
+monthly free grant is spent — memory is over half of that, and 0.25 vCPU /
+0.5 GiB is already the consumption-plan floor, so the only lever is *time*.
+
+The free grant (180,000 vCPU-seconds + 360,000 GiB-seconds + 2M requests) is
+**per subscription per month**, not per environment. QA and Prod share it, and
+two always-on replicas exhaust it in about four days.
+
+That is what `scale_schedule` is for. It puts a KEDA `cron` rule on Redis and
+the worker so they hold at zero outside the window. The catch is that the cron
+rule *replaces* the implicit HTTP/TCP scale rule: while the window is closed
+nothing can wake those apps. The API still answers (it scales on requests), but
+Redis is unreachable, so enqueuing settlement work fails until the window
+opens. Treat a scheduled environment as genuinely offline, not merely idle.
+
+Region matters too — `spaincentral` is a premium-tier region for Container
+Apps, about 25–30% above `southafricanorth`, `northeurope`, `swedencentral`,
+and `eastus` on every vCPU and memory meter.
+
+---
 
 ## Container image tags
 

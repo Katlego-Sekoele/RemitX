@@ -55,6 +55,23 @@ resource "azurerm_container_app" "this" {
     min_replicas = var.min_replicas
     max_replicas = var.max_replicas
 
+    # Off-hours shutdown. This is the app's only scale rule when set, which
+    # replaces the implicit HTTP/TCP one: outside the window the app holds at
+    # zero and no inbound connection can wake it.
+    dynamic "custom_scale_rule" {
+      for_each = var.scale_schedule != null ? [var.scale_schedule] : []
+      content {
+        name             = "schedule"
+        custom_rule_type = "cron"
+        metadata = {
+          timezone        = custom_scale_rule.value.timezone
+          start           = custom_scale_rule.value.start
+          end             = custom_scale_rule.value.end
+          desiredReplicas = tostring(custom_scale_rule.value.desired_replicas)
+        }
+      }
+    }
+
     container {
       name    = var.name
       image   = var.image
@@ -84,6 +101,16 @@ resource "azurerm_container_app" "this" {
   lifecycle {
     # CI deploy workflows update the image tag after initial provisioning.
     ignore_changes = [secret, template[0].container[0].image]
+
+    precondition {
+      condition     = var.scale_schedule == null || var.min_replicas == 0
+      error_message = "scale_schedule requires min_replicas = 0, or the floor keeps the app running straight through the off-window."
+    }
+
+    precondition {
+      condition     = var.scale_schedule == null || var.max_replicas >= var.scale_schedule.desired_replicas
+      error_message = "max_replicas must be at least scale_schedule.desired_replicas, or the schedule cannot reach its target."
+    }
   }
 }
 

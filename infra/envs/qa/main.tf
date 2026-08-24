@@ -44,10 +44,13 @@ module "redis" {
   ingress_internal    = true
   ingress_transport   = "tcp"
   ingress_target_port = 6379
-  min_replicas        = 1
-  max_replicas        = 1
-  cpu                 = 0.25
-  memory              = "0.5Gi"
+  # Zero outside var.scale_schedule's window; see the variable's description
+  # for what that costs you in reachability.
+  min_replicas   = var.scale_schedule != null ? 0 : 1
+  max_replicas   = 1
+  cpu            = 0.25
+  memory         = "0.5Gi"
+  scale_schedule = var.scale_schedule
 }
 
 module "key_vault" {
@@ -113,10 +116,11 @@ module "worker" {
   container_app_environment_id = module.container_apps_env.id
   image                        = local.bootstrap_image
   ingress_external             = false
-  min_replicas                 = 1
+  min_replicas                 = var.scale_schedule != null ? 0 : 1
   max_replicas                 = 1
   cpu                          = 0.25
   memory                       = "0.5Gi"
+  scale_schedule               = var.scale_schedule
   key_vault_id                 = module.key_vault.id
   secrets                      = local.container_app_secrets
   env_vars                     = local.container_app_env_vars
