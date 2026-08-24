@@ -1,5 +1,5 @@
-environment = "prod"
-location    = "spaincentral"
+environment  = "prod"
+location     = "spaincentral"
 swa_location = "eastus2"
 tags = {
   project     = "remitx"
@@ -15,3 +15,12 @@ swa_custom_domain = "remitx.tech"
 
 # Container image registry path (GitHub owner/repo). Pipelines set TF_VAR_ghcr_org in CI.
 ghcr_org = "katlego-sekoele/remitx"
+
+# Prod runs redis and the worker 24/7. Uncomment to give it QA's off-hours
+# shutdown — settlement cannot be enqueued while the window is closed.
+# scale_schedule = {
+#   timezone         = "Africa/Johannesburg"
+#   start            = "0 20 * * *"
+#   end              = "0 2 * * *"
+#   desired_replicas = 1
+# }
