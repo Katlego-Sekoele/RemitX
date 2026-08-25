@@ -23,3 +23,8 @@ output "static_web_app_deployment_token" {
   value       = module.static_web_app.api_key
   sensitive   = true
 }
+
+output "cost_killswitch_webhook_expiry" {
+  description = "Renew (bump webhook_expiry in the budget_killswitch module call and re-apply) before this date or the killswitch stops firing silently. Null when enable_cost_killswitch = false."
+  value       = var.enable_cost_killswitch ? module.budget_killswitch[0].webhook_expiry : null
+}

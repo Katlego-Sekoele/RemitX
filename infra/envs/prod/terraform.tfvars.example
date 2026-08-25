@@ -11,6 +11,12 @@ budget_start_date  = "2026-08-01T00:00:00Z"
 
 api_min_replicas = 1
 
+# Auto-shutdown (scale api/redis/worker to 0/0) once actual monthly spend
+# hits monthly_budget_cap — delayed up to ~24h behind actual spend, not
+# instant. This causes real downtime for live users when it fires. Set
+# false for alert-only budgets.
+enable_cost_killswitch = true
+
 # Production custom domains — create DNS records from terraform output after apply
 api_custom_domain = "api.example.com"
 swa_custom_domain = "example.com"

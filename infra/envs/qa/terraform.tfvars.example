@@ -11,6 +11,11 @@ budget_start_date  = "2026-08-01T00:00:00Z"
 
 api_min_replicas = 0
 
+# Auto-shutdown (scale api/redis/worker to 0/0) once actual monthly spend
+# hits monthly_budget_cap — delayed up to ~24h behind actual spend, not
+# instant. Set false for alert-only budgets.
+enable_cost_killswitch = true
+
 # GHCR image path — must match github.repository (owner/repo) used in deploy workflows
 ghcr_org = "org/remitx"
 

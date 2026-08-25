@@ -85,6 +85,12 @@ variable "swa_custom_domain" {
   description = "Optional frontend custom domain (e.g. example.com); wired in a later task"
 }
 
+variable "enable_cost_killswitch" {
+  type        = bool
+  default     = true
+  description = "Auto-shutdown (scale api/redis/worker to 0/0) once actual monthly spend hits monthly_budget_cap. Delayed up to ~24h behind actual spend (Azure budget evaluation lag), not instant. Set false to fall back to alert-only budgets."
+}
+
 variable "scale_schedule" {
   description = <<-EOT
     Off-hours shutdown for the two apps that would otherwise run 24/7 (redis,

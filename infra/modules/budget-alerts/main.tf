@@ -33,7 +33,13 @@ resource "azurerm_consumption_budget_resource_group" "segment" {
       operator       = "GreaterThanOrEqualTo"
       threshold_type = "Actual"
       contact_emails = var.alert_emails
-      contact_groups = [azurerm_monitor_action_group.billing.id]
+      # Only the notification for the full cap (not each intermediate
+      # per-dollar threshold) also pages the killswitch, so a $1 alert
+      # doesn't shut anything down.
+      contact_groups = compact([
+        azurerm_monitor_action_group.billing.id,
+        notification.value == local.cap ? var.killswitch_action_group_id : null,
+      ])
     }
   }
 }

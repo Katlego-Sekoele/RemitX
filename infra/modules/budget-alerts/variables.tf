@@ -17,3 +17,9 @@ variable "enable_subscription_budget" {
   default     = false
   description = "Enable subscription-wide segment budgets. Set true in prod only (once per subscription)."
 }
+
+variable "killswitch_action_group_id" {
+  type        = string
+  default     = null
+  description = "Action group ID to notify only once actual spend hits the full monthly_budget_cap (not the intermediate per-dollar thresholds). Wire in infra/modules/budget-killswitch's action_group_id output to auto-shutdown on overspend; leave null for alert-only budgets."
+}

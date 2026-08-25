@@ -240,6 +240,36 @@ Per-dollar Azure billing alerts fire on **Actual** spend at each whole dollar up
 
 Set `budget_start_date` to the first day of the current month in ISO8601 (e.g. `2026-08-01T00:00:00Z`).
 
+## Hard cost cap (auto-shutdown)
+
+`enable_cost_killswitch` (default `true` in both environments) wires an
+Azure Automation runbook into the budget's **final** notification only — the
+one at 100% of `monthly_budget_cap`, not the intermediate per-dollar alerts.
+When it fires, the runbook (`infra/modules/budget-killswitch`) scales
+`api`, `redis`, and `worker` to 0/0 replicas so nothing keeps billing.
+
+Two things to know before relying on it:
+
+- **It's a delayed circuit breaker, not an instant one.** Azure evaluates
+  "Actual" budget thresholds on a lag of up to ~24h, so some spend past the
+  cap is possible before this fires. There is no Azure mechanism for a truly
+  real-time hard stop on consumption billing.
+- **It's a real outage when it fires**, prod included. Set
+  `enable_cost_killswitch = false` in `non-secret.tfvars` for an environment
+  where you'd rather eat the overage than drop live traffic.
+
+**Recovery** after it fires: raise `monthly_budget_cap`, wait for the next
+month, or manually run `az containerapp update --min-replicas X
+--max-replicas Y` on each app — the next `terraform apply` also restores the
+configured replica counts (Terraform state still has the real values; the
+runbook changes are out-of-band and get reconciled on next apply).
+
+The Automation webhook the budget alert calls has a fixed expiry
+(`webhook_expiry`, default several years out) — Azure webhooks can't
+auto-renew. Bump it and re-apply before it lapses, or the killswitch stops
+firing silently. `terraform output cost_killswitch_webhook_expiry` shows the
+current expiry.
+
 ## Cost
 
 Container Apps bills **idle** replicas, not just busy ones, so anything with a

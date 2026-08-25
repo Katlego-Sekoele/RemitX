@@ -7,15 +7,33 @@ module "resource_group" {
 
 data "azurerm_subscription" "current" {}
 
-module "budget_alerts" {
-  source              = "../../modules/budget-alerts"
+module "budget_killswitch" {
+  count  = var.enable_cost_killswitch ? 1 : 0
+  source = "../../modules/budget-killswitch"
+
   name_prefix         = "remitx-${var.environment}"
   resource_group_name = module.resource_group.name
   resource_group_id   = module.resource_group.id
-  subscription_id     = data.azurerm_subscription.current.id
-  alert_emails        = var.alert_emails
-  monthly_budget_cap  = var.monthly_budget_cap
-  budget_start_date   = var.budget_start_date
+  location            = module.resource_group.location
+  subscription_id     = data.azurerm_subscription.current.subscription_id
+
+  container_app_names = [
+    "remitx-${var.environment}-api",
+    "remitx-${var.environment}-redis",
+    "remitx-${var.environment}-worker",
+  ]
+}
+
+module "budget_alerts" {
+  source                      = "../../modules/budget-alerts"
+  name_prefix                 = "remitx-${var.environment}"
+  resource_group_name         = module.resource_group.name
+  resource_group_id           = module.resource_group.id
+  subscription_id             = data.azurerm_subscription.current.id
+  alert_emails                = var.alert_emails
+  monthly_budget_cap          = var.monthly_budget_cap
+  budget_start_date           = var.budget_start_date
+  killswitch_action_group_id  = var.enable_cost_killswitch ? module.budget_killswitch[0].action_group_id : null
 }
 
 module "application_insights" {
