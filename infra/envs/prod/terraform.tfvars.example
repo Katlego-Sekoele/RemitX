@@ -9,7 +9,7 @@ alert_emails       = ["team@example.com"]
 monthly_budget_cap = 20
 budget_start_date  = "2026-08-01T00:00:00Z"
 
-api_min_replicas = 1
+api_min_replicas = 0
 
 # Production custom domains — create DNS records from terraform output after apply
 api_custom_domain = "api.example.com"
@@ -20,16 +20,6 @@ ghcr_org = "org/remitx"
 
 # Static Web Apps region (must be one of: centralus, eastus2, westus2, westeurope, eastasia)
 swa_location = "eastus2"
-
-# Off-hours shutdown for redis + worker (the API already scales to zero).
-# Omit to run them 24/7. While the window is closed nothing can wake them, so
-# settlement cannot be enqueued.
-scale_schedule = {
-  timezone         = "Africa/Johannesburg"
-  start            = "0 20 * * *"
-  end              = "0 2 * * *"
-  desired_replicas = 1
-}
 
 # Sensitive values are NOT set in committed tfvars. Pass at apply time:
 #   TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
