@@ -84,29 +84,3 @@ variable "swa_custom_domain" {
   default     = ""
   description = "Optional frontend custom domain (e.g. example.com); wired in a later task"
 }
-
-variable "scale_schedule" {
-  description = <<-EOT
-    Off-hours shutdown for the two apps that would otherwise run 24/7 (redis,
-    worker). Null runs them continuously.
-
-    Container Apps bills idle replicas, so an always-on 0.25 vCPU / 0.5 GiB
-    replica costs real money doing nothing; these two were 96% of the QA bill.
-
-    Outside the window the environment is genuinely down, not just cheap: the
-    API still wakes on HTTP because it scales on requests, but Redis is
-    unreachable, so anything that enqueues settlement work fails until the
-    window opens.
-
-    `start`/`end` are 5-field cron expressions read in `timezone`; the window
-    may wrap midnight.
-  EOT
-
-  type = object({
-    timezone         = string
-    start            = string
-    end              = string
-    desired_replicas = number
-  })
-  default = null
-}

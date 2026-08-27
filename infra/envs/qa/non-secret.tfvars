@@ -16,11 +16,6 @@ swa_custom_domain = "qa.remitx.tech"
 # Container image registry path (GitHub owner/repo). Pipelines set TF_VAR_ghcr_org in CI.
 ghcr_org = "katlego-sekoele/remitx"
 
-# Redis and the Celery worker run 20:00–02:00 SAST only; zero replicas for the
-# other 18 hours. The API is untouched — it already scales to zero on its own.
-scale_schedule = {
-  timezone         = "Africa/Johannesburg"
-  start            = "0 20 * * *"
-  end              = "0 2 * * *"
-  desired_replicas = 1
-}
+# API, Redis, and the Celery worker all sit at zero replicas by default.
+# Scale one up manually when you need it:
+#   az containerapp update --name remitx-qa-<app> --resource-group remitx-qa-rg --min-replicas 1

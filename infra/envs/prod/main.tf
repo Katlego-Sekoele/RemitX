@@ -45,13 +45,12 @@ module "redis" {
   ingress_internal    = true
   ingress_transport   = "tcp"
   ingress_target_port = 6379
-  # Zero outside var.scale_schedule's window; see the variable's description
-  # for what that costs you in reachability.
-  min_replicas   = var.scale_schedule != null ? 0 : 1
-  max_replicas   = 1
-  cpu            = 0.25
-  memory         = "0.5Gi"
-  scale_schedule = var.scale_schedule
+  # Always zero — scale up manually (az containerapp update --min-replicas)
+  # when you need it; nothing brings it up on a schedule or on demand.
+  min_replicas = 0
+  max_replicas = 1
+  cpu          = 0.25
+  memory       = "0.5Gi"
 }
 
 module "key_vault" {
@@ -117,14 +116,15 @@ module "worker" {
   container_app_environment_id = module.container_apps_env.id
   image                        = local.bootstrap_image
   ingress_external             = false
-  min_replicas                 = var.scale_schedule != null ? 0 : 1
-  max_replicas                 = 1
-  cpu                          = 0.25
-  memory                       = "0.5Gi"
-  scale_schedule               = var.scale_schedule
-  key_vault_id                 = module.key_vault.id
-  secrets                      = local.container_app_secrets
-  env_vars                     = local.container_app_env_vars
+  # Always zero — scale up manually (az containerapp update --min-replicas)
+  # when you need it; nothing brings it up on a schedule or on demand.
+  min_replicas = 0
+  max_replicas = 1
+  cpu          = 0.25
+  memory       = "0.5Gi"
+  key_vault_id = module.key_vault.id
+  secrets      = local.container_app_secrets
+  env_vars     = local.container_app_env_vars
 }
 
 module "static_web_app" {

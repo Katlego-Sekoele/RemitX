@@ -21,16 +21,6 @@ swa_location = "eastus2"
 # api_custom_domain = ""
 # swa_custom_domain = ""
 
-# Off-hours shutdown for redis + worker (the API already scales to zero).
-# Omit to run them 24/7. While the window is closed nothing can wake them, so
-# settlement cannot be enqueued.
-scale_schedule = {
-  timezone         = "Africa/Johannesburg"
-  start            = "0 20 * * *"
-  end              = "0 2 * * *"
-  desired_replicas = 1
-}
-
 # Sensitive values are NOT set in committed tfvars. Pass at apply time:
 #   TF_VAR_database_url='postgresql+psycopg2://REDACTED:REDACTED@REDACTED.neon.tech/neondb?sslmode=require'
 #   TF_VAR_clerk_secret_key='...'

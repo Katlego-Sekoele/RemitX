@@ -110,7 +110,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 | Setting | QA value |
 |---------|----------|
 | `api_min_replicas` | `0` (API scales to zero) |
-| `scale_schedule` | Redis + worker run `20:00`–`02:00` SAST only; zero replicas otherwise |
+| Redis + worker | `min_replicas = 0` always — scale up manually when needed |
 | `swa_location` | `eastus2` (SWA not in `spaincentral`; change if region is ineligible) |
 | Custom domains | Usually empty — default Azure URLs |
 | Resource group | `remitx-qa-rg` |
@@ -177,7 +177,7 @@ Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys,
 | Setting | Prod value |
 |---------|------------|
 | `api_min_replicas` | `0` (API scales to zero, same as QA) |
-| `scale_schedule` | Unset — Redis and the worker run 24/7 |
+| Redis + worker | `min_replicas = 0` always — scale up manually when needed |
 | Custom domains | Set `api_custom_domain` and `swa_custom_domain` in `non-secret.tfvars` |
 | Resource group | `remitx-prod-rg` |
 | Subscription budget | Optional `enable_subscription_budget = true` in prod tfvars |
@@ -252,12 +252,17 @@ The free grant (180,000 vCPU-seconds + 360,000 GiB-seconds + 2M requests) is
 **per subscription per month**, not per environment. QA and Prod share it, and
 two always-on replicas exhaust it in about four days.
 
-That is what `scale_schedule` is for. It puts a KEDA `cron` rule on Redis and
-the worker so they hold at zero outside the window. The catch is that the cron
-rule *replaces* the implicit HTTP/TCP scale rule: while the window is closed
-nothing can wake those apps. The API still answers (it scales on requests), but
-Redis is unreachable, so enqueuing settlement work fails until the window
-opens. Treat a scheduled environment as genuinely offline, not merely idle.
+API, Redis, and the worker all run at `min_replicas = 0` in both environments.
+The API wakes itself on inbound HTTP requests since it scales on requests, but
+Redis and the worker have no implicit wake trigger at zero, so treat both
+environments as genuinely offline by default, not merely idle. Scale a
+container app up manually when you need it:
+
+```bash
+az containerapp update --name remitx-<env>-<app> --resource-group remitx-<env>-rg --min-replicas 1
+```
+
+Scale it back to zero the same way once you're done, or it keeps billing.
 
 Region matters too — `spaincentral` is a premium-tier region for Container
 Apps, about 25–30% above `southafricanorth`, `northeurope`, `swedencentral`,
