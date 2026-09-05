@@ -11,6 +11,11 @@ budget_start_date  = "2026-08-01T00:00:00Z"
 
 api_min_replicas = 0
 
+# Park the environment at zero cost without destroying it: API, Redis, and the
+# worker hold at zero replicas with no wake-up path, and Log Analytics gets a
+# daily ingestion cap. Set back to false and apply to bring it up.
+paused = false
+
 # GHCR image path — must match github.repository (owner/repo) used in deploy workflows
 ghcr_org = "org/remitx"
 

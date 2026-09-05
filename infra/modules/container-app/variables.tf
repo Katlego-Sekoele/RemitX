@@ -112,6 +112,28 @@ variable "custom_domain_tls_validation" {
   }
 }
 
+variable "paused" {
+  description = <<-EOT
+    Park the app at zero replicas and keep it there.
+
+    Container Apps bills replica time rather than requests, so scaling to zero
+    only helps while nothing wakes the app — and anything with external ingress
+    is woken by whatever crawler finds its hostname. Pausing pins min_replicas
+    to 0 and attaches a cron scale rule whose window is shut all but five
+    minutes a year. That rule replaces the implicit HTTP/TCP rule, so inbound
+    traffic stops scaling the app up at all.
+
+    Ingress, custom domains, and managed certificates stay in place, so
+    unpausing is a flag flip rather than a re-provision. While paused the
+    hostname answers with a Container Apps error instead of the app.
+
+    Mutually exclusive with scale_schedule — both drive the same scale rule.
+  EOT
+
+  type    = bool
+  default = false
+}
+
 variable "scale_schedule" {
   description = <<-EOT
     Optional cron window during which the app runs; zero replicas outside it.

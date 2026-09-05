@@ -16,6 +16,12 @@ swa_custom_domain = "qa.remitx.tech"
 # Container image registry path (GitHub owner/repo). Pipelines set TF_VAR_ghcr_org in CI.
 ghcr_org = "katlego-sekoele/remitx"
 
-# API, Redis, and the Celery worker all sit at zero replicas by default.
-# Scale one up manually when you need it:
+# Parked to stop Azure spend. The API, Redis, and the Celery worker hold at zero
+# replicas with nothing left that can wake them, not even a request to the API's
+# public hostname. Nothing is destroyed and no data is lost, but the environment
+# is off rather than idle: the API answers with a Container Apps error.
+#
+# Unpause with `paused = false` here, then apply. To bring a single app up for a
+# one-off look without unpausing — it lasts only until the next apply:
 #   az containerapp update --name remitx-qa-<app> --resource-group remitx-qa-rg --min-replicas 1
+paused = true
