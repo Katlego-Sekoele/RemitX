@@ -111,6 +111,7 @@ See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full bootstrap checklist
 |---------|----------|
 | `api_min_replicas` | `0` (API scales to zero) |
 | Redis + worker | `min_replicas = 0` always — scale up manually when needed |
+| `paused` | `true` — the environment is parked; see [Pausing an environment](#pausing-an-environment) |
 | `swa_location` | `eastus2` (SWA not in `spaincentral`; change if region is ineligible) |
 | Custom domains | Usually empty — default Azure URLs |
 | Resource group | `remitx-qa-rg` |
@@ -178,6 +179,7 @@ Set up **after QA is working**. Prod uses separate Neon credentials, Clerk keys,
 |---------|------------|
 | `api_min_replicas` | `0` (API scales to zero, same as QA) |
 | Redis + worker | `min_replicas = 0` always — scale up manually when needed |
+| `paused` | `true` — the environment is parked; see [Pausing an environment](#pausing-an-environment) |
 | Custom domains | Set `api_custom_domain` and `swa_custom_domain` in `non-secret.tfvars` |
 | Resource group | `remitx-prod-rg` |
 | Subscription budget | Optional `enable_subscription_budget = true` in prod tfvars |
@@ -253,16 +255,80 @@ The free grant (180,000 vCPU-seconds + 360,000 GiB-seconds + 2M requests) is
 two always-on replicas exhaust it in about four days.
 
 API, Redis, and the worker all run at `min_replicas = 0` in both environments.
-The API wakes itself on inbound HTTP requests since it scales on requests, but
-Redis and the worker have no implicit wake trigger at zero, so treat both
-environments as genuinely offline by default, not merely idle. Scale a
-container app up manually when you need it:
+Redis and the worker have no wake trigger at zero, so treat both environments
+as genuinely offline by default, not merely idle. Scale a container app up
+manually when you need it:
 
 ```bash
 az containerapp update --name remitx-<env>-<app> --resource-group remitx-<env>-rg --min-replicas 1
 ```
 
 Scale it back to zero the same way once you're done, or it keeps billing.
+
+A replica floor of zero is not the same as zero spend, though. The API scales
+on requests, so anything that reaches its public hostname — a crawler, a
+scanner, a stale bookmark — starts a replica and bills the cooldown after it.
+And Log Analytics bills per GB ingested whether or not a single replica is up.
+Those are the two meters [pausing](#pausing-an-environment) closes.
+
+## Pausing an environment
+
+`paused = true` in an environment's `non-secret.tfvars` parks the whole stack
+without destroying any of it:
+
+- The API, Redis, and the worker hold at zero replicas behind a cron scale
+  rule whose window is shut. That rule replaces the implicit HTTP/TCP rule, so
+  inbound traffic no longer wakes the API either.
+- Log Analytics gets a 0.1 GB daily ingestion cap, as a backstop rather than a
+  target — a parked environment ingests a few MB a day. Ingestion stops for
+  the rest of the UTC day once the cap is hit, and that data is dropped, not
+  queued.
+- `deploy.yml` skips the API and worker rollout. Terraform still applies, which
+  is how an environment gets paused and unpaused; what waits is shipping an
+  image to an app that will never start a replica to health-check it.
+
+Nothing is torn down. Ingress, custom domains, managed TLS certificates, Key
+Vault secrets, and the Neon database are all untouched, so unpausing is a flag
+flip rather than a re-provision — no DNS to redo, no certificate to re-issue.
+
+**A paused environment is off, not slow.** The Static Web App keeps serving the
+frontend (it is on the Free SKU and costs nothing either way), but every API
+call from it fails, and the API hostname answers with a Container Apps error
+rather than a cold start. `az containerapp update --min-replicas 1` still forces
+a single app up for a one-off look, but the next apply puts it back to zero.
+
+Unpause:
+
+```bash
+# infra/envs/<env>/non-secret.tfvars
+paused = false
+```
+
+```bash
+cd infra/envs/<env>
+terraform apply -var-file=non-secret.tfvars
+```
+
+Then push a change under `api/**` (or re-run `deploy.yml`) so the API and worker
+get a current image on a revision that actually starts.
+
+Check the current state with `terraform output paused`.
+
+### What still bills while paused
+
+Close to nothing, but not exactly nothing:
+
+| Resource | Paused cost |
+|----------|-------------|
+| Container Apps (API, Redis, worker) | Zero replicas, no wake path — the cron window opens for five minutes a year, which is ~75 vCPU-seconds against a 180,000-second monthly grant |
+| Container Apps environment | No idle charge on the consumption profile |
+| Log Analytics / Application Insights | Per GB ingested, capped at 0.1 GB/day |
+| Key Vault | Per operation; nothing is running to read a secret |
+| Static Web Apps | Free SKU |
+| Budgets and alerts | Free |
+| `remitxtfstate` storage account | Cents a month, and outside Terraform — pausing cannot touch the state backend it runs on |
+
+Neon and Clerk bill separately and are not affected by this flag.
 
 Region matters too — `spaincentral` is a premium-tier region for Container
 Apps, about 25–30% above `southafricanorth`, `northeurope`, `swedencentral`,

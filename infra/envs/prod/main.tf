@@ -24,6 +24,10 @@ module "application_insights" {
   name                = "remitx-${var.environment}-ai"
   resource_group_name = module.resource_group.name
   location            = module.resource_group.location
+  # Log ingestion is the one charge that survives every replica going to zero,
+  # so a paused environment gets a ceiling. See the module variable for what
+  # hitting it costs you.
+  daily_quota_gb = var.paused ? 0.1 : -1
 }
 
 module "container_apps_env" {
@@ -51,6 +55,7 @@ module "redis" {
   max_replicas = 1
   cpu          = 0.25
   memory       = "0.5Gi"
+  paused       = var.paused
 }
 
 module "key_vault" {
@@ -103,10 +108,13 @@ module "api" {
   max_replicas                 = 3
   cpu                          = 0.25
   memory                       = "0.5Gi"
-  key_vault_id                 = module.key_vault.id
-  secrets                      = local.container_app_secrets
-  env_vars                     = local.container_app_env_vars
-  custom_domain                = var.api_custom_domain
+  # The only app here with public ingress, so the only one a passing crawler
+  # can bill you for. Pausing removes that wake-up path.
+  paused        = var.paused
+  key_vault_id  = module.key_vault.id
+  secrets       = local.container_app_secrets
+  env_vars      = local.container_app_env_vars
+  custom_domain = var.api_custom_domain
 }
 
 module "worker" {
@@ -122,6 +130,7 @@ module "worker" {
   max_replicas = 1
   cpu          = 0.25
   memory       = "0.5Gi"
+  paused       = var.paused
   key_vault_id = module.key_vault.id
   secrets      = local.container_app_secrets
   env_vars     = local.container_app_env_vars

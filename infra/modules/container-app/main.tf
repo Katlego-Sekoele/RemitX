@@ -8,6 +8,27 @@ locals {
     for env_name in keys(var.secrets) :
     env_name => lower(replace(env_name, "_", "-"))
   }
+
+  # KEDA wants a real cron window, so the closest this can get to "never" is a
+  # window that opens for five minutes a year. One 0.25 vCPU replica for those
+  # five minutes is ~75 vCPU-seconds against a 180,000-second monthly grant.
+  paused_scale_schedule = {
+    timezone         = "UTC"
+    start            = "0 0 1 1 *"
+    end              = "5 0 1 1 *"
+    desired_replicas = 1
+  }
+
+  effective_scale_schedule = var.paused ? local.paused_scale_schedule : var.scale_schedule
+  effective_min_replicas   = var.paused ? 0 : var.min_replicas
+
+  # Read null-safely rather than reaching into effective_scale_schedule from
+  # the precondition below. HCL only short-circuits `||` on Terraform 1.11+;
+  # on the older versions required_version still allows, the right-hand side
+  # is evaluated even when the left proves the schedule is null, and every
+  # unscheduled app fails to plan with "attribute from null value". Zero is
+  # the no-schedule case, and max_replicas is never below it.
+  scheduled_desired_replicas = try(local.effective_scale_schedule.desired_replicas, 0)
 }
 
 data "azurerm_client_config" "current" {}
@@ -52,14 +73,14 @@ resource "azurerm_container_app" "this" {
   }
 
   template {
-    min_replicas = var.min_replicas
+    min_replicas = local.effective_min_replicas
     max_replicas = var.max_replicas
 
-    # Off-hours shutdown. This is the app's only scale rule when set, which
-    # replaces the implicit HTTP/TCP one: outside the window the app holds at
-    # zero and no inbound connection can wake it.
+    # Off-hours shutdown, or an indefinite pause. This is the app's only scale
+    # rule when set, which replaces the implicit HTTP/TCP one: outside the
+    # window the app holds at zero and no inbound connection can wake it.
     dynamic "custom_scale_rule" {
-      for_each = var.scale_schedule != null ? [var.scale_schedule] : []
+      for_each = local.effective_scale_schedule != null ? [local.effective_scale_schedule] : []
       content {
         name             = "schedule"
         custom_rule_type = "cron"
@@ -103,12 +124,17 @@ resource "azurerm_container_app" "this" {
     ignore_changes = [secret, template[0].container[0].image]
 
     precondition {
-      condition     = var.scale_schedule == null || var.min_replicas == 0
+      condition     = !(var.paused && var.scale_schedule != null)
+      error_message = "paused and scale_schedule both drive the app's one cron rule; set one or the other."
+    }
+
+    precondition {
+      condition     = local.effective_scale_schedule == null || local.effective_min_replicas == 0
       error_message = "scale_schedule requires min_replicas = 0, or the floor keeps the app running straight through the off-window."
     }
 
     precondition {
-      condition     = var.scale_schedule == null || var.max_replicas >= var.scale_schedule.desired_replicas
+      condition     = var.max_replicas >= local.scheduled_desired_replicas
       error_message = "max_replicas must be at least scale_schedule.desired_replicas, or the schedule cannot reach its target."
     }
   }

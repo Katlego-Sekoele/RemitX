@@ -32,6 +32,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       frontend: ${{ steps.filter.outputs.frontend }}
       deploy_env: ${{ steps.env.outputs.deploy_env }}
+      paused: ${{ steps.paused.outputs.paused }}
       ghcr_repository: ${{ steps.ghcr.outputs.repository }}
       ghcr_owner: ${{ steps.ghcr.outputs.owner }}
     steps:
@@ -68,6 +69,21 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Terraform still applies while an environment is paused — that is how it
+      # gets paused and unpaused. Rolling out an image is what has to wait: a
+      # paused app never starts a replica, so a new revision ships untested.
+      - name: Read the pause flag for the target environment
+        id: paused
+        run: |
+          tfvars="infra/envs/${{ steps.env.outputs.deploy_env }}/non-secret.tfvars"
+          if grep -Eq '^[[:space:]]*paused[[:space:]]*=[[:space:]]*true([[:space:]]|#|$)' "$tfvars"; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::${{ steps.env.outputs.deploy_env }} is paused in $tfvars; skipping the API and worker rollout."
+          else
+            echo "paused=false" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
 
       - name: Normalize GHCR repository name (must be lowercase)
         id: ghcr
@@ -168,6 +184,7 @@ jobs:
       github.event_name == 'push' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
+      needs.changes.outputs.paused != 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
@@ -228,6 +245,7 @@ jobs:
       github.event_name == 'push' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
+      needs.changes.outputs.paused != 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
