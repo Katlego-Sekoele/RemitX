@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 class ClerkClaims:
     clerk_user_id: str
     email: str | None
+    first_name: str | None = None
 
 
 def _unauthorized() -> HTTPException:
@@ -100,6 +101,9 @@ def verify_request(request: Request, config: Config) -> ClerkClaims:
         # Absent from Clerk's default session token. Present only if someone
         # adds a JWT template claim; fetch_user_email is the reliable path.
         email=payload.get("email"),
+        # Same story as email: not a default claim, so fetch_user_first_name
+        # is the reliable path when this comes back None.
+        first_name=payload.get("first_name"),
     )
 
 
@@ -130,6 +134,30 @@ def fetch_user_email(clerk_user_id: str, config: Config) -> str | None:
         # or the full exception, which could carry response bodies/headers.
         logger.warning(
             "fetch_user_email failed for clerk_user_id=%s: %s",
+            clerk_user_id,
+            type(exc).__name__,
+        )
+        return None
+
+
+def fetch_user_first_name(clerk_user_id: str, config: Config) -> str | None:
+    """Look up a user's first name via Clerk's Backend API.
+
+    Called only when provisioning a new local row (to build `User.reference`
+    — Transaction_Flow_Context.md Phase A), never on the hot path.
+
+    Returns None rather than raising: a profile lookup failing is not a
+    reason to reject an otherwise valid session — `UserRepository.next_reference`
+    falls back to a generic base when no name is available.
+    """
+    sdk = _sdk(config.CLERK_SECRET_KEY)
+    try:
+        user = sdk.users.get(user_id=clerk_user_id)
+        return getattr(user, "first_name", None)
+    except Exception as exc:
+        # Deliberately broad — see fetch_user_email's identical rationale.
+        logger.warning(
+            "fetch_user_first_name failed for clerk_user_id=%s: %s",
             clerk_user_id,
             type(exc).__name__,
         )

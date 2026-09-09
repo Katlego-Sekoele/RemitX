@@ -12,11 +12,35 @@ def test_get_by_clerk_id_returns_none_when_absent(app_context):
 
 
 def test_first_call_inserts_the_user(app_context):
-    user = UserController().ensure_provisioned("user_new", lambda: "new@example.com")
+    user = UserController().ensure_provisioned(
+        "user_new", lambda: "new@example.com", lambda: "Sian"
+    )
 
     assert user.clerk_user_id == "user_new"
     assert user.email == "new@example.com"
+    assert user.first_name == "Sian"
+    assert user.reference == "sian1"
     assert UserRepository().get_by_clerk_id("user_new") is not None
+
+
+def test_reference_disambiguates_same_first_name(app_context):
+    first = UserController().ensure_provisioned(
+        "user_sian_a", lambda: "a@example.com", lambda: "Sian"
+    )
+    second = UserController().ensure_provisioned(
+        "user_sian_b", lambda: "b@example.com", lambda: "Sian"
+    )
+
+    assert first.reference == "sian1"
+    assert second.reference == "sian2"
+
+
+def test_reference_falls_back_when_no_first_name(app_context):
+    user = UserController().ensure_provisioned(
+        "user_noname", lambda: "noname@example.com", lambda: None
+    )
+
+    assert user.reference == "user1"
 
 
 def test_email_resolver_runs_only_on_insert(app_context):
@@ -28,16 +52,20 @@ def test_email_resolver_runs_only_on_insert(app_context):
         return "once@example.com"
 
     controller = UserController()
-    controller.ensure_provisioned("user_once", resolve)
-    controller.ensure_provisioned("user_once", resolve)
+    controller.ensure_provisioned("user_once", resolve, lambda: "Once")
+    controller.ensure_provisioned("user_once", resolve, lambda: "Once")
 
     assert calls["n"] == 1
 
 
 def test_repeat_call_is_idempotent(app_context):
     controller = UserController()
-    first = controller.ensure_provisioned("user_same", lambda: "same@example.com")
-    second = controller.ensure_provisioned("user_same", lambda: "same@example.com")
+    first = controller.ensure_provisioned(
+        "user_same", lambda: "same@example.com", lambda: "Same"
+    )
+    second = controller.ensure_provisioned(
+        "user_same", lambda: "same@example.com", lambda: "Same"
+    )
 
     assert first.id == second.id
     rows = db.session.scalars(
@@ -61,7 +89,9 @@ def test_lost_insert_race_returns_the_winning_row(app_context, monkeypatch):
     see the real, already-committed winner row.
     """
     controller = UserController()
-    winner = controller.ensure_provisioned("user_race", lambda: "race@example.com")
+    winner = controller.ensure_provisioned(
+        "user_race", lambda: "race@example.com", lambda: "Race"
+    )
 
     original_get_by_clerk_id = UserRepository.get_by_clerk_id
     lookups = {"n": 0}
@@ -78,7 +108,9 @@ def test_lost_insert_race_returns_the_winning_row(app_context, monkeypatch):
     monkeypatch.setattr(UserRepository, "get_by_clerk_id", racy_lookup)
     monkeypatch.setattr(UserRepository, "save", failing_save)
 
-    loser = UserController().ensure_provisioned("user_race", lambda: "race@example.com")
+    loser = UserController().ensure_provisioned(
+        "user_race", lambda: "race@example.com", lambda: "Race"
+    )
     assert loser.id == winner.id
     # Confirms the except branch actually ran: one miss (the loser's initial
     # check) plus one hit (the post-rollback re-fetch that found the winner).
@@ -94,4 +126,4 @@ def test_race_reraises_when_no_row_appears(app_context, monkeypatch):
     monkeypatch.setattr(UserRepository, "save", always_fails)
 
     with pytest.raises(IntegrityError):
-        UserController().ensure_provisioned("user_broken", lambda: None)
+        UserController().ensure_provisioned("user_broken", lambda: None, lambda: None)
