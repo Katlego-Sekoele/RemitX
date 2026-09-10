@@ -21,6 +21,8 @@ def current_user():
         id=uuid.uuid4(),
         clerk_user_id="user_test",
         email="test@example.com",
+        first_name="Test",
+        base_reference="test1",
     )
 
 
