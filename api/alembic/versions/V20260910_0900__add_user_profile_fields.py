@@ -2,10 +2,17 @@
 
 Adds `first_name`, `base_reference`, `role`, and `kyc_status` to `users`.
 
-`base_reference` (e.g. "sian1") is a user's permanent, disambiguated name —
-not itself an EFT-matchable reference; each of the user's currency accounts
-builds its own reference by appending a currency suffix to it, once the
-accounts model lands. `role`/`kyc_status` gate admin actions and KYC status.
+Supersedes the deleted V20260908_1859__add_user_reference.py — that
+migration added `first_name`/`reference`; `reference` has since moved to
+`accounts` (Transaction_Flow_Context.md §1, per an account-per-currency
+model). `base_reference` (e.g. "sian1") replaces it here: the shared prefix
+every one of a user's account references is built from, but not itself an
+EFT-matchable reference — see models/orm/user.py.
+
+`role`/`kyc_status` were already on the ORM model (added for
+Transaction_Flow_Context.md's admin/KYC gating) but were never actually
+migrated — folding that fix in here since this exact spot in the chain is
+already being touched.
 
 Revision ID: a1c5e08f3d67
 Revises: cb7d0365d3f7

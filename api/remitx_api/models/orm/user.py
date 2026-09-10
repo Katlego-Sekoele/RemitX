@@ -74,9 +74,9 @@ class User(Base):
     # `reference_base(first_name)` plus a disambiguating number, e.g.
     # "sian1". Assigned once at signup by
     # `UserRepository.next_base_reference`. Not itself an EFT-matchable
-    # reference — each of this user's currency accounts builds its own
-    # reference by appending a currency suffix to this, e.g. "sian1-zar",
-    # "sian1-tok" (see the accounts model).
+    # reference — every one of this user's `Account.reference` values
+    # (Transaction_Flow_Context.md §1) is built by appending a currency
+    # suffix to this, e.g. "sian1-zar", "sian1-tok".
     base_reference: Mapped[str] = mapped_column(
         Text,
         nullable=False,

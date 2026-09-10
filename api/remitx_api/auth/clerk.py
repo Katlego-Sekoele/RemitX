@@ -144,7 +144,8 @@ def fetch_user_first_name(clerk_user_id: str, config: Config) -> str | None:
     """Look up a user's first name via Clerk's Backend API.
 
     Called only when provisioning a new local row (to build the user's
-    permanent base reference — see models/orm/user.py), never on the hot path.
+    permanent base reference — Transaction_Flow_Context.md §1/§2 Phase A),
+    never on the hot path.
 
     Returns None rather than raising: a profile lookup failing is not a
     reason to reject an otherwise valid session — `UserRepository.next_base_reference`

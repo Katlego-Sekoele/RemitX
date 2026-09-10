@@ -1,0 +1,45 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import update
+
+from remitx_api.extensions import db
+from remitx_api.models.orm.transaction import (
+    STATUS_CONFIRMED,
+    STATUS_PENDING,
+    Transaction,
+)
+from remitx_api.repositories.repository import Repository
+
+
+class TransactionRepository(Repository[Transaction, uuid.UUID]):
+    def __init__(self) -> None:
+        super().__init__(Transaction)
+
+    def add(self, transaction: Transaction) -> Transaction:
+        """Insert a transaction. Flushes only — caller commits."""
+        db.session.add(transaction)
+        db.session.flush()
+        return transaction
+
+    def confirm_with_destination(
+        self,
+        tx_id: uuid.UUID,
+        debit_account_id: uuid.UUID,
+        confirmed_at: datetime,
+    ) -> bool:
+        """Fill in a pending row's destination account and confirm it.
+
+        Guarded on status='pending', so two admins resolving the same
+        unmatched deposit can't both succeed. Returns True iff a row changed.
+        """
+        result = db.session.execute(
+            update(Transaction)
+            .where(Transaction.tx_id == tx_id, Transaction.status == STATUS_PENDING)
+            .values(
+                debit_account_id=debit_account_id,
+                status=STATUS_CONFIRMED,
+                confirmed_at=confirmed_at,
+            )
+        )
+        return result.rowcount == 1
