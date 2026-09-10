@@ -12,11 +12,11 @@ Every party that can hold money — a real user, or RemitX itself, or an externa
 CREATE TABLE accounts (
     account_id       UUID PRIMARY KEY,
     user_id          UUID REFERENCES users(id),   -- NULL only for type='EXTERNAL'
-    type             VARCHAR(24) NOT NULL,          -- USER, PLATFORM_FIAT, XRPL_WALLET,
-                                                     -- PLATFORM_REVENUE, EXTERNAL
+    type             VARCHAR(24) NOT NULL,          -- USER, REMITX_FIAT, REMITX_XRPL_WALLET,
+                                                     -- REMITX_REVENUE, EXTERNAL
     reference        TEXT UNIQUE,                   -- e.g. "sian1-zar" — USER rows only
     label            TEXT NOT NULL,                 -- "sian1-zar (ZAR)", "RemitX SA Bank Account",
-                                                     -- "RemitX Treasury Wallet", "RemitX Fee Revenue", "Kraken"
+                                                     -- "RemitX XRPL Treasury Wallet", "RemitX SA Fee Revenue", "Kraken"
     account_currency VARCHAR(8) NOT NULL,
     account_balance  NUMERIC(20,8) NOT NULL DEFAULT 0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -36,7 +36,9 @@ CREATE TABLE accounts (
 CREATE UNIQUE INDEX ON accounts (user_id, account_currency) WHERE type = 'USER';
 ```
 
-A `USER` account's `account_id` is its own independently-generated id — **not** the same value as `user_id`. `accounts.user_id` is a plain nullable FK, same shape as `Deposit.user_id` elsewhere in this codebase: for a `USER` row, the real customer it belongs to; for every RemitX-owned platform row (`RemitX SA Bank Account`, `RemitX Treasury Wallet`, `RemitX Fee Revenue`), the admin who administers it — admins are `User` rows too, hand-seeded together with these accounts by `scripts/seed_platform_accounts.py`. `NULL` only for a genuinely `EXTERNAL` row (`Kraken`, …): no RemitX admin owns a third party's account.
+A `USER` account's `account_id` is its own independently-generated id — **not** the same value as `user_id`. `accounts.user_id` is a plain nullable FK, same shape as `Deposit.user_id` elsewhere in this codebase: for a `USER` row, the real customer it belongs to; for every RemitX-owned platform row (`RemitX SA Bank Account`, `RemitX XRPL Treasury Wallet`, `RemitX SA Fee Revenue`, …), the admin who administers it — admins are `User` rows too, hand-seeded together with these accounts by `scripts/seed_platform_accounts.py`. `NULL` only for a genuinely `EXTERNAL` row (`Kraken`, …): no RemitX admin owns a third party's account.
+
+RemitX keeps one real `REMITX_FIAT` bank account, and a matching `REMITX_REVENUE` fee account in the same currency, per country it settles fiat in — a fee earned on a ZAR transaction can no more land in a USD revenue account than a ZAR deposit could land in the USD bank account. Currently seeded (`scripts/seed_platform_accounts.py`): `RemitX SA Bank Account` / `RemitX SA Fee Revenue` (ZAR), `RemitX US Bank Account` / `RemitX US Fee Revenue` (USD), `RemitX ZIM Bank Account` / `RemitX ZIM Fee Revenue` (ZWG), `RemitX NAM Bank Account` / `RemitX NAM Fee Revenue` (NAD) — plus the single `RemitX XRPL Treasury Wallet` (`uctusd`), which isn't per-country.
 
 ```sql
 CREATE TABLE transactions (
@@ -64,11 +66,11 @@ CREATE TABLE transactions (
 
 ### XRPL accounts and the `uctusd` / RLUSD relationship
 
-Two XRPL Testnet accounts sit behind the `XRPL_WALLET`-type row(s) in `accounts`:
+Two XRPL Testnet accounts sit behind the `REMITX_XRPL_WALLET`-type row in `accounts`:
 
 | Account | Role |
 |---|---|
-| `OPERATIONAL` (RemitX Treasury Wallet) | The platform's own custodial wallet. Holds `uctusd` on RemitX's behalf. |
+| `OPERATIONAL` (RemitX XRPL Treasury Wallet) | The platform's own custodial wallet. Holds `uctusd` on RemitX's behalf. |
 | `ISSUER` | External party. The counterparty whose obligation `uctusd` represents. |
 
 `uctusd` stands in for RLUSD. The brief allows a "lecturer-approved test-token transfer" in place of RLUSD itself — the real Testnet RLUSD faucet is rate-limited, so the course issues `uctusd` instead (`.env.example` carries the same rationale next to `UCTUSD_ISSUER`). Everywhere this doc says `uctusd`, read it as RLUSD's stand-in.
@@ -89,7 +91,7 @@ Every user is issued a `User.base_reference` at signup — first name, lowercase
 
 **A1. Sender pays** *(off platform)* — EFT into RemitX SA's bank account, reference = the sender's ZAR account reference (`sipho1-zar`). Nothing in the platform's database changes yet.
 
-**A2. Admin reconciles** *(daily, against the RemitX SA bank statement — simulated, admin pushes a button on the admin portal)*. Every statement line gets a `deposits` row **and** a `transactions` row immediately, whether or not it matches — the arrival is a fact either way, only its destination might be uncertain. Matching looks up an `accounts` row by reference, scoped to ZAR — never any of the user's other currency accounts:
+**A2. Admin reconciles** *(daily, against the RemitX SA bank statement — simulated, admin pushes a "Process Deposits" button on the admin portal)*. For the sake of this project, cash-in reconciliation is simulated and executed via that admin button rather than genuinely reading a live bank feed — in reality this would be a daily cron job that runs `process_deposits` on a schedule, with the button standing in for it, same as Phase E's withdrawal batch-processing. Every statement line gets a `deposits` row **and** a `transactions` row immediately, whether or not it matches — the arrival is a fact either way, only its destination might be uncertain. Matching looks up an `accounts` row by reference, scoped to ZAR — never any of the user's other currency accounts:
 
 - **Match** → `transactions`: credit `RemitX SA Bank Account`, debit **Sipho's ZAR account**, type `deposit`, **confirmed**, amount 1000.00. `deposits` → new row, `tx_id` set, `user_id` set, `confirmed_by = 'system'`.
 - **No match** → `transactions`: credit `RemitX SA Bank Account`, `debit_account_id` **NULL**, type `deposit`, **pending**, amount 1000.00 — the source of the money is known, the destination isn't, yet. `deposits` → new row, `tx_id` set (this same row), `user_id` **NULL**, `confirmed_by` NULL.
@@ -104,9 +106,9 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 
 **B2. Sender confirms** — one commit, inserting a `remittances` row (`remittance_id`, `sender_country`, `beneficiary_country`, `beneficiary_currency`, `fx_rate`, `fee_amount`, `sender_token_amount`, `receiver_token_amount`, `confirmed_by`) and every leg it needs — **all four inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet:
 
-- `transactions` → credit Sipho's ZAR account, debit `RemitX Fee Revenue`, amount 30.00, type `fee`, **pending**
+- `transactions` → credit Sipho's ZAR account, debit `RemitX SA Fee Revenue`, amount 30.00, type `fee`, **pending**
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Bank Account`, amount 970.00, type `remittance`, **pending**
-- `transactions` → credit `RemitX Treasury Wallet`, debit **Sipho's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
+- `transactions` → credit `RemitX XRPL Treasury Wallet`, debit **Sipho's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
 - `transactions` → credit **Sipho's `uctusd` account**, debit **Tendai's `uctusd` account**, amount 52.432432, type `remittance`, **pending** — this is the row `remittances.tx_id` (`NOT NULL`) points at
 - `quotes` → **CONSUMED**
 
@@ -122,7 +124,7 @@ Then, only after that commit returns, `queue_service.enqueue_settle_remittance(r
 
 **C2. Resolve.** Whatever this leg's outcome actually depends on (§9) is checked/submitted here.
 
-**C3. Confirmed** — a single guarded update flips **all four** legs together, since they share one `quote_id`: `UPDATE transactions SET status='confirmed', confirmed_at=? WHERE quote_id=? AND status='pending'`, in the same commit as increasing `account_balance` on whichever account is each row's destination — `RemitX Fee Revenue` +30.00, `RemitX SA Bank Account` +970.00, Sipho's `uctusd` account +52.432432, Tendai's `uctusd` account +52.432432 (Sipho's nets back to zero once his own next line, the sender→beneficiary leg, applies). Still idempotent the same way as a single-row guard: a redelivered message finds nothing left `pending` for that `quote_id` and does nothing.
+**C3. Confirmed** — a single guarded update flips **all four** legs together, since they share one `quote_id`: `UPDATE transactions SET status='confirmed', confirmed_at=? WHERE quote_id=? AND status='pending'`, in the same commit as increasing `account_balance` on whichever account is each row's destination — `RemitX SA Fee Revenue` +30.00, `RemitX SA Bank Account` +970.00, Sipho's `uctusd` account +52.432432, Tendai's `uctusd` account +52.432432 (Sipho's nets back to zero once his own next line, the sender→beneficiary leg, applies). Still idempotent the same way as a single-row guard: a redelivered message finds nothing left `pending` for that `quote_id` and does nothing.
 
 **On failure** (`tecNO_LINE`, `tecPATH_DRY`, `tefMAX_LEDGER`, or whatever the real failure surface turns out to be per §9): the same batched update, but to `failed` instead — `UPDATE transactions SET status='failed' WHERE quote_id=? AND status='pending'`. **No reversing transactions needed at all** — nothing was ever confirmed, so nothing ever touched a balance to begin with.
 
@@ -136,13 +138,13 @@ No manual admin-approval gate — holding a customer's own money hostage behind 
 
 **E1. Beneficiary requests a withdrawal** *(customer-facing, immediate)*. One commit: a `withdraws` row (`payout_method`, `bank_acc_id`, `payout_reference`, `payout_fee`, `confirmed_by`) plus:
 
-- `transactions` → credit Tendai's `uctusd` account, debit `RemitX Treasury Wallet`, amount 52.432432, type `withdrawal`, **pending** — the row `withdraws.tx_id` (`NOT NULL`) points at.
+- `transactions` → credit Tendai's `uctusd` account, debit `RemitX XRPL Treasury Wallet`, amount 52.432432, type `withdrawal`, **pending** — the row `withdraws.tx_id` (`NOT NULL`) points at.
 
 **E2. Admin batch-processes** *(simulated cron via an admin-portal "Process Withdrawals" action, same pattern as `process_deposits`)*. For every still-`pending` withdrawal transaction, `queue_service.enqueue_redeem_tokens(withdraw_id)` enqueues `remitx_worker.tasks.redeem_tokens` on the settlement queue.
 
 **E3. Confirmed** — same guarded transition as Phase C. Tendai's `uctusd` `account_balance` **−52.432432**.
 
-**E4. Payout** *(off platform, mock)* — `transactions` → credit `RemitXZIM Bank Account`, debit `EXTERNAL_PAYOUT`, amount 1,324.24, type `withdrawal`, confirmed. Funded by the rands from Phase A.
+**E4. Payout** *(off platform, mock)* — `transactions` → credit `RemitX ZIM Bank Account`, debit `EXTERNAL_PAYOUT`, amount 1,324.24, type `withdrawal`, confirmed. Funded by the rands from Phase A.
 
 ---
 
@@ -196,7 +198,7 @@ erDiagram
         uuid deposit_id PK
         uuid tx_id FK
         uuid user_id FK "nullable"
-        string user_reference
+        string account_reference
         enum payment_method
         string confirmed_by
     }
@@ -217,7 +219,7 @@ erDiagram
         uuid tx_id FK
         string payout_method
         string bank_acc_id
-        string payout_reference
+        string account_reference
         decimal payout_fee
         string confirmed_by
     }
@@ -317,7 +319,7 @@ CREATE TABLE quotes (
 - Every `transactions` insert and its account-balance effect happen in the **same commit**, and balance only ever moves on a guarded status transition (§1) — never at plain insert, never via a later `UPDATE` to a row's accounts or amount.
 - A `confirmed` `transactions` row is append-only — nothing about a settled group of legs is later rewritten. A `pending` row hasn't settled anything yet, so filling in a missing detail (an unmatched deposit's `debit_account_id`) or flipping a whole group to `failed` (a remittance that doesn't settle — see §2, Phase C) is not a mutation of history — see §1.
 - `remittances`' beneficiary is frozen at creation (via the leg `tx_id` points at, and the `transactions` row's own `debit_account_id` — the beneficiary is the *destination* of that leg) — re-linking a beneficiary elsewhere cannot redirect an old remittance.
-- Fees are ordinary `transactions` rows landing in `RemitX Fee Revenue` (`debit_account_id`, since it's always the destination, never the source) — revenue is always `SELECT SUM(amount) FROM transactions WHERE debit_account_id = <fee revenue account> AND status = 'confirmed'`.
+- Fees are ordinary `transactions` rows landing in that leg's currency-matched `REMITX_REVENUE` account (`debit_account_id`, since it's always the destination, never the source) — a ZAR fee always lands in `RemitX SA Fee Revenue`, never in another country's revenue account. Revenue for one account is always `SELECT SUM(amount) FROM transactions WHERE debit_account_id = <fee revenue account> AND status = 'confirmed'`; total revenue across countries means summing that per account and converting, since each is a different currency.
 - Status changes are guarded updates — `WHERE tx_id=? AND status='pending'` for a single row, or `WHERE quote_id=? AND status='pending'` when several legs need to resolve together (§2, Phase C) — then check rowcount. This is the whole duplicate-payment defense — a redelivered queue message that tries the same transition twice just fails the second `UPDATE`'s row-count check.
 - Only the settlement worker decrypts XRPL seeds. Never returned by the API, never logged, never committed to git.
 - Reconciliation is an admin-triggered check, not a background job: compare `SUM(amount) WHERE debit_account_id = account_id` minus `SUM(amount) WHERE credit_account_id = account_id`, from `transactions WHERE status='confirmed'`, against `accounts.account_balance`, report the mismatch count back to the admin portal. Not yet built.

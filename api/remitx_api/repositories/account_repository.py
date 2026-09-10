@@ -8,7 +8,7 @@ from remitx_api.models.orm.account import (
     CURRENCY_ZAR,
     TYPE_USER,
     Account,
-    account_reference,
+    create_account_reference,
 )
 from remitx_api.repositories.repository import Repository
 
@@ -17,11 +17,11 @@ class AccountRepository(Repository[Account, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Account)
 
-    def get_platform_account(self, label: str) -> Account | None:
+    def get_platform_account_by_label(self, label: str) -> Account | None:
         """Look up a hand-seeded platform/external account by its label."""
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
-    def get_by_reference(self, reference: str, currency: str) -> Account | None:
+    def get_user_account_by_reference(self, reference: str, currency: str) -> Account | None:
         """USER-account lookup by permanent reference, scoped to one currency.
 
         Always pass the statement's own currency here (ZAR for bank-statement
@@ -51,9 +51,9 @@ class AccountRepository(Repository[Account, uuid.UUID]):
     def create_user_accounts(
         self, user_id: uuid.UUID, base_reference: str
     ) -> tuple[Account, Account]:
-        """Create a new user's ZAR and uctusd accounts together, at signup,
-        both built from their `User.base_reference` (e.g. "sian1" ->
-        "sian1-zar", "sian1-tok"). Flushes only — caller
+        """Create a new user's default ZAR account and their uctusd account,
+        together, at signup — both built from their `User.base_reference`
+        (e.g. "sian1" -> "sian1-zar", "sian1-tok"). Flushes only — caller
         (UserController.ensure_provisioned) commits alongside the new User
         row, in the same transaction that assigned `base_reference`.
         """
@@ -61,12 +61,12 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         token = self._build_account(user_id, base_reference, CURRENCY_TOKEN)
         db.session.add_all([zar, token])
         db.session.flush()
-        return zar, token
+        return zar, token # return Account objects
 
     def _build_account(
         self, user_id: uuid.UUID, base_reference: str, currency: str
     ) -> Account:
-        reference = account_reference(base_reference, currency)
+        reference = create_account_reference(base_reference, currency)
         return Account(
             user_id=user_id,
             type=TYPE_USER,

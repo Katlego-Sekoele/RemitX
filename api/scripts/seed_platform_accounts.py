@@ -1,8 +1,9 @@
 """
 Seed RemitX's platform accounts, and the admin who owns them.
 
-Platform accounts (RemitX's bank account, treasury wallet, fee revenue) need
-a real admin's user_id — but User rows are normally only created just-in-time
+Platform accounts (RemitX's per-country bank accounts, XRPL treasury wallet,
+fee revenue) need a real admin's user_id — but User rows are normally only
+created just-in-time
 on first Clerk login (see UserController.ensure_provisioned). This script
 provisions that admin User row directly, using the same provisioning path a
 real first login takes, so their eventual real login finds this row instead
@@ -26,8 +27,11 @@ from remitx_api.config import Config
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
+    CURRENCY_NAD,
     CURRENCY_TOKEN,
+    CURRENCY_USD,
     CURRENCY_ZAR,
+    CURRENCY_ZWG,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
     TYPE_XRPL_WALLET,
@@ -37,10 +41,27 @@ from remitx_api.models.orm.user import ROLE_ADMIN, User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.user_repository import UserRepository
 
+# One real bank account per country RemitX settles fiat in, each in that
+# country's own currency. Every one of these gets a matching Fee Revenue
+# account in the same currency below — a ZAR fee can't be booked into a USD
+# revenue account any more than it could be booked into the USD bank account.
+COUNTRY_BANK_ACCOUNTS = (
+    ("RemitX SA", CURRENCY_ZAR),
+    ("RemitX US", CURRENCY_USD),
+    ("RemitX ZIM", CURRENCY_ZWG),
+    ("RemitX NAM", CURRENCY_NAD),
+)
+
 PLATFORM_ACCOUNTS = (
-    ("RemitX SA Bank Account", TYPE_PLATFORM_FIAT, CURRENCY_ZAR),
-    ("RemitX Treasury Wallet", TYPE_XRPL_WALLET, CURRENCY_TOKEN),
-    ("RemitX Fee Revenue", TYPE_PLATFORM_REVENUE, CURRENCY_ZAR),
+    *(
+        (f"{prefix} Bank Account", TYPE_PLATFORM_FIAT, currency)
+        for prefix, currency in COUNTRY_BANK_ACCOUNTS
+    ),
+    ("RemitX XRPL Treasury Wallet", TYPE_XRPL_WALLET, CURRENCY_TOKEN),
+    *(
+        (f"{prefix} Fee Revenue", TYPE_PLATFORM_REVENUE, currency)
+        for prefix, currency in COUNTRY_BANK_ACCOUNTS
+    ),
 )
 
 
@@ -77,7 +98,7 @@ def _ensure_admin(clerk_user_id: str, config: Config) -> User:
 def _seed_platform_accounts(admin_id) -> None:
     account_repo = AccountRepository()
     for label, account_type, currency in PLATFORM_ACCOUNTS:
-        if account_repo.get_platform_account(label) is not None:
+        if account_repo.get_platform_account_by_label(label) is not None:
             print(f"Skipped (already exists): {label}")
             continue
         account = Account(

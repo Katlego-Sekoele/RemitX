@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("account_id"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.CheckConstraint(
-            "type IN ('USER','PLATFORM_FIAT','XRPL_WALLET','PLATFORM_REVENUE','EXTERNAL')",
+            "type IN ('USER','REMITX_FIAT','REMITX_XRPL_WALLET','REMITX_REVENUE','EXTERNAL')",
             name="accounts_type_valid",
         ),
         # user_id: the real customer for a USER row, the administering admin

@@ -41,7 +41,7 @@ def test_get_by_reference_does_not_cross_currencies(app_context):
     zar_reference = f"{user.base_reference}-zar"
     token_reference = f"{user.base_reference}-tok"
 
-    assert account_repo.get_by_reference(zar_reference, CURRENCY_ZAR) is not None
-    assert account_repo.get_by_reference(zar_reference, CURRENCY_TOKEN) is None
-    assert account_repo.get_by_reference(token_reference, CURRENCY_TOKEN) is not None
-    assert account_repo.get_by_reference(token_reference, CURRENCY_ZAR) is None
+    assert account_repo.get_user_account_by_reference(zar_reference, CURRENCY_ZAR) is not None
+    assert account_repo.get_user_account_by_reference(zar_reference, CURRENCY_TOKEN) is None
+    assert account_repo.get_user_account_by_reference(token_reference, CURRENCY_TOKEN) is not None
+    assert account_repo.get_user_account_by_reference(token_reference, CURRENCY_ZAR) is None

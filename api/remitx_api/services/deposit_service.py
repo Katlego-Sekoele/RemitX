@@ -66,7 +66,7 @@ def _create_deposit(
     amount = Decimal(str(row.get("amount")))
     processed_at = datetime.now(UTC)
     statement_date = _parse_statement_date(row.get("date"), processed_at)
-    bank_account = account_repo.get_platform_account(REMITX_SA_BANK_ACCOUNT_LABEL)
+    bank_account = account_repo.get_platform_account_by_label(REMITX_SA_BANK_ACCOUNT_LABEL)
 
     account = _find_account(reference, account_repo)
     if account is None:
@@ -147,7 +147,7 @@ def _find_account(
     """
     if not reference:
         return None
-    return account_repo.get_by_reference(reference, CURRENCY_ZAR)
+    return account_repo.get_user_account_by_reference(reference, CURRENCY_ZAR)
 
 
 def _read_bank_statement(bank_statement: str | list[dict]) -> list[dict]:
