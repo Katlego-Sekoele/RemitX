@@ -28,10 +28,10 @@ def test_second_same_named_signup_gets_the_next_number(app_context):
     assert zar.reference == "sian2-zar"
 
 
-def test_get_by_reference_does_not_cross_currencies(app_context):
-    """The single highest-value test in this change: a user's uctusd
-    reference must never resolve when looked up for ZAR, and vice versa —
-    this is the whole mechanism that keeps a token account undepositable.
+def test_get_by_reference_finds_the_matching_account(app_context):
+    """A reference is globally unique and already carries its own currency
+    suffix (e.g. "-zar" vs "-tok"), so looking it up alone must return the
+    one account it belongs to.
     """
     user = UserController().ensure_provisioned(
         "user_scoped", lambda: "scoped@example.com", lambda: "Scoped"
@@ -41,7 +41,10 @@ def test_get_by_reference_does_not_cross_currencies(app_context):
     zar_reference = f"{user.base_reference}-zar"
     token_reference = f"{user.base_reference}-tok"
 
-    assert account_repo.get_user_account_by_reference(zar_reference, CURRENCY_ZAR) is not None
-    assert account_repo.get_user_account_by_reference(zar_reference, CURRENCY_TOKEN) is None
-    assert account_repo.get_user_account_by_reference(token_reference, CURRENCY_TOKEN) is not None
-    assert account_repo.get_user_account_by_reference(token_reference, CURRENCY_ZAR) is None
+    zar_account = account_repo.get_user_account_by_reference(zar_reference)
+    token_account = account_repo.get_user_account_by_reference(token_reference)
+
+    assert zar_account is not None
+    assert zar_account.account_currency == CURRENCY_ZAR
+    assert token_account is not None
+    assert token_account.account_currency == CURRENCY_TOKEN

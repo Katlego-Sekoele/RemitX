@@ -64,7 +64,7 @@ CURRENCY_REFERENCE_SUFFIX = {
 
 def utcnow() -> datetime:
     """
-    Return the current UTC time for `created_at` default. 
+    Return the current UTC time for `created_at` default.
     """
     return datetime.now(UTC)
 
@@ -80,7 +80,8 @@ def create_account_reference(base_reference: str, currency: str) -> str:
 
 class Account(Base):
     """ORM model for the `accounts` table. One row per (user_id, account_currency)"""
-    __tablename__ = "accounts" # name of the table in the database
+
+    __tablename__ = "accounts"  # name of the table in the database
     __table_args__ = (
         # Constraints to check type is valid
         CheckConstraint(
@@ -124,14 +125,14 @@ class Account(Base):
     )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     # Permanent EFT reference, e.g. "sian1-zar" — USER rows only. NULL for
-    # platform/external rows ( which areidentified by `label` instead). 
-    # Bank-statement reconciliation matches on this, scoped to one currency 
-    # at a time — see AccountRepository.get_user_account_by_reference.
+    # platform/external rows ( which areidentified by `label` instead).
+    # Bank-statement reconciliation matches on this — see
+    # AccountRepository.get_user_account_by_reference.
     reference: Mapped[str | None] = mapped_column(
         Text, nullable=True, unique=True, index=True
     )
-    # descriptive label for platform/external accounts, e.g. "Kraken" or "RemitX ZAR bank account"
-    label: Mapped[str] = mapped_column(Text, nullable=False) 
+    # Descriptive label, e.g. "Kraken" or "RemitX SA Bank Account".
+    label: Mapped[str] = mapped_column(Text, nullable=False)
     account_currency: Mapped[str] = mapped_column(Text, nullable=False)
     account_balance: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False, default=Decimal("0")

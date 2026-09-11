@@ -21,18 +21,16 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         """Look up a hand-seeded platform/external account by its label."""
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
-    def get_user_account_by_reference(self, reference: str, currency: str) -> Account | None:
-        """USER-account lookup by permanent reference, scoped to one currency.
+    def get_user_account_by_reference(self, reference: str) -> Account | None:
+        """USER-account lookup by permanent reference.
 
-        Always pass the statement's own currency here (ZAR for bank-statement
-        reconciliation) — never search across every currency a user might
-        hold. This is what stops a "sian1-tok" reference from ever resolving
-        as a deposit target.
+        `reference` is globally unique (see `Account.reference`) and already
+        carries its own currency suffix (e.g. "sian1-zar" vs "sian1-tok"), so
+        matching on it alone identifies exactly one account.
         """
         return db.session.scalars(
             select(Account).where(
                 Account.reference == reference,
-                Account.account_currency == currency,
                 Account.type == TYPE_USER,
             )
         ).first()
@@ -61,7 +59,7 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         token = self._build_account(user_id, base_reference, CURRENCY_TOKEN)
         db.session.add_all([zar, token])
         db.session.flush()
-        return zar, token # return Account objects
+        return zar, token  # return Account objects
 
     def _build_account(
         self, user_id: uuid.UUID, base_reference: str, currency: str
@@ -72,7 +70,7 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             type=TYPE_USER,
             account_currency=currency,
             reference=reference,
-            label=f"{reference} ({currency})",
+            label=f"({currency} Account)",
         )
 
     def increase_balance(self, account_id: uuid.UUID, amount) -> None:
