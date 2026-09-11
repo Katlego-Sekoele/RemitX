@@ -24,7 +24,7 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
         db.session.flush()
         return deposit
 
-    def list_for_user(self, user_id: uuid.UUID) -> list[Deposit]:
+    def list_user_deposits(self, user_id: uuid.UUID) -> list[Deposit]:
         """A user's deposits, newest first (ordered by the linked transaction)."""
         return db.session.scalars(
             select(Deposit)
@@ -33,7 +33,7 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
             .order_by(Transaction.created_at.desc())
         ).all()
 
-    def list_pending(self) -> list[Deposit]:
+    def list_pending_deposits(self) -> list[Deposit]:
         """Deposits still unmatched to a user, for the admin portal to list."""
         return db.session.scalars(
             select(Deposit)
@@ -42,7 +42,7 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
             .order_by(Transaction.created_at)
         ).all()
 
-    def link_to_user(
+    def link_deposit_to_user(
         self, deposit_id: uuid.UUID, user_id: uuid.UUID, confirmed_by: str
     ) -> bool:
         """Attribute an unmatched deposit to a user. Returns True iff a row changed.

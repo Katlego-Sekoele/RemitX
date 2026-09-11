@@ -32,6 +32,7 @@ def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
     transaction_repo = TransactionRepository()
     account_repo = AccountRepository()
 
+    # List of Deposit rows that were created or updated (pending->confirmed) by this run.
     touched = [
         _create_deposit(row, deposit_repo, transaction_repo, account_repo)
         for row in _read_bank_statement(bank_statement)
@@ -66,10 +67,14 @@ def _create_deposit(
     amount = Decimal(str(row.get("amount")))
     processed_at = datetime.now(UTC)
     statement_date = _parse_statement_date(row.get("date"), processed_at)
-    bank_account = account_repo.get_platform_account_by_label(REMITX_SA_BANK_ACCOUNT_LABEL)
+    # Get the platform bank account
+    RemitX_bank_account = account_repo.get_platform_account_by_label(
+        REMITX_SA_BANK_ACCOUNT_LABEL
+    ) # For now we are only supporting ZAR deposits, so the bank account is always the same.
 
     account = _find_account(reference, account_repo)
-    if account is None:
+    # If no account matches the reference, create a pending transaction and deposit
+    if account is None: 
         logger.info(
             "No account found for reference %s (amount=%s): recording as pending",
             reference,
@@ -78,27 +83,30 @@ def _create_deposit(
         transaction = transaction_repo.add(
             Transaction(
                 type=TYPE_DEPOSIT,
-                credit_account_id=bank_account.account_id,
+                credit_account_id=RemitX_bank_account.account_id,
                 debit_account_id=None,
                 amount=amount,
-                currency=CURRENCY_ZAR,
+                currency=RemitX_bank_account.account_currency,
                 status=STATUS_PENDING,
                 created_at=statement_date,
+                processed_at=processed_at,
             )
         )
         return deposit_repo.add(
-            Deposit(tx_id=transaction.tx_id, user_reference=reference)
+            Deposit(tx_id=transaction.tx_id, user_account_reference=reference)
         )
 
+    # Else we have a user account, so create a confirmed transaction and deposit
     transaction = transaction_repo.add(
         Transaction(
             type=TYPE_DEPOSIT,
-            credit_account_id=bank_account.account_id,
+            credit_account_id=RemitX_bank_account.account_id,
             debit_account_id=account.account_id,
             amount=amount,
-            currency=CURRENCY_ZAR,
+            currency=RemitX_bank_account.account_currency,
             status=STATUS_CONFIRMED,
             created_at=statement_date,
+            processed_at=processed_at,
             confirmed_at=processed_at,
         )
     )
@@ -107,7 +115,7 @@ def _create_deposit(
         Deposit(
             tx_id=transaction.tx_id,
             user_id=account.user_id,
-            user_reference=reference,
+            user_account_reference=reference,
             confirmed_by=CONFIRMED_BY_SYSTEM,
         )
     )
@@ -138,16 +146,10 @@ def _parse_statement_date(value, processed_at: datetime) -> datetime:
 def _find_account(
     reference: str | None, account_repo: AccountRepository
 ) -> Account | None:
-    """Look up the ZAR account a bank-statement reference belongs to.
-
-    Scoped to ZAR only — this is the statement's own currency, and the only
-    currency a deposit can ever match against. Never widen this to "any of
-    the user's accounts": a beneficiary's uctusd reference (e.g.
-    "sian1-tok") must never resolve as a deposit target.
-    """
+    """Look up the account a bank-statement deposit reference belongs to."""
     if not reference:
         return None
-    return account_repo.get_user_account_by_reference(reference, CURRENCY_ZAR)
+    return account_repo.get_user_account_by_reference(reference)
 
 
 def _read_bank_statement(bank_statement: str | list[dict]) -> list[dict]:
@@ -164,14 +166,14 @@ def get_deposit(deposit_id: uuid.UUID) -> Deposit | None:
 
 
 def get_deposits_for_user(user_id: uuid.UUID) -> list[Deposit]:
-    """Get all deposits from the database for a user."""
-    return DepositRepository().list_for_user(user_id)
+    """Get all deposits from the database for a user. No matter the account"""
+    return DepositRepository().list_user_deposits(user_id)
 
 
 def get_pending_deposits() -> list[Deposit]:
     """Deposits still unmatched to a user, for the admin portal to list and
     let an admin manually resolve — see `approve_pending_deposit`."""
-    return DepositRepository().list_pending()
+    return DepositRepository().list_pending_deposits()
 
 
 def approve_pending_deposit(
@@ -203,19 +205,20 @@ def approve_pending_deposit(
     if user is None:
         raise ValueError(f"User {user_id} does not exist")
 
+    # Since only SA bank deposits for simulation, assume user has ZAR account.
     user_account = account_repo.get_user_account(user.id, CURRENCY_ZAR)
     if user_account is None:
         # Should never happen post-eager-creation — defensive, not a normal path.
         raise ValueError(f"User {user_id} has no ZAR account")
 
     confirmed_at = datetime.now(UTC)
-    if not transaction_repo.confirm_with_destination(
+    if not transaction_repo.confirm_pending_deposit_transaction(
         deposit.tx_id, user_account.account_id, confirmed_at
     ):
         raise ValueError(f"Deposit {deposit_id} is not pending or does not exist")
 
     account_repo.increase_balance(user_account.account_id, transaction.amount)
-    deposit_repo.link_to_user(deposit_id, user_id, str(admin_id))
+    deposit_repo.link_deposit_to_user(deposit_id, user_id, str(admin_id))
 
     db.session.commit()
     return deposit_repo.get_by_id(deposit_id)

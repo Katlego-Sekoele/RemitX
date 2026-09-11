@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.transaction import (
@@ -22,7 +22,30 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         db.session.flush()
         return transaction
 
-    def confirm_with_destination(
+    def get_by_transaction_type_and_debit_account(
+        self, type: str, debit_account_id: uuid.UUID
+    ) -> Transaction | None:
+        """First transaction of `type` crediting into `debit_account_id`, if
+        any. Used for one-off idempotency checks (e.g. "has the treasury's
+        pre-funded balance already been recorded?") rather than a per-request
+        lookup.
+        """
+        return db.session.scalars(
+            select(Transaction).where(
+                Transaction.type == type,
+                Transaction.debit_account_id == debit_account_id,
+            )
+        ).first()
+
+    def get_pending_transactions(self) -> list[Transaction]:
+        """Every transaction still `pending`, oldest first."""
+        return db.session.scalars(
+            select(Transaction)
+            .where(Transaction.status == STATUS_PENDING)
+            .order_by(Transaction.created_at)
+        ).all()
+
+    def confirm_pending_deposit_transaction(
         self,
         tx_id: uuid.UUID,
         debit_account_id: uuid.UUID,

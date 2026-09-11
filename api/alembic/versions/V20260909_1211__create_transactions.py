@@ -38,7 +38,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["debit_account_id"], ["accounts.account_id"]),
         sa.ForeignKeyConstraint(["credit_account_id"], ["accounts.account_id"]),
         sa.CheckConstraint(
-            "type IN ('deposit','treasury_purchase','remittance','fee','withdrawal')",
+            "type IN ('deposit','treasury_funding','remittance','fee','withdrawal')",
             name="transactions_type_valid",
         ),
         sa.CheckConstraint(

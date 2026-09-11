@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("deposit_id", sa.Uuid(), nullable=False),
         sa.Column("tx_id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.Uuid(), nullable=True),
-        sa.Column("user_reference", sa.Text(), nullable=True),
+        sa.Column("user_account_reference", sa.Text(), nullable=True),
         sa.Column("payment_method", sa.Text(), nullable=False),
         sa.Column("confirmed_by", sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint("deposit_id"),

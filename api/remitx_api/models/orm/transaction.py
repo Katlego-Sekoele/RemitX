@@ -23,14 +23,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from remitx_api.extensions import Base
 
 TYPE_DEPOSIT = "deposit"
-TYPE_TREASURY_PURCHASE = "treasury_purchase"
+TYPE_TREASURY_FUNDING = "treasury_funding"
 TYPE_REMITTANCE = "remittance"
 TYPE_FEE = "fee"
 TYPE_WITHDRAWAL = "withdrawal"
 
 TRANSACTION_TYPES = (
     TYPE_DEPOSIT,
-    TYPE_TREASURY_PURCHASE,
+    TYPE_TREASURY_FUNDING,
     TYPE_REMITTANCE,
     TYPE_FEE,
     TYPE_WITHDRAWAL,
@@ -50,14 +50,18 @@ def utcnow() -> datetime:
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
+        # Type must be in TRANSACTION_TYPES
         CheckConstraint(
-            "type IN ('deposit','treasury_purchase','remittance','fee','withdrawal')",
+            "type IN ('deposit','treasury_funding','remittance','fee','withdrawal')",
             name="transactions_type_valid",
         ),
+        # Status must be in STATUSES
         CheckConstraint(
             "status IN ('pending','confirmed','failed')",
             name="transactions_status_valid",
         ),
+        # Amount must be positive — negative amounts are represented by swapping
+        # the debit/credit accounts instead.
         CheckConstraint("amount > 0", name="transactions_amount_positive"),
     )
 

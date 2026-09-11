@@ -7,9 +7,10 @@ not. `tx_id` always points at the one `transactions` row this deposit is:
 - Matched at import -> that row is `confirmed` immediately, `user_id` set,
   `confirmed_by='system'`.
 - Unmatched -> that row is inserted `pending` with `debit_account_id` NULL
-  (see models/orm/transaction.py), `user_id` NULL, `user_reference` holding
-  whatever the bank statement gave. An admin resolves it later
-  (`DepositRepository.link_to_user` + `TransactionRepository.confirm_with_destination`)
+  (see models/orm/transaction.py), `user_id` NULL, `user_account_reference`
+  holding whatever the bank statement gave. An admin resolves it later
+  (see `DepositRepository.link_deposit_to_user` +
+  `TransactionRepository.confirm_pending_deposit_transaction`)
   by confirming that *same* row, never a new one.
 """
 
@@ -51,9 +52,7 @@ class Deposit(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True
     )
-    # Raw reference string from the bank statement — kept even after
-    # matching, since it's how a PENDING row got attributed.
-    user_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_account_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_method: Mapped[str] = mapped_column(
         Text, nullable=False, default=PAYMENT_METHOD_BANK_TRANSFER
     )

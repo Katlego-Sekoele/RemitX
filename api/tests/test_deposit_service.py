@@ -2,10 +2,13 @@ from decimal import Decimal
 
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR, TYPE_PLATFORM_FIAT, Account
-from remitx_api.models.orm.transaction import STATUS_PENDING
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_PLATFORM_FIAT,
+    Account,
+)
 from remitx_api.repositories.account_repository import AccountRepository
-from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
 
 
@@ -44,11 +47,10 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context):
     assert zar_account.account_balance == Decimal("500.00")
 
 
-def test_token_reference_never_matches_a_deposit(app_context):
-    """The single highest-value regression test in this change: a
-    statement line quoting a user's uctusd reference must never be
-    attributed to them — it has to land pending, exactly like a genuinely
-    unknown reference would.
+def test_token_reference_matches_its_own_account(app_context):
+    """A reference is matched purely on its own (globally unique) value —
+    a statement line quoting a user's uctusd reference resolves to their
+    token account, not their ZAR one.
     """
     _seed_bank_account()
     user = UserController().ensure_provisioned(
@@ -61,7 +63,6 @@ def test_token_reference_never_matches_a_deposit(app_context):
     )
 
     assert len(deposits) == 1
-    assert deposits[0].user_id is None
-    transaction = TransactionRepository().get_by_id(deposits[0].tx_id)
-    assert transaction.status == STATUS_PENDING
-    assert transaction.debit_account_id is None
+    assert deposits[0].user_id == user.id
+    token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
+    assert token_account.account_balance == Decimal("500.00")
