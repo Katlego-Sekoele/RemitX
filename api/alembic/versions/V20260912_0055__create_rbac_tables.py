@@ -48,7 +48,6 @@ def upgrade() -> None:
         sa.Column("role_display_name", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
         sa.PrimaryKeyConstraint("role_id"),
-        sa.UniqueConstraint("name"),
     )
     op.create_index(op.f("ix_roles_name"), "roles", ["name"], unique=True)
     op.create_table(
