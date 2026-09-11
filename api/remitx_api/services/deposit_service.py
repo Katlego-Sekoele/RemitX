@@ -32,11 +32,14 @@ def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
     transaction_repo = TransactionRepository()
     account_repo = AccountRepository()
 
-    # List of Deposit rows that were created or updated (pending->confirmed) by this run.
-    touched = [
-        _create_deposit(row, deposit_repo, transaction_repo, account_repo)
-        for row in _read_bank_statement(bank_statement)
-    ]
+    # List of Deposit rows that were created or updated (pending->confirmed) by
+    # this run. A statement line that isn't money coming in yields no Deposit
+    # at all, so this can be shorter than the statement itself.
+    touched = []
+    for row in _read_bank_statement(bank_statement):
+        deposit = _create_deposit(row, deposit_repo, transaction_repo, account_repo)
+        if deposit is not None:
+            touched.append(deposit)
 
     # Anything that didn't match a user lands as a pending transaction and
     # stays that way — no automatic retry. get_pending_deposits() is what the
@@ -52,7 +55,7 @@ def _create_deposit(
     deposit_repo: DepositRepository,
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
-) -> Deposit:
+) -> Deposit | None:
     """Match one bank statement line to an account and write its deposit + transaction.
 
     - Matched: transaction inserted `confirmed`, crediting the account
@@ -60,11 +63,22 @@ def _create_deposit(
     - Unmatched: transaction inserted `pending` with no destination account
       yet, keeping the statement's own reference so an admin can resolve it
       manually — see `get_pending_deposits` / `approve_pending_deposit`.
+    - Not incoming money at all (amount <= 0): returns None without writing
+      anything. A real bank statement mixes RemitX's own outgoing payments in
+      with sender deposits, and `transactions.amount` is never negative
+      (§1) — those lines aren't deposits and were never going to become one.
 
     `row`'s "date" becomes the transaction's `created_at` — see `_parse_statement_date`.
     """
     reference = row.get("reference")
     amount = Decimal(str(row.get("amount")))
+    if amount <= 0:
+        logger.info(
+            "Skipping non-deposit line (reference=%s, amount=%s): not incoming money",
+            reference,
+            amount,
+        )
+        return None
     processed_at = datetime.now(UTC)
     statement_date = _parse_statement_date(row.get("date"), processed_at)
     # Get the platform bank account

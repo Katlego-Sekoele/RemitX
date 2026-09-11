@@ -66,3 +66,27 @@ def test_token_reference_matches_its_own_account(app_context):
     assert deposits[0].user_id == user.id
     token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
     assert token_account.account_balance == Decimal("500.00")
+
+
+def test_outgoing_lines_are_skipped_not_recorded_as_deposits(app_context):
+    """A real statement mixes RemitX's own outgoing payments in with sender
+    deposits — a negative amount was never a deposit and must not become one
+    (transactions.amount is never negative, checked at the DB level).
+    """
+    _seed_bank_account()
+    user = UserController().ensure_provisioned(
+        "user_mixed", lambda: "mixed@example.com", lambda: "Mixed"
+    )
+    zar_reference = f"{user.base_reference}-zar"
+
+    deposits = deposit_service.process_deposits(
+        [
+            {"reference": "SALARY-SEP26", "amount": "-18500.00", "date": "2026-09-08"},
+            {"reference": zar_reference, "amount": "500.00", "date": "2026-09-10"},
+        ]
+    )
+
+    assert len(deposits) == 1
+    assert deposits[0].user_id == user.id
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    assert zar_account.account_balance == Decimal("500.00")
