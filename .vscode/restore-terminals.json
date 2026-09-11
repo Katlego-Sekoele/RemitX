@@ -1,0 +1,56 @@
+{
+  "runOnStartup": true,
+  "keepExistingTerminalsOpen": false,
+  "artificialDelayMilliseconds": 400,
+  "terminals": [
+    {
+      "splitTerminals": [
+        {
+          "name": "postgres",
+          "commands": [
+            "docker compose -f docker-compose.dev.yml up postgres"
+          ]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "redis",
+          "commands": ["docker compose -f docker-compose.dev.yml up redis"]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "api",
+          "commands": [
+            "docker compose -f docker-compose.dev.yml up --build --no-attach postgres --no-attach redis --no-attach migrate api"
+          ],
+          "setAsActive": true
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "worker",
+          "commands": [
+            "docker compose -f docker-compose.dev.yml up --build --no-attach postgres --no-attach redis --no-attach migrate worker"
+          ]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "frontend",
+          "commands": [
+            "docker compose -f docker-compose.dev.yml up --build --no-deps frontend"
+          ]
+        }
+      ]
+    }
+  ]
+}
