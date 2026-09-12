@@ -1,10 +1,9 @@
-import uuid
 from collections.abc import Callable
 
 from sqlalchemy.exc import IntegrityError
 
 from remitx_api.extensions import db
-from remitx_api.models.orm.user import KYC_STATUSES, User
+from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.user_repository import UserRepository
 
@@ -64,16 +63,3 @@ class UserController:
                 # failed. Surface it.
                 raise
             return winner
-
-    def set_kyc_status(self, user_id: uuid.UUID, kyc_status: str) -> User:
-        """Admin-only KYC toggle (Transaction_Flow_Context.md's flow assumes
-        both parties are already KYC-approved; this is the minimal switch
-        that makes that assumption satisfiable, not a real KYC module — no
-        document intake or review queue exists here, deliberately).
-        """
-        if kyc_status not in KYC_STATUSES:
-            raise ValueError(f"Unknown kyc_status: {kyc_status!r}")
-
-        user = self._users.require_by_id(user_id)
-        user.kyc_status = kyc_status
-        return self._users.save(user)

@@ -171,12 +171,11 @@ def test_admin_handlers_have_no_ad_hoc_permission_checks():
     a handler that reaches for the caller's permissions is re-implementing the
     gate somewhere nothing audits.
     """
-    from remitx_api.routes.admin import deposits, roles, user_roles, users
+    from remitx_api.routes.admin import deposits, roles, user_roles
 
     handlers = (
         roles.list_roles,
         roles.list_toxic_combinations,
-        users.update_kyc_status,
         user_roles.list_admins,
         user_roles.search_users,
         user_roles.get_user_access,

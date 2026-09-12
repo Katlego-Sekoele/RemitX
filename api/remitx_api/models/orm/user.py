@@ -10,19 +10,22 @@ remitx_api/controllers/user_controller.py.
 Identity, not authority: nothing here says what a user may do. Staff access
 lives in the RBAC tables (user_roles -> role_permissions -> permissions) and
 is enforced per route by auth.permissions.RequirePermission.
+
+No KYC state here either. `kyc_applications` owns it, and a user's KYC
+standing is *derived* from their applications on read — see
+`KycApplicationRepository.get_standing`. There is deliberately no denormalised
+`kyc_status` copy on this table: one authoritative place beats a copy that can
+disagree with it. `suspended_at` is the exception that is not a copy — nothing
+in the KYC tables says "this account is stopped", so it lives here.
 """
 
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Text, Uuid
+from sqlalchemy import DateTime, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
-
-KYC_UNVERIFIED = "UNVERIFIED"
-KYC_APPROVED = "APPROVED"
-KYC_STATUSES = (KYC_UNVERIFIED, KYC_APPROVED)
 
 
 def utcnow() -> datetime:
@@ -43,12 +46,6 @@ def reference_base(first_name: str | None) -> str:
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (
-        CheckConstraint(
-            "kyc_status IN ('UNVERIFIED', 'APPROVED')",
-            name="users_kyc_status_valid",
-        ),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -96,16 +93,13 @@ class User(Base):
         unique=True,
         index=True,
     )
-    # Real KYC (document intake, admin review queue) is out of this
-    # prototype's scope — see docs/project-brief.md. This is a minimal
-    # toggle: UNVERIFIED users are rejected outright by quote/remittance
-    # creation regardless of the numeric limit (brief's Unverified tier is
-    # ZAR 0/0), APPROVED users are subject only to the numeric limits.
-    kyc_status: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        default=KYC_UNVERIFIED,
-        server_default=KYC_UNVERIFIED,
+    # Set when compliance stops the account (`user:suspend`). Deliberately not
+    # part of the KYC state machine: a suspended user may well be KYC-approved,
+    # and lifting the suspension should not have to reconstruct where their
+    # application had got to. Nullable because NULL is the normal case.
+    suspended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     # Set in Python rather than by the database: SQLite's CURRENT_TIMESTAMP has
     # only second precision, which is too coarse to order rapid inserts.

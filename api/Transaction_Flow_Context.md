@@ -84,7 +84,7 @@ Two XRPL Testnet accounts sit behind two `accounts` rows:
 
 ## 2. The Flow
 
-Assumes both parties are registered and KYC-approved. Sender tops up a ZAR balance, then sends from it — deposits and remittances are independent, so one top-up can fund several sends.
+Assumes both parties are registered and KYC-approved (`KycApplicationRepository.get_standing` is what answers that). Sender tops up a ZAR balance, then sends from it — deposits and remittances are independent, so one top-up can fund several sends.
 
 ### Phase A — Sender deposits ZAR
 
@@ -176,8 +176,15 @@ erDiagram
         string mobile_number "nullable, not yet resolved from anywhere"
         string country "nullable, not yet resolved from anywhere"
         string base_reference
-        string role
-        string kyc_status
+        timestamp suspended_at "nullable"
+    }
+    BENEFICIARIES {
+        uuid beneficiary_id PK
+        uuid sender_user_id FK "the sender who added this contact"
+        uuid linked_user_id FK "the registered user this contact resolves to"
+        string payout_currency
+        string relationship
+        datetime created_at
     }
     BENEFICIARIES {
         uuid beneficiary_id PK
@@ -349,7 +356,8 @@ CREATE TABLE quotes (
 | `withdraws` | Token → fiat. `tx_id` points at the redeem/burn leg the same way. |
 | `quotes` | The frozen price shown to the customer, for either a remittance or a withdrawal. Built (§2, Phase B1) — nothing consumes a quote yet, remittance confirmation is a later slice. |
 | `beneficiaries` | A sender's contact — who they can quote/remit to. Built. `linked_user_id` must already be a registered `User`; first_name/last_name/email/mobile_number/country are read from that `User` via a join, never duplicated here. A sender adds one by looking up the target's fiat account reference (e.g. `sian1-zar` — the same one they'd quote for an EFT deposit), never the `uctusd` reference or a raw user id — see `BeneficiaryController.lookup_by_fiat_account_reference`. |
-| `users` | `base_reference`, `role`, `kyc_status`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. |
+| `users` | `base_reference` and `suspended_at`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. Carries neither a staff flag (RBAC's `user_roles` decides that) nor a KYC status: a user's KYC standing is derived from `kyc_applications`, not copied here. |
+| `kyc_applications`, `kyc_documents`, `kyc_decisions` | One row per KYC attempt, its evidence, and the append-only log of reviewer decisions. Outside the money flow, so not drawn above — see remitx_api/models/orm/kyc_lifecycle.py for the status machine. |
 | `currencies`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
 | `exchange_rates` | Built (§2, Phase B1) — a real API-backed rate, fetched lazily. §4 below still describes the original, unbuilt design; not yet reconciled with what's actually implemented. |
 | `xrpl_accounts`, `xrpl_settlements`, `audit_log` | Not yet reconciled with the new ledger shape. See §8. |

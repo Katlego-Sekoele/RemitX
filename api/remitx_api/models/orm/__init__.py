@@ -6,6 +6,10 @@ from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.deposit import Deposit
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.integration_message import IntegrationMessage
+from remitx_api.models.orm.kyc_application import KycApplication
+from remitx_api.models.orm.kyc_decision import KycDecision
+from remitx_api.models.orm.kyc_document import KycDocument
+from remitx_api.models.orm.kyc_lifecycle import KycStatus
 from remitx_api.models.orm.permission import Permission, PermissionCode
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.role import Role
@@ -22,6 +26,10 @@ __all__ = [
     "Deposit",
     "ExchangeRate",
     "IntegrationMessage",
+    "KycApplication",
+    "KycDecision",
+    "KycDocument",
+    "KycStatus",
     "Permission",
     "PermissionCode",
     "Quote",
