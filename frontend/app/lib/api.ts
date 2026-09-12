@@ -103,3 +103,28 @@ export function sendIntegrationMessage(
     body: JSON.stringify({ body }),
   })
 }
+
+export type MePermission = {
+  permissions: string[]
+  is_admin: boolean
+}
+
+export function getMyAccess(getToken: GetToken): Promise<MePermission> {
+  return request<MePermission>(getToken, "/me/permissions")
+}
+
+export type MyPermission = {
+  permission: string
+  description: string
+}
+
+export type MyRole = {
+  name: string
+  display_name: string
+  description: string
+  permissions: MyPermission[]
+}
+
+export function getMyRoles(getToken: GetToken): Promise<MyRole[]> {
+  return request<MyRole[]>(getToken, "/me/roles")
+}

@@ -5,6 +5,8 @@ import {
   route,
 } from "@react-router/dev/routes"
 
+import { getFlattenedAdminRoutes } from "./routes/admin/admin.routes"
+
 export default [
   index("routes/home.tsx"),
   // Splat paths: Clerk's components use sub-paths for multi-step flows
@@ -13,5 +15,9 @@ export default [
   route("sign-up/*", "routes/sign-up.tsx"),
   layout("routes/protected.tsx", [
     route("integration-test", "routes/integration-test.tsx"),
+    layout(
+      "routes/admin/layout.tsx",
+      getFlattenedAdminRoutes().map(({ path, module }) => route(path, module))
+    ),
   ]),
 ] satisfies RouteConfig

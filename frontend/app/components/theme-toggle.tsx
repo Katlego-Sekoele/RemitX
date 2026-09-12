@@ -2,13 +2,15 @@
 
 import { MonitorIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
 import { useTheme } from "next-themes"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "~/components/ui/button"
 import { cn } from "~/lib/utils"
 
+type ThemeValue = "light" | "dark" | "system"
+
 type ThemeOption = {
-  value: "light" | "dark" | "system"
+  value: ThemeValue
   label: string
   icon: typeof SunIcon
 }
@@ -19,7 +21,7 @@ const themeOptions: ThemeOption[] = [
   { value: "system", label: "Auto", icon: MonitorIcon },
 ]
 
-export function ThemeToggle() {
+export function useThemeToggle() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
@@ -27,28 +29,57 @@ export function ThemeToggle() {
     setMounted(true)
   }, [])
 
-  if (!mounted) {
+  const activeTheme = (theme ?? "system") as ThemeValue
+  const activeOption =
+    themeOptions.find((option) => option.value === activeTheme) ??
+    themeOptions[2]
+
+  const cycleTheme = useCallback(() => {
+    const index = themeOptions.findIndex(
+      (option) => option.value === activeTheme
+    )
+    const next = themeOptions[(index + 1) % themeOptions.length]
+    setTheme(next.value)
+  }, [activeTheme, setTheme])
+
+  return { mounted, activeTheme, activeOption, setTheme, cycleTheme }
+}
+
+function ThemeToggleSkeleton({ compact = false }: { compact?: boolean }) {
+  if (compact) {
     return (
-      <div
-        aria-hidden
-        className="inline-flex overflow-hidden rounded-md border border-border bg-background"
-      >
-        {themeOptions.map((option) => (
-          <Button
-            key={option.value}
-            variant="ghost"
-            size="icon-sm"
-            disabled
-            className="rounded-none"
-          >
-            <option.icon weight="bold" />
-          </Button>
-        ))}
-      </div>
+      <Button variant="ghost" size="icon-sm" disabled aria-hidden>
+        <SunIcon weight="bold" />
+      </Button>
     )
   }
 
-  const activeTheme = theme ?? "system"
+  return (
+    <div
+      aria-hidden
+      className="inline-flex overflow-hidden rounded-md border border-border bg-background"
+    >
+      {themeOptions.map((option) => (
+        <Button
+          key={option.value}
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          className="rounded-none"
+        >
+          <option.icon weight="bold" />
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+export function ThemeToggle() {
+  const { mounted, activeTheme, setTheme } = useThemeToggle()
+
+  if (!mounted) {
+    return <ThemeToggleSkeleton />
+  }
 
   return (
     <div
@@ -74,5 +105,31 @@ export function ThemeToggle() {
         )
       })}
     </div>
+  )
+}
+
+type ThemeToggleCycleProps = {
+  className?: string
+}
+
+/** Single button that cycles light → dark → auto. */
+export function ThemeToggleCycle({ className }: ThemeToggleCycleProps) {
+  const { mounted, activeOption, cycleTheme } = useThemeToggle()
+  const Icon = activeOption.icon
+
+  if (!mounted) {
+    return <ThemeToggleSkeleton compact />
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={className}
+      aria-label={`Theme: ${activeOption.label}. Click to switch theme.`}
+      onClick={cycleTheme}
+    >
+      <Icon weight="bold" />
+    </Button>
   )
 }

@@ -7,7 +7,8 @@ import { Outlet } from "react-router"
  * <Show> renders null while Clerk is still loading and only falls back once
  * loading has settled, so a signed-in user refreshing the page never flashes
  * the sign-in redirect. The account and theme controls live in root.tsx's
- * <AppChrome />, which every page gets.
+ * ``AppChrome`` (see ``~/lib/chrome-policy``), which every page gets unless
+ * its route group opts out — e.g. ``/admin`` renders its own shell.
  */
 export default function Protected() {
   return (

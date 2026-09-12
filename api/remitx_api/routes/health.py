@@ -1,8 +1,7 @@
-from fastapi import APIRouter
-
 from remitx_api.controllers.health_controller import HealthController
+from remitx_api.routes.routers import create_public_router
 
-router = APIRouter()
+router = create_public_router()
 health_controller = HealthController()
 
 

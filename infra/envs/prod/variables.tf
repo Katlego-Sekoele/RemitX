@@ -84,3 +84,24 @@ variable "swa_custom_domain" {
   default     = ""
   description = "Optional frontend custom domain (e.g. example.com); set in prod tfvars"
 }
+
+variable "paused" {
+  description = <<-EOT
+    Park the whole environment at (near) zero cost without tearing it down.
+
+    Holds the API, Redis, and the worker at zero replicas with no way to wake
+    them — not even an inbound request to the API's public hostname — and caps
+    Log Analytics ingestion, which is the only meter that bills while every
+    replica is down. Everything else in the stack is already free at rest:
+    Static Web Apps is on the Free SKU, the Container Apps environment has no
+    idle charge, and Key Vault bills per operation.
+
+    Nothing is destroyed. Ingress, custom domains, TLS certificates, secrets,
+    and the Neon database are untouched, so unpausing is this flag plus an
+    apply. Treat a paused environment as switched off, not slow: the site
+    still loads from Static Web Apps but every API call fails.
+  EOT
+
+  type    = bool
+  default = false
+}

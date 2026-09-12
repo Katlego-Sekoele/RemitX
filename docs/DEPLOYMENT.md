@@ -9,8 +9,8 @@ This guide covers the **Azure + Neon + Clerk** stack for QA (`main` branch) and 
 | Component | QA | Production |
 |-----------|-----|------------|
 | Frontend | Azure Static Web Apps | Azure Static Web Apps |
-| API | Azure Container Apps (scale to zero) | Azure Container Apps |
-| Worker | Container Apps (always on) | Container Apps |
+| API | Azure Container Apps (scale to zero) | Azure Container Apps (scale to zero) |
+| Worker | Container Apps (scale to zero) | Container Apps (scale to zero) |
 | Database | Neon branch `qa` | Neon branch `main` |
 | Queue | Redis (internal Container App) | Redis (internal Container App) |
 | Auth | Clerk QA app | Clerk Production app |
@@ -192,7 +192,22 @@ with a 401 that looks like a bad token rather than a misconfiguration.
 the secret soft-deleted in the vault rather than purged. That is expected and
 harmless; it stays recoverable for the vault's retention period.
 
-## Destroy (cost saving)
+## Pause (cost saving, reversible)
+
+Both environments are currently **paused** — parked at zero replicas with no
+wake path, and nothing destroyed. Set `paused = false` in
+`infra/envs/<env>/non-secret.tfvars` and apply to bring one back up. Full
+runbook, including what still bills while paused, is in
+[infra/README.md](../infra/README.md#pausing-an-environment).
+
+While an environment is paused the frontend still loads but every API call
+fails, and `deploy.yml` skips the API and worker rollout.
+
+## Destroy (cost saving, irreversible)
+
+Pausing is almost always what you want instead; destroy tears down the custom
+domains and managed TLS certificates too, and re-creating those needs DNS
+validation again.
 
 **Azure:**
 
@@ -206,5 +221,7 @@ cd infra/envs/prod && terraform destroy -var-file=non-secret.tfvars
 ## Troubleshooting
 
 - **API 502 / cold start:** Container Apps API scales to zero in QA; first request may take ~30s.
+  A *paused* environment never comes back at all, however long you wait — check `paused` in
+  `infra/envs/<env>/non-secret.tfvars` before debugging a cold start.
 - **Celery not consuming:** Check worker Container App logs in Log Analytics; verify `REDIS_URL` in Key Vault.
 - **Database connection:** Ensure Neon connection string includes `?sslmode=require` and IP allowlist allows Azure (Neon default allows all).

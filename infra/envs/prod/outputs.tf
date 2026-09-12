@@ -23,3 +23,8 @@ output "static_web_app_deployment_token" {
   value       = module.static_web_app.api_key
   sensitive   = true
 }
+
+output "paused" {
+  description = "True while the environment is parked at zero replicas; see infra/README.md."
+  value       = var.paused
+}

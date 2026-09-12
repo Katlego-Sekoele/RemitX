@@ -4,10 +4,14 @@ import { useEffect } from "react"
 import { setSessionExpiredHandler } from "~/lib/query-client"
 
 /**
- * Sends API 401s to Clerk's sign-in redirect.
+ * Bridges API auth failures into UI actions the query cache cannot reach.
  *
- * Renders nothing. Exists because the query cache is created outside React
- * and cannot reach Clerk's context on its own.
+ * 401 → Clerk sign-in (session expired or missing). 403 → ``notifyForbidden``
+ * via the query cache, which admin layout turns into the access-denied page.
+ * Hiding nav links is usability; server 403 is the security boundary.
+ *
+ * Renders nothing. Exists because the query cache is a module singleton built
+ * outside React.
  */
 export function AuthErrorBridge() {
   const { isSignedIn } = useAuth()
