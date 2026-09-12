@@ -1,13 +1,17 @@
 import uuid
 
 from remitx_api.models.schemas.me import MyPermissionResponse, MyRoleResponse
-from remitx_api.models.schemas.role import RoleRead
+from remitx_api.models.schemas.role import RoleRead, ToxicCombinationRead
 from remitx_api.repositories.role_repository import RoleRepository
+from remitx_api.repositories.toxic_combination_repository import (
+    ToxicCombinationRepository,
+)
 
 
 class RoleController:
     def __init__(self) -> None:
         self._repository = RoleRepository()
+        self._toxic_combinations = ToxicCombinationRepository()
 
     def list_roles(self) -> list[RoleRead]:
         grouped: dict = {}
@@ -26,9 +30,16 @@ class RoleController:
                 role_display_name=entry["role"].role_display_name,
                 description=entry["role"].description,
                 is_admin=entry["role"].is_admin,
+                is_grantable=entry["role"].is_grantable,
                 permissions=sorted(entry["permissions"]),
             )
             for entry in grouped.values()
+        ]
+
+    def list_toxic_combinations(self) -> list[ToxicCombinationRead]:
+        return [
+            ToxicCombinationRead(permissions=[first, second], explanation=explanation)
+            for first, second, explanation in self._toxic_combinations.list_pairs()
         ]
 
     def list_my_roles(self, user_id: uuid.UUID) -> list[MyRoleResponse]:

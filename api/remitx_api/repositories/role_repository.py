@@ -14,6 +14,9 @@ class RoleRepository(Repository[Role, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Role)
 
+    def get_by_name(self, name: str) -> Role | None:
+        return db.session.scalars(select(Role).where(Role.name == name)).first()
+
     def list_with_active_permissions(self) -> list[tuple[Role, str | None]]:
         """Return each role paired with an active permission, or ``None`` if none."""
         return db.session.execute(
