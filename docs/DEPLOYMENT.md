@@ -11,7 +11,7 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 | Component | QA | Production |
 |-----------|-----|------------|
 | Frontend | Render static site | Render static site → `remitx.tech` |
-| API | Free web service (Docker) | Free web service → `api.remitx.tech` |
+| API | Free web service (Docker) | Free web service (`*.onrender.com`) |
 | Worker | Free web service (HTTP + Celery) | Free web service (HTTP + Celery) |
 | Database | Neon branch `qa` | Neon branch `main` / `production` |
 | Queue | Shared Key Value `/0` | Shared Key Value `/1` |
@@ -21,7 +21,7 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 
 Hobby limits that shape this stack: no free background worker (the worker is a
 web service), one free Key Value per workspace, two included custom domains
-(Production takes both). Neon is kept because free Render Postgres expires
+(Production `remitx.tech`, QA `qa.remitx.tech`). Neon is kept because free Render Postgres expires
 in 30 days.
 
 ## Prerequisites
@@ -121,10 +121,12 @@ Do not set `WORKER_WAKE_URL` locally. The Compose worker runs Celery only.
 | Environment | Clerk application | Origins |
 |-------------|-------------------|---------|
 | Local | Development | `http://localhost:5173` |
-| QA | QA | the QA frontend `*.onrender.com` URL |
-| Prod | Production | `https://remitx.tech` |
+| QA | QA | `https://qa.remitx.tech` and the QA frontend `*.onrender.com` URL |
+| Prod | Production | `https://remitx.tech` and the prod frontend `*.onrender.com` URL |
 
-`CORS_ORIGINS` on the API must match. Terraform sets it from the frontend URL.
+`CORS_ORIGINS` on the API must include every browser origin that hosts the
+frontend. Terraform sets it to the custom domain (when configured) and the
+`*.onrender.com` URL so neither origin is rejected.
 
 ## Destroy Azure (one-time)
 
