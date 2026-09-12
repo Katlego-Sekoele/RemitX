@@ -58,7 +58,10 @@ Hobby includes two custom domains. Production uses `remitx.tech` and
 4. Apply **shared first**. QA and Production read `remitx-shared` via
    `terraform_remote_state`. Shared apply authorizes those workspaces as
    remote-state consumers (HCP otherwise returns *forbidden*). CI always
-   applies shared, then plans (PR) or applies (push) the env root.
+   applies shared, then plans (PR) or applies (push, manual run) the env root.
+   The `terraform` job runs on **every** rollout, not only when `infra/**`
+   changed, so a merged fix or a manual **Actions → Deploy → Run workflow**
+   converges the stack without an infra commit.
 
    Until that apply lands, you can grant the same access in HCP:
    **remitx-shared → Settings → General → Remote state sharing →**

@@ -10,6 +10,14 @@ on:
       - "infra/**"
       - "api/**"
       - "frontend/**"
+      # A change to the pipeline itself has to exercise the pipeline.
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/scripts/**"
+  # Manual rollout. This is the recovery lever when the services and the code
+  # on them have drifted apart and there is no commit to push: it treats
+  # everything as changed and applies Terraform before deploying.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,15 +34,17 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      infra: ${{ steps.filter.outputs.infra }}
-      api: ${{ steps.filter.outputs.api }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      deploy_env: ${{ steps.env.outputs.deploy_env }}
+      infra: ${{ steps.resolve.outputs.infra }}
+      api: ${{ steps.resolve.outputs.api }}
+      frontend: ${{ steps.resolve.outputs.frontend }}
+      deploy_env: ${{ steps.resolve.outputs.deploy_env }}
+      rollout: ${{ steps.resolve.outputs.rollout }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             infra:
@@ -44,22 +54,55 @@ jobs:
             frontend:
               - "frontend/**"
 
-      - name: Resolve deploy environment
-        id: env
+      - name: Resolve deploy scope and environment
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          FILTER_INFRA: ${{ steps.filter.outputs.infra }}
+          FILTER_API: ${{ steps.filter.outputs.api }}
+          FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            branch="${{ github.base_ref }}"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # No diff to filter on, and the point of a manual run is to
+            # reconcile everything.
+            infra=true
+            api=true
+            frontend=true
           else
-            branch="${{ github.ref_name }}"
+            infra="$FILTER_INFRA"
+            api="$FILTER_API"
+            frontend="$FILTER_FRONTEND"
           fi
+
+          # A pull_request run is plan-only; everything else rolls out.
+          if [ "$EVENT" = "pull_request" ]; then
+            rollout=false
+            branch="$BASE_REF"
+          else
+            rollout=true
+            branch="$REF_NAME"
+          fi
+
           case "$branch" in
-            stable) echo "deploy_env=prod" >> "$GITHUB_OUTPUT" ;;
-            main)   echo "deploy_env=qa" >> "$GITHUB_OUTPUT" ;;
+            stable) deploy_env=prod ;;
+            main)   deploy_env=qa ;;
             *)
               echo "::error::No deploy environment is mapped for branch '$branch'"
               exit 1
               ;;
           esac
+
+          {
+            echo "infra=$infra"
+            echo "api=$api"
+            echo "frontend=$frontend"
+            echo "rollout=$rollout"
+            echo "deploy_env=$deploy_env"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "$branch -> $deploy_env (rollout=$rollout, infra=$infra, api=$api, frontend=$frontend)"
 
   ci:
     needs: changes
@@ -67,7 +110,15 @@ jobs:
 
   terraform:
     needs: [changes, ci]
-    if: needs.changes.outputs.infra == 'true'
+    # Terraform runs on every rollout, not only when infra/** changed. It is
+    # declarative, so a run that changes nothing plans empty and costs one job
+    # — and gating it on infra/** left the stack impossible to create: the one
+    # push that introduced the Render services had a red `ci`, so `terraform`
+    # was skipped, and every push after it was skipped again by the paths
+    # filter while the deploy jobs below kept looking for services Terraform
+    # had never applied. Running it always also keeps Render env vars in step
+    # with the environment secrets.
+    if: needs.changes.outputs.rollout == 'true' || needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
@@ -87,14 +138,26 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
-      - name: Require HCP organization and Render credentials
+      # Every one of these is a required Terraform input. A missing one
+      # otherwise surfaces as an opaque "No value for required variable" from
+      # a remote HCP run, so name it here instead.
+      - name: Require HCP organization and Terraform inputs
+        env:
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
         run: |
-          if [ -z "${TF_CLOUD_ORGANIZATION}" ]; then
-            echo "ERROR: Set repository or environment variable TF_CLOUD_ORGANIZATION." >&2
-            exit 1
-          fi
-          if [ -z "${TF_VAR_render_api_key}" ] || [ -z "${TF_VAR_render_owner_id}" ]; then
-            echo "ERROR: Set RENDER_API_KEY and RENDER_OWNER_ID on the ${{ needs.changes.outputs.deploy_env }} environment." >&2
+          missing=()
+          [ -n "${TF_CLOUD_ORGANIZATION}" ]       || missing+=("TF_CLOUD_ORGANIZATION (variable)")
+          [ -n "${TF_TOKEN_app_terraform_io}" ]   || missing+=("TF_API_TOKEN")
+          [ -n "${TF_VAR_render_api_key}" ]       || missing+=("RENDER_API_KEY")
+          [ -n "${TF_VAR_render_owner_id}" ]      || missing+=("RENDER_OWNER_ID")
+          [ -n "${TF_VAR_database_url}" ]         || missing+=("TF_VAR_database_url")
+          [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key")
+          [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key")
+          [ -n "${TF_VAR_xrpl_encryption_key}" ]  || missing+=("TF_VAR_xrpl_encryption_key")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Set these on the '${DEPLOY_ENV}' GitHub environment: ${missing[*]}"
+            echo "See infra/README.md for the full list." >&2
             exit 1
           fi
 
@@ -103,31 +166,37 @@ jobs:
       - name: Terraform shared
         working-directory: infra/shared
         run: |
-          terraform init
-          terraform apply -auto-approve -var-file=non-secret.tfvars
+          terraform init -input=false
+          terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
 
       - name: Terraform environment
         working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
+        env:
+          ROLLOUT: ${{ needs.changes.outputs.rollout }}
         run: |
-          terraform init
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            terraform plan -var-file=non-secret.tfvars
+          terraform init -input=false
+          if [ "$ROLLOUT" = "true" ]; then
+            terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
           else
-            terraform apply -auto-approve -var-file=non-secret.tfvars
+            terraform plan -input=false -var-file=non-secret.tfvars
           fi
 
   migrate:
     needs: [changes, ci, terraform]
     # `!cancelled()` disables the implicit success() gate GitHub adds to any
-    # `if` without a status function. Without it a *skipped* `terraform` (any
-    # push that does not touch infra/**) skips this job and every deploy job
-    # below it, and the run still reports green — a silent no-op deploy.
+    # `if` without a status function, so the conditions below are the only
+    # thing deciding whether this runs.
+    #
+    # `terraform` must have *succeeded*, not merely not-failed: it is what
+    # creates and configures the services these deploys target, so rolling
+    # code onto infrastructure that failed to converge is how a green run
+    # produces a broken environment.
     if: |
       !cancelled() &&
-      github.event_name == 'push' &&
+      needs.changes.outputs.rollout == 'true' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped')
+      needs.terraform.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: ${{ needs.changes.outputs.deploy_env }}
@@ -146,9 +215,10 @@ jobs:
       - name: Apply Alembic migrations
         env:
           DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "ERROR: Set MIGRATIONS_DATABASE_URL on the ${{ needs.changes.outputs.deploy_env }} environment." >&2
+            echo "::error::Set MIGRATIONS_DATABASE_URL on the '${DEPLOY_ENV}' GitHub environment."
             exit 1
           fi
           echo "before: $(alembic current 2>&1 | tail -1)"
@@ -159,12 +229,16 @@ jobs:
     needs: [changes, ci, terraform, migrate]
     if: |
       !cancelled() &&
-      github.event_name == 'push' &&
+      needs.changes.outputs.rollout == 'true' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      needs.terraform.result == 'success' &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
+    # render-deploy.sh waits for the Render deploy to reach `live`, and a free
+    # plan Docker build is slow. Keep this above the script's own timeout so
+    # the script reports the failure instead of the runner killing the job.
+    timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -177,12 +251,13 @@ jobs:
     needs: [changes, ci, terraform, migrate]
     if: |
       !cancelled() &&
-      github.event_name == 'push' &&
+      needs.changes.outputs.rollout == 'true' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      needs.terraform.result == 'success' &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -193,14 +268,17 @@ jobs:
 
   deploy-frontend:
     needs: [changes, ci, terraform, migrate]
+    # A frontend-only push skips `migrate`, which is fine — it has no schema
+    # to apply. `terraform` still has to have succeeded.
     if: |
       !cancelled() &&
-      github.event_name == 'push' &&
+      needs.changes.outputs.rollout == 'true' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.frontend == 'true' &&
-      (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
+      needs.terraform.result == 'success' &&
       (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
