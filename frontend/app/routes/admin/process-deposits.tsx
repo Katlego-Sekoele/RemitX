@@ -10,6 +10,7 @@ import {
 import { useRef, useState } from "react"
 
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
+import { ForbiddenPage } from "~/components/admin/forbidden-page"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -38,7 +39,9 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import type { Route } from "./+types/process-deposits"
+import { useHasPermission } from "~/hooks/use-permissions"
 import type { DepositRow, PendingDeposit } from "~/lib/api"
+import { PERMISSIONS } from "~/lib/permissions"
 import { useApi } from "~/lib/use-api"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 
@@ -100,9 +103,24 @@ function toDepositRows(rows: CsvRow[]): DepositRow[] {
   }))
 }
 
+/**
+ * Mirrors how the API gates this page (routes/admin/deposits.py): reading the
+ * queue needs `cashin:read`, and the two ways to move money against it need
+ * `cashin:confirm` on top. The server decides; this only keeps the UI from
+ * offering what it would refuse.
+ */
 export default function ProcessDeposits() {
+  const canRead = useHasPermission(PERMISSIONS.cashinRead)
+
+  if (!canRead) return <ForbiddenPage />
+
+  return <ProcessDepositsPage />
+}
+
+function ProcessDepositsPage() {
   const api = useApi()
   const queryClient = useQueryClient()
+  const canConfirm = useHasPermission(PERMISSIONS.cashinConfirm)
 
   const pending = useQuery({
     queryKey: PENDING_KEY,
@@ -124,7 +142,7 @@ export default function ProcessDeposits() {
             (Transaction_Flow_Context.md, Phase A2).
           </p>
         </div>
-        <UploadDialog onProcessed={refreshPending} />
+        {canConfirm && <UploadDialog onProcessed={refreshPending} />}
       </div>
 
       <Card>
@@ -142,6 +160,7 @@ export default function ProcessDeposits() {
             loading={pending.isPending}
             error={pending.isError ? pending.error : null}
             onResolved={refreshPending}
+            canConfirm={canConfirm}
           />
         </CardContent>
       </Card>
@@ -310,11 +329,13 @@ function PendingTable({
   loading,
   error,
   onResolved,
+  canConfirm,
 }: {
   deposits: PendingDeposit[] | undefined
   loading: boolean
   error: unknown
   onResolved: () => void
+  canConfirm: boolean
 }) {
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading…</p>
@@ -358,7 +379,9 @@ function PendingTable({
             </TableCell>
             <TableCell>{deposit.reference ?? "—"}</TableCell>
             <TableCell>
-              <ApproveDialog deposit={deposit} onResolved={onResolved} />
+              {canConfirm && (
+                <ApproveDialog deposit={deposit} onResolved={onResolved} />
+              )}
             </TableCell>
           </TableRow>
         ))}

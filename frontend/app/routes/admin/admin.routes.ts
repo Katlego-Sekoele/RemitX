@@ -1,5 +1,10 @@
 /** Single registry for admin routes, nav groups, and sidebar items. */
 
+// Type-only, deliberately: react-router builds the route config by loading
+// this module through vite-node, which does not apply the `~` alias, so a
+// value import here breaks `npm run typecheck`. The permission literals below
+// are still checked against the union.
+import type { PermissionCode } from "~/lib/permissions"
 import type { PhosphorIconName } from "~/lib/phosphor-icon-name"
 
 type AdminRoute = {
@@ -12,6 +17,12 @@ type AdminRouteIndex = {
   label: string
   order?: number
   icon?: PhosphorIconName
+  /**
+   * The permission the API requires to read this page. Set it and the page
+   * leaves the sidebar for callers who do not hold it, rather than linking
+   * them to a 403. The page still guards itself — a sidebar is not a gate.
+   */
+  permission?: PermissionCode
   childItems?: AdminRouteIndex[]
 }
 
@@ -49,6 +60,7 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
           module: "routes/admin/process-deposits.tsx",
         },
         label: "Process deposits",
+        permission: "cashin:read",
         childItems: [],
       },
     ],

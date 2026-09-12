@@ -16,6 +16,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "~/components/ui/sidebar"
+import { useMePermissions } from "~/hooks/use-permissions"
 import { discoverAdminNav } from "~/lib/admin-nav-discovery"
 
 function isActive(pathname: string, href: string): boolean {
@@ -24,7 +25,8 @@ function isActive(pathname: string, href: string): boolean {
 
 export function AdminNav() {
   const { pathname } = useLocation()
-  const groups = discoverAdminNav()
+  const access = useMePermissions()
+  const groups = discoverAdminNav(access.data?.permissions ?? [])
 
   return (
     <SidebarGroup>

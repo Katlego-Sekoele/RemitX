@@ -18,7 +18,20 @@ def create_customer_router(**kwargs) -> APIRouter:
 
 
 def create_admin_router(permission: PermissionCode, **kwargs) -> APIRouter:
-    """Admin routes live under ``/admin`` and require a specific permission."""
+    """Admin routes live under ``/admin`` and require a specific permission.
+
+    ``permission`` is the baseline every route on the router needs — usually
+    the read capability for whatever the router exposes. A route that does
+    more than read escalates by declaring its own gate on top::
+
+        @router.post(
+            "/process",
+            dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
+        )
+
+    Handlers never check permissions themselves, and nothing under ``/admin``
+    gates on a role name or on a flag on the User row.
+    """
     return APIRouter(
         dependencies=[
             Depends(get_current_user),
