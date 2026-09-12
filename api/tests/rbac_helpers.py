@@ -22,12 +22,15 @@ from remitx_api.models.orm.permission import Permission, PermissionCode
 from remitx_api.models.orm.rbac_seed import (
     PERMISSION_SEEDS,
     ROLE_SEEDS,
+    TOXIC_COMBINATION_SEEDS,
     precompute_permission_id_given_permission_code,
     precompute_role_id_given_role_name,
     precompute_role_permission_id_given_role_and_permission,
+    precompute_toxic_combination_id_given_permissions,
 )
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
+from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.user import User
 from remitx_api.models.orm.user_role import UserRole
 from remitx_api.repositories.user_repository import UserRepository
@@ -51,6 +54,8 @@ def seed_rbac_catalogue() -> None:
                 role_display_name=role_seed.display_name,
                 description=role_seed.description,
                 is_admin=role_seed.is_admin,
+                is_grantable=role_seed.is_grantable,
+                protect_last_holder=role_seed.protect_last_holder,
             )
         )
 
@@ -72,6 +77,24 @@ def seed_rbac_catalogue() -> None:
                     granted_at=seeded_at,
                 )
             )
+
+    for toxic_seed in TOXIC_COMBINATION_SEEDS:
+        db.session.add(
+            ToxicCombination(
+                toxic_combination_id=(
+                    precompute_toxic_combination_id_given_permissions(
+                        *toxic_seed.permissions
+                    )
+                ),
+                permission_a_id=precompute_permission_id_given_permission_code(
+                    toxic_seed.permissions[0]
+                ),
+                permission_b_id=precompute_permission_id_given_permission_code(
+                    toxic_seed.permissions[1]
+                ),
+                explanation=toxic_seed.explanation,
+            )
+        )
 
     db.session.commit()
 

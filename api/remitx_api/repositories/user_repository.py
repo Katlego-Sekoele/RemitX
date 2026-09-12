@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from remitx_api.errors.users import UnknownUserError
 from remitx_api.extensions import db
@@ -39,6 +39,23 @@ class UserRepository(Repository[User, uuid.UUID]):
         return db.session.scalars(
             select(User).where(User.base_reference == base_reference)
         ).first()
+
+    def search_by_email(self, query: str, limit: int = 10) -> list[User]:
+        """Users whose email contains ``query``, for the grant panel's picker.
+
+        Capped rather than paginated: the picker exists to find one colleague
+        by address, not to browse the customer base, so a search that matches
+        half the table should send the admin back to type more of it.
+        """
+        pattern = f"%{query.strip().lower()}%"
+        return list(
+            db.session.scalars(
+                select(User)
+                .where(func.lower(User.email).like(pattern))
+                .order_by(User.email)
+                .limit(limit)
+            ).all()
+        )
 
     def add(self, user: User) -> User:
         """Insert a user. Flushes only — caller commits."""

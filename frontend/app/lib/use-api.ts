@@ -5,16 +5,30 @@ import {
   approveDeposit,
   getMyAccess,
   getMyRoles,
+  getUserAccess,
+  grantRole,
   listIntegrationMessages,
   listPendingDeposits,
+  listRoles,
+  listAdmins,
+  listToxicCombinations,
   processDeposits,
+  revokeRole,
+  searchUsers,
   sendIntegrationMessage,
   type DepositRow,
+  type GrantRoleResult,
   type IntegrationMessage,
   type MePermission,
   type MyRole,
   type PendingDeposit,
   type ProcessedDeposit,
+  type Role,
+  type AdminMember,
+  type ToxicCombination,
+  type UserAccess,
+  type UserRoleGrant,
+  type UserSearchResult,
 } from "~/lib/api"
 
 /**
@@ -44,6 +58,26 @@ export function useApi() {
         userId: string
       ): Promise<ProcessedDeposit> =>
         approveDeposit(getToken, depositId, userId),
+      listRoles: (): Promise<Role[]> => listRoles(getToken),
+      listToxicCombinations: (): Promise<ToxicCombination[]> =>
+        listToxicCombinations(getToken),
+      listAdmins: (): Promise<AdminMember[]> => listAdmins(getToken),
+      searchUsers: (email: string): Promise<UserSearchResult[]> =>
+        searchUsers(getToken, email),
+      getUserAccess: (userId: string): Promise<UserAccess> =>
+        getUserAccess(getToken, userId),
+      grantRole: (
+        userId: string,
+        role: string,
+        reason: string,
+        toxicCombinationAcknowledged: boolean
+      ): Promise<GrantRoleResult> =>
+        grantRole(getToken, userId, role, reason, toxicCombinationAcknowledged),
+      revokeRole: (
+        userId: string,
+        role: string,
+        reason: string
+      ): Promise<UserRoleGrant> => revokeRole(getToken, userId, role, reason),
     }),
     [getToken]
   )

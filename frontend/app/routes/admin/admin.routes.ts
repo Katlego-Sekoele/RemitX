@@ -47,6 +47,16 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         label: "My roles",
         childItems: [],
       },
+      {
+        route: {
+          path: "admin/access",
+          module: "routes/admin/access.tsx",
+        },
+        label: "Access",
+        order: 10,
+        permission: "role:read",
+        childItems: [],
+      },
     ],
   },
   {
