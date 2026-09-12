@@ -30,8 +30,8 @@ Every Render compute resource uses `plan = free`. There is no
 `GET /health` and runs Celery. Auto-deploy is off; GitHub Actions triggers
 deploys after migrate.
 
-Hobby includes two custom domains. Production uses `remitx.tech` and
-`api.remitx.tech`. QA uses `*.onrender.com`.
+Hobby includes two custom domains: Production `remitx.tech` and QA
+`qa.remitx.tech`. APIs stay on `*.onrender.com`.
 
 ## One-time bootstrap
 
@@ -83,9 +83,10 @@ cd infra/envs/prod && terraform init && terraform apply -var-file=non-secret.tfv
 
 ## DNS (Production)
 
-After apply, point `remitx.tech` and `api.remitx.tech` at the hostnames in
+After apply, point `remitx.tech` at the frontend hostname in
 `terraform output` from `infra/envs/prod`. Verify in the Render dashboard
-(managed TLS). Update Clerk Production allowed origins.
+(managed TLS). Update Clerk Production allowed origins. The API is the
+`*.onrender.com` URL — do not set `VITE_API_URL` to `api.remitx.tech`.
 
 ## Worker wake
 
