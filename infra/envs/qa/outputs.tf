@@ -25,3 +25,20 @@ output "frontend_service_id" {
 output "worker_wake_url" {
   value = "${trimsuffix(module.worker.url, "/")}/health"
 }
+
+output "cors_origins" {
+  value = local.cors_origins
+}
+
+output "api_env_vars" {
+  value = merge(local.worker_env, {
+    CORS_ORIGINS    = local.cors_origins
+    WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
+  })
+  sensitive = true
+}
+
+output "worker_env_vars" {
+  value     = local.worker_env
+  sensitive = true
+}

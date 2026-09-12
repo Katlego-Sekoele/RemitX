@@ -184,6 +184,25 @@ jobs:
             terraform plan -input=false -var-file=non-secret.tfvars
           fi
 
+      # Free-tier web services cannot be updated through the Render
+      # Terraform provider (maintenance_mode on every PATCH). Env vars
+      # are ignored on the resource and written here instead.
+      - name: Sync web service env vars
+        if: needs.changes.outputs.rollout == 'true'
+        working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+        run: |
+          api_env="$(terraform output -json api_env_vars)"
+          worker_env="$(terraform output -json worker_env_vars)"
+          RENDER_SYNC_ENV_JSON="$api_env" \
+            SERVICE_NAME="remitx-${DEPLOY_ENV}-api" \
+            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
+          RENDER_SYNC_ENV_JSON="$worker_env" \
+            SERVICE_NAME="remitx-${DEPLOY_ENV}-worker" \
+            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
+
   migrate:
     needs: [changes, ci, terraform]
     # `!cancelled()` disables the implicit success() gate GitHub adds to any
