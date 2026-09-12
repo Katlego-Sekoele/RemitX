@@ -11,18 +11,45 @@ remitx_api/controllers/user_controller.py.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
+
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+ROLES = (ROLE_USER, ROLE_ADMIN)
+
+KYC_UNVERIFIED = "UNVERIFIED"
+KYC_APPROVED = "APPROVED"
+KYC_STATUSES = (KYC_UNVERIFIED, KYC_APPROVED)
 
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def reference_base(first_name: str | None) -> str:
+    """The lowercase, <=8-char, letters-and-digits-only name part of a
+    `User.base_reference` — e.g. "Sian" -> "sian".
+    `UserRepository.next_base_reference` appends the number that
+    disambiguates same-named users (the second "Sian" to sign up gets
+    "sian2"). Falls back to "user" when no first name is available, e.g.
+    Clerk gave neither a claim nor a profile lookup hit.
+    """
+    cleaned = "".join(ch for ch in (first_name or "") if ch.isalnum())
+    return (cleaned[:8] or "user").lower()
+
+
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'admin')", name="users_role_valid"),
+        CheckConstraint(
+            "kyc_status IN ('UNVERIFIED', 'APPROVED')",
+            name="users_kyc_status_valid",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
@@ -39,6 +66,38 @@ class User(Base):
     )
     # Nullable: not every Clerk sign-in strategy yields an email claim.
     email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # First name as reported by Clerk. Stored only to build `base_reference`'s
+    # human-readable prefix — display-name concerns otherwise stay with
+    # Clerk. Nullable for the same reason `email` is: not every sign-in
+    # strategy yields one.
+    first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # `reference_base(first_name)` plus a disambiguating number, e.g.
+    # "sian1". Assigned once at signup by
+    # `UserRepository.next_base_reference`. Not itself an EFT-matchable
+    # reference — each of this user's currency accounts builds its own
+    # reference by appending a currency suffix to this, e.g. "sian1-zar",
+    # "sian1-tok" (see the accounts model).
+    base_reference: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    # Gates admin-only routes (deposit reconciliation, withdrawal approval,
+    # fee-config edits) via auth.dependencies.require_admin. Every user is
+    # "user" unless promoted directly in the database — there's no
+    # in-app admin-signup flow, deliberately.
+    role: Mapped[str] = mapped_column(Text, nullable=False, default=ROLE_USER)
+    # Real KYC (document intake, admin review queue) is out of this
+    # prototype's scope — see docs/project-brief.md. This is a minimal
+    # toggle: UNVERIFIED users are rejected outright by quote/remittance
+    # creation regardless of the numeric limit (brief's Unverified tier is
+    # ZAR 0/0), APPROVED users are subject only to the numeric limits.
+    kyc_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default=KYC_UNVERIFIED,
+    )
     # Set in Python rather than by the database: SQLite's CURRENT_TIMESTAMP has
     # only second precision, which is too coarse to order rapid inserts.
     created_at: Mapped[datetime] = mapped_column(

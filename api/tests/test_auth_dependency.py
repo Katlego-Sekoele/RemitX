@@ -45,7 +45,9 @@ def test_first_call_provisions_a_local_user_row(app_context, monkeypatch):
     through get_current_user into UserController.ensure_provisioned and land
     in the database — not just satisfy each half's own tests in isolation.
     """
-    claims = ClerkClaims(clerk_user_id="user_new_dep", email="new@example.com")
+    claims = ClerkClaims(
+        clerk_user_id="user_new_dep", email="new@example.com", first_name="Sian"
+    )
     monkeypatch.setattr(
         dependencies_module, "verify_request", lambda request, config: claims
     )
@@ -54,6 +56,8 @@ def test_first_call_provisions_a_local_user_row(app_context, monkeypatch):
 
     assert user.clerk_user_id == "user_new_dep"
     assert user.email == "new@example.com"
+    assert user.first_name == "Sian"
+    assert user.base_reference == "sian1"
     stored = UserRepository().get_by_clerk_id("user_new_dep")
     assert stored is not None
     assert stored.id == user.id
@@ -67,7 +71,9 @@ def test_repeat_call_is_idempotent_and_resolver_runs_once(app_context, monkeypat
     read 2, and the email claim would be re-fetched from Clerk on every
     single request instead of once per user lifetime.
     """
-    claims = ClerkClaims(clerk_user_id="user_repeat_dep", email=None)
+    claims = ClerkClaims(
+        clerk_user_id="user_repeat_dep", email=None, first_name="Repeat"
+    )
     monkeypatch.setattr(
         dependencies_module, "verify_request", lambda request, config: claims
     )
