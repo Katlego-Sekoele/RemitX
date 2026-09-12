@@ -81,14 +81,14 @@ def _create_deposit(
         return None
     processed_at = datetime.now(UTC)
     statement_date = _parse_statement_date(row.get("date"), processed_at)
-    # Get the platform bank account
+    # For now we only support ZAR deposits, so the bank account is always the same.
     RemitX_bank_account = account_repo.get_platform_account_by_label(
         REMITX_SA_BANK_ACCOUNT_LABEL
-    ) # For now we are only supporting ZAR deposits, so the bank account is always the same.
+    )
 
     account = _find_account(reference, account_repo)
     # If no account matches the reference, create a pending transaction and deposit
-    if account is None: 
+    if account is None:
         logger.info(
             "No account found for reference %s (amount=%s): recording as pending",
             reference,
