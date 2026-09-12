@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from remitx_api.config import Config
+from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
 from remitx_api.routes import register_routers
 
@@ -31,6 +33,20 @@ def create_app(config_class: type[Config] = Config) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(DomainError)
+    async def domain_error_handler(request: Request, exc: DomainError):
+        """Turn a refusal expressed in the domain's terms into HTTP.
+
+        Registered once here rather than repeated as a ``try``/``except`` in
+        every route: a mapping a handler forgets is a 500 the caller cannot
+        act on, and routes are supposed to be HTTP only. The body matches
+        ``HTTPException``'s so a client sees one error shape.
+        """
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
 
     @app.middleware("http")
     async def db_session_middleware(request: Request, call_next):

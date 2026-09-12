@@ -9,10 +9,6 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.user_repository import UserRepository
 
 
-class UnknownUserError(Exception):
-    """Raised when an admin action targets a user id that doesn't exist."""
-
-
 class UserController:
     def __init__(self) -> None:
         self._users = UserRepository()
@@ -78,9 +74,6 @@ class UserController:
         if kyc_status not in KYC_STATUSES:
             raise ValueError(f"Unknown kyc_status: {kyc_status!r}")
 
-        user = self._users.get_by_id(user_id)
-        if user is None:
-            raise UnknownUserError(str(user_id))
-
+        user = self._users.require_by_id(user_id)
         user.kyc_status = kyc_status
         return self._users.save(user)
