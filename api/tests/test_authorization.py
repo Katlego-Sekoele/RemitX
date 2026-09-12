@@ -41,6 +41,7 @@ def _make_user(suffix: str) -> User:
         id=uuid.uuid4(),
         clerk_user_id=f"user_{suffix}",
         email=f"{suffix}@example.com",
+        base_reference=f"{suffix}1",
     )
 
 
