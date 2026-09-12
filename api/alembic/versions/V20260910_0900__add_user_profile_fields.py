@@ -25,9 +25,19 @@ depends_on: str | tuple | None = None
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("first_name", sa.Text(), nullable=True))
-    # No existing rows can carry a real base_reference yet, so there's
-    # nothing to backfill — added straight to NOT NULL UNIQUE.
-    op.add_column("users", sa.Column("base_reference", sa.Text(), nullable=False))
+    op.add_column("users", sa.Column("base_reference", sa.Text(), nullable=True))
+
+    connection = op.get_bind()
+    users = connection.execute(
+        sa.text("SELECT id FROM users ORDER BY created_at")
+    ).fetchall()
+    for index, (user_id,) in enumerate(users, start=1):
+        connection.execute(
+            sa.text("UPDATE users SET base_reference = :ref WHERE id = :id"),
+            {"ref": f"user{index}", "id": user_id},
+        )
+
+    op.alter_column("users", "base_reference", nullable=False)
     op.create_index(
         op.f("ix_users_base_reference"), "users", ["base_reference"], unique=True
     )
