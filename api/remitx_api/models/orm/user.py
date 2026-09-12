@@ -87,7 +87,14 @@ class User(Base):
     # fee-config edits) via auth.dependencies.require_admin. Every user is
     # "user" unless promoted directly in the database — there's no
     # in-app admin-signup flow, deliberately.
-    role: Mapped[str] = mapped_column(Text, nullable=False, default=ROLE_USER)
+    # `server_default` as well as `default`: the column was added NOT NULL to a
+    # table that already had rows, so the database needs its own default too.
+    role: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default=ROLE_USER,
+        server_default=ROLE_USER,
+    )
     # Real KYC (document intake, admin review queue) is out of this
     # prototype's scope — see docs/project-brief.md. This is a minimal
     # toggle: UNVERIFIED users are rejected outright by quote/remittance
@@ -97,6 +104,7 @@ class User(Base):
         Text,
         nullable=False,
         default=KYC_UNVERIFIED,
+        server_default=KYC_UNVERIFIED,
     )
     # Set in Python rather than by the database: SQLite's CURRENT_TIMESTAMP has
     # only second precision, which is too coarse to order rapid inserts.
