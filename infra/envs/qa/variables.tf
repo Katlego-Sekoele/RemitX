@@ -13,6 +13,16 @@ variable "git_branch" {
 
 variable "repo_url" {
   type = string
+
+  validation {
+    # Render stores the repo URL with any ".git" suffix stripped and the
+    # provider returns that normalised form. Terraform compares it against the
+    # configured value and fails the apply with "Provider produced inconsistent
+    # result after apply" — which names neither the suffix nor this variable,
+    # so catch it here instead.
+    condition     = !endswith(var.repo_url, ".git")
+    error_message = "repo_url must not end in \".git\": Render normalises the suffix away, and Terraform then rejects the provider's result."
+  }
 }
 
 variable "redis_db" {
