@@ -13,9 +13,9 @@ Hard constraints from the brief:
 - RLUSD settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting).
 - RLUSD transfer may not start until the simulated ZAR cash-in is confirmed.
 
-Cloud deployment uses **Azure** (Static Web Apps, Container Apps, Key Vault), **Neon** (Postgres), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md](docs/superpowers/specs/2026-08-18-azure-neon-deployment-design.md).
+Cloud deployment uses **Render** (API + worker web services, static frontend, Key Value), **Neon** (Postgres), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-09-12-render-migration-design.md](docs/superpowers/specs/2026-09-12-render-migration-design.md).
 
-**Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud **Container Apps worker** with internal Redis.
+**Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud worker is a free Render web service woken via `WORKER_WAKE_URL`.
 
 ## Layout
 
@@ -23,11 +23,11 @@ Monorepo with two apps sharing one env file:
 
 - [api/](api/) — FastAPI JSON REST API (`remitx_api` package)
 - [frontend/](frontend/) — React Router v7 (SPA) + Tailwind v4 + shadcn/ui
-- [infra/](infra/) — Terraform (Azure Container Apps, SWA, Key Vault)
+- [infra/](infra/) — Terraform (Render). Azure destroy roots: [infra/legacy-azure/](infra/legacy-azure/)
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Azure + Neon + Clerk setup
-- [.github/workflows/](.github/workflows/) — CI and Azure deploy on `main` / `stable`
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
+- [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
 
 ## Environment configuration
 
@@ -120,7 +120,7 @@ between local and production.
 
 ## Frontend architecture
 
-React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/react-router.config.ts)) — static client build deployed to Azure Static Web Apps.
+React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/react-router.config.ts)) — static client build deployed to a Render static site.
 
 - Routes are declared explicitly in [frontend/app/routes.ts](frontend/app/routes.ts), not by file-system convention. New pages must be added there.
 - Route types come from `react-router typegen` into `.react-router/types` and are imported as `./+types/<route>`. Run `npm run typecheck` (which regenerates them) after adding a route, or types will be stale/missing.

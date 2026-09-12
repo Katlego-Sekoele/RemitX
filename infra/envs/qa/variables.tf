@@ -2,106 +2,67 @@ variable "environment" {
   type = string
 }
 
-variable "location" {
+variable "region" {
   type    = string
-  default = "spaincentral"
+  default = "frankfurt"
 }
 
-variable "swa_location" {
+variable "git_branch" {
+  type = string
+}
+
+variable "repo_url" {
+  type = string
+}
+
+variable "redis_db" {
+  type        = number
+  description = "Logical Redis database on the shared Key Value instance"
+}
+
+variable "hcp_organization" {
   type        = string
-  default     = "eastus2"
-  description = "Azure region for Static Web Apps (limited SKUs; pick a region your subscription can provision — try eastus2, westus2, or centralus)"
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-
-variable "alert_emails" {
-  type        = list(string)
-  description = "Email addresses for per-dollar billing alerts"
-}
-
-variable "monthly_budget_cap" {
-  type    = number
-  default = 20
-}
-
-variable "budget_start_date" {
-  type        = string
-  description = "ISO8601 start date for monthly budgets, e.g. 2026-08-01T00:00:00Z"
+  description = "HCP Terraform org. Set TF_VAR_hcp_organization to the same value as TF_CLOUD_ORGANIZATION."
 }
 
 variable "database_url" {
   type        = string
   sensitive   = true
-  description = "Neon Postgres connection string; pass via TF_VAR_database_url at apply time"
+  description = "Neon Postgres URL (SQLAlchemy form). Pass via TF_VAR_database_url."
 }
 
 variable "clerk_secret_key" {
-  type        = string
-  sensitive   = true
-  description = "Clerk secret key for Key Vault runtime; pass via TF_VAR_clerk_secret_key at apply time"
+  type      = string
+  sensitive = true
 }
 
 variable "clerk_publishable_key" {
-  type        = string
-  description = "Clerk Publishable Key (pk_...) for frontend — stored in Key Vault for later use"
+  type = string
 }
 
 variable "xrpl_encryption_key" {
-  type        = string
-  sensitive   = true
-  description = "XRPL private key encryption key; pass via TF_VAR_xrpl_encryption_key at apply time"
-}
-
-variable "ghcr_org" {
-  type        = string
-  description = "GitHub repository path for GHCR images (owner/repo) — used by deploy.yml, not Terraform"
-}
-
-variable "bootstrap_container_image" {
-  type        = string
-  default     = "mcr.microsoft.com/k8se/quickstart:latest"
-  description = "Public placeholder image for initial Container App create; deploy workflows replace with GHCR"
-}
-
-variable "api_min_replicas" {
-  type        = number
-  default     = 0
-  description = "Minimum API Container App replicas (0 for QA scale-to-zero, 1 for prod)"
+  type      = string
+  sensitive = true
 }
 
 variable "api_custom_domain" {
-  type        = string
-  default     = ""
-  description = "Optional API custom domain (e.g. api.example.com); wired in a later task"
+  type    = string
+  default = ""
 }
 
-variable "swa_custom_domain" {
-  type        = string
-  default     = ""
-  description = "Optional frontend custom domain (e.g. example.com); wired in a later task"
+variable "frontend_custom_domain" {
+  type    = string
+  default = ""
 }
 
-variable "paused" {
-  description = <<-EOT
-    Park the whole environment at (near) zero cost without tearing it down.
+variable "render_api_key" {
+  type        = string
+  sensitive   = true
+  description = "Render API key. HCP remote runs do not inherit RENDER_API_KEY; pass TF_VAR_render_api_key."
+}
 
-    Holds the API, Redis, and the worker at zero replicas with no way to wake
-    them — not even an inbound request to the API's public hostname — and caps
-    Log Analytics ingestion, which is the only meter that bills while every
-    replica is down. Everything else in the stack is already free at rest:
-    Static Web Apps is on the Free SKU, the Container Apps environment has no
-    idle charge, and Key Vault bills per operation.
-
-    Nothing is destroyed. Ingress, custom domains, TLS certificates, secrets,
-    and the Neon database are untouched, so unpausing is this flag plus an
-    apply. Treat a paused environment as switched off, not slow: the site
-    still loads from Static Web Apps but every API call fails.
-  EOT
-
-  type    = bool
-  default = false
+variable "render_owner_id" {
+  type        = string
+  sensitive   = true
+  description = "Render owner id (usr-… or tea-…). Pass TF_VAR_render_owner_id."
 }

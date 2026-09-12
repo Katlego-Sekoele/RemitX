@@ -13,4 +13,4 @@ COPY alembic/ alembic/
 
 RUN pip install --upgrade pip && pip install -e .
 
-CMD ["celery", "-A", "remitx_worker.celery_app", "worker", "--loglevel=info"]
+CMD ["python", "-m", "remitx_worker"]

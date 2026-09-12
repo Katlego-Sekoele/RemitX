@@ -12,9 +12,7 @@ on:
       - "frontend/**"
 
 permissions:
-  id-token: write
   contents: read
-  packages: write
   # dorny/paths-filter calls the GitHub API's listFiles on pull_request events
   # rather than diffing locally; without this it fails the `changes` job with
   # "Resource not accessible by integration", which skips the whole pipeline.
@@ -32,9 +30,6 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       frontend: ${{ steps.filter.outputs.frontend }}
       deploy_env: ${{ steps.env.outputs.deploy_env }}
-      paused: ${{ steps.paused.outputs.paused }}
-      ghcr_repository: ${{ steps.ghcr.outputs.repository }}
-      ghcr_owner: ${{ steps.ghcr.outputs.owner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,10 +52,6 @@ jobs:
           else
             branch="${{ github.ref_name }}"
           fi
-          # `main` is the QA/integration branch, `stable` is the release
-          # branch. Map explicitly and fail closed: an unrecognised branch
-          # must not fall through into an environment, because the cheap
-          # default here used to be `qa` and the expensive one is `prod`.
           case "$branch" in
             stable) echo "deploy_env=prod" >> "$GITHUB_OUTPUT" ;;
             main)   echo "deploy_env=qa" >> "$GITHUB_OUTPUT" ;;
@@ -69,29 +60,6 @@ jobs:
               exit 1
               ;;
           esac
-
-      # Terraform still applies while an environment is paused — that is how it
-      # gets paused and unpaused. Rolling out an image is what has to wait: a
-      # paused app never starts a replica, so a new revision ships untested.
-      - name: Read the pause flag for the target environment
-        id: paused
-        run: |
-          tfvars="infra/envs/${{ steps.env.outputs.deploy_env }}/non-secret.tfvars"
-          if grep -Eq '^[[:space:]]*paused[[:space:]]*=[[:space:]]*true([[:space:]]|#|$)' "$tfvars"; then
-            echo "paused=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::${{ steps.env.outputs.deploy_env }} is paused in $tfvars; skipping the API and worker rollout."
-          else
-            echo "paused=false" >> "$GITHUB_OUTPUT"
-          fi
-        shell: bash
-
-      - name: Normalize GHCR repository name (must be lowercase)
-        id: ghcr
-        run: |
-          repo="${GITHUB_REPOSITORY,,}"
-          echo "repository=${repo}" >> "$GITHUB_OUTPUT"
-          echo "owner=${repo%%/*}" >> "$GITHUB_OUTPUT"
-        shell: bash
 
   ci:
     needs: changes
@@ -103,34 +71,50 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_VAR_hcp_organization: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_tfe_token: ${{ secrets.TF_API_TOKEN }}
+      # HCP remote runs forward TF_VAR_* as Terraform inputs, not RENDER_*.
+      TF_VAR_render_api_key: ${{ secrets.RENDER_API_KEY }}
+      TF_VAR_render_owner_id: ${{ secrets.RENDER_OWNER_ID }}
       TF_VAR_database_url: ${{ secrets.TF_VAR_database_url }}
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
       TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
-      TF_VAR_ghcr_org: ${{ needs.changes.outputs.ghcr_repository }}
-    defaults:
-      run:
-        working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - uses: hashicorp/setup-terraform@v3
 
-      - run: terraform init
+      - name: Require HCP organization and Render credentials
+        run: |
+          if [ -z "${TF_CLOUD_ORGANIZATION}" ]; then
+            echo "ERROR: Set repository or environment variable TF_CLOUD_ORGANIZATION." >&2
+            exit 1
+          fi
+          if [ -z "${TF_VAR_render_api_key}" ] || [ -z "${TF_VAR_render_owner_id}" ]; then
+            echo "ERROR: Set RENDER_API_KEY and RENDER_OWNER_ID on the ${{ needs.changes.outputs.deploy_env }} environment." >&2
+            exit 1
+          fi
 
-      - name: Terraform plan
-        if: github.event_name == 'pull_request'
-        run: terraform plan -var-file=non-secret.tfvars
+      # Env roots read remitx-shared via terraform_remote_state. A PR-only
+      # plan leaves that workspace empty, so apply shared on every run.
+      - name: Terraform shared
+        working-directory: infra/shared
+        run: |
+          terraform init
+          terraform apply -auto-approve -var-file=non-secret.tfvars
 
-      - name: Terraform apply
-        if: github.event_name == 'push'
-        run: terraform apply -auto-approve -var-file=non-secret.tfvars
+      - name: Terraform environment
+        working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
+        run: |
+          terraform init
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            terraform plan -var-file=non-secret.tfvars
+          else
+            terraform apply -auto-approve -var-file=non-secret.tfvars
+          fi
 
   migrate:
     needs: [changes, ci, terraform]
@@ -138,7 +122,6 @@ jobs:
     # `if` without a status function. Without it a *skipped* `terraform` (any
     # push that does not touch infra/**) skips this job and every deploy job
     # below it, and the run still reports green — a silent no-op deploy.
-    # Because that also disables the implicit CI gate, `ci` is now explicit.
     if: |
       !cancelled() &&
       github.event_name == 'push' &&
@@ -160,8 +143,6 @@ jobs:
 
       - run: pip install -e .
 
-      # Runs before deploy-api/deploy-worker so a failed migration blocks the
-      # rollout rather than leaving a new image on a stale schema.
       - name: Apply Alembic migrations
         env:
           DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
@@ -176,132 +157,42 @@ jobs:
 
   deploy-api:
     needs: [changes, ci, terraform, migrate]
-    # migrate shares this job's `api == 'true'` precondition, so it can never
-    # legitimately be skipped here — require success outright rather than
-    # leaving a hole an unmigrated deploy could pass through.
     if: |
       !cancelled() &&
       github.event_name == 'push' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
-      needs.changes.outputs.paused != 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-api
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: ./api
-          push: true
-          tags: |
-            ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-api:${{ env.DEPLOY_ENV }}
-            ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-api:${{ github.sha }}
-
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Configure GHCR pull on Container App
-        env:
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-        run: |
-          if [ -z "$GHCR_PULL_TOKEN" ]; then
-            echo "ERROR: Set GHCR_PULL_TOKEN (GitHub PAT with read:packages) on the ${{ env.DEPLOY_ENV }} environment." >&2
-            exit 1
-          fi
-          az containerapp registry set \
-            --name remitx-${{ env.DEPLOY_ENV }}-api \
-            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
-            --server ghcr.io \
-            --username "${{ needs.changes.outputs.ghcr_owner }}" \
-            --password "$GHCR_PULL_TOKEN"
-
-      - run: |
-          az containerapp update \
-            --name remitx-${{ env.DEPLOY_ENV }}-api \
-            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
-            --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-api:${{ env.DEPLOY_ENV }}
+      - run: .github/scripts/render-deploy.sh
 
   deploy-worker:
     needs: [changes, ci, terraform, migrate]
-    # migrate shares this job's `api == 'true'` precondition, so it can never
-    # legitimately be skipped here — require success outright rather than
-    # leaving a hole an unmigrated deploy could pass through.
     if: |
       !cancelled() &&
       github.event_name == 'push' &&
       needs.ci.result == 'success' &&
       needs.changes.outputs.api == 'true' &&
-      needs.changes.outputs.paused != 'true' &&
       (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-worker
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: ./api
-          file: ./api/Dockerfile.worker
-          push: true
-          tags: |
-            ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-worker:${{ env.DEPLOY_ENV }}
-            ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-worker:${{ github.sha }}
-
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Configure GHCR pull on Container App
-        env:
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-        run: |
-          if [ -z "$GHCR_PULL_TOKEN" ]; then
-            echo "ERROR: Set GHCR_PULL_TOKEN (GitHub PAT with read:packages) on the ${{ env.DEPLOY_ENV }} environment." >&2
-            exit 1
-          fi
-          az containerapp registry set \
-            --name remitx-${{ env.DEPLOY_ENV }}-worker \
-            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
-            --server ghcr.io \
-            --username "${{ needs.changes.outputs.ghcr_owner }}" \
-            --password "$GHCR_PULL_TOKEN"
-
-      - run: |
-          az containerapp update \
-            --name remitx-${{ env.DEPLOY_ENV }}-worker \
-            --resource-group remitx-${{ env.DEPLOY_ENV }}-rg \
-            --image ghcr.io/${{ needs.changes.outputs.ghcr_repository }}/remitx-worker:${{ env.DEPLOY_ENV }}
+      - run: .github/scripts/render-deploy.sh
 
   deploy-frontend:
     needs: [changes, ci, terraform, migrate]
-    # `skipped` is legitimate for migrate here: a frontend-only push has
-    # api == 'false' and has no migration to run. But a *failed* migration
-    # must not ship a new frontend against the old API and old schema.
     if: |
       !cancelled() &&
       github.event_name == 'push' &&
@@ -311,17 +202,9 @@ jobs:
       (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-web
     steps:
       - uses: actions/checkout@v4
-
-      - uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: upload
-          app_location: frontend
-          output_location: build/client
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_SITE_URL: ${{ secrets.VITE_SITE_URL }}
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      - run: .github/scripts/render-deploy.sh
