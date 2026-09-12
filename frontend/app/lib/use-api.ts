@@ -2,13 +2,19 @@ import { useAuth } from "@clerk/react-router"
 import { useMemo } from "react"
 
 import {
+  approveDeposit,
   getMyAccess,
   getMyRoles,
   listIntegrationMessages,
+  listPendingDeposits,
+  processDeposits,
   sendIntegrationMessage,
+  type DepositRow,
   type IntegrationMessage,
   type MePermission,
   type MyRole,
+  type PendingDeposit,
+  type ProcessedDeposit,
 } from "~/lib/api"
 
 /**
@@ -29,6 +35,15 @@ export function useApi() {
         sendIntegrationMessage(getToken, body),
       getMyAccess: (): Promise<MePermission> => getMyAccess(getToken),
       getMyRoles: (): Promise<MyRole[]> => getMyRoles(getToken),
+      processDeposits: (rows: DepositRow[]): Promise<ProcessedDeposit[]> =>
+        processDeposits(getToken, rows),
+      listPendingDeposits: (): Promise<PendingDeposit[]> =>
+        listPendingDeposits(getToken),
+      approveDeposit: (
+        depositId: string,
+        userId: string
+      ): Promise<ProcessedDeposit> =>
+        approveDeposit(getToken, depositId, userId),
     }),
     [getToken]
   )

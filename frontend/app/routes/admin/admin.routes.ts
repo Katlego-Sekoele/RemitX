@@ -38,6 +38,21 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
       },
     ],
   },
+  {
+    label: "Deposits",
+    order: 20,
+    icon: "BankIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/process-deposits",
+          module: "routes/admin/process-deposits.tsx",
+        },
+        label: "Process deposits",
+        childItems: [],
+      },
+    ],
+  },
 ]
 
 export function getFlattenedAdminRoutes(

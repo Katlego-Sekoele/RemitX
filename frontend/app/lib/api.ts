@@ -128,3 +128,60 @@ export type MyRole = {
 export function getMyRoles(getToken: GetToken): Promise<MyRole[]> {
   return request<MyRole[]>(getToken, "/me/roles")
 }
+
+/** One parsed bank-statement line, as sent to POST /admin/deposits/process. */
+export type DepositRow = {
+  reference: string | null
+  amount: string
+  date: string | null
+}
+
+export type ProcessedDeposit = {
+  deposit_id: string
+  reference: string | null
+  amount: string
+  currency: string
+  status: string
+  user_id: string | null
+  confirmed_by: string | null
+}
+
+export function processDeposits(
+  getToken: GetToken,
+  rows: DepositRow[]
+): Promise<ProcessedDeposit[]> {
+  return request<ProcessedDeposit[]>(getToken, "/admin/deposits/process", {
+    method: "POST",
+    body: JSON.stringify({ rows }),
+  })
+}
+
+/** A deposit still unmatched to a user — the admin portal's manual-review queue. */
+export type PendingDeposit = {
+  deposit_id: string
+  reference: string | null
+  amount: string
+  currency: string
+  created_at: string
+}
+
+export function listPendingDeposits(
+  getToken: GetToken
+): Promise<PendingDeposit[]> {
+  return request<PendingDeposit[]>(getToken, "/admin/deposits/pending")
+}
+
+export function approveDeposit(
+  getToken: GetToken,
+  depositId: string,
+  userId: string
+): Promise<ProcessedDeposit> {
+  return request<ProcessedDeposit>(
+    getToken,
+    `/admin/deposits/${depositId}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    }
+  )
+}

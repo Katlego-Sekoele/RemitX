@@ -6,7 +6,7 @@ from remitx_api.app import create_app
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
 from remitx_api.extensions import db
-from remitx_api.models.orm.user import User
+from remitx_api.models.orm.user import ROLE_ADMIN, User
 from remitx_api.services import queue_service
 
 
@@ -32,6 +32,28 @@ def client(current_user):
     exercising real Clerk verification is test_clerk_verification.py's job."""
     app = create_app(TestConfig)
     app.dependency_overrides[get_current_user] = lambda: current_user
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def admin_user():
+    """Like `current_user`, but for exercising admin-gated (`require_admin`) routes."""
+    return User(
+        id=uuid.uuid4(),
+        clerk_user_id="admin_test",
+        email="admin@example.com",
+        first_name="Admin",
+        base_reference="admin1",
+        role=ROLE_ADMIN,
+    )
+
+
+@pytest.fixture
+def admin_client(admin_user):
+    """Authenticated client acting as an admin."""
+    app = create_app(TestConfig)
+    app.dependency_overrides[get_current_user] = lambda: admin_user
     with TestClient(app) as test_client:
         yield test_client
 

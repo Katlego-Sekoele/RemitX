@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.user import KYC_STATUSES, User
+from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.user_repository import UserRepository
 
 
@@ -15,6 +16,7 @@ class UnknownUserError(Exception):
 class UserController:
     def __init__(self) -> None:
         self._users = UserRepository()
+        self._accounts = AccountRepository()
 
     def ensure_provisioned(
         self,
@@ -26,8 +28,10 @@ class UserController:
 
         Clerk is the source of truth for who a user is; this row exists so
         domain records have a local foreign key to hang off. A new user also
-        gets their base_reference assigned here — see
-        UserRepository.next_base_reference.
+        gets their base_reference assigned and their ZAR/uctusd accounts
+        created eagerly here, in the same transaction — see
+        UserRepository.next_base_reference and
+        AccountRepository.create_user_accounts.
 
         `resolve_email` and `resolve_first_name` are callables rather than
         values because resolving either costs a Clerk API call — neither is a
@@ -48,6 +52,7 @@ class UserController:
                     base_reference=self._users.next_base_reference(first_name),
                 )
             )
+            self._accounts.create_user_accounts(user.id, user.base_reference)
             db.session.commit()
             return user
         except IntegrityError:
@@ -65,8 +70,10 @@ class UserController:
             return winner
 
     def set_kyc_status(self, user_id: uuid.UUID, kyc_status: str) -> User:
-        """Admin-only KYC toggle — a minimal switch, not a real KYC module —
-        no document intake or review queue exists here, deliberately.
+        """Admin-only KYC toggle (Transaction_Flow_Context.md's flow assumes
+        both parties are already KYC-approved; this is the minimal switch
+        that makes that assumption satisfiable, not a real KYC module — no
+        document intake or review queue exists here, deliberately).
         """
         if kyc_status not in KYC_STATUSES:
             raise ValueError(f"Unknown kyc_status: {kyc_status!r}")
