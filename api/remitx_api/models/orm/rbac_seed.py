@@ -35,6 +35,17 @@ def precompute_role_permission_id_given_role_and_permission(
     return uuid.uuid5(RBAC_NAMESPACE, f"role_permission:{role_name}:{value}")
 
 
+def precompute_toxic_combination_id_given_permissions(
+    first: PermissionCode | str,
+    second: PermissionCode | str,
+) -> uuid.UUID:
+    values = sorted(
+        code.value if isinstance(code, PermissionCode) else code
+        for code in (first, second)
+    )
+    return uuid.uuid5(RBAC_NAMESPACE, f"toxic_combination:{values[0]}:{values[1]}")
+
+
 @dataclass(frozen=True, slots=True)
 class PermissionSeed:
     code: PermissionCode
@@ -148,6 +159,10 @@ class RoleSeed:
     description: str
     permissions: tuple[PermissionCode, ...]
     is_admin: bool = False
+    # Mirrors ``roles.is_grantable`` / ``roles.protect_last_holder`` — see
+    # models/orm/role.py for what each one buys.
+    is_grantable: bool = True
+    protect_last_holder: bool = False
 
 
 ROLE_SEEDS: tuple[RoleSeed, ...] = (
@@ -156,6 +171,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         display_name="Customer",
         description="Every provisioned user. Not a granted role.",
         permissions=(),
+        is_grantable=False,
     ),
     RoleSeed(
         name="compliance_analyst",
@@ -227,6 +243,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         display_name="IAM Admin",
         description="Administers access. Holds no domain permissions.",
         is_admin=True,
+        protect_last_holder=True,
         permissions=(
             PermissionCode.ROLE_READ,
             PermissionCode.ROLE_GRANT,
@@ -257,6 +274,33 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionCode.AUDIT_READ,
             PermissionCode.USER_READ,
             PermissionCode.TRANSACTION_READ_ANY,
+        ),
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ToxicCombinationSeed:
+    permissions: tuple[PermissionCode, PermissionCode]
+    explanation: str
+
+
+# The baseline separation-of-duties rules. Seeded, not hardcoded: after the
+# migration these are rows an operator can change without a redeploy, and the
+# API reads them from the table on every grant.
+TOXIC_COMBINATION_SEEDS: tuple[ToxicCombinationSeed, ...] = (
+    ToxicCombinationSeed(
+        permissions=(PermissionCode.CASHIN_CONFIRM, PermissionCode.CASHOUT_COMPLETE),
+        explanation=(
+            "One person could confirm money in and pay money out, so no second "
+            "pair of eyes ever sees a transfer end to end."
+        ),
+    ),
+    ToxicCombinationSeed(
+        permissions=(PermissionCode.KYC_APPLICATION_DECIDE, PermissionCode.ROLE_GRANT),
+        explanation=(
+            "One person could approve a customer and hand out the access that "
+            "reviews that decision."
         ),
     ),
 )

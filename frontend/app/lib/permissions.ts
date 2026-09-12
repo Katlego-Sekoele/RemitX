@@ -8,6 +8,10 @@
 export const PERMISSIONS = {
   cashinRead: "cashin:read",
   cashinConfirm: "cashin:confirm",
+  roleRead: "role:read",
+  roleGrant: "role:grant",
+  roleRevoke: "role:revoke",
+  userRead: "user:read",
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
