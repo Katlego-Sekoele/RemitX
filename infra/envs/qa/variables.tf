@@ -65,6 +65,12 @@ variable "frontend_custom_domain" {
   default = ""
 }
 
+variable "additional_cors_origins" {
+  type        = string
+  default     = ""
+  description = "Comma-separated browser origins to allow besides the onrender frontend URL and frontend_custom_domain. Use this for DNS/Cloudflare hostnames that are not Render-managed custom domains."
+}
+
 variable "render_api_key" {
   type        = string
   sensitive   = true

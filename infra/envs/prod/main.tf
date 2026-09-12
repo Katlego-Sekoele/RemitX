@@ -27,6 +27,16 @@ locals {
     ? "https://${var.frontend_custom_domain}"
     : "https://remitx-${var.environment}-web.onrender.com"
   )
+  # Custom domain and the onrender host are both valid browser
+  # origins. Using only one rejects the other (the Azure stack
+  # already listed both; the Render port dropped that).
+  cors_origins = join(",", compact(concat(
+    [
+      var.frontend_custom_domain != "" ? "https://${var.frontend_custom_domain}" : "",
+      "https://remitx-${var.environment}-web.onrender.com",
+    ],
+    [for origin in split(",", var.additional_cors_origins) : trimspace(origin)],
+  )))
   environment_id = (
     var.environment == "prod"
     ? data.terraform_remote_state.shared.outputs.prod_environment_id
@@ -78,7 +88,7 @@ module "api" {
   dockerfile_path = "./api/Dockerfile"
   docker_context  = "./api"
   env_vars = merge(local.worker_env, {
-    CORS_ORIGINS    = var.frontend_custom_domain != "" ? local.frontend_public : module.frontend.url
+    CORS_ORIGINS    = local.cors_origins
     WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
   })
   custom_domain = var.api_custom_domain
