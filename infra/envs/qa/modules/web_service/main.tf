@@ -21,4 +21,13 @@ resource "render_web_service" "this" {
   }
 
   custom_domains = var.custom_domain == "" ? null : [{ name = var.custom_domain }]
+
+  # render-oss/render 1.9.1 sends maintenance_mode on every service
+  # update. Render rejects that field on free plans (issue #80), so
+  # any in-place change to this resource fails apply. Env vars are
+  # synced after apply by .github/scripts/render-sync-env.sh.
+  # Custom domains stay as created; change them in the dashboard.
+  lifecycle {
+    ignore_changes = [env_vars, custom_domains]
+  }
 }
