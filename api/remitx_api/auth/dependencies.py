@@ -2,9 +2,13 @@
 
 Handlers receive a User, never a token or a raw claim dict, so no route has
 to know that Clerk is the identity provider.
+
+Authentication only. *Authorisation* lives in auth/permissions.py — routes
+gate on a `PermissionCode` through `RequirePermission`, never on a role name
+or a flag on the User row.
 """
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Request
 
 from remitx_api.auth.clerk import (
     fetch_user_email,
@@ -12,7 +16,7 @@ from remitx_api.auth.clerk import (
     verify_request,
 )
 from remitx_api.controllers.user_controller import UserController
-from remitx_api.models.orm.user import ROLE_ADMIN, User
+from remitx_api.models.orm.user import User
 
 _users = UserController()
 
@@ -39,17 +43,3 @@ def get_current_user(request: Request) -> User:
     return _users.ensure_provisioned(
         claims.clerk_user_id, resolve_email, resolve_first_name
     )
-
-
-def require_admin(user: User = Depends(get_current_user)) -> User:
-    """Like `get_current_user`, but 403s anyone who isn't `role == "admin"`.
-
-    There's no in-app admin-signup flow — promotion happens directly in the
-    database — so this only ever gates, never grants.
-    """
-    if user.role != ROLE_ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return user

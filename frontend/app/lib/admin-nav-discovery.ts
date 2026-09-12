@@ -25,8 +25,18 @@ function slugify(label: string): string {
   return label.toLowerCase().replace(/\s+/g, "-")
 }
 
-/** Nav groups derived from ``ADMIN_ROUTE_INDEX`` nodes that have child items. */
-export function discoverAdminNav(): AdminNavGroup[] {
+/** Nav groups derived from ``ADMIN_ROUTE_INDEX`` nodes that have child items.
+ *
+ * `grantedPermissions` are the caller's own, from ``/me/permissions``. An item
+ * that declares a permission the caller lacks is left out, and a group left
+ * with nothing to show goes with it — the API refuses those pages anyway, so
+ * linking to them only offers a dead end.
+ */
+export function discoverAdminNav(
+  grantedPermissions: readonly string[]
+): AdminNavGroup[] {
+  const granted = new Set(grantedPermissions)
+
   return ADMIN_ROUTE_INDEX.filter(
     (node) => (node.childItems?.length ?? 0) > 0 && node.icon != null
   )
@@ -38,7 +48,11 @@ export function discoverAdminNav(): AdminNavGroup[] {
       items:
         group.childItems &&
         group.childItems
-          .filter((item) => item.route != null)
+          .filter(
+            (item) =>
+              item.route != null &&
+              (item.permission == null || granted.has(item.permission))
+          )
           .map((item) => ({
             title: item.label,
             href: hrefForPath(item.route!.path),
@@ -46,5 +60,6 @@ export function discoverAdminNav(): AdminNavGroup[] {
           }))
           .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)),
     }))
+    .filter((group) => (group.items?.length ?? 0) > 0)
     .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
 }

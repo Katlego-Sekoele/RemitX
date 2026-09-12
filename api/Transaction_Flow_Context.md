@@ -397,12 +397,12 @@ Deliberately unresolved for now — flagging rather than guessing:
 A freshly migrated database (`alembic upgrade head`) has a schema and nothing else — no platform accounts, no admin, no XRPL treasury balance recorded. None of this is automated yet; every step below is a manual one-off for local dev.
 
 1. **Migrate the schema.** `cd api && source .venv/bin/activate && alembic upgrade head`.
-2. **Set `ADMIN_CLERK_USER_ID`** in `.env` to your own Clerk user id (Clerk dashboard → Users). This is who `scripts/seed_platform_accounts.py` provisions and promotes to `role='admin'` — sign in with this same Clerk account and you become admin with no manual DB edit needed.
+2. **Set `ADMIN_CLERK_USER_ID`** in `.env` to your own Clerk user id (Clerk dashboard → Users). This is who `scripts/seed_platform_accounts.py` provisions and grants every staff role in the RBAC catalogue (`treasury_operator`, `compliance_officer`, `iam_admin`, …) — sign in with this same Clerk account and the admin portal opens with no manual DB edit needed. Access is decided by those roles' permissions, checked per route by `RequirePermission` (`api/remitx_api/auth/permissions.py`); nothing reads `users.role`.
 3. **Run `python scripts/seed_platform_accounts.py`** (from `api/`, venv active, `ADMIN_CLERK_USER_ID` set). Idempotent — safe to re-run. Creates:
-   - The admin `User` row (or promotes one that already exists from a prior sign-in).
+   - The admin `User` row (or reuses one that already exists from a prior sign-in), with every `is_admin` role in the catalogue granted to it through `user_roles`.
    - One `REMITX_FIAT` bank account + matching `REMITX_REVENUE` fee account per country (§1) — deposit reconciliation has nowhere to credit money without these.
    - `RemitX XRPL Treasury Wallet` and `UCTUSD Issuer (Exchange)`.
    - If `PLATFORM_WALLET_ADDRESS` is also set and the XRPL testnet is reachable: a one-time `treasury_funding` transaction recording the wallet's real on-chain `uctusd` balance. Skipped with a warning, not a failure, if either is missing.
 4. **Sign in via the frontend at least once**, any account (`/sign-in`). First login eagerly creates that user's ZAR + `uctusd` accounts (§2, Phase A) via `ensure_provisioned` — there's no one to deposit against until at least one real user exists this way.
 5. **Point a bank-statement CSV at real references.** `api/scripts/sample_bank_statement.csv`'s references (`sian1-zar`, `thabo2-zar`, `amahle1-zar`, …) are placeholders — swap them for the actual `base_reference` of users created in step 4 (`SELECT id, base_reference FROM users;`), or every line lands `pending` instead of matching.
-6. **Run the reconciliation job** — via the admin-only `/process-deposits` frontend page, or directly: `deposit_service.process_deposits("scripts/sample_bank_statement.csv")`.
+6. **Run the reconciliation job** — via the `/admin/process-deposits` frontend page (needs `cashin:read` to see the queue and `cashin:confirm` to run the job or resolve a line — the `treasury_operator` role carries both), or directly: `deposit_service.process_deposits("scripts/sample_bank_statement.csv")`.

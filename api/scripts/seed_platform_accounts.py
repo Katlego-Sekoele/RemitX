@@ -20,10 +20,13 @@ To Run:
     python scripts/seed_platform_accounts.py
 
 Requires ADMIN_CLERK_USER_ID in .env (see .env.example) — the real Clerk
-`sub` claim of whoever will administer this system. Recording the treasury
-funding additionally requires PLATFORM_WALLET_ADDRESS and network access to
-XRPL_TESTNET_URL — if either is unavailable, that one step is skipped with a
-warning rather than failing the whole run.
+`sub` claim of whoever will administer this system. That account is granted
+every staff role in the RBAC catalogue (`alembic upgrade head` seeds it), which
+is what actually opens the admin portal and its permission-gated routes.
+
+Recording the treasury funding additionally requires PLATFORM_WALLET_ADDRESS
+and network access to XRPL_TESTNET_URL — if either is unavailable, that one
+step is skipped with a warning rather than failing the whole run.
 
 Re-running skips whatever's already there instead of creating duplicates.
 """
@@ -49,15 +52,17 @@ from remitx_api.models.orm.account import (
     TYPE_XRPL_WALLET,
     Account,
 )
+from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     TYPE_TREASURY_FUNDING,
     Transaction,
 )
-from remitx_api.models.orm.user import ROLE_ADMIN, User
+from remitx_api.models.orm.user import User
+from remitx_api.models.orm.user_role import UserRole
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
-from remitx_api.repositories.user_repository import UserRepository
+from sqlalchemy import select
 
 # One real bank account per country RemitX settles fiat in, each in that
 # country's own currency. Every one of these gets a matching Fee Revenue
@@ -110,17 +115,50 @@ def main() -> None:
 
 
 def _ensure_admin(clerk_user_id: str, config: Config) -> User:
-    """Provision the admin's User row and promote it, idempotently."""
+    """Provision the admin's User row and grant it every staff role, idempotently."""
     admin = UserController().ensure_provisioned(
         clerk_user_id,
         lambda: fetch_user_email(clerk_user_id, config),
         lambda: fetch_user_first_name(clerk_user_id, config),
     )
-    if admin.role != ROLE_ADMIN:
-        admin.role = ROLE_ADMIN
-        UserRepository().save(admin)
+    _grant_every_staff_role(admin)
     print(f"Admin: {admin.id} ({admin.email or clerk_user_id})")
     return admin
+
+
+def _grant_every_staff_role(admin: User) -> None:
+    """Grant each `is_admin` role in the catalogue to the local super admin.
+
+    Deliberately broad, and only because this is the one-off local bootstrap:
+    there is no in-app way to grant a role yet, so the account named by
+    ADMIN_CLERK_USER_ID has to arrive holding all of them to exercise the
+    staff portal end to end. Real access is per role, per permission — the
+    routes gate on `PermissionCode` (auth/permissions.py), and nothing reads
+    a flag on the User row.
+    """
+    staff_roles = db.session.scalars(
+        select(Role).where(Role.is_admin.is_(True)).order_by(Role.name)
+    ).all()
+    held = set(
+        db.session.scalars(
+            select(UserRole.role_id)
+            .where(UserRole.user_id == admin.id)
+            .where(UserRole.revoked_at.is_(None))
+        ).all()
+    )
+
+    granted = []
+    for role in staff_roles:
+        if role.role_id in held:
+            continue
+        db.session.add(UserRole(user_id=admin.id, role_id=role.role_id))
+        granted.append(role.name)
+
+    if granted:
+        db.session.commit()
+        print(f"Granted roles: {', '.join(granted)}")
+    else:
+        print("Skipped (already granted): every staff role")
 
 
 def _seed_platform_accounts(admin_id) -> dict[str, Account]:
