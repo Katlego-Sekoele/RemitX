@@ -14,11 +14,60 @@ from datetime import UTC, datetime
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.kyc_application import KycApplication
+from remitx_api.models.orm.kyc_application_status import KycApplicationStatusRecord
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
+from remitx_api.models.orm.kyc_seed import (
+    APPLICATION_STATUS_SEEDS,
+    PROGRESSION_SEEDS,
+    REASON_CODE_SEEDS,
+    precompute_progression_id,
+)
+from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusProgression
 from remitx_api.models.orm.user import User
+from sqlalchemy import select
 
 # A full South African ID number, 13 digits — the value masking has to hide.
 ID_NUMBER = "9001015800085"
+
+
+def seed_kyc_reference_data() -> None:
+    """Load reason codes and status progressions for tests using create_all()."""
+    existing = db.session.scalars(select(KycApplicationStatusRecord).limit(1)).first()
+    if existing is not None:
+        return
+
+    for seed in APPLICATION_STATUS_SEEDS:
+        db.session.add(
+            KycApplicationStatusRecord(
+                status=seed.status.value,
+                description=seed.description,
+                is_open=seed.is_open,
+                is_terminal=seed.is_terminal,
+            )
+        )
+
+    for seed in REASON_CODE_SEEDS:
+        db.session.add(
+            KycReasonCodeRecord(
+                reason_code=seed.code.value,
+                description=seed.description,
+            )
+        )
+
+    for seed in PROGRESSION_SEEDS:
+        db.session.add(
+            KycApplicationStatusProgression(
+                progression_id=precompute_progression_id(
+                    seed.from_status.value,
+                    seed.to_status.value,
+                ),
+                from_status=seed.from_status.value,
+                to_status=seed.to_status.value,
+            )
+        )
+
+    db.session.commit()
 
 
 def make_user(suffix: str | None = None) -> User:
@@ -43,6 +92,7 @@ def insert_application(
     tier_granted: int | None = None,
     with_pii: bool = False,
 ) -> KycApplication:
+    seed_kyc_reference_data()
     application = KycApplication(
         user_id=user_id,
         status=status.value,

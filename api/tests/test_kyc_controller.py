@@ -8,7 +8,6 @@ import pytest
 from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.config import TestConfig
-from remitx_api.controllers import kyc_controller as kyc_controller_module
 from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.errors.kyc import (
     KycVersionConflictError,
@@ -26,12 +25,18 @@ from remitx_api.models.orm.kyc_lifecycle import (
     KycReasonCode,
     KycStatus,
 )
+from remitx_api.repositories import kyc_application_repository as kyc_repo_module
 from remitx_api.repositories.kyc_application_repository import (
     KycApplicationRepository,
 )
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from tests.kyc_helpers import insert_application, make_user
+from tests.kyc_helpers import insert_application, make_user, seed_kyc_reference_data
+
+
+@pytest.fixture(autouse=True)
+def _seed_kyc_reference(app_context):
+    seed_kyc_reference_data()
 
 
 def _decisions(application_id: uuid.UUID) -> list[KycDecision]:
@@ -210,7 +215,7 @@ def test_a_failure_part_way_leaves_none_of_the_approval_applied(
     def explode(**_kwargs):
         raise RuntimeError("writing the decision failed")
 
-    monkeypatch.setattr(kyc_controller_module, "KycDecision", explode)
+    monkeypatch.setattr(kyc_repo_module, "KycDecision", explode)
 
     with pytest.raises(RuntimeError, match="writing the decision failed"):
         KycController().transition(
@@ -329,6 +334,66 @@ def test_a_conflict_is_answered_with_409(current_user):
 
 
 # --- derived standing --------------------------------------------------------
+
+
+def test_application_history_records_create_and_transitions(app_context):
+    reviewer = make_user()
+    applicant = make_user()
+    controller = KycController()
+    repo = KycApplicationRepository()
+
+    application = controller.start_application(applicant.id)
+    history = repo.list_application_history(application.application_id)
+    assert len(history) == 1
+    assert history[0].status == KycStatus.IN_PROGRESS.value
+    assert history[0].version_after == 1
+
+    controller.transition(
+        application.application_id,
+        KycStatus.SUBMITTED,
+        expected_version=1,
+    )
+    controller.transition(
+        application.application_id,
+        KycStatus.UNDER_REVIEW,
+        expected_version=2,
+        actor_user_id=reviewer.id,
+    )
+
+    history = repo.list_application_history(application.application_id)
+    assert len(history) == 3
+    assert history[-1].status == KycStatus.UNDER_REVIEW.value
+    assert history[-1].version_after == 3
+    assert history[-1].changed_by_user_id == reviewer.id
+
+
+def test_every_transition_writes_history(app_context):
+    reviewer = make_user()
+    applicant = make_user()
+    application = insert_application(applicant.id, KycStatus.IN_PROGRESS)
+    controller = KycController()
+
+    controller.transition(
+        application.application_id,
+        KycStatus.SUBMITTED,
+        expected_version=1,
+    )
+
+    history = KycApplicationRepository().list_history(application.application_id)
+    assert len(history) == 1
+    assert history[0].status == KycStatus.SUBMITTED.value
+    assert history[0].made_by_user_id is None
+
+    controller.transition(
+        application.application_id,
+        KycStatus.UNDER_REVIEW,
+        expected_version=2,
+        actor_user_id=reviewer.id,
+    )
+
+    history = KycApplicationRepository().list_history(application.application_id)
+    assert len(history) == 2
+    assert history[1].made_by_user_id == reviewer.id
 
 
 def test_standing_for_a_user_with_no_application(app_context):

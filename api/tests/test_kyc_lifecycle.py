@@ -15,7 +15,7 @@ from remitx_api.models.orm.kyc_lifecycle import (
     sql_value_list,
 )
 from sqlalchemy.exc import IntegrityError
-from tests.kyc_helpers import insert_application, make_user
+from tests.kyc_helpers import insert_application, make_user, seed_kyc_reference_data
 
 # Every ordered pair of statuses a row can actually hold. `not_started` is
 # excluded because no row holds it — it is the derived answer for a user with
@@ -25,6 +25,11 @@ ALL_PAIRS = [
     for from_status in APPLICATION_STATUSES
     for to_status in APPLICATION_STATUSES
 ]
+
+
+@pytest.fixture(autouse=True)
+def _seed_kyc_reference(app_context):
+    seed_kyc_reference_data()
 
 
 def test_every_status_has_a_transition_rule():
@@ -139,9 +144,8 @@ def test_a_reviewer_decision_without_an_actor_is_refused(app_context, status):
 
 
 def test_the_database_rejects_a_status_outside_the_enum(app_context):
-    """ "Defined once in Python and mirrored as a database CHECK": the
-    constraint is generated from `KycStatus`, so this fails without anyone
-    having retyped the values."""
+    """Statuses are foreign keys to `kyc_application_statuses`, seeded from
+    `KycStatus`, so an unknown value fails at the database."""
     user = make_user()
     db.session.add(KycApplication(user_id=user.id, status="pending"))
     with pytest.raises(IntegrityError):
@@ -150,8 +154,8 @@ def test_the_database_rejects_a_status_outside_the_enum(app_context):
 
 
 def test_the_database_rejects_not_started_on_an_application(app_context):
-    """`not_started` means "no application exists", so a row holding it would
-    be a contradiction."""
+    """`not_started` is not in the status catalogue, so a row holding it
+    violates the foreign key."""
     user = make_user()
     db.session.add(KycApplication(user_id=user.id, status=KycStatus.NOT_STARTED.value))
     with pytest.raises(IntegrityError):

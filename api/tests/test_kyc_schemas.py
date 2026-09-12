@@ -5,7 +5,10 @@ import json
 import pytest
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_decision import KycDecision
+from remitx_api.models.orm.kyc_decision_history import KycDecisionHistory
 from remitx_api.models.orm.kyc_document import KycDocument
+from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
+from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusProgression
 from remitx_api.models.schemas.kyc import (
     KycApplicationRead,
     KycApplicationReadPII,
@@ -95,7 +98,14 @@ def test_a_draft_application_masks_without_tripping_over_nulls(app_context):
 def test_no_route_returns_a_kyc_orm_model(client):
     """The ORM rows carry PII and must never be a response model. Nothing
     returns them today; this is here so nothing starts to."""
-    forbidden = {KycApplication, KycDocument, KycDecision}
+    forbidden = {
+        KycApplication,
+        KycDocument,
+        KycDecision,
+        KycDecisionHistory,
+        KycReasonCodeRecord,
+        KycApplicationStatusProgression,
+    }
 
     for route in client.app.routes:
         assert getattr(route, "response_model", None) not in forbidden, route.path
