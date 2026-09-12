@@ -57,10 +57,10 @@ Feature branches target `main`. Releasing is a PR from `main` into `stable`.
 changes
    └── ci
           └── terraform                       (every rollout; plan-only on a PR)
-                 └── migrate (if api/** changed)
-                        ├── deploy-api        (if api/** changed)
-                        ├── deploy-worker     (if api/** changed)
-                        └── deploy-frontend   (if frontend/** changed)
+                 └── migrate                  (every rollout)
+                        ├── deploy-api
+                        ├── deploy-worker
+                        └── deploy-frontend
 ```
 
 **Terraform runs on every rollout**, not only when `infra/**` changed. It is
@@ -75,6 +75,12 @@ Every deploy job requires `terraform` to have **succeeded**. Rolling code onto
 infrastructure that failed to converge is how a green run leaves a broken
 environment.
 
+**Migrate and all three deploys run on every rollout**, not only when
+`api/**` or `frontend/**` changed. Alembic is a no-op at head. Render
+auto-deploy is off and Terraform sets `skip_deploy_after_service_update`,
+so an infra-only change (CORS, env vars) never reaches a running service
+unless these jobs trigger a deploy.
+
 Auto-deploy is **off** on every Render service. Deploy jobs call
 `.github/scripts/render-deploy.sh`, which resolves the service by exact name,
 `POST`s a deploy, and then **waits for that deploy to reach `live`** — a
@@ -84,7 +90,7 @@ instead of looking like a missing service. Knobs: `RENDER_DEPLOY_WAIT=false` to
 trigger and exit, `RENDER_DEPLOY_TIMEOUT_SECONDS` (default 1800),
 `RENDER_DEPLOY_POLL_SECONDS`, `RENDER_DEPLOY_MAX_POLL_ERRORS`.
 
-A failed migrate blocks API and worker rollouts.
+A failed migrate blocks every rollout.
 
 ### Manual rollout
 
