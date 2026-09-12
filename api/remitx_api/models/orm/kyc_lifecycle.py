@@ -169,6 +169,32 @@ class KycReasonCode(StrEnum):
     OTHER = "other"
 
 
+KYC_APPLICATION_STATUS_DESCRIPTIONS: dict[KycStatus, str] = {
+    KycStatus.IN_PROGRESS: "Applicant is completing the KYC wizard.",
+    KycStatus.SUBMITTED: "Application submitted and awaiting review assignment.",
+    KycStatus.UNDER_REVIEW: "A reviewer is actively assessing the application.",
+    KycStatus.MORE_INFO_REQUIRED: (
+        "Reviewer requested corrected or missing information."
+    ),
+    KycStatus.APPROVED: "Identity verified and allowance tier granted.",
+    KycStatus.REJECTED: "Application rejected; the attempt is preserved for audit.",
+    KycStatus.REVIEW_DUE: "Verification stands but periodic refresh is due.",
+}
+
+KYC_REASON_CODE_DESCRIPTIONS: dict["KycReasonCode", str] = {
+    KycReasonCode.IDENTITY_VERIFIED: "Identity verified against supplied documents.",
+    KycReasonCode.DOCUMENT_ILLEGIBLE: "Submitted document is illegible or unreadable.",
+    KycReasonCode.DOCUMENT_EXPIRED: "Submitted document has expired.",
+    KycReasonCode.DOCUMENT_MISSING: "Required document was not supplied.",
+    KycReasonCode.DETAILS_MISMATCH: "Declared details do not match the documents.",
+    KycReasonCode.SANCTIONS_MATCH: "Applicant matched a sanctions screening list.",
+    KycReasonCode.SUSPECTED_FRAUD: "Application flagged for suspected fraud.",
+    KycReasonCode.UNSUPPORTED_JURISDICTION: "Applicant jurisdiction is not supported.",
+    KycReasonCode.UNDER_AGE: "Applicant is below the minimum age.",
+    KycReasonCode.OTHER: "Other reason — see free-text explanation.",
+}
+
+
 def sql_value_list(values) -> str:
     """Render an iterable of enum members as a SQL `IN (...)` body.
 

@@ -19,7 +19,6 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -29,12 +28,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
-from remitx_api.models.orm.kyc_lifecycle import (
-    APPLICATION_STATUSES,
-    DECISION_STATUSES,
-    KycReasonCode,
-    sql_value_list,
-)
 
 
 def utcnow() -> datetime:
@@ -44,18 +37,6 @@ def utcnow() -> datetime:
 class KycDecision(Base):
     __tablename__ = "kyc_decisions"
     __table_args__ = (
-        CheckConstraint(
-            f"decision IN ({sql_value_list(DECISION_STATUSES)})",
-            name="kyc_decisions_decision_valid",
-        ),
-        CheckConstraint(
-            f"from_status IN ({sql_value_list(APPLICATION_STATUSES)})",
-            name="kyc_decisions_from_status_valid",
-        ),
-        CheckConstraint(
-            f"reason_code IS NULL OR reason_code IN ({sql_value_list(KycReasonCode)})",
-            name="kyc_decisions_reason_code_valid",
-        ),
         # "Show me this application's history, oldest first."
         Index(
             "idx_kyc_decisions_application_decided_at", "application_id", "decided_at"
@@ -74,9 +55,21 @@ class KycDecision(Base):
         index=True,
     )
     # The status the application moved *to*, drawn from DECISION_STATUSES.
-    decision: Mapped[str] = mapped_column(Text, nullable=False)
-    from_status: Mapped[str] = mapped_column(Text, nullable=False)
-    reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("kyc_application_statuses.status", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    from_status: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("kyc_application_statuses.status", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reason_code: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("kyc_reason_codes.reason_code", ondelete="RESTRICT"),
+        nullable=True,
+    )
     # Free text for the applicant — "the address on your utility bill does not
     # match the one you declared". Named fields go here, which is what makes
     # more_info_required more useful than a bare rejection.

@@ -39,7 +39,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
 from remitx_api.models.orm.kyc_lifecycle import (
-    APPLICATION_STATUSES,
     OPEN_STATUSES,
     KycIdType,
     KycRiskRating,
@@ -56,10 +55,6 @@ def utcnow() -> datetime:
 class KycApplication(Base):
     __tablename__ = "kyc_applications"
     __table_args__ = (
-        CheckConstraint(
-            f"status IN ({sql_value_list(APPLICATION_STATUSES)})",
-            name="kyc_applications_status_valid",
-        ),
         CheckConstraint(
             f"id_type IS NULL OR id_type IN ({sql_value_list(KycIdType)})",
             name="kyc_applications_id_type_valid",
@@ -111,6 +106,7 @@ class KycApplication(Base):
     )
     status: Mapped[str] = mapped_column(
         Text,
+        ForeignKey("kyc_application_statuses.status", ondelete="RESTRICT"),
         nullable=False,
         default=KycStatus.IN_PROGRESS.value,
         server_default=KycStatus.IN_PROGRESS.value,
