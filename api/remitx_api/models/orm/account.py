@@ -49,14 +49,19 @@ ACCOUNT_TYPES = (
 CURRENCY_ZAR = "ZAR"
 CURRENCY_TOKEN = "uctusd"
 CURRENCY_USD = "USD"
-CURRENCY_ZWG = "ZWG"
+CURRENCY_ZWL = "ZWL"
 CURRENCY_NAD = "NAD"
+
+# What a beneficiary may be paid out in (models/orm/beneficiary.py) — never
+# ZAR (the sender's side) or uctusd (the settlement token, not a payout
+# choice), so deliberately not "every currency" above.
+PAYOUT_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
 
 # Reference suffix per currency, e.g. "sian1-zar", "sian1-tok".
 CURRENCY_REFERENCE_SUFFIX = {
     CURRENCY_ZAR: "zar",
     CURRENCY_USD: "usd",
-    CURRENCY_ZWG: "zwg",
+    CURRENCY_ZWL: "zwl",
     CURRENCY_NAD: "nad",
     CURRENCY_TOKEN: "tok",
 }

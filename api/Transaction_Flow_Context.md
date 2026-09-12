@@ -1,6 +1,6 @@
 # RemitX — Transaction Model
 
-Cross-border remittance prototype. Sender in South Africa pays ZAR, beneficiary in Zimbabwe receives ZWG, settled with `uctusd` tokens on the XRP Ledger Testnet.
+Cross-border remittance prototype. Sender in South Africa pays ZAR, beneficiary in Zimbabwe receives ZWL, settled with `uctusd` tokens on the XRP Ledger Testnet.
 
 ---
 
@@ -39,7 +39,7 @@ CREATE UNIQUE INDEX ON accounts (user_id, account_currency) WHERE type = 'USER';
 
 A `USER` account's `account_id` is its own independently-generated id — **not** the same value as `user_id`. `accounts.user_id` is a plain nullable FK, same shape as `Deposit.user_id` elsewhere in this codebase: for a `USER` row, the real customer it belongs to; for every RemitX-owned platform row (`RemitX SA Bank Account`, `RemitX XRPL Treasury Wallet`, `RemitX SA Fee Revenue`, …), the admin who administers it — admins are `User` rows too, hand-seeded together with these accounts by `scripts/seed_platform_accounts.py`. `NULL` only for a genuinely `EXTERNAL` row: `UCTUSD Issuer (Exchange)`, the issuing address the lecturer pre-funds the Treasury Wallet from and every withdrawal burns back to (§2, Phase E) — no RemitX admin owns it.
 
-RemitX keeps one real `REMITX_FIAT` bank account, and a matching `REMITX_REVENUE` fee account in the same currency, per country it settles fiat in — a fee earned on a ZAR transaction can no more land in a USD revenue account than a ZAR deposit could land in the USD bank account. Currently seeded (`scripts/seed_platform_accounts.py`): `RemitX SA Bank Account` / `RemitX SA Fee Revenue` (ZAR), `RemitX US Bank Account` / `RemitX US Fee Revenue` (USD), `RemitX ZIM Bank Account` / `RemitX ZIM Fee Revenue` (ZWG), `RemitX NAM Bank Account` / `RemitX NAM Fee Revenue` (NAD) — plus the single `RemitX XRPL Treasury Wallet` (`uctusd`) and `UCTUSD Issuer (Exchange)` (`uctusd`), neither of which is per-country.
+RemitX keeps one real `REMITX_FIAT` bank account, and a matching `REMITX_REVENUE` fee account in the same currency, per country it settles fiat in — a fee earned on a ZAR transaction can no more land in a USD revenue account than a ZAR deposit could land in the USD bank account. Currently seeded (`scripts/seed_platform_accounts.py`): `RemitX SA Bank Account` / `RemitX SA Fee Revenue` (ZAR), `RemitX US Bank Account` / `RemitX US Fee Revenue` (USD), `RemitX ZIM Bank Account` / `RemitX ZIM Fee Revenue` (ZWL), `RemitX NAM Bank Account` / `RemitX NAM Fee Revenue` (NAD) — plus the single `RemitX XRPL Treasury Wallet` (`uctusd`) and `UCTUSD Issuer (Exchange)` (`uctusd`), neither of which is per-country.
 
 ```sql
 CREATE TABLE transactions (
@@ -131,7 +131,7 @@ Then, only after that commit returns, `queue_service.enqueue_settle_remittance(r
 
 `GET /wallet` reads Tendai's `uctusd` `accounts.account_balance` directly → 52.432432 `uctusd`.
 
-### Phase E — Beneficiary withdraws ZWG
+### Phase E — Beneficiary withdraws ZWL
 
 No manual admin-approval gate — holding a customer's own money hostage behind a human clicking a button isn't something this design does. A withdrawal is persisted the moment it's requested; an admin-triggered batch action settles every pending one, mirroring how Phase A's reconciliation already simulates a daily cron via a button.
 
@@ -156,6 +156,8 @@ No manual admin-approval gate — holding a customer's own money hostage behind 
 erDiagram
     USERS ||--o| ACCOUNTS : "user_id (NULL only for type=EXTERNAL)"
     USERS ||--o| DEPOSITS : "user_id (nullable, until matched)"
+    USERS ||--o{ BENEFICIARIES : "sender_user_id"
+    USERS ||--o{ BENEFICIARIES : "linked_user_id"
     ACCOUNTS ||--o{ TRANSACTIONS : "debit_account_id"
     ACCOUNTS ||--o{ TRANSACTIONS : "credit_account_id"
     ACCOUNTS ||--o{ QUOTES : "sender_account_id"
@@ -169,9 +171,21 @@ erDiagram
         uuid id PK
         string clerk_user_id
         string email
+        string first_name "nullable, never resolved past signup"
+        string last_name "nullable, not yet resolved from anywhere"
+        string mobile_number "nullable, not yet resolved from anywhere"
+        string country "nullable, not yet resolved from anywhere"
         string base_reference
         string role
         string kyc_status
+    }
+    BENEFICIARIES {
+        uuid beneficiary_id PK
+        uuid sender_user_id FK "the sender who added this contact"
+        uuid linked_user_id FK "the registered user this contact resolves to"
+        string payout_currency
+        string relationship
+        datetime created_at
     }
     ACCOUNTS {
         uuid account_id PK
@@ -281,6 +295,20 @@ CREATE TABLE withdraws (
     confirmed_by     TEXT
 );
 
+-- A sender's beneficiary contact. first_name/last_name/email/mobile_number/
+-- country are deliberately NOT columns here — a beneficiary must already be
+-- a registered user, so those are read from `users` via a join wherever a
+-- beneficiary is displayed, rather than duplicated and risking staleness if
+-- that user later updates their own details.
+CREATE TABLE beneficiaries (
+    beneficiary_id   UUID PRIMARY KEY,
+    sender_user_id   UUID NOT NULL REFERENCES users(id),   -- the sender who added this contact
+    linked_user_id   UUID NOT NULL REFERENCES users(id),   -- the registered user this contact resolves to
+    payout_currency  VARCHAR(8) NOT NULL,                  -- USD, ZWL, or NAD
+    relationship     VARCHAR(16) NOT NULL,                 -- partner, parent, child, sibling, relative, friend, employee, other
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE quotes (
     quote_id               UUID PRIMARY KEY,
     sender_account_id      UUID NOT NULL REFERENCES accounts(account_id),
@@ -311,9 +339,11 @@ CREATE TABLE quotes (
 | `deposits` | ZAR cash-in header. One row, one linked `transactions` row, always — an unmatched deposit's `debit_account_id` just starts `NULL` and gets filled in on resolution (§2, Phase A). |
 | `remittances` | The send. `tx_id` points at the one leg whose `status` represents whether the whole remittance settled. |
 | `withdraws` | Token → fiat. `tx_id` points at the redeem/burn leg the same way. |
-| `quotes` | The frozen price shown to the customer, for either a remittance or a withdrawal. |
+| `quotes` | The frozen price shown to the customer, for either a remittance or a withdrawal. Built (§2, Phase B1) — nothing consumes a quote yet, remittance confirmation is a later slice. |
+| `beneficiaries` | A sender's contact — who they can quote/remit to. Built. `linked_user_id` must already be a registered `User`; first_name/last_name/email/mobile_number/country are read from that `User` via a join, never duplicated here. A sender adds one by looking up the target's fiat account reference (e.g. `sian1-zar` — the same one they'd quote for an EFT deposit), never the `uctusd` reference or a raw user id — see `BeneficiaryController.lookup_by_fiat_account_reference`. |
 | `users` | `base_reference`, `role`, `kyc_status`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. |
-| `currencies`, `exchange_rates`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
+| `currencies`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
+| `exchange_rates` | Built (§2, Phase B1) — a real API-backed rate, fetched lazily. §4 below still describes the original, unbuilt design; not yet reconciled with what's actually implemented. |
 | `xrpl_accounts`, `xrpl_settlements`, `audit_log` | Not yet reconciled with the new ledger shape. See §8. |
 
 **Write rules:**
@@ -375,6 +405,7 @@ MONTHLY_LIMIT_ZAR = 25000
 - **No transactional outbox.** The queue message is published after commit, leaving a small window where a crash loses the message. The guarded status-transition pattern still prevents double-payment even so.
 - **Bank-transfer-only cash-in.** ZAR deposits are assumed to arrive by EFT into RemitX's account, ideally carrying the sender's permanent ZAR account reference. Cash and card cash-in are out of scope.
 - **One super admin owns every platform account.** `scripts/seed_platform_accounts.py` provisions a single admin (`ADMIN_CLERK_USER_ID`) and sets every non-`EXTERNAL` platform account's `user_id` to that one admin, regardless of country — there's no per-country or per-role admin ownership yet. Fine for this prototype; revisit if platform accounts ever need to be attributed to different admins.
+- **Every user defaults to a South African (ZAR) account.** `AccountRepository.create_user_accounts` always builds a ZAR account (plus the `uctusd` settlement account) at signup, regardless of who the user actually is — there's no onboarding step yet where a user picks their own home/default currency. The intended eventual design: a login/signup stage where the user chooses their default currency account, with ZAR-by-default as the fallback only until that step exists. Revisit `create_user_accounts` (and the account-creation flow generally) once that choice step is built.
 
 ---
 

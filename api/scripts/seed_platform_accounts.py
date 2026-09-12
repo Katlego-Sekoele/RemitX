@@ -42,7 +42,7 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_USD,
     CURRENCY_ZAR,
-    CURRENCY_ZWG,
+    CURRENCY_ZWL,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
@@ -66,7 +66,7 @@ from remitx_api.repositories.user_repository import UserRepository
 COUNTRY_BANK_ACCOUNTS = (
     ("RemitX SA", CURRENCY_ZAR),
     ("RemitX US", CURRENCY_USD),
-    ("RemitX ZIM", CURRENCY_ZWG),
+    ("RemitX ZIM", CURRENCY_ZWL),
     ("RemitX NAM", CURRENCY_NAD),
 )
 

@@ -16,6 +16,17 @@ class UserRepository(Repository[User, uuid.UUID]):
             select(User).where(User.clerk_user_id == clerk_user_id)
         ).first()
 
+    def get_by_base_reference(self, base_reference: str) -> User | None:
+        """Resolve a user by their `base_reference` (e.g. "sian1") — kept as
+        a general-purpose lookup alongside `next_base_reference`, which
+        already builds/searches this same column. Not currently used by the
+        beneficiary-add flow, which matches on the more specific account
+        reference instead (see BeneficiaryController.lookup_by_fiat_account_reference).
+        """
+        return db.session.scalars(
+            select(User).where(User.base_reference == base_reference)
+        ).first()
+
     def add(self, user: User) -> User:
         """Insert a user. Flushes only — caller commits."""
         db.session.add(user)

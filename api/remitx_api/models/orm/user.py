@@ -71,6 +71,20 @@ class User(Base):
     # Clerk. Nullable for the same reason `email` is: not every sign-in
     # strategy yields one.
     first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Not yet resolved from Clerk anywhere (no `resolve_last_name` callable
+    # exists alongside `resolve_first_name`/`resolve_email` in
+    # UserController.ensure_provisioned) — always NULL for now. Added so
+    # BeneficiaryController can join a beneficiary's last name from here
+    # instead of storing a second, driftable copy on `Beneficiary` (see
+    # models/orm/beneficiary.py); populating it at signup is a separate,
+    # not-yet-built change.
+    last_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Not yet resolved/settable from anywhere (no onboarding/profile flow
+    # exists) — always NULL for now. Added for the same reason as
+    # `last_name`: BeneficiaryController joins these instead of storing a
+    # second, driftable copy on `Beneficiary` (see models/orm/beneficiary.py).
+    mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    country: Mapped[str | None] = mapped_column(Text, nullable=True)
     # `reference_base(first_name)` plus a disambiguating number, e.g.
     # "sian1". Assigned once at signup by
     # `UserRepository.next_base_reference`. Not itself an EFT-matchable
