@@ -1,6 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query"
 
 import { ApiError } from "~/lib/api"
+import { notifyForbidden } from "~/lib/forbidden-notifier"
 
 // Set by <AuthErrorBridge /> once Clerk context exists. The QueryClient is a
 // module singleton built outside React — QueryClientProvider lives in root's
@@ -12,8 +13,13 @@ export function setSessionExpiredHandler(handler: (() => void) | null) {
 }
 
 function handleError(error: unknown) {
-  if (error instanceof ApiError && error.status === 401) {
+  if (!(error instanceof ApiError)) return
+  if (error.status === 401) {
     onSessionExpired?.()
+    return
+  }
+  if (error.status === 403) {
+    notifyForbidden()
   }
 }
 

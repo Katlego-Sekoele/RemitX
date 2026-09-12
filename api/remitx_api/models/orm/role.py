@@ -9,7 +9,7 @@ own data.
 
 import uuid
 
-from sqlalchemy import Text, Uuid
+from sqlalchemy import Boolean, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -26,3 +26,4 @@ class Role(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     role_display_name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
