@@ -2,6 +2,7 @@ from typing import Generic, TypeVar
 
 from sqlalchemy import select
 
+from remitx_api.db.transaction import db_transaction
 from remitx_api.extensions import db
 
 T = TypeVar("T")
@@ -18,13 +19,19 @@ class Repository(Generic[T, ID]):
     def list(self) -> list[T]:
         return db.session.scalars(select(self._model)).all()
 
-    def save(self, entity: T) -> T:
+    def add(self, entity: T) -> T:
+        """Stage one entity. Flushes only — caller commits."""
         db.session.add(entity)
-        db.session.commit()
+        db.session.flush()
         return entity
 
+    @db_transaction
+    def save(self, entity: T) -> T:
+        """Persist one entity in its own transaction."""
+        return self.add(entity)
+
+    @db_transaction
     def delete(self, id: ID) -> None:
         entity = self.get_by_id(id)
         if entity is not None:
             db.session.delete(entity)
-            db.session.commit()

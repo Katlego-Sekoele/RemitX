@@ -12,13 +12,14 @@ around rules the catalogue itself carries: ``roles.is_grantable``,
 those are role names or permission pairs written into this module, so
 changing a rule is an ``UPDATE``, not a redeploy.
 
-Each use case commits once through ``db.session`` rather than chaining
-``Repository.save`` calls, which commit internally — see CLAUDE.md.
+Each use case commits once through ``@db_transaction`` rather than
+calling ``db.session`` directly — see CLAUDE.md.
 """
 
 import uuid
 from datetime import UTC, datetime
 
+from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.roles import (
     LastProtectedRoleHolderError,
     RoleNotGrantableError,
@@ -76,6 +77,7 @@ class UserRoleController:
             ],
         )
 
+    @db_transaction
     def grant(
         self,
         user_id: uuid.UUID,
@@ -121,14 +123,13 @@ class UserRoleController:
         assignment.toxic_combination_acknowledged = bool(warnings) and (
             request.toxic_combination_acknowledged
         )
-        db.session.commit()
-
         return RoleGrantResult(
             grant=_to_user_role_read(assignment, role),
             created=True,
             toxic_combinations=warnings,
         )
 
+    @db_transaction
     def revoke(
         self,
         user_id: uuid.UUID,
@@ -158,7 +159,6 @@ class UserRoleController:
         assignment.revoked_at = utcnow()
         assignment.revoked_by = actor_id
         assignment.revoke_reason = reason.strip()
-        db.session.commit()
 
         return _to_user_role_read(assignment, role)
 
