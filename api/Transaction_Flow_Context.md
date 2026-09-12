@@ -84,7 +84,7 @@ Two XRPL Testnet accounts sit behind two `accounts` rows:
 
 ## 2. The Flow
 
-Assumes both parties are registered and KYC-approved. Sender tops up a ZAR balance, then sends from it — deposits and remittances are independent, so one top-up can fund several sends.
+Assumes both parties are registered and KYC-approved (`KycApplicationRepository.get_standing` is what answers that). Sender tops up a ZAR balance, then sends from it — deposits and remittances are independent, so one top-up can fund several sends.
 
 ### Phase A — Sender deposits ZAR
 
@@ -170,8 +170,7 @@ erDiagram
         string clerk_user_id
         string email
         string base_reference
-        string role
-        string kyc_status
+        timestamp suspended_at "nullable"
     }
     ACCOUNTS {
         uuid account_id PK
@@ -312,7 +311,8 @@ CREATE TABLE quotes (
 | `remittances` | The send. `tx_id` points at the one leg whose `status` represents whether the whole remittance settled. |
 | `withdraws` | Token → fiat. `tx_id` points at the redeem/burn leg the same way. |
 | `quotes` | The frozen price shown to the customer, for either a remittance or a withdrawal. |
-| `users` | `base_reference`, `role`, `kyc_status`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. |
+| `users` | `base_reference` and `suspended_at`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. Carries neither a staff flag (RBAC's `user_roles` decides that) nor a KYC status: a user's KYC standing is derived from `kyc_applications`, not copied here. |
+| `kyc_applications`, `kyc_documents`, `kyc_decisions` | One row per KYC attempt, its evidence, and the append-only log of reviewer decisions. Outside the money flow, so not drawn above — see remitx_api/models/orm/kyc_lifecycle.py for the status machine. |
 | `currencies`, `exchange_rates`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
 | `xrpl_accounts`, `xrpl_settlements`, `audit_log` | Not yet reconciled with the new ledger shape. See §8. |
 
