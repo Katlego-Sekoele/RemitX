@@ -1,94 +1,80 @@
+import re
 import uuid
-from contextlib import contextmanager
 
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.auth.dependencies import get_current_user
-from remitx_api.auth.permissions import RequirePermission
 from remitx_api.config import TestConfig
 from remitx_api.extensions import db
 from remitx_api.models.orm.permission import PermissionCode
-from remitx_api.models.orm.user import User
 from remitx_api.repositories.user_repository import UserRepository
-from tests.rbac_helpers import grant_role, revoke_role, seed_rbac_catalogue
-
-PUBLIC_ALLOWLIST = frozenset(
-    {
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
-    }
+from tests.rbac_helpers import (
+    grant_role,
+    make_user,
+    rbac_client,
+    revoke_role,
+    seed_rbac_catalogue,
 )
 
+# Paths reachable with no credentials. Everything else the OpenAPI schema
+# lists has to answer 401 to an anonymous caller. (/docs, /redoc and
+# /openapi.json are FastAPI's own and never appear in the schema.)
+PUBLIC_ALLOWLIST = frozenset({"/health"})
 
-def _collect_dependency_callables(route: APIRoute) -> list[object]:
-    callables: list[object] = []
-
-    def walk(dep) -> None:
-        if dep.call is not None:
-            callables.append(dep.call)
-        for sub in dep.dependencies:
-            walk(sub)
-
-    walk(route.dependant)
-    return callables
+PERMISSION_VALUES = frozenset(code.value for code in PermissionCode)
 
 
-def _make_user(suffix: str) -> User:
-    return User(
-        id=uuid.uuid4(),
-        clerk_user_id=f"user_{suffix}",
-        email=f"{suffix}@example.com",
-        base_reference=f"{suffix}1",
-    )
+def _every_operation(app) -> list[tuple[str, str]]:
+    """(method, path) for every route the app publishes, path params filled in.
+
+    Read off the OpenAPI schema rather than walked out of `app.routes`: a
+    router included by reference keeps its gate in the include context, not on
+    the route's own dependant, so inspecting dependency trees silently sees
+    nothing and passes. Asking each route what it *answers* can't go quiet
+    like that.
+    """
+    operations = []
+    for path, methods in app.openapi()["paths"].items():
+        concrete = re.sub(r"\{[^}]+\}", str(uuid.uuid4()), path)
+        for method in methods:
+            operations.append((method.upper(), concrete))
+    return operations
 
 
-@contextmanager
-def rbac_client(user: User, *, roles: tuple[str, ...] = ()):
-    """One app + database: seed catalogue, persist user, grant roles, then serve."""
-    app = create_app(TestConfig)
-    app.dependency_overrides[get_current_user] = lambda: user
-    with TestClient(app) as client:
-        token = db.open_session()
-        try:
-            UserRepository().save(user)
-            seed_rbac_catalogue()
-            for role_name in roles:
-                grant_role(user.id, role_name)
-            yield client
-        finally:
-            db.close_session(token)
-
-
-def test_every_route_is_in_exactly_one_gate_family():
-    app = create_app(TestConfig)
-
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        if not route.methods or route.methods <= {"HEAD", "OPTIONS"}:
-            continue
-
-        path = route.path
-        deps = _collect_dependency_callables(route)
+def test_every_route_answers_401_to_an_anonymous_caller(anonymous_client):
+    for method, path in _every_operation(anonymous_client.app):
+        response = anonymous_client.request(method, path)
 
         if path in PUBLIC_ALLOWLIST:
-            assert get_current_user not in deps, (
-                f"{path} is public but carries get_current_user"
-            )
-            continue
-
-        assert get_current_user in deps, f"{path} has no customer auth gate"
-
-        admin_permissions = [dep for dep in deps if isinstance(dep, RequirePermission)]
-        if path.startswith("/admin"):
-            assert admin_permissions, f"{path} missing admin permission gate"
+            assert response.status_code != 401, f"{method} {path} should be public"
         else:
-            assert not admin_permissions, (
-                f"{path} carries admin permission outside /admin"
+            assert response.status_code == 401, f"{method} {path} has no auth gate"
+
+
+def test_every_admin_route_is_gated_on_a_permission():
+    """The guard PR #70 needed: a route under /admin that gates on anything
+    other than a `PermissionCode` — "is this caller an admin", a role name, a
+    flag on the User row — fails here, because only `RequirePermission`
+    answers a permissionless caller with the permission it wanted.
+    """
+    with rbac_client(make_user("nobody")) as client:
+        for method, path in _every_operation(client.app):
+            response = client.request(method, path)
+
+            if not path.startswith("/admin"):
+                assert response.status_code != 403, (
+                    f"{method} {path} is not an admin route but 403s"
+                )
+                continue
+
+            assert response.status_code == 403, (
+                f"{method} {path} missing admin permission gate"
             )
+            detail = response.json()["detail"]
+            assert detail.startswith("Missing permission: "), (
+                f"{method} {path} is gated, but not on a permission: {detail}"
+            )
+            assert detail.removeprefix("Missing permission: ") in PERMISSION_VALUES
 
 
 def test_require_permission_returns_401_when_unauthenticated(anonymous_client):
@@ -99,7 +85,7 @@ def test_require_permission_returns_401_when_unauthenticated(anonymous_client):
 
 
 def test_require_permission_returns_403_without_permission():
-    with rbac_client(_make_user("a")) as client:
+    with rbac_client(make_user("a")) as client:
         response = client.get("/admin/roles")
 
     assert response.status_code == 403
@@ -109,7 +95,7 @@ def test_require_permission_returns_403_without_permission():
 
 
 def test_me_permissions_empty_for_customer_with_no_roles():
-    with rbac_client(_make_user("a")) as client:
+    with rbac_client(make_user("a")) as client:
         response = client.get("/me/permissions")
 
     assert response.status_code == 200
@@ -117,7 +103,7 @@ def test_me_permissions_empty_for_customer_with_no_roles():
 
 
 def test_me_roles_includes_descriptions():
-    with rbac_client(_make_user("a"), roles=("iam_admin",)) as client:
+    with rbac_client(make_user("a"), roles=("iam_admin",)) as client:
         response = client.get("/me/roles")
 
     assert response.status_code == 200
@@ -131,7 +117,7 @@ def test_me_roles_includes_descriptions():
 
 
 def test_me_permissions_lists_granted_role_permissions():
-    with rbac_client(_make_user("a"), roles=("support_agent",)) as client:
+    with rbac_client(make_user("a"), roles=("support_agent",)) as client:
         response = client.get("/me/permissions")
 
     assert response.status_code == 200
@@ -143,7 +129,7 @@ def test_me_permissions_lists_granted_role_permissions():
 
 
 def test_admin_list_roles_returns_seeded_catalogue():
-    with rbac_client(_make_user("a"), roles=("iam_admin",)) as client:
+    with rbac_client(make_user("a"), roles=("iam_admin",)) as client:
         response = client.get("/admin/roles")
 
     assert response.status_code == 200
@@ -163,7 +149,7 @@ def test_admin_list_roles_returns_seeded_catalogue():
 
 
 def test_revoked_role_takes_effect_on_next_request():
-    user = _make_user("a")
+    user = make_user("a")
     app = create_app(TestConfig)
     app.dependency_overrides[get_current_user] = lambda: user
 
@@ -180,9 +166,23 @@ def test_revoked_role_takes_effect_on_next_request():
             db.close_session(token)
 
 
-def test_admin_handler_has_no_ad_hoc_permission_check():
-    from remitx_api.routes.admin import roles as admin_roles
+def test_admin_handlers_have_no_ad_hoc_permission_checks():
+    """Access is decided before the handler runs, or it isn't decided at all:
+    a handler that reaches for the caller's permissions is re-implementing the
+    gate somewhere nothing audits.
+    """
+    from remitx_api.routes.admin import deposits, roles, users
 
-    source = admin_roles.list_roles.__code__.co_names
-    assert "permission" not in source
-    assert "PermissionCode" not in source
+    handlers = (
+        roles.list_roles,
+        users.update_kyc_status,
+        deposits.process_deposits,
+        deposits.list_pending_deposits,
+        deposits.approve_deposit,
+    )
+
+    for handler in handlers:
+        names = handler.__code__.co_names
+        assert "permission" not in names, handler.__name__
+        assert "PermissionCode" not in names, handler.__name__
+        assert "role" not in names, handler.__name__
