@@ -48,9 +48,11 @@ class Deposit(Base):
     tx_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=False
     )
-    # Nullable until an admin resolves an unmatched line.
+    # Nullable until an admin resolves an unmatched line. Indexed because the
+    # admin reconciliation views and a user's own deposit history both filter
+    # on it.
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=True
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
     )
     user_account_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_method: Mapped[str] = mapped_column(
