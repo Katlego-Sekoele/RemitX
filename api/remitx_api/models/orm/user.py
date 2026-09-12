@@ -6,6 +6,10 @@ queries can join on identity without calling out to Clerk.
 
 Rows are created just-in-time on the first authenticated request — see
 remitx_api/controllers/user_controller.py.
+
+Identity, not authority: nothing here says what a user may do. Staff access
+lives in the RBAC tables (user_roles -> role_permissions -> permissions) and
+is enforced per route by auth.permissions.RequirePermission.
 """
 
 import uuid
@@ -15,10 +19,6 @@ from sqlalchemy import CheckConstraint, DateTime, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
-
-ROLE_USER = "user"
-ROLE_ADMIN = "admin"
-ROLES = (ROLE_USER, ROLE_ADMIN)
 
 KYC_UNVERIFIED = "UNVERIFIED"
 KYC_APPROVED = "APPROVED"
@@ -44,7 +44,6 @@ def reference_base(first_name: str | None) -> str:
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('user', 'admin')", name="users_role_valid"),
         CheckConstraint(
             "kyc_status IN ('UNVERIFIED', 'APPROVED')",
             name="users_kyc_status_valid",
@@ -82,18 +81,6 @@ class User(Base):
         nullable=False,
         unique=True,
         index=True,
-    )
-    # Gates admin-only routes (deposit reconciliation, withdrawal approval,
-    # fee-config edits) via auth.dependencies.require_admin. Every user is
-    # "user" unless promoted directly in the database — there's no
-    # in-app admin-signup flow, deliberately.
-    # `server_default` as well as `default`: the column was added NOT NULL to a
-    # table that already had rows, so the database needs its own default too.
-    role: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        default=ROLE_USER,
-        server_default=ROLE_USER,
     )
     # Real KYC (document intake, admin review queue) is out of this
     # prototype's scope — see docs/project-brief.md. This is a minimal
