@@ -49,23 +49,53 @@ Feature branches target `main`. Releasing is a PR from `main` into `stable`.
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | PR, push | pytest, ruff, Alembic check, frontend lint/typecheck |
-| `deploy.yml` | PR `infra/**`; push `main`/`stable` on `infra/**`, `api/**`, or `frontend/**` | Terraform → Alembic migrate → Render deploy |
+| `deploy.yml` | PR `infra/**`; push `main`/`stable` on `infra/**`, `api/**`, `frontend/**`, or the pipeline itself; manual `workflow_dispatch` | Terraform → Alembic migrate → Render deploy |
 
 ### `deploy.yml` job order
 
 ```text
 changes
    └── ci
-          └── terraform (if infra/** changed)
+          └── terraform                       (every rollout; plan-only on a PR)
                  └── migrate (if api/** changed)
-                        ├── deploy-api
-                        ├── deploy-worker
-                        └── deploy-frontend
+                        ├── deploy-api        (if api/** changed)
+                        ├── deploy-worker     (if api/** changed)
+                        └── deploy-frontend   (if frontend/** changed)
 ```
 
+**Terraform runs on every rollout**, not only when `infra/**` changed. It is
+declarative, so a run that changes nothing plans empty. Gating it on `infra/**`
+made the stack impossible to create: the single push that introduced the Render
+services had a red `ci`, so `terraform` was skipped, and every push afterwards
+skipped it again on the paths filter while the deploy jobs kept looking for
+services that had never been applied. Running it always also keeps the Render
+env vars in step with the environment's secrets.
+
+Every deploy job requires `terraform` to have **succeeded**. Rolling code onto
+infrastructure that failed to converge is how a green run leaves a broken
+environment.
+
 Auto-deploy is **off** on every Render service. Deploy jobs call
-`.github/scripts/render-deploy.sh`, which looks up the service by name and
-`POST`s a deploy. A failed migrate blocks API and worker rollouts.
+`.github/scripts/render-deploy.sh`, which resolves the service by exact name,
+`POST`s a deploy, and then **waits for that deploy to reach `live`** — a
+`build_failed` on Render fails the job rather than passing silently. It checks
+the HTTP status of every Render API call, so a rejected key reports itself
+instead of looking like a missing service. Knobs: `RENDER_DEPLOY_WAIT=false` to
+trigger and exit, `RENDER_DEPLOY_TIMEOUT_SECONDS` (default 1800),
+`RENDER_DEPLOY_POLL_SECONDS`, `RENDER_DEPLOY_MAX_POLL_ERRORS`.
+
+A failed migrate blocks API and worker rollouts.
+
+### Manual rollout
+
+Run **Actions → Deploy → Run workflow** against `main` (QA) or `stable`
+(Production). A manual run treats everything as changed: it applies Terraform
+and then deploys all three services. Use it to bootstrap a fresh environment,
+or to reconcile after a red run, without having to push a commit.
+
+A push that only touches the pipeline or docs runs `terraform` but no deploy
+jobs — there is no new application code to roll out. Use a manual run if you
+want the services redeployed as well.
 
 ## Worker wake
 
