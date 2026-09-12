@@ -10,13 +10,35 @@ app. Two reasons:
    to know what a task does, only its name and which queue it goes on.
 """
 
+import logging
+import urllib.error
+import urllib.request
+
 from celery import Celery
 
 from remitx_api.config import Config
 
 PROCESS_INTEGRATION_MESSAGE = "remitx_worker.tasks.process_integration_message"
 
+logger = logging.getLogger(__name__)
+
 producer = Celery("remitx_api", broker=Config.REDIS_URL)
+
+
+def wake_worker() -> None:
+    """Ping the worker so a spun-down free web service starts consuming.
+
+    Gated by ``WORKER_WAKE_URL``. Unset or blank is a no-op so local Compose
+    and a future always-on worker stay producer-only. Failures are logged and
+    never raised: the task is already on Redis.
+    """
+    url = Config().WORKER_WAKE_URL
+    if not url:
+        return
+    try:
+        urllib.request.urlopen(url, timeout=5)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        logger.warning("worker wake at %s failed", url, exc_info=True)
 
 
 def enqueue_integration_message(message_id: str) -> None:
@@ -25,3 +47,4 @@ def enqueue_integration_message(message_id: str) -> None:
         args=[message_id],
         queue=Config.CELERY_QUEUE,
     )
+    wake_worker()

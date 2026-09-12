@@ -52,6 +52,12 @@ class Config:
     def XRPL_ENCRYPTION_KEY(self) -> str:
         return os.getenv("XRPL_ENCRYPTION_KEY", "")
 
+    # Public worker /health URL. Empty means do not ping after enqueue
+    # (local Compose, or a future always-on worker that does not spin down).
+    @property
+    def WORKER_WAKE_URL(self) -> str:
+        return os.getenv("WORKER_WAKE_URL", "").strip()
+
     @property
     def PLATFORM_WALLET_ADDRESS(self) -> str:
         return os.getenv("PLATFORM_WALLET_ADDRESS", "")

@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import worker_ready
 from remitx_api.config import Config
 
 # Config, not os.getenv, so the worker loads the same root .env as the API.
@@ -10,3 +11,10 @@ celery = Celery(
 celery.conf.task_default_queue = Config.CELERY_QUEUE
 celery.conf.task_acks_late = True
 celery.autodiscover_tasks(["remitx_worker"])
+
+
+@worker_ready.connect
+def _reclaim_on_ready(**_kwargs) -> None:
+    from remitx_worker.reclaim import reclaim_pending_messages
+
+    reclaim_pending_messages()
