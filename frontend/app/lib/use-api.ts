@@ -2,9 +2,13 @@ import { useAuth } from "@clerk/react-router"
 import { useMemo } from "react"
 
 import {
+  getMyAccess,
+  getMyRoles,
   listIntegrationMessages,
   sendIntegrationMessage,
   type IntegrationMessage,
+  type MePermission,
+  type MyRole,
 } from "~/lib/api"
 
 /**
@@ -23,6 +27,8 @@ export function useApi() {
         listIntegrationMessages(getToken),
       sendIntegrationMessage: (body: string): Promise<IntegrationMessage> =>
         sendIntegrationMessage(getToken, body),
+      getMyAccess: (): Promise<MePermission> => getMyAccess(getToken),
+      getMyRoles: (): Promise<MyRole[]> => getMyRoles(getToken),
     }),
     [getToken]
   )

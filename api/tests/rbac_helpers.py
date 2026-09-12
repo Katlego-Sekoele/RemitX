@@ -36,6 +36,7 @@ def seed_rbac_catalogue() -> None:
                 name=role_seed.name,
                 role_display_name=role_seed.display_name,
                 description=role_seed.description,
+                is_admin=role_seed.is_admin,
             )
         )
 

@@ -10,4 +10,5 @@ class RoleRead(BaseModel):
     name: str
     display_name: str = Field(validation_alias="role_display_name")
     description: str
+    is_admin: bool
     permissions: list[str]

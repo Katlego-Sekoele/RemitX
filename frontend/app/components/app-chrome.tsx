@@ -5,6 +5,7 @@ import { AuthControls } from "~/components/auth-controls"
 import { RemitXLogo } from "~/components/remitx-logo"
 import { ThemeToggle } from "~/components/theme-toggle"
 import { Button } from "~/components/ui/button"
+import { resolveChromeMode, type ChromeMode } from "~/lib/chrome-policy"
 import { SITE_NAME } from "~/lib/site"
 
 /**
@@ -45,47 +46,38 @@ export function HomeLink() {
   )
 }
 
-/**
- * Site chrome: marketing top bar on the landing page; compact controls
- * elsewhere; theme-only on auth routes.
- */
-export function AppChrome() {
-  const { pathname } = useLocation()
-  const onAuth =
-    pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")
-  const onLanding = pathname === "/"
+function AuthChrome() {
+  return (
+    <ChromeBar>
+      <ThemeToggle />
+    </ChromeBar>
+  )
+}
 
-  if (onAuth) {
-    return (
-      <ChromeBar>
-        <ThemeToggle />
-      </ChromeBar>
-    )
-  }
-
-  if (onLanding) {
-    return (
-      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6">
-          <Link
-            to="/"
-            className="flex items-center gap-2.5 text-foreground"
-            aria-label={`${SITE_NAME} home`}
-          >
-            <RemitXLogo className="size-7" />
-            <span className="font-heading text-sm font-semibold tracking-tight">
-              {SITE_NAME}
-            </span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <AuthControls />
-            <ThemeToggle />
-          </div>
+function MarketingChrome() {
+  return (
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6">
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 text-foreground"
+          aria-label={`${SITE_NAME} home`}
+        >
+          <RemitXLogo className="size-7" />
+          <span className="font-heading text-sm font-semibold tracking-tight">
+            {SITE_NAME}
+          </span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <AuthControls />
+          <ThemeToggle />
         </div>
-      </header>
-    )
-  }
+      </div>
+    </header>
+  )
+}
 
+function CompactChrome() {
   return (
     <>
       <HomeLink />
@@ -95,4 +87,23 @@ export function AppChrome() {
       </ChromeBar>
     </>
   )
+}
+
+const CHROME_BY_MODE: Record<Exclude<ChromeMode, "hidden">, () => ReactNode> = {
+  auth: AuthChrome,
+  marketing: MarketingChrome,
+  compact: CompactChrome,
+}
+
+/**
+ * Site chrome selected from ``CHROME_RULES`` in ``~/lib/chrome-policy``.
+ */
+export function AppChrome() {
+  const { pathname } = useLocation()
+  const mode = resolveChromeMode(pathname)
+
+  if (mode === "hidden") return null
+
+  const render = CHROME_BY_MODE[mode]
+  return render()
 }

@@ -147,6 +147,7 @@ class RoleSeed:
     display_name: str
     description: str
     permissions: tuple[PermissionCode, ...]
+    is_admin: bool = False
 
 
 ROLE_SEEDS: tuple[RoleSeed, ...] = (
@@ -160,6 +161,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="compliance_analyst",
         display_name="Compliance Analyst",
         description=("Prepares applications and chases missing info. Cannot decide."),
+        is_admin=True,
         permissions=(
             PermissionCode.KYC_APPLICATION_READ,
             PermissionCode.KYC_APPLICATION_READ_PII,
@@ -171,6 +173,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="compliance_officer",
         display_name="Compliance Officer",
         description="Approves or rejects applications and sets risk rating and tier.",
+        is_admin=True,
         permissions=(
             PermissionCode.KYC_APPLICATION_READ,
             PermissionCode.KYC_APPLICATION_READ_PII,
@@ -187,6 +190,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="treasury_operator",
         display_name="Treasury Operator",
         description="Confirms the simulated ZAR cash-in.",
+        is_admin=True,
         permissions=(
             PermissionCode.CASHIN_READ,
             PermissionCode.CASHIN_CONFIRM,
@@ -198,6 +202,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="payout_operator",
         display_name="Payout Operator",
         description="Works the cash-out queue.",
+        is_admin=True,
         permissions=(
             PermissionCode.CASHOUT_READ,
             PermissionCode.CASHOUT_APPROVE,
@@ -210,6 +215,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="support_agent",
         display_name="Support Agent",
         description=("Answers status questions without seeing PII or moving money."),
+        is_admin=True,
         permissions=(
             PermissionCode.USER_READ,
             PermissionCode.TRANSACTION_READ_ANY,
@@ -220,6 +226,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="iam_admin",
         display_name="IAM Admin",
         description="Administers access. Holds no domain permissions.",
+        is_admin=True,
         permissions=(
             PermissionCode.ROLE_READ,
             PermissionCode.ROLE_GRANT,
@@ -233,6 +240,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="config_admin",
         display_name="Config Admin",
         description=("Changes fees, margins, and limits. Kept separate from IAM."),
+        is_admin=True,
         permissions=(
             PermissionCode.CONFIG_FEES_WRITE,
             PermissionCode.CONFIG_LIMITS_WRITE,
@@ -244,6 +252,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
         name="auditor",
         display_name="Auditor",
         description="Read-only oversight with no PII and no mutations.",
+        is_admin=True,
         permissions=(
             PermissionCode.AUDIT_READ,
             PermissionCode.USER_READ,

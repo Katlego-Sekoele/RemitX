@@ -112,7 +112,21 @@ def test_me_permissions_empty_for_customer_with_no_roles():
         response = client.get("/me/permissions")
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"permissions": [], "is_admin": False}
+
+
+def test_me_roles_includes_descriptions():
+    with rbac_client(_make_user("a"), roles=("iam_admin",)) as client:
+        response = client.get("/me/roles")
+
+    assert response.status_code == 200
+    roles = response.json()
+    assert len(roles) == 1
+    assert roles[0]["name"] == "iam_admin"
+    assert roles[0]["description"]
+    permissions = {item["permission"]: item for item in roles[0]["permissions"]}
+    assert PermissionCode.ROLE_READ.value in permissions
+    assert permissions[PermissionCode.ROLE_READ.value]["description"]
 
 
 def test_me_permissions_lists_granted_role_permissions():
@@ -120,7 +134,9 @@ def test_me_permissions_lists_granted_role_permissions():
         response = client.get("/me/permissions")
 
     assert response.status_code == 200
-    permissions = response.json()
+    payload = response.json()
+    assert payload["is_admin"] is True
+    permissions = payload["permissions"]
     assert PermissionCode.TRANSACTION_READ_ANY.value in permissions
     assert PermissionCode.ROLE_READ.value not in permissions
 

@@ -1,0 +1,94 @@
+/** Single registry for admin routes, nav groups, and sidebar items. */
+
+import type { PhosphorIconName } from "~/lib/phosphor-icon-name"
+
+type AdminRoute = {
+  path: string
+  module: string
+}
+
+type AdminRouteIndex = {
+  route?: AdminRoute
+  label: string
+  order?: number
+  icon?: PhosphorIconName
+  childItems?: AdminRouteIndex[]
+}
+
+export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
+  {
+    route: {
+      path: "admin",
+      module: "routes/admin/index.tsx",
+    },
+    label: "Overview",
+  },
+  {
+    label: "IAM",
+    order: 10,
+    icon: "IdentificationCardIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/iam/my-roles",
+          module: "routes/admin/iam/my-roles.tsx",
+        },
+        label: "My roles",
+        childItems: [],
+      },
+    ],
+  },
+]
+
+export function getFlattenedAdminRoutes(
+  adminRouteNode: readonly AdminRouteIndex[] = ADMIN_ROUTE_INDEX
+): AdminRoute[] {
+  return adminRouteNode.flatMap((node) => [
+    ...(node.route ? [node.route] : []),
+    ...getFlattenedAdminRoutes(node.childItems ?? []),
+  ])
+}
+
+export type AdminRouteBreadcrumb = {
+  label: string
+  href?: string
+}
+
+export type AdminRouteContext = {
+  title: string
+  parent?: AdminRouteBreadcrumb
+}
+
+function breadcrumbForNode(node: AdminRouteIndex): AdminRouteBreadcrumb {
+  return {
+    label: node.label,
+    href: node.route ? `/${node.route.path}` : undefined,
+  }
+}
+
+function findRouteContextByModule(
+  module: string,
+  nodes: readonly AdminRouteIndex[] = ADMIN_ROUTE_INDEX,
+  parent?: AdminRouteIndex
+): AdminRouteContext | undefined {
+  for (const node of nodes) {
+    if (node.route?.module === module) {
+      return {
+        title: node.label,
+        parent: parent ? breadcrumbForNode(parent) : undefined,
+      }
+    }
+
+    const match = findRouteContextByModule(module, node.childItems ?? [], node)
+    if (match) return match
+  }
+
+  return undefined
+}
+
+/** Title and breadcrumb parent for a registered admin route module. */
+export function adminRouteContext(
+  module: string
+): AdminRouteContext | undefined {
+  return findRouteContextByModule(module)
+}
