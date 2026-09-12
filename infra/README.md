@@ -3,6 +3,10 @@
 Terraform for **Render** compute (API + worker web services, static frontend)
 and one shared Key Value instance. Provider:
 [`render-oss/render` 1.9.1](https://registry.terraform.io/providers/render-oss/render/latest/docs).
+That version cannot update free web services (`maintenance_mode` on every
+PATCH; [issue #80](https://github.com/render-oss/terraform-provider-render/issues/80)).
+`env_vars` / `custom_domains` are ignored on `render_web_service`; env vars
+are synced after apply by `.github/scripts/render-sync-env.sh`.
 **Neon** Postgres stays outside Terraform; connection strings are passed as
 `TF_VAR_database_url`.
 

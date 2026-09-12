@@ -69,7 +69,10 @@ made the stack impossible to create: the single push that introduced the Render
 services had a red `ci`, so `terraform` was skipped, and every push afterwards
 skipped it again on the paths filter while the deploy jobs kept looking for
 services that had never been applied. Running it always also keeps the Render
-env vars in step with the environment's secrets.
+env vars in step with the environment's secrets. Free web services cannot
+be updated through the provider (`maintenance mode can only be configured
+for non-free tier services`); `env_vars` are ignored on the resource and
+synced after apply by `.github/scripts/render-sync-env.sh`.
 
 Every deploy job requires `terraform` to have **succeeded**. Rolling code onto
 infrastructure that failed to converge is how a green run leaves a broken
@@ -148,6 +151,10 @@ secrets. Details: [infra/legacy-azure/README.md](../infra/legacy-azure/README.md
 ## Troubleshooting
 
 - **API or worker ~1 minute delay:** free instance spinning up after idle.
+- **Terraform `maintenance mode can only be configured for non-free tier
+  services`:** provider bug on free web services. Env and custom-domain
+  updates are ignored on `render_web_service`; env vars sync via
+  `render-sync-env.sh` after apply. Change custom domains in the dashboard.
 - **Celery not consuming:** confirm the worker web service is up (wake URL
   reachable) and `REDIS_URL` uses the shared Key Value with the right `/0` or
   `/1`.
