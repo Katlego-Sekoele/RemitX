@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import select
 
+from remitx_api.errors.users import UnknownUserError
 from remitx_api.extensions import db
 from remitx_api.models.orm.user import User, reference_base
 from remitx_api.repositories.repository import Repository
@@ -10,6 +11,18 @@ from remitx_api.repositories.repository import Repository
 class UserRepository(Repository[User, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(User)
+
+    def require_by_id(self, user_id: uuid.UUID) -> User:
+        """The user, or ``UnknownUserError``.
+
+        Whether a user id exists is the user domain's question, so callers
+        that only need the row get it answered here rather than each writing
+        their own ``if is None: raise``.
+        """
+        user = self.get_by_id(user_id)
+        if user is None:
+            raise UnknownUserError(user_id)
+        return user
 
     def get_by_clerk_id(self, clerk_user_id: str) -> User | None:
         return db.session.scalars(
