@@ -18,6 +18,7 @@ from remitx_api.errors.kyc import (
     UnknownKycApplicationError,
 )
 from remitx_api.extensions import db
+from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_application_history import KycApplicationHistory
 from remitx_api.models.orm.kyc_application_risk_view import kyc_application_risk
@@ -36,7 +37,9 @@ from remitx_api.models.orm.kyc_lifecycle import (
     VERIFIED_STATUSES,
     KycReasonCode,
     KycStatus,
+    applicant_message_for,
 )
+from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
 from remitx_api.models.orm.kyc_risk_rating import KycRiskRatingRecord
 from remitx_api.models.orm.kyc_tier import KycTier
 from remitx_api.repositories.kyc_risk_rule_repository import (
@@ -47,6 +50,7 @@ from remitx_api.repositories.kyc_status_progression_repository import (
     KycApplicationStatusProgressionRepository,
 )
 from remitx_api.repositories.repository import Repository
+from remitx_api.services.audit_service import record_audit
 from remitx_api.services.kyc_risk_rules import RiskAssessment, allowance_for
 
 # A rating is a reviewer's to override only while a decision is still pending.
@@ -199,13 +203,15 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         *,
         statuses: Iterable[KycStatus] = QUEUE_STATUSES,
         risk_rating: str | None = None,
+        min_age_days: int | None = None,
     ) -> list[KycApplication]:
         """The reviewer queue, highest-risk first, then oldest submission first.
 
         Ordered and filtered through `kyc_application_risk`, so "risk" means the
         effective rating — a reviewer's override, where there is one — and
         "highest" means that rating's `severity` row, not the alphabet.
-        Unscored applications sort last.
+        Unscored applications sort last. The current user's own application is
+        omitted by Postgres RLS, not by this query.
         """
         query = (
             select(KycApplication)
@@ -226,7 +232,54 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             query = query.where(
                 kyc_application_risk.c.effective_risk_rating == risk_rating
             )
+        if min_age_days is not None:
+            cutoff = utcnow() - timedelta(days=min_age_days)
+            query = query.where(KycApplication.submitted_at <= cutoff)
         return list(db.session.scalars(query).all())
+
+    def count_queue(self, *, statuses: Iterable[KycStatus] = QUEUE_STATUSES) -> int:
+        return int(
+            db.session.scalar(
+                select(func.count())
+                .select_from(KycApplication)
+                .where(KycApplication.status.in_([status.value for status in statuses]))
+            )
+            or 0
+        )
+
+    def latest_reviewers(
+        self, application_ids: Iterable[uuid.UUID]
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        """Who last claimed each application, if anyone has."""
+        ids = list(application_ids)
+        if not ids:
+            return {}
+        rows = db.session.scalars(
+            select(KycDecision)
+            .where(KycDecision.application_id.in_(ids))
+            .where(KycDecision.decision == KycStatus.UNDER_REVIEW.value)
+            .order_by(KycDecision.decided_at.desc(), KycDecision.decision_id.desc())
+        ).all()
+        reviewers: dict[uuid.UUID, uuid.UUID] = {}
+        for row in rows:
+            if row.application_id in reviewers or row.decided_by_user_id is None:
+                continue
+            reviewers[row.application_id] = row.decided_by_user_id
+        return reviewers
+
+    def latest_decision(self, application_id: uuid.UUID) -> KycDecision | None:
+        return db.session.scalars(
+            select(KycDecision)
+            .where(KycDecision.application_id == application_id)
+            .order_by(KycDecision.decided_at.desc(), KycDecision.decision_id.desc())
+        ).first()
+
+    def list_reason_codes(self) -> list[KycReasonCodeRecord]:
+        return list(
+            db.session.scalars(
+                select(KycReasonCodeRecord).order_by(KycReasonCodeRecord.reason_code)
+            ).all()
+        )
 
     def list_assessment_audit(
         self, application_id: uuid.UUID
@@ -306,11 +359,30 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         )
 
     def latest_rejection_reason(self, user_id: uuid.UUID) -> str | None:
-        """The reason on the most recent rejected attempt, if any.
+        """What the applicant may be told about the latest reviewer action.
 
-        Shown on a resubmission so the applicant knows what to fix, without
-        overwriting the rejected row.
+        A `more_info_required` application still in flight shows the named
+        fields or documents (`reason_text`). A rejection shows the catalogue
+        message for the reason code, never the reviewer's internal note, and
+        never a tipping-off reason. Legacy rows with no code keep `reason_text`
+        so an older attempt still explains itself.
         """
+        current = db.session.scalars(
+            select(KycApplication)
+            .where(KycApplication.user_id == user_id)
+            .where(KycApplication.status == KycStatus.MORE_INFO_REQUIRED.value)
+            .order_by(KycApplication.created_at.desc())
+        ).first()
+        if current is not None:
+            decision = db.session.scalars(
+                select(KycDecision)
+                .where(KycDecision.application_id == current.application_id)
+                .where(KycDecision.decision == KycStatus.MORE_INFO_REQUIRED.value)
+                .order_by(KycDecision.decided_at.desc())
+            ).first()
+            if decision is not None:
+                return decision.reason_text
+
         rejected = db.session.scalars(
             select(KycApplication)
             .where(KycApplication.user_id == user_id)
@@ -327,6 +399,9 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         ).first()
         if decision is None:
             return None
+        message = applicant_message_for(decision.reason_code)
+        if message is not None:
+            return message
         return decision.reason_text
 
     @db_transaction
@@ -441,9 +516,12 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             .execution_options(synchronize_session=False)
         )
         if result.rowcount == 0:
+            latest = self.latest_decision(application_id)
+            who = None if latest is None else latest.decided_by_user_id
+            named = f"; this was already decided by {who}" if who is not None else ""
             raise KycVersionConflictError(
                 f"Application {application_id} is no longer at version "
-                f"{expected_version}; reload it and decide again"
+                f"{expected_version}{named}; reload it and decide again"
             )
 
         normalized_reason_code = (
@@ -487,6 +565,18 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
                     decided_at=now,
                 )
             )
+            if actor_user_id is not None:
+                record_audit(
+                    actor_user_id=actor_user_id,
+                    action=AuditAction.KYC_APPLICATION_DECIDED,
+                    subject_type=AuditSubject.KYC_APPLICATION,
+                    subject_id=application_id,
+                    before={"status": from_status.value},
+                    after={
+                        "status": to_status.value,
+                        "reason_code": normalized_reason_code,
+                    },
+                )
 
         if risk_assessment is not None:
             # A standing override survives the rescore, so the final rating is

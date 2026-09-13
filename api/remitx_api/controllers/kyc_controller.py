@@ -14,17 +14,24 @@ refusals that depend on the application in hand.
 import uuid
 from datetime import datetime
 
+from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.kyc import (
     IllegalKycTransitionError,
+    KycSelfReviewError,
     KycSeniorApprovalRequiredError,
     KycTierNotGrantableError,
     UnknownKycApplicationError,
+    UnknownKycReasonCodeError,
 )
+from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_lifecycle import (
+    DECISION_STATUSES,
     KYC_TIER_VERIFIED,
+    TIPPING_OFF_REASON_CODES,
     KycReasonCode,
     KycStatus,
+    applicant_message_for,
 )
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.repositories.kyc_application_repository import (
@@ -42,6 +49,7 @@ from remitx_api.repositories.kyc_status_progression_repository import (
 )
 from remitx_api.repositories.permission_repository import PermissionRepository
 from remitx_api.repositories.user_repository import UserRepository
+from remitx_api.services.audit_service import record_audit
 from remitx_api.services.kyc_risk_rules import (
     RiskAssessment,
     RiskBand,
@@ -76,15 +84,75 @@ class KycController:
         *,
         statuses: list[KycStatus] | None = None,
         risk_rating: str | None = None,
+        min_age_days: int | None = None,
     ) -> list[KycApplication]:
         if risk_rating is not None:
             # Refuse a rating that is not a row, rather than answer an empty
             # queue that looks like "nothing is high risk".
             self._rules.require_rating(risk_rating)
-        return self._applications.list_queue(
+        applications = self._applications.list_queue(
             statuses=statuses or QUEUE_STATUSES,
             risk_rating=risk_rating,
+            min_age_days=min_age_days,
         )
+        self._attach_reviewers(applications)
+        return applications
+
+    def queue_count(self) -> int:
+        return self._applications.count_queue()
+
+    def get_application(self, application_id: uuid.UUID) -> KycApplication:
+        application = self._require(application_id)
+        self._attach_reviewers([application])
+        return application
+
+    @db_transaction
+    def reveal_pii(
+        self, application_id: uuid.UUID, *, actor_user_id: uuid.UUID
+    ) -> KycApplication:
+        """The unmasked record, and the audit entry that records looking."""
+        application = self._require(application_id)
+        record_audit(
+            actor_user_id=actor_user_id,
+            action=AuditAction.KYC_PII_VIEWED,
+            subject_type=AuditSubject.KYC_APPLICATION,
+            subject_id=application.application_id,
+            after={"status": application.status},
+        )
+        self._attach_reviewers([application])
+        return application
+
+    def start_review(
+        self,
+        application_id: uuid.UUID,
+        *,
+        expected_version: int,
+        actor_user_id: uuid.UUID,
+    ) -> KycApplication:
+        application = self._require(application_id)
+        self._forbid_self_review(application, actor_user_id)
+        if application.status == KycStatus.UNDER_REVIEW.value:
+            self._attach_reviewers([application])
+            return application
+        return self.transition(
+            application_id,
+            KycStatus.UNDER_REVIEW,
+            expected_version=expected_version,
+            actor_user_id=actor_user_id,
+        )
+
+    def list_reason_codes(self):
+        return [
+            {
+                "reason_code": row.reason_code,
+                "description": row.description,
+                "applicant_message": applicant_message_for(row.reason_code)
+                or row.description,
+                "visible_to_applicant": row.reason_code
+                not in {code.value for code in TIPPING_OFF_REASON_CODES},
+            }
+            for row in self._applications.list_reason_codes()
+        ]
 
     def transition(
         self,
@@ -115,6 +183,10 @@ class KycController:
         # Legality first, so an illegal move is reported as one rather than as
         # whatever the checks below would have made of it.
         self._require_legal(application, to_status)
+        if to_status in DECISION_STATUSES:
+            self._forbid_self_review(application, actor_user_id)
+        if reason_code is not None:
+            self._require_reason_code(reason_code)
 
         risk_assessment: RiskAssessment | None = None
         tier_decision: TierDecision | None = None
@@ -149,7 +221,7 @@ class KycController:
                 reason=reason_text,
             )
 
-        return self._applications.apply_transition(
+        updated = self._applications.apply_transition(
             application_id,
             to_status,
             expected_version=expected_version,
@@ -161,6 +233,8 @@ class KycController:
             review_interval_days=None if band is None else band.review_interval_days,
             processing_consented_at=processing_consented_at,
         )
+        self._attach_reviewers([updated])
+        return updated
 
     def override_risk_rating(
         self,
@@ -186,11 +260,40 @@ class KycController:
         )
 
     def list_assessment_audit(self, application_id: uuid.UUID):
-        if self._applications.get_by_id(application_id) is None:
-            raise UnknownKycApplicationError(str(application_id))
+        self._require(application_id)
         return self._applications.list_assessment_audit(application_id)
 
     # --- refusals that depend on the application ------------------------------
+
+    def _require(self, application_id: uuid.UUID) -> KycApplication:
+        application = self._applications.get_by_id(application_id)
+        if application is None:
+            raise UnknownKycApplicationError(str(application_id))
+        return application
+
+    def _attach_reviewers(self, applications: list[KycApplication]) -> None:
+        reviewers = self._applications.latest_reviewers(
+            [application.application_id for application in applications]
+        )
+        for application in applications:
+            application.reviewer_user_id = reviewers.get(application.application_id)
+
+    @staticmethod
+    def _forbid_self_review(
+        application: KycApplication, actor_user_id: uuid.UUID | None
+    ) -> None:
+        if actor_user_id is not None and actor_user_id == application.user_id:
+            raise KycSelfReviewError(
+                "A reviewer cannot decide on their own application"
+            )
+
+    def _require_reason_code(self, reason_code: KycReasonCode | str) -> None:
+        value = (
+            reason_code.value if isinstance(reason_code, KycReasonCode) else reason_code
+        )
+        codes = {row.reason_code for row in self._applications.list_reason_codes()}
+        if value not in codes:
+            raise UnknownKycReasonCodeError(value)
 
     def _require_legal(self, application: KycApplication, to_status: KycStatus):
         if not self._progressions.is_allowed(application.status, to_status.value):

@@ -44,6 +44,8 @@ class AuditAction(StrEnum):
 
     KYC_DOCUMENT_VIEWED = "kyc.document.viewed"
     KYC_DOCUMENT_REMOVED = "kyc.document.removed"
+    KYC_PII_VIEWED = "kyc.pii.viewed"
+    KYC_APPLICATION_DECIDED = "kyc.application.decided"
 
 
 class AuditSubject(StrEnum):
@@ -51,6 +53,7 @@ class AuditSubject(StrEnum):
     that happened to this thing" without knowing which actions exist."""
 
     KYC_DOCUMENT = "kyc_document"
+    KYC_APPLICATION = "kyc_application"
 
 
 # JSONB on Postgres for indexable containment queries; plain JSON on the

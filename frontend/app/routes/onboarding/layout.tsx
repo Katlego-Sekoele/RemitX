@@ -46,7 +46,12 @@ export default function OnboardingLayout() {
           </Alert>
         ) : query.data && reference.data ? (
           <>
-            <RejectionBanner reason={query.data.rejection_reason} />
+            <RejectionBanner
+              reason={query.data.rejection_reason}
+              status={
+                query.data.application?.status ?? query.data.standing.status
+              }
+            />
             {current !== "welcome" && current !== "status" ? (
               <OnboardingProgress
                 steps={query.data.steps}

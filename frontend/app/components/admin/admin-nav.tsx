@@ -1,6 +1,9 @@
 import { CaretRightIcon } from "@phosphor-icons/react"
+import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router"
 
+import { api } from "~/client"
+import { Badge } from "~/components/ui/badge"
 import {
   Collapsible,
   CollapsibleContent,
@@ -16,8 +19,9 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "~/components/ui/sidebar"
-import { useMePermissions } from "~/hooks/use-permissions"
+import { useHasPermission, useMePermissions } from "~/hooks/use-permissions"
 import { discoverAdminNav } from "~/lib/admin-nav-discovery"
+import { PERMISSIONS } from "~/lib/permissions"
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -27,6 +31,11 @@ export function AdminNav() {
   const { pathname } = useLocation()
   const access = useMePermissions()
   const groups = discoverAdminNav(access.data?.permissions ?? [])
+  const canReadKyc = useHasPermission(PERMISSIONS.kycApplicationRead)
+  const queue = useQuery({
+    ...api.admin.kyc.applications.getQueueCount(),
+    enabled: canReadKyc,
+  })
 
   return (
     <SidebarGroup>
@@ -66,6 +75,11 @@ export function AdminNav() {
                         render={<Link to={item.href} />}
                       >
                         <span>{item.title}</span>
+                        {item.href === "/admin/kyc/applications" &&
+                        queue.data &&
+                        queue.data.count > 0 ? (
+                          <Badge variant="secondary">{queue.data.count}</Badge>
+                        ) : null}
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   ))}
