@@ -8,6 +8,7 @@ from remitx_api.config import TestConfig
 from remitx_api.extensions import db
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.repositories.user_repository import UserRepository
+from tests.kyc_helpers import seed_kyc_reference_data
 from tests.rbac_helpers import (
     grant_role,
     make_user,
@@ -58,6 +59,8 @@ def test_every_admin_route_is_gated_on_a_permission():
     answers a permissionless caller with the permission it wanted.
     """
     with rbac_client(make_user("nobody")) as client:
+        # Customer KYC routes read the onboarding catalogue on every call.
+        seed_kyc_reference_data()
         for method, path in _every_operation(client.app):
             response = client.request(method, path)
 

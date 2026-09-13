@@ -18,8 +18,9 @@ from remitx_api.errors.kyc import (
 )
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED
 from remitx_api.models.orm.kyc_seed import (
+    ACTIVE_RISK_SIGNAL_SEEDS,
+    RETIRED_RISK_SIGNALS,
     RISK_RATING_SEEDS,
-    RISK_SIGNAL_SEEDS,
     TIER_SEEDS,
 )
 from remitx_api.services.kyc_risk_rules import (
@@ -51,7 +52,9 @@ SEEDED_BANDS = tuple(
 )
 
 SEEDED_RULES = RiskRuleSet(
-    signal_effects={seed.signal: seed.score_effect for seed in RISK_SIGNAL_SEEDS},
+    signal_effects={
+        seed.signal: seed.score_effect for seed in ACTIVE_RISK_SIGNAL_SEEDS
+    },
     bands=SEEDED_BANDS,
     standard_monthly_limit_zar=TIER_1.monthly_limit_zar,
 )
@@ -77,23 +80,23 @@ CASES = [
     ("nothing at all", "empty", [], 0, "low"),
     ("PEP declaration", {"declares_pep": True}, ["pep_declared"], 60, "high"),
     (
-        "non-ZA nationality",
+        "nationality differs from residence",
         {"nationality": "ZW"},
-        ["foreign_jurisdiction"],
+        ["nationality_differs_from_residence"],
         25,
         "medium",
     ),
     (
-        "address outside ZA",
-        {"residential_country": "GB"},
-        ["foreign_jurisdiction"],
-        25,
-        "medium",
+        "a US citizen living in the US with an SSN trips nothing",
+        {"nationality": "US", "residential_country": "US", "issuing_country": "US"},
+        [],
+        0,
+        "low",
     ),
     (
-        "nationality and address both foreign count once",
-        {"nationality": "ZW", "residential_country": "ZW"},
-        ["foreign_jurisdiction"],
+        "a South African living in the US with an SA ID",
+        {"residential_country": "US"},
+        ["nationality_differs_from_residence"],
         25,
         "medium",
     ),
@@ -122,21 +125,21 @@ CASES = [
     (
         "passport",
         {"id_type": "passport"},
-        ["non_sa_identity_document"],
+        ["non_national_identity_document"],
         25,
         "medium",
     ),
     (
-        "a national ID issued outside ZA is not a SA ID",
-        {"issuing_country": "NA"},
-        ["non_sa_identity_document"],
-        25,
-        "medium",
+        "a national ID from another country is still a national ID",
+        {"issuing_country": "US"},
+        [],
+        0,
+        "low",
     ),
     (
-        "foreign national with a passport",
+        "foreign national living in ZA with a passport",
         {"nationality": "ZW", "id_type": "passport", "issuing_country": "ZW"},
-        ["foreign_jurisdiction", "non_sa_identity_document"],
+        ["nationality_differs_from_residence", "non_national_identity_document"],
         50,
         "medium",
     ),
@@ -148,9 +151,9 @@ CASES = [
             "expected_monthly_volume_zar": Decimal("40000.00"),
         },
         [
-            "foreign_jurisdiction",
             "expected_volume_above_standard_limit",
-            "non_sa_identity_document",
+            "nationality_differs_from_residence",
+            "non_national_identity_document",
         ],
         75,
         "high",
@@ -158,16 +161,16 @@ CASES = [
     (
         "every medium signal",
         {
-            "residential_country": "GB",
+            "nationality": "GB",
             "id_type": "passport",
             "source_of_funds": "other",
             "expected_monthly_volume_zar": Decimal("90000.00"),
         },
         [
-            "foreign_jurisdiction",
             "expected_volume_above_standard_limit",
             "source_of_funds_other",
-            "non_sa_identity_document",
+            "nationality_differs_from_residence",
+            "non_national_identity_document",
         ],
         100,
         "high",
@@ -183,10 +186,10 @@ CASES = [
         },
         [
             "pep_declared",
-            "foreign_jurisdiction",
             "expected_volume_above_standard_limit",
             "source_of_funds_other",
-            "non_sa_identity_document",
+            "nationality_differs_from_residence",
+            "non_national_identity_document",
         ],
         100,
         "high",
@@ -220,7 +223,7 @@ def test_the_ticket_rule_table_holds_for_every_signal_on_its_own():
     """The ticket's table: a PEP declaration alone is `high`, any other signal
     alone is at least `medium`. Checked against every seeded signal, so a
     reweight that broke it would fail here rather than in a demo."""
-    for seed in RISK_SIGNAL_SEEDS:
+    for seed in ACTIVE_RISK_SIGNAL_SEEDS:
         band = SEEDED_RULES.band_for_score(seed.score_effect)
         expected = "high" if seed.signal == "pep_declared" else "medium"
         assert band.rating in (expected, "high"), seed.signal
@@ -228,7 +231,15 @@ def test_the_ticket_rule_table_holds_for_every_signal_on_its_own():
 
 
 def test_every_seeded_signal_has_a_detector_and_every_detector_a_seed():
-    assert {seed.signal for seed in RISK_SIGNAL_SEEDS} == set(SIGNAL_DETECTORS)
+    assert {seed.signal for seed in ACTIVE_RISK_SIGNAL_SEEDS} == set(SIGNAL_DETECTORS)
+
+
+def test_retired_signals_are_neither_active_nor_detected():
+    """They stay as rows for the assessments that fired them, and nothing
+    scores them again."""
+    assert RETIRED_RISK_SIGNALS == {"foreign_jurisdiction", "non_sa_identity_document"}
+    assert not RETIRED_RISK_SIGNALS & {seed.signal for seed in ACTIVE_RISK_SIGNAL_SEEDS}
+    assert not RETIRED_RISK_SIGNALS & set(SIGNAL_DETECTORS)
 
 
 def test_matched_signals_carry_the_effect_they_scored_with():
@@ -259,7 +270,7 @@ def test_an_inactive_signal_is_not_evaluated():
         signal_effects={
             signal: effect
             for signal, effect in SEEDED_RULES.signal_effects.items()
-            if signal != "foreign_jurisdiction"
+            if signal != "nationality_differs_from_residence"
         },
     )
 

@@ -256,7 +256,11 @@ class KycRiskSignalSeed:
 # using a passport who also expects above-limit volume is a different risk from
 # any one of those facts.
 #
-# Every `signal` must have a detector in services/kyc_risk_rules.py.
+# The rule set as V20260913_1005 first inserted it, which imports this tuple —
+# so it is frozen: appending here would re-run as part of that migration and
+# collide with the later one that adds the row. Later signals go in their own
+# tuple; retired ones are listed in `RETIRED_RISK_SIGNALS`, never deleted,
+# because assessments that fired them still reference them.
 RISK_SIGNAL_SEEDS: tuple[KycRiskSignalSeed, ...] = (
     KycRiskSignalSeed(
         signal="pep_declared",
@@ -296,6 +300,42 @@ RISK_SIGNAL_SEEDS: tuple[KycRiskSignalSeed, ...] = (
 )
 
 
+# ZA-anchored signals, deactivated once RemitX operated in more than one
+# country: a US citizen living in the US with an SSN fired both. Replaced
+# rather than redefined, so an old assessment that fired `foreign_jurisdiction`
+# still means what it meant at the time.
+RETIRED_RISK_SIGNALS: frozenset[str] = frozenset(
+    {"foreign_jurisdiction", "non_sa_identity_document"}
+)
+
+JURISDICTION_RISK_SIGNAL_SEEDS: tuple[KycRiskSignalSeed, ...] = (
+    KycRiskSignalSeed(
+        signal="nationality_differs_from_residence",
+        description=(
+            "Declared nationality is not the country of the declared residential "
+            "address."
+        ),
+        score_effect=25,
+    ),
+    KycRiskSignalSeed(
+        signal="non_national_identity_document",
+        description=(
+            "Identified by passport rather than a national identity number whose "
+            "structure can be checked."
+        ),
+        score_effect=25,
+    ),
+)
+
+# The rule set as it stands after every migration: what tests score against.
+# Every signal here must have a detector in services/kyc_risk_rules.py.
+ACTIVE_RISK_SIGNAL_SEEDS: tuple[KycRiskSignalSeed, ...] = tuple(
+    seed
+    for seed in (*RISK_SIGNAL_SEEDS, *JURISDICTION_RISK_SIGNAL_SEEDS)
+    if seed.signal not in RETIRED_RISK_SIGNALS
+)
+
+
 @dataclass(frozen=True, slots=True)
 class KycPepRelationshipSeed:
     relationship: str
@@ -327,3 +367,239 @@ if {seed.status.value for seed in APPLICATION_STATUS_SEEDS} != set(
     APPLICATION_STATUSES
 ):
     raise RuntimeError("APPLICATION_STATUS_SEEDS must cover every application status")
+
+
+# --- Onboarding wizard --------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class KycOnboardingStepSeed:
+    step: str
+    position: int
+    role: str
+    description: str
+
+
+ONBOARDING_STEP_SEEDS: tuple[KycOnboardingStepSeed, ...] = (
+    KycOnboardingStepSeed(
+        "welcome",
+        0,
+        "entry",
+        "What you will need, and that a person reviews the application.",
+    ),
+    KycOnboardingStepSeed(
+        "identity",
+        1,
+        "collect",
+        "Full legal name, date of birth and nationality.",
+    ),
+    KycOnboardingStepSeed(
+        "id-document",
+        2,
+        "collect",
+        "Issuing country, ID type, number, expiry where it applies, and the ID "
+        "document.",
+    ),
+    KycOnboardingStepSeed(
+        "address",
+        3,
+        "collect",
+        "Structured residential address and proof of address.",
+    ),
+    KycOnboardingStepSeed(
+        "contact",
+        4,
+        "collect",
+        "Mobile number and contact email.",
+    ),
+    KycOnboardingStepSeed(
+        "financial",
+        5,
+        "collect",
+        "Source of funds, expected volume, and source of wealth when required.",
+    ),
+    KycOnboardingStepSeed(
+        "declarations",
+        6,
+        "collect",
+        "PEP/DPIP/FPPO self-declaration.",
+    ),
+    KycOnboardingStepSeed(
+        "review",
+        7,
+        "review",
+        "Read everything back, then submit.",
+    ),
+    KycOnboardingStepSeed(
+        "status",
+        8,
+        "outcome",
+        "Pending, approved, rejected, or more information required.",
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class KycOnboardingRequirementSeed:
+    step: str
+    name: str
+    kind: str
+    required_when: str
+    copy_on_resubmit: bool
+
+
+def _fields(
+    step: str, *names: str, when: str = "always"
+) -> tuple[KycOnboardingRequirementSeed, ...]:
+    return tuple(
+        KycOnboardingRequirementSeed(step, name, "field", when, True) for name in names
+    )
+
+
+# Frozen for the same reason as `RISK_SIGNAL_SEEDS`: V20260913_1100 imports it.
+ONBOARDING_REQUIREMENT_SEEDS: tuple[KycOnboardingRequirementSeed, ...] = (
+    *_fields("identity", "full_name", "date_of_birth", "nationality"),
+    *_fields("id-document", "id_type", "id_number", "issuing_country"),
+    KycOnboardingRequirementSeed(
+        "id-document", "id_document", "document", "always", False
+    ),
+    *_fields(
+        "address",
+        "residential_line1",
+        "residential_city",
+        "residential_postal_code",
+        "residential_country",
+    ),
+    KycOnboardingRequirementSeed(
+        "address", "residential_line2", "field", "never", True
+    ),
+    KycOnboardingRequirementSeed(
+        "address", "proof_of_address", "document", "always", False
+    ),
+    *_fields("contact", "mobile_number", "email"),
+    *_fields("financial", "source_of_funds", "expected_monthly_volume_zar"),
+    KycOnboardingRequirementSeed(
+        "financial",
+        "source_of_funds_detail",
+        "field",
+        "source_of_funds_other",
+        True,
+    ),
+    KycOnboardingRequirementSeed(
+        "financial", "source_of_wealth", "field", "declares_pep", True
+    ),
+    *_fields(
+        "declarations",
+        "is_domestic_prominent_influential_person",
+        "is_foreign_prominent_public_official",
+        "is_pep_family_or_close_associate",
+    ),
+    *_fields(
+        "declarations",
+        "pep_relationship",
+        "pep_position",
+        "pep_country",
+        when="declares_pep",
+    ),
+    KycOnboardingRequirementSeed("declarations", "pep_details", "field", "never", True),
+)
+
+
+# Added with identity schemes: a passport's expiry date.
+ID_EXPIRY_REQUIREMENT_SEEDS: tuple[KycOnboardingRequirementSeed, ...] = (
+    KycOnboardingRequirementSeed(
+        "id-document", "id_expiry_date", "field", "id_requires_expiry", True
+    ),
+)
+
+
+ONBOARDING_EDITABLE_STATUS_SEEDS: tuple[str, ...] = (
+    "in_progress",
+    "more_info_required",
+)
+
+
+# --- Identity schemes -----------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class KycIdentitySchemeSeed:
+    scheme: str
+    country: str | None
+    id_type: str
+    label: str
+    validator: str
+    requires_expiry: bool
+    input_mode: str
+    number_hint: str
+    document_hint: str
+
+
+_SCAN_HINT = "PDF, JPEG, PNG or WebP, up to 10 MB. A person will look at this."
+_PASSPORT_SCAN_HINT = (
+    "The photo page of your passport. PDF, JPEG, PNG or WebP, up to 10 MB."
+)
+
+# No any-country `national_id` row, deliberately: a national ID is accepted
+# only where a validator knows its structure. Everyone else uses a passport.
+IDENTITY_SCHEME_SEEDS: tuple[KycIdentitySchemeSeed, ...] = (
+    KycIdentitySchemeSeed(
+        scheme="za_national_id",
+        country="ZA",
+        id_type="national_id",
+        label="South African ID",
+        validator="za_id",
+        requires_expiry=False,
+        input_mode="numeric",
+        number_hint="13 digits, from your green ID book or smart ID card.",
+        document_hint=_SCAN_HINT,
+    ),
+    KycIdentitySchemeSeed(
+        scheme="us_national_id",
+        country="US",
+        id_type="national_id",
+        label="Social Security Number",
+        validator="us_ssn",
+        requires_expiry=False,
+        input_mode="numeric",
+        number_hint="9 digits, for example 123-45-6789.",
+        # A Social Security card has no photo, so it cannot be the document.
+        document_hint=(
+            "A government photo ID, such as a driver's licence or state ID. "
+            "PDF, JPEG, PNG or WebP, up to 10 MB."
+        ),
+    ),
+    KycIdentitySchemeSeed(
+        scheme="za_passport",
+        country="ZA",
+        id_type="passport",
+        label="Passport",
+        validator="za_passport",
+        requires_expiry=True,
+        input_mode="text",
+        number_hint="One letter and 8 digits, for example A12345678.",
+        document_hint=_PASSPORT_SCAN_HINT,
+    ),
+    KycIdentitySchemeSeed(
+        scheme="us_passport",
+        country="US",
+        id_type="passport",
+        label="Passport",
+        validator="us_passport",
+        requires_expiry=True,
+        input_mode="text",
+        number_hint="9 digits, or one letter and 8 digits.",
+        document_hint=_PASSPORT_SCAN_HINT,
+    ),
+    KycIdentitySchemeSeed(
+        scheme="passport",
+        country=None,
+        id_type="passport",
+        label="Passport",
+        validator="icao_passport",
+        requires_expiry=True,
+        input_mode="text",
+        number_hint="As printed on the photo page, 6 to 9 letters and digits.",
+        document_hint=_PASSPORT_SCAN_HINT,
+    ),
+)

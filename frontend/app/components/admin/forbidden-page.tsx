@@ -20,9 +20,7 @@ export function ForbiddenPage() {
           </div>
           <CardTitle>You do not have access</CardTitle>
           <CardDescription>
-            This area is for staff with operational roles. Your account is
-            signed in, but it does not include the permissions needed for this
-            page. If you recently lost a role, your bookmark may be outdated.
+            Your roles don&apos;t include this page.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center">

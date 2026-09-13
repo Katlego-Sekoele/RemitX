@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react"
 import { Outlet, useLocation } from "react-router"
 
 import { AppChrome } from "~/components/app-chrome"
+import { PageLoader } from "~/components/remitx-loader"
 
 const ClerkTree = lazy(() =>
   import("~/components/clerk-tree").then((module) => ({
@@ -85,12 +86,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const fallback = needsClerk ? (
     <>
       <AppChrome />
-      <div
-        className="flex min-h-[50vh] items-center justify-center"
-        role="status"
-      >
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
+      <PageLoader />
     </>
   ) : (
     body

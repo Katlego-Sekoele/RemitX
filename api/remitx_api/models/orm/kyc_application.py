@@ -138,11 +138,27 @@ class KycApplication(Base):
     # --- Declared identity (brief §4, "Mock KYC") -------------------------
     full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # ISO 3166-1 alpha-2, as are `issuing_country` and `residential_country`.
-    nationality: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Every country column is a `countries.code`. The Postgres constraints are
+    # NOT VALID: they bind every write from the migration on, but rows declared
+    # before it are history and are not rewritten to satisfy them.
+    nationality: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("countries.code", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # With `issuing_country`, names a `kyc_identity_schemes` row: `US` +
+    # `national_id` is a Social Security Number.
     id_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    issuing_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issuing_country: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("countries.code", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # Stored as the scheme's validator normalised it — an SSN without hyphens.
     id_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Required when the scheme `requires_expiry` (passports), and in the future
+    # on the day it is saved and the day it is submitted.
+    id_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Declared on the application, not read off `users.email`: the applicant
     # may bank under a different address than they signed up with, and the
@@ -157,7 +173,12 @@ class KycApplication(Base):
     residential_line2: Mapped[str | None] = mapped_column(Text, nullable=True)
     residential_city: Mapped[str | None] = mapped_column(Text, nullable=True)
     residential_postal_code: Mapped[str | None] = mapped_column(Text, nullable=True)
-    residential_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Must be a country RemitX `operates_in` — checked on save and on submit.
+    residential_country: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("countries.code", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
     # Free text, required when `source_of_funds` is `other` — "other" alone
     # tells a reviewer nothing.
@@ -195,8 +216,11 @@ class KycApplication(Base):
         nullable=True,
     )
     pep_position: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # ISO 3166-1 alpha-2.
-    pep_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pep_country: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("countries.code", ondelete="RESTRICT"),
+        nullable=True,
+    )
     pep_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Where the applicant's wealth came from, as opposed to where this money
     # came from. Enhanced due diligence: required on submission for a PEP, and
@@ -207,6 +231,17 @@ class KycApplication(Base):
     # Set by the in_progress -> submitted transition and never cleared, so a
     # more_info_required round trip keeps the original submission time.
     submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # When the applicant last consented, on the review step, to RemitX
+    # processing this application for FICA due diligence. Re-stamped on every
+    # applicant submit — including after more_info_required — because the
+    # draft they are consenting to may have changed. Distinct from
+    # `submitted_at`, which is the first time this application entered review
+    # and is never moved. Null if the application reached `submitted` through
+    # a lifecycle transition that was not the applicant's submit endpoint.
+    processing_consented_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

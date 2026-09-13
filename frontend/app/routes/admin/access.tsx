@@ -13,13 +13,7 @@ import { ForbiddenPage } from "~/components/admin/forbidden-page"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -152,10 +146,6 @@ function AccessPage() {
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             {pageRoutingContext?.title}
           </h1>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Grants are append-only: revoking ends a grant, it never erases it.
-            Every change is recorded with who made it and why.
-          </p>
         </div>
         {canGrant && (
           <GrantDialog
@@ -170,11 +160,6 @@ function AccessPage() {
       <Card>
         <CardHeader>
           <CardTitle>Admins</CardTitle>
-          <CardDescription>
-            Everyone holding at least one operational role. Self-grants are
-            listed first — they are allowed, and they are the ones worth a
-            second look.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <AdminTable
@@ -189,10 +174,6 @@ function AccessPage() {
       <Card>
         <CardHeader>
           <CardTitle>Role reference</CardTitle>
-          <CardDescription>
-            What each role actually carries, read from the database the server
-            enforces against.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <RoleReference roles={roles.data} loading={roles.isPending} />
@@ -304,10 +285,7 @@ function AccessDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{describePerson(member)}</DialogTitle>
-          <DialogDescription>
-            Every grant ever made to this account, newest first. Revoking ends a
-            grant; the row stays.
-          </DialogDescription>
+          <DialogDescription>Grant history, newest first.</DialogDescription>
         </DialogHeader>
 
         {access.isPending ? (
@@ -440,10 +418,7 @@ function RevokeDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Revoke {displayName}</DialogTitle>
-          <DialogDescription>
-            This takes effect on their very next request — permissions are
-            resolved per request, so there is no session to wait out.
-          </DialogDescription>
+          <DialogDescription>Takes effect immediately.</DialogDescription>
         </DialogHeader>
 
         <form
@@ -563,10 +538,6 @@ function GrantDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Grant a role</DialogTitle>
-          <DialogDescription>
-            Find the person, pick what they are being given, and say why. The
-            reason is kept with the grant.
-          </DialogDescription>
         </DialogHeader>
 
         <form
@@ -803,10 +774,7 @@ function ReasonField({
         placeholder={placeholder}
         disabled={disabled}
       />
-      <p className="text-[11px] text-muted-foreground">
-        Required — a sentence, not a keystroke. Kept with the record so someone
-        reviewing this in six months knows why.
-      </p>
+      <p className="text-[11px] text-muted-foreground">Required.</p>
     </div>
   )
 }

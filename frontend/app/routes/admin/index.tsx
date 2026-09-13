@@ -17,10 +17,6 @@ export default function AdminHome() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           Staff portal
         </h1>
-        <p className="max-w-xl text-sm text-muted-foreground">
-          Operational tools live here. Use IAM → My roles to review your current
-          access.
-        </p>
       </div>
     </AdminPageFrame>
   )

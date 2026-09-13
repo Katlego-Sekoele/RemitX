@@ -85,6 +85,7 @@ async function request<T>(
     throw new ApiError(await describeFailure(response), response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
@@ -347,6 +348,8 @@ export type KycDocument = {
   uploaded_by_user_id: string
   uploaded_at: string
   stored_at: string | null
+  /** The applicant may still remove it: false once a reviewer has seen it. */
+  removable: boolean
 }
 
 export type DocumentAccessUrl = {
@@ -394,6 +397,16 @@ export function listMyKycDocuments(
     getToken,
     `/kyc/documents?application_id=${encodeURIComponent(applicationId)}`
   )
+}
+
+/** Removes an upload no reviewer has seen. The API refuses anything else. */
+export function removeMyKycDocument(
+  getToken: GetToken,
+  documentId: string
+): Promise<void> {
+  return request<void>(getToken, `/kyc/documents/${documentId}`, {
+    method: "DELETE",
+  })
 }
 
 export function getMyKycDocumentUrl(
@@ -453,6 +466,7 @@ export type KycApplication = {
   effective_risk_rating: string | null
   tier_granted: number | null
   submitted_at: string | null
+  processing_consented_at: string | null
   /** Echoed back on any change, so a stale page loses instead of overwriting. */
   version: number
   created_at: string
@@ -533,4 +547,137 @@ export function overrideKycRiskRating(
       }),
     }
   )
+}
+
+export type KycOnboardingStep = {
+  step: string
+  position: number
+  role: string
+  description: string
+}
+
+export type KycStanding = {
+  status: string
+  tier: number
+  application_id: string | null
+  risk_rating: string | null
+  limit_percent: number
+  daily_limit_zar: string
+  monthly_limit_zar: string
+}
+
+/** The applicant's own draft. Unmasked: they are reading what they typed. */
+export type KycOnboardingApplication = {
+  application_id: string
+  user_id: string
+  status: string
+  full_name: string | null
+  date_of_birth: string | null
+  nationality: string | null
+  id_type: string | null
+  issuing_country: string | null
+  id_number: string | null
+  id_expiry_date: string | null
+  mobile_number: string | null
+  email: string | null
+  source_of_funds: string | null
+  source_of_funds_detail: string | null
+  residential_line1: string | null
+  residential_line2: string | null
+  residential_city: string | null
+  residential_postal_code: string | null
+  residential_country: string | null
+  expected_monthly_volume_zar: string | null
+  is_domestic_prominent_influential_person: boolean | null
+  is_foreign_prominent_public_official: boolean | null
+  is_pep_family_or_close_associate: boolean | null
+  pep_relationship: string | null
+  pep_position: string | null
+  pep_country: string | null
+  pep_details: string | null
+  source_of_wealth: string | null
+  processing_consented_at: string | null
+  version: number
+}
+
+export type KycOnboarding = {
+  standing: KycStanding
+  application: KycOnboardingApplication | null
+  next_step: string
+  rejection_reason: string | null
+  stored_document_types: string[]
+  pep_relationships: KycPepRelationship[]
+  steps: KycOnboardingStep[]
+}
+
+export function getKycOnboarding(getToken: GetToken): Promise<KycOnboarding> {
+  return request<KycOnboarding>(getToken, "/kyc/application")
+}
+
+/**
+ * Opens or resumes the draft. Welcome sends the residence so a country we do
+ * not operate in is refused before any application exists.
+ */
+export function startKycOnboarding(
+  getToken: GetToken,
+  residentialCountry?: string
+): Promise<KycOnboarding> {
+  return request<KycOnboarding>(getToken, "/kyc/application", {
+    method: "POST",
+    ...(residentialCountry
+      ? { body: JSON.stringify({ residential_country: residentialCountry }) }
+      : {}),
+  })
+}
+
+export type KycCountry = {
+  code: string
+  name: string
+  /** RemitX serves residents of this country. */
+  operates_in: boolean
+}
+
+/** Which identification a country accepts. `country` null = any country. */
+export type KycIdentityScheme = {
+  scheme: string
+  country: string | null
+  id_type: string
+  label: string
+  requires_expiry: boolean
+  input_mode: "numeric" | "text"
+  number_hint: string
+  document_hint: string
+}
+
+export type KycReference = {
+  countries: KycCountry[]
+  identity_schemes: KycIdentityScheme[]
+}
+
+export function getKycReference(getToken: GetToken): Promise<KycReference> {
+  return request<KycReference>(getToken, "/kyc/reference")
+}
+
+export function patchKycOnboarding(
+  getToken: GetToken,
+  body: Record<string, unknown>
+): Promise<KycOnboarding> {
+  return request<KycOnboarding>(getToken, "/kyc/application", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+}
+
+export function submitKycOnboarding(
+  getToken: GetToken,
+  expectedVersion: number,
+  consent: boolean
+): Promise<KycOnboarding> {
+  return request<KycOnboarding>(getToken, "/kyc/submit", {
+    method: "POST",
+    body: JSON.stringify({
+      expected_version: expectedVersion,
+      consent,
+    }),
+  })
 }

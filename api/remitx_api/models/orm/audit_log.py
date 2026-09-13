@@ -43,6 +43,7 @@ class AuditAction(StrEnum):
     """
 
     KYC_DOCUMENT_VIEWED = "kyc.document.viewed"
+    KYC_DOCUMENT_REMOVED = "kyc.document.removed"
 
 
 class AuditSubject(StrEnum):

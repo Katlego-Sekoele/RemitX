@@ -1,9 +1,7 @@
-import { Link } from "react-router"
-
 import { FadeIn } from "~/components/aceternity/fade-in"
 import { LazyGlobeDemo } from "~/components/aceternity/lazy-globe-demo"
+import { LandingAuthActions } from "~/components/landing/landing-auth-actions"
 import { RemitXLogo } from "~/components/remitx-logo"
-import { Button } from "~/components/ui/button"
 import { SITE_NAME } from "~/lib/site"
 
 export function LandingHero() {
@@ -28,21 +26,7 @@ export function LandingHero() {
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Button
-              size="lg"
-              nativeButton={false}
-              render={<Link to="/sign-up" />}
-            >
-              Start sending
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              nativeButton={false}
-              render={<Link to="/sign-in" />}
-            >
-              Sign in
-            </Button>
+            <LandingAuthActions />
           </div>
         </FadeIn>
 

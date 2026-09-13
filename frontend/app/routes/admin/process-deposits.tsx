@@ -137,10 +137,6 @@ function ProcessDepositsPage() {
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             {pageRoutingContextByModuleName?.title}
           </h1>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Simulates the daily bank-statement reconciliation job
-            (Transaction_Flow_Context.md, Phase A2).
-          </p>
         </div>
         {canConfirm && <UploadDialog onProcessed={refreshPending} />}
       </div>
@@ -149,9 +145,7 @@ function ProcessDepositsPage() {
         <CardHeader>
           <CardTitle>Pending deposits</CardTitle>
           <CardDescription>
-            Statement lines a simulation couldn&apos;t match to an account.
-            Resolve one once the sender has proven — by email or SMS, off
-            platform — which account it belongs to.
+            Statement lines that didn&apos;t match an account.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -243,10 +237,6 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Upload CSV</DialogTitle>
-          <DialogDescription>
-            Upload a bank-statement CSV to run through the deposit
-            reconciliation job.
-          </DialogDescription>
         </DialogHeader>
 
         {completed ? (
@@ -352,12 +342,7 @@ function PendingTable({
   }
 
   if (!deposits || deposits.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No pending deposits — every statement line processed so far matched an
-        account.
-      </p>
-    )
+    return <p className="text-sm text-muted-foreground">No pending deposits.</p>
   }
 
   return (
