@@ -20,16 +20,13 @@ surfaced first in the access UI. Visible beats forbidden-then-circumvented.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class UserRole(Base):

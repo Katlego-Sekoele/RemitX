@@ -1,11 +1,11 @@
 import logging
 import uuid
 
+from remitx_api.clock import utcnow
 from remitx_api.models.orm.integration_message import (
     STATUS_PENDING,
     STATUS_PROCESSED,
     IntegrationMessage,
-    utcnow,
 )
 from sqlalchemy import update
 

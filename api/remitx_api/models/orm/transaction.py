@@ -14,12 +14,13 @@ resolves it — see models/orm/deposit.py.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 
 TYPE_DEPOSIT = "deposit"
@@ -41,10 +42,6 @@ STATUS_CONFIRMED = "confirmed"
 STATUS_FAILED = "failed"
 
 STATUSES = (STATUS_PENDING, STATUS_CONFIRMED, STATUS_FAILED)
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class Transaction(Base):

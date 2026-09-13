@@ -4,16 +4,19 @@ import { useMemo } from "react"
 import {
   approveDeposit,
   getKycDocumentUrl,
+  getKycRiskRules,
   getMyAccess,
   getMyRoles,
   getUserAccess,
   grantRole,
   listIntegrationMessages,
+  listKycApplications,
   listPendingDeposits,
   listRoles,
   listAdmins,
   listApplicationDocuments,
   listToxicCombinations,
+  overrideKycRiskRating,
   processDeposits,
   revokeRole,
   searchUsers,
@@ -23,7 +26,9 @@ import {
   type DocumentAccessUrl,
   type GrantRoleResult,
   type IntegrationMessage,
+  type KycApplication,
   type KycDocument,
+  type KycRiskRules,
   type MePermission,
   type MyRole,
   type PendingDeposit,
@@ -95,6 +100,23 @@ export function useApi() {
         role: string,
         reason: string
       ): Promise<UserRoleGrant> => revokeRole(getToken, userId, role, reason),
+      listKycApplications: (
+        riskRating: string | null
+      ): Promise<KycApplication[]> => listKycApplications(getToken, riskRating),
+      getKycRiskRules: (): Promise<KycRiskRules> => getKycRiskRules(getToken),
+      overrideKycRiskRating: (
+        applicationId: string,
+        rating: string,
+        reason: string,
+        expectedVersion: number
+      ): Promise<KycApplication> =>
+        overrideKycRiskRating(
+          getToken,
+          applicationId,
+          rating,
+          reason,
+          expectedVersion
+        ),
     }),
     [getToken]
   )

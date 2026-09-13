@@ -66,6 +66,15 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     childItems: [
       {
         route: {
+          path: "admin/kyc/applications",
+          module: "routes/admin/kyc/applications.tsx",
+        },
+        label: "Applications",
+        permission: "kyc:application:read",
+        childItems: [],
+      },
+      {
+        route: {
           path: "admin/kyc/documents",
           module: "routes/admin/kyc/documents.tsx",
         },

@@ -37,16 +37,25 @@ describe how refresh would work, at the cost of one column.
 from enum import StrEnum
 
 # Ongoing due diligence (FICA §21C): how far ahead of an approval the next
-# refresh falls due. One year is a placeholder for a risk-based schedule —
-# a high-risk applicant would be reviewed more often than this.
+# refresh falls due. The schedule is risk-based — the interval comes from the
+# application's `kyc_risk_ratings` row, so a high-risk customer is re-reviewed
+# sooner. This constant is only the fallback for an application approved
+# without ever being assessed, which submission makes impossible for anything
+# that went through `KycController.transition`.
 REVIEW_INTERVAL_DAYS = 365
 
-# `kyc_applications.tier_granted`, surfaced as `KycStanding.tier`. The brief's
-# limit table has two rows — Unverified ZAR 0/0, Verified ZAR 3,000/25,000 — so
-# two tiers is the whole ladder today. Enforcement of the numbers belongs to the
-# limits ticket, not here; this is only the number it will key off.
+# `kyc_applications.tier_granted`, surfaced as `KycStanding.tier`. The two
+# numbers code has to branch on — no approval, and what an approval grants
+# unless an officer decides otherwise. Everything else about a tier (its name,
+# its limits, whether it needs a source of wealth) and every other tier lives
+# in `kyc_tiers`, so the ladder and its limits change without a release.
 KYC_TIER_NONE = 0
 KYC_TIER_VERIFIED = 1
+
+# The risk score scale. Scores are clamped to it, and the `kyc_risk_ratings`
+# bands must cover every score in it — see services/kyc_risk_rules.py.
+MIN_RISK_SCORE = 0
+MAX_RISK_SCORE = 100
 
 
 class KycStatus(StrEnum):
@@ -136,12 +145,6 @@ class KycSourceOfFunds(StrEnum):
     OTHER = "other"
 
 
-class KycRiskRating(StrEnum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
 class KycDocumentType(StrEnum):
     ID_DOCUMENT = "id_document"
     PROOF_OF_ADDRESS = "proof_of_address"
@@ -189,32 +192,6 @@ class KycReasonCode(StrEnum):
     UNSUPPORTED_JURISDICTION = "unsupported_jurisdiction"
     UNDER_AGE = "under_age"
     OTHER = "other"
-
-
-KYC_APPLICATION_STATUS_DESCRIPTIONS: dict[KycStatus, str] = {
-    KycStatus.IN_PROGRESS: "Applicant is completing the KYC wizard.",
-    KycStatus.SUBMITTED: "Application submitted and awaiting review assignment.",
-    KycStatus.UNDER_REVIEW: "A reviewer is actively assessing the application.",
-    KycStatus.MORE_INFO_REQUIRED: (
-        "Reviewer requested corrected or missing information."
-    ),
-    KycStatus.APPROVED: "Identity verified and allowance tier granted.",
-    KycStatus.REJECTED: "Application rejected; the attempt is preserved for audit.",
-    KycStatus.REVIEW_DUE: "Verification stands but periodic refresh is due.",
-}
-
-KYC_REASON_CODE_DESCRIPTIONS: dict["KycReasonCode", str] = {
-    KycReasonCode.IDENTITY_VERIFIED: "Identity verified against supplied documents.",
-    KycReasonCode.DOCUMENT_ILLEGIBLE: "Submitted document is illegible or unreadable.",
-    KycReasonCode.DOCUMENT_EXPIRED: "Submitted document has expired.",
-    KycReasonCode.DOCUMENT_MISSING: "Required document was not supplied.",
-    KycReasonCode.DETAILS_MISMATCH: "Declared details do not match the documents.",
-    KycReasonCode.SANCTIONS_MATCH: "Applicant matched a sanctions screening list.",
-    KycReasonCode.SUSPECTED_FRAUD: "Application flagged for suspected fraud.",
-    KycReasonCode.UNSUPPORTED_JURISDICTION: "Applicant jurisdiction is not supported.",
-    KycReasonCode.UNDER_AGE: "Applicant is below the minimum age.",
-    KycReasonCode.OTHER: "Other reason — see free-text explanation.",
-}
 
 
 def sql_value_list(values) -> str:
