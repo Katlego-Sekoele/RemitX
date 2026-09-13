@@ -136,6 +136,11 @@ jobs:
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
       TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
+      # Deliberately absent from the required list below: with no bucket
+      # credential the API starts normally and only the KYC document routes
+      # answer 503, so a missing one must not block the whole rollout.
+      TF_VAR_object_storage_access_key_id: ${{ secrets.TF_VAR_object_storage_access_key_id }}
+      TF_VAR_object_storage_secret_access_key: ${{ secrets.TF_VAR_object_storage_secret_access_key }}
     steps:
       - uses: actions/checkout@v4
 

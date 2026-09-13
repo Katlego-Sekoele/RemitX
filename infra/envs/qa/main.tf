@@ -90,6 +90,13 @@ module "api" {
   env_vars = merge(local.worker_env, {
     CORS_ORIGINS    = local.cors_origins
     WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
+    # Only the API signs upload and download URLs; the worker never touches
+    # documents, so the bucket credential stays out of its environment.
+    OBJECT_STORAGE_ENDPOINT_URL      = var.object_storage_endpoint_url
+    OBJECT_STORAGE_BUCKET            = var.object_storage_bucket
+    OBJECT_STORAGE_REGION            = var.object_storage_region
+    OBJECT_STORAGE_ACCESS_KEY_ID     = var.object_storage_access_key_id
+    OBJECT_STORAGE_SECRET_ACCESS_KEY = var.object_storage_secret_access_key
   })
   custom_domain = var.api_custom_domain
 }

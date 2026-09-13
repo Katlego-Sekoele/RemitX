@@ -12,6 +12,7 @@ export const PERMISSIONS = {
   roleGrant: "role:grant",
   roleRevoke: "role:revoke",
   userRead: "user:read",
+  kycDocumentRead: "kyc:document:read",
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

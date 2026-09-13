@@ -58,6 +58,8 @@ Hobby includes two custom domains: Production `remitx.tech` and QA
 | `TF_VAR_clerk_secret_key` | Clerk secret key |
 | `TF_VAR_clerk_publishable_key` | Clerk publishable key |
 | `TF_VAR_xrpl_encryption_key` | XRPL encryption key |
+| `TF_VAR_object_storage_access_key_id` | Neon Object Storage key for the KYC document bucket (optional — unset leaves only the document routes answering 503) |
+| `TF_VAR_object_storage_secret_access_key` | Its secret (optional, same) |
 
 4. Apply **shared first**. QA and Production read `remitx-shared` via
    `terraform_remote_state`. Shared apply authorizes those workspaces as

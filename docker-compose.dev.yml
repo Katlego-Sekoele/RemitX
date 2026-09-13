@@ -1,4 +1,4 @@
-# Development stack: API, frontend, Postgres, Redis.
+# Development stack: API, frontend, Postgres, Redis, object storage.
 #
 # Run in the foreground (combined logs / TUI):
 #   docker compose -f docker-compose.dev.yml up --build
@@ -45,6 +45,50 @@ services:
       timeout: 5s
       retries: 5
 
+  # KYC documents go to Neon Object Storage in the cloud, which speaks S3.
+  # MinIO speaks the same API, so the local stack needs no Neon account and
+  # the application code cannot tell the two apart — only the endpoint and
+  # credentials change.
+  minio:
+    # MinIO publishes only `latest` and timestamped RELEASE tags, so there is
+    # no `16-alpine`-style pin to use here. Local development only.
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
+      # No CORS configuration: uploads go to the API, and a document is read
+      # back by an <img> or an <iframe>, neither of which is a CORS request.
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: creates the private bucket, then exits. No public read policy is
+  # applied — an identity document reachable by anyone holding its URL is the
+  # single worst outcome available here.
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID}
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 $${OBJECT_STORAGE_ACCESS_KEY_ID} $${OBJECT_STORAGE_SECRET_ACCESS_KEY} &&
+      mc mb --ignore-existing local/$${OBJECT_STORAGE_BUCKET} &&
+      mc anonymous set none local/$${OBJECT_STORAGE_BUCKET}
+      "
+
   # One-shot: applies Alembic migrations, then exits. The api and worker
   # services wait for it to complete, so neither boots on a stale schema.
   migrate:
@@ -69,6 +113,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+      # Two endpoints because they genuinely differ here: the API reaches
+      # MinIO over the compose network, the browser over the published port.
+      # The host is part of the SigV4 signature, so a URL signed for the wrong
+      # one fails with a 403 that names nothing.
+      OBJECT_STORAGE_ENDPOINT_URL: http://minio:9000
+      OBJECT_STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:${MINIO_PORT}
     ports:
       - "${PORT}:${PORT}"
     volumes:
@@ -79,6 +129,8 @@ services:
       redis:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      minio-setup:
         condition: service_completed_successfully
     command: sh -c "pip install -e . && python -m remitx_api"
     stdin_open: true
@@ -125,4 +177,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   frontend_node_modules:
