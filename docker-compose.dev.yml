@@ -100,9 +100,12 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    command: sh -c "pip install -e . && alembic upgrade head"
+      VIRTUAL_ENV: /opt/venv
+    command: sh -c "[ -x /opt/venv/bin/python ] || python -m venv /opt/venv; /opt/venv/bin/pip install -e . && /opt/venv/bin/alembic upgrade head"
     volumes:
       - ./api:/app
+      - pip_cache:/root/.cache/pip
+      - api_venv:/opt/venv
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +118,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+      VIRTUAL_ENV: /opt/venv
       # Two endpoints because they genuinely differ here: the API reaches
       # MinIO over the compose network, the browser over the published port.
       # The host is part of the SigV4 signature, so a URL signed for the wrong
@@ -125,6 +129,11 @@ services:
       - "${PORT}:${PORT}"
     volumes:
       - ./api:/app
+      # Same idea as frontend_node_modules: the bind mount hides the image
+      # install, so keep wheels + the venv outside /app. `pip install -e .`
+      # then no-ops already-satisfied deps instead of fetching everything.
+      - pip_cache:/root/.cache/pip
+      - api_venv:/opt/venv
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,7 +143,7 @@ services:
         condition: service_completed_successfully
       minio-setup:
         condition: service_completed_successfully
-    command: sh -c "pip install -e . && python -m remitx_api"
+    command: sh -c "[ -x /opt/venv/bin/python ] || python -m venv /opt/venv; /opt/venv/bin/pip install -e . && /opt/venv/bin/python -m remitx_api"
     stdin_open: true
     tty: true
 
@@ -165,8 +174,11 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+      VIRTUAL_ENV: /opt/venv
     volumes:
       - ./api:/app
+      - pip_cache:/root/.cache/pip
+      - api_venv:/opt/venv
     depends_on:
       postgres:
         condition: service_healthy
@@ -174,10 +186,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    command: sh -c "pip install -e . && celery -A remitx_worker.celery_app worker --loglevel=info"
+    command: sh -c "[ -x /opt/venv/bin/python ] || python -m venv /opt/venv; /opt/venv/bin/pip install -e . && /opt/venv/bin/celery -A remitx_worker.celery_app worker --loglevel=info"
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   frontend_node_modules:
+  pip_cache:
+  api_venv:
