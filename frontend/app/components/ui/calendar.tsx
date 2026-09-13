@@ -9,10 +9,18 @@ import {
   DayPicker,
   getDefaultClassNames,
   type DayButton,
+  type DropdownProps,
   type Locale,
 } from "react-day-picker"
 
 import { Button, buttonVariants } from "~/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select"
 
 function Calendar({
   className,
@@ -74,19 +82,8 @@ function Calendar({
           "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
           defaultClassNames.dropdowns
         ),
-        dropdown_root: cn(
-          "relative rounded-md border border-input bg-background shadow-xs",
-          defaultClassNames.dropdown_root
-        ),
-        dropdown: cn(
-          "absolute inset-0 bg-popover opacity-0",
-          defaultClassNames.dropdown
-        ),
         caption_label: cn(
-          "font-medium select-none",
-          captionLayout === "label"
-            ? "text-sm"
-            : "flex items-center gap-1 rounded-md text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
+          "text-sm font-medium select-none",
           defaultClassNames.caption_label
         ),
         month_grid: cn("w-full border-collapse", defaultClassNames.month_grid),
@@ -150,6 +147,7 @@ function Calendar({
           )
         },
         DayButton: CalendarDayButton,
+        Dropdown: CalendarDropdown,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>
@@ -163,6 +161,47 @@ function Calendar({
       }}
       {...props}
     />
+  )
+}
+
+/** Month and year navigation through our Select instead of a native one. */
+function CalendarDropdown({
+  options = [],
+  value,
+  onChange,
+  disabled,
+  "aria-label": ariaLabel,
+}: DropdownProps) {
+  return (
+    <Select
+      items={options.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }))}
+      value={Number(value)}
+      disabled={disabled}
+      onValueChange={(next) => {
+        // DayPicker reads the choice from a native select's change event.
+        onChange?.({
+          target: { value: String(next) },
+        } as React.ChangeEvent<HTMLSelectElement>)
+      }}
+    >
+      <SelectTrigger size="sm" aria-label={ariaLabel}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-64 min-w-0">
+        {options.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -202,4 +241,4 @@ function CalendarDayButton({
   )
 }
 
-export { Calendar, CalendarDayButton }
+export { Calendar, CalendarDayButton, CalendarDropdown }

@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
+import { format } from "date-fns"
 import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
 
@@ -32,7 +33,13 @@ const schema = z.object({
     .string()
     .trim()
     .min(2, "Enter your full legal name, as it appears on your ID."),
-  date_of_birth: z.iso.date("Choose your date of birth."),
+  date_of_birth: z.iso
+    .date("Enter your date of birth.")
+    // ISO dates compare correctly as strings.
+    .refine(
+      (value) => value <= format(new Date(), "yyyy-MM-dd"),
+      "Date of birth can't be in the future."
+    ),
   nationality: z.string().min(1, "Choose your nationality."),
 })
 
@@ -92,11 +99,8 @@ export default function Identity() {
                   <DatePicker
                     id="date_of_birth"
                     value={field.value}
-                    onChange={(value) => {
-                      field.onChange(value)
-                      field.onBlur()
-                    }}
-                    placeholder="Select date of birth"
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
                     invalid={fieldState.invalid}
                   />
                   {fieldState.invalid ? (
