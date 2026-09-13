@@ -3,14 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router"
 
-import { KycApplicationDocuments } from "~/components/admin/kyc-application-documents"
+import { KycApplicationDocuments } from "~/components/kyc/kyc-application-documents"
 import { DecisionPanel } from "~/components/admin/kyc-review/decision-panel"
 import {
   ContactSection,
   FundsSection,
   IdentitySection,
   PepSection,
-} from "~/components/admin/kyc-review/detail-sections"
+} from "~/components/kyc/application-sections"
 import {
   QUEUE_HREF,
   errorMessage,
@@ -50,6 +50,7 @@ export function ApplicationReview({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const canRequestInfo = useHasPermission(PERMISSIONS.kycApplicationRequestInfo)
+  const canReadDocuments = useHasPermission(PERMISSIONS.kycDocumentRead)
   const [unmasked, setUnmasked] = useState<KycApplicationReadPii | null>(null)
   const path = { path: { application_id: applicationId } }
 
@@ -150,7 +151,11 @@ export function ApplicationReview({
           <ContactSection application={shown} />
           <FundsSection application={shown} />
           <PepSection application={shown} />
-          <KycApplicationDocuments applicationId={applicationId} />
+          <KycApplicationDocuments
+            applicationId={applicationId}
+            audience="staff"
+            canRead={canReadDocuments}
+          />
           <RiskHistory
             entries={entries}
             loading={audit.isPending}

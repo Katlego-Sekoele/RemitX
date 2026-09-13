@@ -27,11 +27,20 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
  * this app's, so the same-origin policy already keeps the file away from this
  * page; the upload was also sniffed as a real PDF and is served with that type.
  */
-export function KycDocumentViewer({ document }: { document: KycDocument }) {
+export type DocumentAudience = "staff" | "applicant"
+
+export function KycDocumentViewer({
+  document,
+  audience,
+}: {
+  document: KycDocument
+  audience: DocumentAudience
+}) {
+  const path = { path: { document_id: document.document_id } }
   const link = useQuery({
-    ...api.admin.kyc.documents.getDocumentUrl({
-      path: { document_id: document.document_id },
-    }),
+    ...(audience === "staff"
+      ? api.admin.kyc.documents.getDocumentUrl(path)
+      : api.kyc.documents.getMyDocumentUrl(path)),
     refetchInterval: URL_REFRESH_MS,
     // The link is short-lived by design, so a cached one is worse than none.
     gcTime: URL_REFRESH_MS,

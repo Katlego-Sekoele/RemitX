@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
-import { isKycVerified, pathForStep } from "~/lib/kyc-onboarding"
+import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import type { Route } from "./+types/index"
 import { PageHeader, PageHeaderTitle } from "~/components/ui/page-header"
 import { api } from "~/client"
@@ -42,7 +42,7 @@ export default function AppHome() {
             <CardContent>
               <Button
                 nativeButton={false}
-                render={<Link to={pathForStep(onboarding.data.next_step)} />}
+                render={<Link to={verificationPath()} />}
               >
                 Continue verification
               </Button>

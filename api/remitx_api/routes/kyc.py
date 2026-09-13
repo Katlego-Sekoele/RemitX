@@ -2,29 +2,35 @@
 
 HTTP only. The draft, `next_step`, and submit completeness live in
 `KycOnboardingController`. The applicant sees their own unmasked values —
-they typed them — which is why this uses `KycApplicationReadPII` without the
-staff `kyc:application:read_pii` gate.
+they typed them — through `KycApplicantApplicationRead`, which carries none of
+the staff assessment fields.
 """
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, status
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.kyc_onboarding_controller import (
+    KycApplicationDetailView,
     KycOnboardingController,
     KycOnboardingView,
 )
 from remitx_api.models.orm.user import User
-from remitx_api.models.schemas.kyc import KycApplicationReadPII, KycStandingRead
+from remitx_api.models.schemas.kyc import KycStandingRead
 from remitx_api.models.schemas.kyc_onboarding import (
+    KycApplicantApplicationRead,
+    KycApplicationDetailRead,
     KycApplicationPatch,
+    KycApplicationSummaryRead,
     KycCountryRead,
     KycIdentitySchemeRead,
     KycOnboardingRead,
     KycOnboardingStepRead,
     KycReferenceRead,
     KycStartRequest,
+    KycStatusEventRead,
     KycSubmitRequest,
 )
 from remitx_api.openapi import Tag, error_responses
@@ -34,27 +40,43 @@ router: APIRouter = create_customer_router(prefix="/kyc", tags=[Tag.KYC_ONBOARDI
 controller = KycOnboardingController()
 
 
+def _steps(view: KycOnboardingView | KycApplicationDetailView):
+    return [
+        KycOnboardingStepRead(
+            step=step.step,
+            position=step.position,
+            role=step.role,
+            description=step.description,
+        )
+        for step in view.catalogue.steps
+    ]
+
+
 def _read(view: KycOnboardingView) -> KycOnboardingRead:
     return KycOnboardingRead(
         standing=KycStandingRead.model_validate(view.standing),
         application=(
             None
             if view.application is None
-            else KycApplicationReadPII.model_validate(view.application)
+            else KycApplicantApplicationRead.model_validate(view.application)
         ),
         next_step=view.next_step,
-        rejection_reason=view.rejection_reason,
         stored_document_types=list(view.stored_document_types),
         pep_relationships=view.pep_relationships,
-        steps=[
-            KycOnboardingStepRead(
-                step=step.step,
-                position=step.position,
-                role=step.role,
-                description=step.description,
-            )
-            for step in view.catalogue.steps
-        ],
+        steps=_steps(view),
+    )
+
+
+def _detail(view: KycApplicationDetailView) -> KycApplicationDetailRead:
+    return KycApplicationDetailRead(
+        application=KycApplicantApplicationRead.model_validate(view.application),
+        editable=view.editable,
+        applicant_message=view.applicant_message,
+        timeline=[KycStatusEventRead.model_validate(row) for row in view.timeline],
+        next_step=view.next_step,
+        stored_document_types=list(view.stored_document_types),
+        pep_relationships=view.pep_relationships,
+        steps=_steps(view),
     )
 
 
@@ -95,16 +117,39 @@ def get_reference():
 @router.get(
     "/application",
     response_model=KycOnboardingRead,
-    summary="Get the caller's KYC application",
+    summary="Get the caller's KYC standing",
 )
 def get_application(user: User = Depends(get_current_user)):
-    """Standing, the current draft if any, and the step to resume at."""
+    """Standing, the application the caller is on now if any, and its next
+    step. The whole history is `GET /kyc/applications`."""
     return _read(controller.get(user.id))
 
 
+@router.get(
+    "/applications",
+    response_model=list[KycApplicationSummaryRead],
+    summary="List the caller's KYC applications",
+)
+def list_my_applications(user: User = Depends(get_current_user)):
+    """Newest first."""
+    return [
+        KycApplicationSummaryRead(
+            application_id=summary.application.application_id,
+            status=summary.application.effective_status,
+            created_at=summary.application.created_at,
+            submitted_at=summary.application.submitted_at,
+            decided_at=summary.decided_at,
+            tier_granted=summary.application.tier_granted,
+            next_review_at=summary.application.next_review_at,
+            editable=summary.editable,
+        )
+        for summary in controller.list_for_user(user.id)
+    ]
+
+
 @router.post(
-    "/application",
-    response_model=KycOnboardingRead,
+    "/applications",
+    response_model=KycApplicationDetailRead,
     status_code=status.HTTP_200_OK,
     summary="Start or resume a KYC application",
     responses=error_responses(400, 409),
@@ -113,44 +158,69 @@ def start_application(
     payload: Annotated[KycStartRequest | None, Body()] = None,
     user: User = Depends(get_current_user),
 ):
-    """Idempotent: an open draft is returned as it is. A residence outside the
-    countries RemitX operates in is refused before any application exists."""
+    """Returns the open application if there is one. Otherwise opens a new one,
+    but only while the caller has no approval or it has expired — 409 while an
+    approval is in force. A residence outside the countries RemitX operates in
+    is refused before any application exists."""
     residential_country = None if payload is None else payload.residential_country
-    return _read(controller.start(user.id, residential_country=residential_country))
+    return _detail(controller.start(user.id, residential_country=residential_country))
+
+
+@router.get(
+    "/applications/{application_id}",
+    response_model=KycApplicationDetailRead,
+    summary="Get one of the caller's KYC applications",
+    responses=error_responses(404),
+)
+def get_my_application(
+    application_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """The caller's own values, the applicant-safe reviewer message, and the
+    status timeline. Another user's application is a 404."""
+    return _detail(controller.detail(user.id, application_id))
 
 
 @router.patch(
-    "/application",
-    response_model=KycOnboardingRead,
-    summary="Save fields on the KYC draft",
+    "/applications/{application_id}",
+    response_model=KycApplicationDetailRead,
+    summary="Save fields on a KYC draft",
     responses=error_responses(400, 404, 409),
 )
 def patch_application(
+    application_id: uuid.UUID,
     payload: KycApplicationPatch,
     user: User = Depends(get_current_user),
 ):
     """Only the fields sent are changed. ``expected_version`` must match the
-    draft's, so a stale tab gets a 409 instead of overwriting."""
+    draft's, so a stale tab gets a 409 instead of overwriting. Refused once the
+    application is no longer editable."""
     fields = payload.model_dump(exclude_unset=True)
     expected_version = fields.pop("expected_version")
-    return _read(controller.patch(user.id, fields, expected_version=expected_version))
+    return _detail(
+        controller.patch(
+            user.id, application_id, fields, expected_version=expected_version
+        )
+    )
 
 
 @router.post(
-    "/submit",
-    response_model=KycOnboardingRead,
-    summary="Submit the KYC application for review",
+    "/applications/{application_id}/submit",
+    response_model=KycApplicationDetailRead,
+    summary="Submit a KYC application for review",
     responses=error_responses(400, 404, 409),
 )
 def submit_application(
+    application_id: uuid.UUID,
     payload: KycSubmitRequest,
     user: User = Depends(get_current_user),
 ):
     """Scores the application and queues it for a reviewer. Refused while any
     required field or document is missing, or without processing consent."""
-    return _read(
+    return _detail(
         controller.submit(
             user.id,
+            application_id,
             expected_version=payload.expected_version,
             consent=payload.consent,
         )

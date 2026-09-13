@@ -21,6 +21,7 @@ from datetime import date
 from decimal import Decimal
 
 from pydantic import (
+    AliasChoices,
     ConfigDict,
     Field,
     model_validator,
@@ -106,7 +107,9 @@ class _ApplicationBase(Schema):
 
     application_id: uuid.UUID
     user_id: uuid.UUID
-    status: str
+    # Read from `KycApplication.effective_status`, so an approval past its
+    # review date reports `review_due` — see `kyc_lifecycle.effective_status`.
+    status: str = Field(validation_alias=AliasChoices("effective_status", "status"))
     nationality: str | None = None
     id_type: str | None = None
     issuing_country: str | None = None
@@ -188,6 +191,7 @@ class KycApplicationRead(_ApplicationBase):
             for field in _ApplicationBase.model_fields
             if read(field) is not None
         }
+        masked["status"] = read("effective_status") or read("status")
         masked.update(
             full_name=mask_name(read("full_name")),
             date_of_birth=mask_year_only(read("date_of_birth")),
@@ -314,7 +318,9 @@ class KycStandingRead(Schema):
     status: str
     tier: int
     application_id: uuid.UUID | None = None
-    risk_rating: str | None = None
+    # No risk rating: this is the applicant's view, and telling someone how
+    # they were rated is internal assessment data (and, for a high rating, a
+    # tipping-off risk). The limits already carry its effect.
     limit_percent: int
     daily_limit_zar: Decimal
     monthly_limit_zar: Decimal

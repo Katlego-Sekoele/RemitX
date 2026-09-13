@@ -1,8 +1,10 @@
 """Append-only lifecycle history for a KYC application row.
 
-Each row is a snapshot of the application after a change: status, version, and
-outcome fields. The status before this row is whatever the previous row held,
-ordered by ``changed_at``.
+One row per status change — creation and every transition — as a snapshot of
+the application after it: status, version, and outcome fields. Edits that leave
+the status alone (a draft save, a risk override) write nothing here; an
+override is recorded in `kyc_assessment_audit`. The status before this row is
+whatever the previous row held, ordered by ``changed_at``.
 """
 
 import uuid

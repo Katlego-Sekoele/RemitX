@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { useMePermissions } from "~/hooks/use-permissions"
-import { pathForStep } from "~/lib/kyc-onboarding"
+import { verificationPath } from "~/lib/kyc-onboarding"
 
 /**
  * Signed-in prompt on the home page. Does not force a redirect — a deep link
@@ -42,8 +42,6 @@ function SignedInVerificationCard() {
   if (standing === "approved" || standing === "review_due") return null
   if (!query.data) return null
 
-  const next = pathForStep(query.data.next_step)
-
   return (
     <div>
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
@@ -55,7 +53,10 @@ function SignedInVerificationCard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button nativeButton={false} render={<Link to={next} />}>
+            <Button
+              nativeButton={false}
+              render={<Link to={verificationPath()} />}
+            >
               Continue verification
             </Button>
           </CardContent>
