@@ -60,6 +60,22 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     ],
   },
   {
+    label: "KYC",
+    order: 15,
+    icon: "IdentificationBadgeIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/kyc/documents",
+          module: "routes/admin/kyc/documents.tsx",
+        },
+        label: "Documents",
+        permission: "kyc:document:read",
+        childItems: [],
+      },
+    ],
+  },
+  {
     label: "Deposits",
     order: 20,
     icon: "BankIcon",

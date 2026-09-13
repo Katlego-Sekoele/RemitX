@@ -14,6 +14,7 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 | API | Free web service (Docker) | Free web service (`*.onrender.com`) |
 | Worker | Free web service (HTTP + Celery) | Free web service (HTTP + Celery) |
 | Database | Neon branch `qa` | Neon branch `main` / `production` |
+| KYC documents | Neon Object Storage bucket `remitx-qa-kyc-documents` | Neon Object Storage bucket `remitx-prod-kyc-documents` |
 | Queue | Shared Key Value `/0` | Shared Key Value `/1` |
 | Auth | Clerk QA app | Clerk Production app |
 | Secrets | Render env vars via Terraform | same |
@@ -30,7 +31,8 @@ in 30 days.
 2. HCP Terraform org (name in `TF_CLOUD_ORGANIZATION`) with workspaces
    `remitx-shared`, `remitx-qa`, `remitx-prod`.
 3. GitHub repository with Actions enabled.
-4. Neon project with `qa` and `main` (or `production`) branches.
+4. Neon project with `qa` and `main` (or `production`) branches, and one
+   private Object Storage bucket per environment.
 5. Three Clerk applications: Development (local), QA, Production.
 
 See [infra/README.md](../infra/README.md) for the secret list and first apply.
@@ -106,6 +108,68 @@ A push that only touches the pipeline or docs runs `terraform` but no deploy
 jobs — there is no new application code to roll out. Use a manual run if you
 want the services redeployed as well.
 
+## Object storage (KYC documents)
+
+Uploaded identity documents are bytes, and bytes do not belong in Postgres — a
+database dump taken to debug something should not contain a stranger's
+passport. They go to **Neon Object Storage**, which speaks S3, so the same code
+runs against MinIO locally and no second SDK exists in the codebase.
+
+**Create one private bucket per environment** (Neon console → Object Storage,
+or the Neon API), then a key pair scoped to it:
+
+| Setting | QA | Production |
+|---------|-----|-----------|
+| `OBJECT_STORAGE_BUCKET` | `remitx-qa-kyc-documents` | `remitx-prod-kyc-documents` |
+| `OBJECT_STORAGE_ENDPOINT_URL` | the bucket's S3 endpoint | the bucket's S3 endpoint |
+| `OBJECT_STORAGE_REGION` | `auto` | `auto` |
+| `OBJECT_STORAGE_ACCESS_KEY_ID` | bucket key | bucket key |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | bucket secret | bucket secret |
+
+The endpoint, bucket and region are non-secret and live in
+`infra/envs/<env>/non-secret.tfvars`. The two credentials are Terraform inputs
+passed from the matching GitHub environment secrets
+(`TF_VAR_object_storage_access_key_id`,
+`TF_VAR_object_storage_secret_access_key`) and reach only the **API** service —
+the worker never touches documents, so the bucket credential stays out of its
+environment.
+
+They are deliberately optional: with them unset the API starts normally and
+only the KYC document routes answer `503`. Nothing else in the platform
+depends on the bucket.
+
+**The bucket must stay private.** Nothing is ever served from it directly, and
+nothing writes to it but the API.
+
+Uploads are POSTed to the API, which holds the bytes, identifies the file by
+its leading bytes, hashes it and only then writes the object — so nothing
+reaches the bucket that has not been checked. The body is capped while it
+arrives, at the route and again in `MaxBodySizeMiddleware`, so an oversized
+upload costs the bytes already read and nothing more.
+
+Reads are the exception, for a mechanical reason: a document is rendered in
+the reviewer's browser by an `<img>` or a sandboxed `<iframe>`, and neither
+can carry an `Authorization` header, so serving those bytes through the API
+would mean inventing a signed-URL scheme of our own. They use the bucket's —
+five minutes, audited on issue. An identity document reachable by anyone
+holding a URL is the single worst outcome available here.
+
+**No CORS configuration is needed,** on the bucket or on MinIO. Uploads go to
+the API, which is already an allowed origin, and `<img>`/`<iframe>` reads are
+not CORS requests. That is worth noting because bucket CORS is the classic
+failure here: it surfaces as an opaque network error rather than as anything
+that names the cause.
+
+**No virus scanning.** Uploads are type-checked by their leading bytes and
+size-capped, and nothing executable or scriptable is accepted — but nothing
+scans them for malware. Object-storage malware scanning is the real answer and
+is out of scope for this project.
+
+**Retention.** FICA §23 record-keeping runs five years from the end of the
+relationship, so deleting an application does not delete its documents and no
+route offers to. A lifecycle rule on the bucket is where that expiry would
+eventually live.
+
 ## Worker wake
 
 Free web services spin down after 15 minutes idle. After enqueue the API
@@ -124,6 +188,14 @@ docker compose -f docker-compose.dev.yml up --build
 ```
 
 Do not set `WORKER_WAKE_URL` locally. The Compose worker runs Celery only.
+
+The stack includes **MinIO** (S3-compatible, console on
+`http://localhost:9001`) and a one-shot job that creates the private
+`kyc-documents` bucket, so the whole KYC document flow runs with no Neon
+account. The API signs *read* URLs for `http://localhost:9000` — the host the
+browser uses — while talking to MinIO at `http://minio:9000` itself; the host
+is part of the SigV4 signature, so signing for the wrong one fails with a bare
+403.
 
 ## Clerk
 

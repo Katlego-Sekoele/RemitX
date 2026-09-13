@@ -329,3 +329,101 @@ export function revokeRole(
     }
   )
 }
+
+/** Metadata for one piece of KYC evidence. Never the bytes, and never a URL:
+ * the object key is the API's business and every link to it is minted on
+ * demand and expires in minutes. */
+export type KycDocument = {
+  document_id: string
+  application_id: string
+  document_type: string
+  /** `stored` once the bytes are in object storage. `pending` means the
+   * API's own write to the bucket failed — a record of the attempt, never
+   * evidence, and no retrieval path serves one. */
+  status: string
+  content_type: string
+  size_bytes: number
+  sha256: string | null
+  uploaded_by_user_id: string
+  uploaded_at: string
+  stored_at: string | null
+}
+
+export type DocumentAccessUrl = {
+  document_id: string
+  content_type: string
+  url: string
+  expires_at: string
+}
+
+/**
+ * Upload one document.
+ *
+ * The body *is* the file: passing a `File` to `fetch` sets `Content-Type` and
+ * `Content-Length` from it, and the API holds both to the file's leading
+ * bytes before anything reaches storage. The metadata that would otherwise be
+ * multipart fields travels in the query string, which is what lets the server
+ * decide how much of the body it is willing to read.
+ */
+export function uploadKycDocument(
+  getToken: GetToken,
+  applicationId: string,
+  documentType: string,
+  file: File
+): Promise<KycDocument> {
+  const query = new URLSearchParams({
+    application_id: applicationId,
+    document_type: documentType,
+  })
+
+  return request<KycDocument>(getToken, `/kyc/documents?${query}`, {
+    method: "POST",
+    body: file,
+    // A browser will not let script set Content-Length, so the only thing to
+    // declare is the type — and an empty one is left off so the API can say
+    // that it needs one.
+    ...(file.type ? { headers: { "Content-Type": file.type } } : {}),
+  })
+}
+
+export function listMyKycDocuments(
+  getToken: GetToken,
+  applicationId: string
+): Promise<KycDocument[]> {
+  return request<KycDocument[]>(
+    getToken,
+    `/kyc/documents?application_id=${encodeURIComponent(applicationId)}`
+  )
+}
+
+export function getMyKycDocumentUrl(
+  getToken: GetToken,
+  documentId: string
+): Promise<DocumentAccessUrl> {
+  return request<DocumentAccessUrl>(
+    getToken,
+    `/kyc/documents/${documentId}/url`
+  )
+}
+
+export function listApplicationDocuments(
+  getToken: GetToken,
+  applicationId: string
+): Promise<KycDocument[]> {
+  return request<KycDocument[]>(
+    getToken,
+    `/admin/kyc/documents?application_id=${encodeURIComponent(applicationId)}`
+  )
+}
+
+/** A read URL good for five minutes. Every call is recorded in the audit log
+ * against the caller — there is no unaudited way to see a document. */
+export function getKycDocumentUrl(
+  getToken: GetToken,
+  documentId: string
+): Promise<DocumentAccessUrl> {
+  return request<DocumentAccessUrl>(
+    getToken,
+    `/admin/kyc/documents/${documentId}/url`
+  )
+}

@@ -25,13 +25,23 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
-from remitx_api.models.orm.kyc_lifecycle import KycDocumentType, sql_value_list
+from remitx_api.models.orm.kyc_lifecycle import (
+    KycDocumentStatus,
+    KycDocumentType,
+    sql_value_list,
+)
 
-# Scans and photographs of documents. No archives and nothing executable: a
-# reviewer has to be able to look at the thing in a browser.
+# Scans and photographs of documents. No archives, nothing executable, and
+# specifically no SVG: a reviewer has to be able to look at the thing in a
+# browser, and an SVG is a scriptable document rather than a picture.
 ALLOWED_CONTENT_TYPES = ("image/jpeg", "image/png", "image/webp", "application/pdf")
 
 MAX_SIZE_BYTES = 10 * 1024 * 1024
+
+# Enough for an identity document, a proof of address, a selfie and evidence
+# of source of funds, with room for a reviewer asking for one of them again.
+# A cap at all is what stops one bored applicant filling the bucket.
+MAX_DOCUMENTS_PER_APPLICATION = 6
 
 SHA256_HEX_LENGTH = 64
 
@@ -58,10 +68,24 @@ class KycDocument(Base):
             name="kyc_documents_size_bytes_in_range",
         ),
         CheckConstraint(
-            f"length(sha256) = {SHA256_HEX_LENGTH}",
+            f"status IN ({sql_value_list(KycDocumentStatus)})",
+            name="kyc_documents_status_valid",
+        ),
+        CheckConstraint(
+            f"sha256 IS NULL OR length(sha256) = {SHA256_HEX_LENGTH}",
             name="kyc_documents_sha256_length",
         ),
-        # Dedup, and the reason `sha256` is not merely advisory.
+        # The invariant the whole two-step upload exists to protect: a row
+        # that claims to be stored has been read back out of the bucket and
+        # hashed. Enforced here as well as in the controller because a
+        # half-applied completion is exactly the bug this would hide.
+        CheckConstraint(
+            "status <> 'stored' OR (sha256 IS NOT NULL AND stored_at IS NOT NULL)",
+            name="kyc_documents_stored_has_digest",
+        ),
+        # Dedup, and the reason `sha256` is not merely advisory. Pending rows
+        # carry no digest and NULLs do not collide, so an abandoned upload
+        # never blocks the retry that replaces it.
         Index(
             "uq_kyc_documents_application_sha256",
             "application_id",
@@ -82,14 +106,23 @@ class KycDocument(Base):
         index=True,
     )
     document_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=KycDocumentStatus.PENDING.value,
+        default=KycDocumentStatus.PENDING.value,
+    )
     # Object-storage key, not a URL: the bucket and any signing are the storage
     # layer's business, and a stored URL would go stale the moment either moved.
     storage_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     content_type: Mapped[str] = mapped_column(Text, nullable=False)
     # BigInteger rather than Integer: a size column that can overflow is a
-    # size column that will be believed when it is wrong.
+    # size column that will be believed when it is wrong. Declared at intent,
+    # overwritten with the bucket's own answer at completion.
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    # Null until the object has been read back and hashed — there is nothing
+    # honest to put here before that.
+    sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The applicant normally, but a reviewer may attach evidence on their
     # behalf (a scan taken in branch), so this is not derivable from the
     # application's user_id.
@@ -98,8 +131,18 @@ class KycDocument(Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    # When the upload was *requested*. `stored_at` is when bytes arrived and
+    # were verified; the gap between them is how long the applicant took.
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=utcnow,
     )
+    stored_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    @property
+    def is_stored(self) -> bool:
+        return self.status == KycDocumentStatus.STORED.value

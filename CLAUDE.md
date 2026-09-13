@@ -10,10 +10,11 @@ Hard constraints from the brief:
 
 - XRPL **Testnet only**. No mainnet accounts, no real funds, no production blockchain credentials.
 - XRPL private keys stored in the DB must be encrypted, with the encryption key held outside that database. Keys must never be returned via the API, logged, or committed.
+- Uploaded KYC documents live in object storage, never in Postgres. Uploads are POSTed to the API, which identifies the file by its leading bytes before writing it to the bucket; reads are signed URLs that expire in minutes, and every one is written to the audit log.
 - RLUSD settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting).
 - RLUSD transfer may not start until the simulated ZAR cash-in is confirmed.
 
-Cloud deployment uses **Render** (API + worker web services, static frontend, Key Value), **Neon** (Postgres), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-09-12-render-migration-design.md](docs/superpowers/specs/2026-09-12-render-migration-design.md).
+Cloud deployment uses **Render** (API + worker web services, static frontend, Key Value), **Neon** (Postgres, and Object Storage for KYC documents), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-09-12-render-migration-design.md](docs/superpowers/specs/2026-09-12-render-migration-design.md).
 
 **Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud worker is a free Render web service woken via `WORKER_WAKE_URL`.
 
@@ -37,7 +38,7 @@ Monorepo with two apps sharing one env file:
 
 ## Commands
 
-### Docker (full stack: API + frontend + Postgres + Redis)
+### Docker (full stack: API + frontend + Postgres + Redis + MinIO)
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build   # foreground logs

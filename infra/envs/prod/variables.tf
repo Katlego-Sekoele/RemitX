@@ -82,3 +82,33 @@ variable "render_owner_id" {
   sensitive   = true
   description = "Render owner id (usr-… or tea-…). Pass TF_VAR_render_owner_id."
 }
+
+variable "object_storage_endpoint_url" {
+  type        = string
+  default     = ""
+  description = "S3 endpoint of the Neon Object Storage bucket holding KYC documents. Empty leaves the document routes answering 503 and everything else working."
+}
+
+variable "object_storage_bucket" {
+  type        = string
+  default     = "kyc-documents"
+  description = "Bucket KYC documents are uploaded to. Private; never public-read."
+}
+
+variable "object_storage_region" {
+  type        = string
+  default     = "auto"
+  description = "Neon ignores the region, but SigV4 requires one in the credential scope."
+}
+
+variable "object_storage_access_key_id" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "object_storage_secret_access_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
