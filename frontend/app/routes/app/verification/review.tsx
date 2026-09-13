@@ -27,9 +27,13 @@ import {
   ItemTitle,
 } from "~/components/ui/item"
 import { useKycReference } from "~/hooks/use-kyc-reference"
-import { errorMessage, useOnboarding } from "~/hooks/use-onboarding"
+import {
+  errorMessage,
+  storeApplication,
+  useOnboarding,
+} from "~/hooks/use-onboarding"
 import { api } from "~/client"
-import { pathForStep } from "~/lib/kyc-onboarding"
+import { applicationPath, applicationStepPath } from "~/lib/kyc-onboarding"
 import {
   countryName,
   isOperatingCountry,
@@ -103,31 +107,14 @@ export default function Review() {
   const submit = useMutation({
     ...api.kyc.onboarding.submitApplication(),
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        api.kyc.onboarding.getApplication().queryKey,
-        data
-      )
-      navigate(pathForStep("status"))
+      storeApplication(queryClient, data)
+      navigate(applicationPath(data.application.application_id))
     },
   })
+  const stepPath = (step: string) =>
+    applicationStepPath(application.application_id, step)
 
-  if (!application) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Review</CardTitle>
-          <CardDescription>
-            There is no draft yet.{" "}
-            <Link to={pathForStep("welcome")} className="underline">
-              Start verification
-            </Link>
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    )
-  }
-
-  const submitted = submit.data?.application?.status === "submitted"
+  const submitted = submit.data?.application.status === "submitted"
   const scheme =
     application.issuing_country && application.id_type
       ? resolveScheme(
@@ -156,17 +143,17 @@ export default function Review() {
           <Row
             label="Name"
             value={display(application.full_name)}
-            to={pathForStep("identity")}
+            to={stepPath("identity")}
           />
           <Row
             label="Date of birth"
             value={displayDate(application.date_of_birth)}
-            to={pathForStep("identity")}
+            to={stepPath("identity")}
           />
           <Row
             label="Nationality"
             value={countryName(reference, application.nationality)}
-            to={pathForStep("identity")}
+            to={stepPath("identity")}
           />
           <Row
             label="Identification"
@@ -175,13 +162,13 @@ export default function Review() {
                 ? `${scheme.label} ${display(application.id_number)}, issued by ${countryName(reference, application.issuing_country)}`
                 : "—"
             }
-            to={pathForStep("id-document")}
+            to={stepPath("id-document")}
           />
           {scheme?.requires_expiry ? (
             <Row
               label="Expires"
               value={displayDate(application.id_expiry_date)}
-              to={pathForStep("id-document")}
+              to={stepPath("id-document")}
             />
           ) : null}
           <Row
@@ -197,17 +184,17 @@ export default function Review() {
             ]
               .filter(Boolean)
               .join(", ")}
-            to={pathForStep("address")}
+            to={stepPath("address")}
           />
           <Row
             label="Mobile"
             value={display(application.mobile_number)}
-            to={pathForStep("contact")}
+            to={stepPath("contact")}
           />
           <Row
             label="Email"
             value={display(application.email)}
-            to={pathForStep("contact")}
+            to={stepPath("contact")}
           />
           <Row
             label="Source of funds"
@@ -215,7 +202,7 @@ export default function Review() {
               SOURCE_OF_FUNDS[application.source_of_funds ?? ""] ??
               display(application.source_of_funds)
             }
-            to={pathForStep("financial")}
+            to={stepPath("financial")}
           />
           <Row
             label="PEP / DPIP / FPPO"
@@ -226,7 +213,7 @@ export default function Review() {
                 ? "Declared"
                 : "None declared"
             }
-            to={pathForStep("declarations")}
+            to={stepPath("declarations")}
           />
         </ItemGroup>
       </CardContent>
@@ -234,6 +221,7 @@ export default function Review() {
         noValidate
         onSubmit={form.handleSubmit((values) =>
           submit.mutate({
+            path: { application_id: application.application_id },
             body: {
               expected_version: application.version,
               consent: values.consent,
@@ -281,7 +269,7 @@ export default function Review() {
           {submitted ? (
             <Button
               nativeButton={false}
-              render={<Link to={pathForStep("status")} />}
+              render={<Link to={applicationPath(application.application_id)} />}
             >
               See status
             </Button>

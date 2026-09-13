@@ -204,9 +204,14 @@ export function KycDocumentUpload({
     queryClient.invalidateQueries({
       queryKey: api.kyc.documents.listMyDocuments(documentsQuery).queryKey,
     })
-    queryClient.invalidateQueries({
-      queryKey: api.kyc.onboarding.getApplication().queryKey,
-    })
+    if (applicationId) {
+      // The step checks which documents are stored off the application.
+      queryClient.invalidateQueries({
+        queryKey: api.kyc.onboarding.getMyApplication({
+          path: { application_id: applicationId },
+        }).queryKey,
+      })
+    }
   }
 
   const upload = useMutation({

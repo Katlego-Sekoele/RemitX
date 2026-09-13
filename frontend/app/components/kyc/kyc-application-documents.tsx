@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import {
   DocumentKindIcon,
   KycDocumentViewer,
-} from "~/components/admin/kyc-document-viewer"
+  type DocumentAudience,
+} from "~/components/kyc/kyc-document-viewer"
 import { api } from "~/client"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
@@ -18,9 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table"
-import { useHasPermission } from "~/hooks/use-permissions"
 import type { KycDocumentRead as KycDocument } from "~/client"
-import { PERMISSIONS } from "~/lib/permissions"
 
 function formatSize(bytes: number) {
   const kilobytes = bytes / 1024
@@ -43,23 +42,28 @@ function formatType(documentType: string) {
 }
 
 /** Evidence for one application. Opening a file issues a short-lived, audited
- * URL — the viewer fetches it itself. */
+ * URL — the viewer fetches it itself. Staff read through the admin routes,
+ * the applicant through their own; `canRead` is the staff permission gate. */
 export function KycApplicationDocuments({
   applicationId,
+  audience,
+  canRead = true,
 }: {
   applicationId: string
+  audience: DocumentAudience
+  canRead?: boolean
 }) {
-  const canRead = useHasPermission(PERMISSIONS.kycDocumentRead)
   const [selected, setSelected] = useState<KycDocument | null>(null)
 
   useEffect(() => {
     setSelected(null)
   }, [applicationId])
 
+  const query = { query: { application_id: applicationId } }
   const documents = useQuery({
-    ...api.admin.kyc.documents.listApplicationDocuments({
-      query: { application_id: applicationId },
-    }),
+    ...(audience === "staff"
+      ? api.admin.kyc.documents.listApplicationDocuments(query)
+      : api.kyc.documents.listMyDocuments(query)),
     enabled: canRead && applicationId.length > 0,
   })
 
@@ -128,7 +132,11 @@ export function KycApplicationDocuments({
         )}
 
         {selected ? (
-          <KycDocumentViewer key={selected.document_id} document={selected} />
+          <KycDocumentViewer
+            key={selected.document_id}
+            document={selected}
+            audience={audience}
+          />
         ) : null}
       </CardContent>
     </Card>

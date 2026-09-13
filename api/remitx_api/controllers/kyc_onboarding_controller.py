@@ -1,25 +1,32 @@
-"""Applicant onboarding: draft, resume, and submit.
+"""Applicant onboarding: the application history, and draft, resume, submit.
 
 Status changes still go through `KycController.transition`. This controller
 owns the draft: partial PATCH, the server-owned `next_step`, and the
 completeness check submit uses — and the jurisdiction gate, which is enforced
 at start, on every save, and again at submit.
+
+Every id-addressed method goes through `_require_own`, so another user's
+application is indistinguishable from one that does not exist.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from remitx_api.clock import utcnow
 from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.errors.kyc import (
     InvalidKycDraftError,
     KycApplicationNotEditableError,
+    KycApplicationStartNotAllowedError,
     OpenApplicationExistsError,
+    UnknownKycApplicationError,
 )
 from remitx_api.models.orm.kyc_application import KycApplication
-from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_application_history import KycApplicationHistory
+from remitx_api.models.orm.kyc_lifecycle import STARTABLE_STANDINGS, KycStatus
 from remitx_api.models.orm.kyc_pep_relationship import KycPepRelationshipRecord
 from remitx_api.repositories.jurisdiction_repository import (
     JurisdictionCatalogue,
@@ -46,16 +53,45 @@ from remitx_api.services.kyc_onboarding import (
     validate_identification,
 )
 
+# Statuses that close an application with a reviewer's outcome; the history
+# row that recorded one dates the decision.
+_DECIDED_STATUSES = frozenset({KycStatus.APPROVED.value, KycStatus.REJECTED.value})
+
 
 @dataclass(frozen=True)
 class KycOnboardingView:
+    """Standing and the application the applicant is on now."""
+
     standing: KycStanding
     application: KycApplication | None
     next_step: str
-    rejection_reason: str | None
     stored_document_types: tuple[str, ...]
     pep_relationships: list[KycPepRelationshipRecord]
     catalogue: OnboardingCatalogue
+
+
+@dataclass(frozen=True)
+class KycApplicationSummary:
+    application: KycApplication
+    editable: bool
+    decided_at: datetime | None
+
+
+@dataclass(frozen=True)
+class KycApplicationDetailView:
+    application: KycApplication
+    editable: bool
+    applicant_message: str | None
+    timeline: list[KycApplicationHistory]
+    next_step: str
+    stored_document_types: tuple[str, ...]
+    pep_relationships: list[KycPepRelationshipRecord]
+    catalogue: OnboardingCatalogue
+
+
+def _decided_at(history: list[KycApplicationHistory]) -> datetime | None:
+    decided = [row.changed_at for row in history if row.status in _DECIDED_STATUSES]
+    return decided[-1] if decided else None
 
 
 class KycOnboardingController:
@@ -72,6 +108,26 @@ class KycOnboardingController:
         self._users.require_by_id(user_id)
         return self._view(user_id)
 
+    def list_for_user(self, user_id: uuid.UUID) -> list[KycApplicationSummary]:
+        """The user's applications, newest first."""
+        self._users.require_by_id(user_id)
+        catalogue = self._onboarding.load()
+        history = self._applications.list_history_for_user(user_id)
+        return [
+            KycApplicationSummary(
+                application=application,
+                editable=application.status in catalogue.editable_statuses,
+                decided_at=_decided_at(history.get(application.application_id, [])),
+            )
+            for application in self._applications.list_for_user(user_id)
+        ]
+
+    def detail(
+        self, user_id: uuid.UUID, application_id: uuid.UUID
+    ) -> KycApplicationDetailView:
+        self._users.require_by_id(user_id)
+        return self._detail(self._require_own(user_id, application_id))
+
     def reference(self) -> JurisdictionCatalogue:
         return self._jurisdictions.load()
 
@@ -80,10 +136,11 @@ class KycOnboardingController:
         user_id: uuid.UUID,
         *,
         residential_country: str | None = None,
-    ) -> KycOnboardingView:
-        """Open (or resume) the draft. A residence, when given, is checked
-        *before* anything is created, so someone we cannot serve never has an
-        application at all."""
+    ) -> KycApplicationDetailView:
+        """Open a new application, or return the one already open. A new one
+        is opened only from a `STARTABLE_STANDINGS` standing. A residence, when
+        given, is checked *before* anything is created, so someone we cannot
+        serve never has an application at all."""
         self._users.require_by_id(user_id)
         residence = None
         if residential_country is not None:
@@ -93,25 +150,35 @@ class KycOnboardingController:
                 )
             except ValueError as error:
                 raise InvalidKycDraftError(str(error)) from error
-        try:
-            self._lifecycle.start_application(user_id)
-        except OpenApplicationExistsError:
-            # Welcome and resume both POST this; a draft already in flight is
-            # the success case, not a conflict.
-            pass
+        if self._applications.get_open_for_user(user_id) is None:
+            standing = self._applications.get_standing(user_id)
+            if standing.status not in STARTABLE_STANDINGS:
+                raise KycApplicationStartNotAllowedError(
+                    "Your verification is still current, so there is nothing to start."
+                )
+            try:
+                self._lifecycle.start_application(user_id)
+            except OpenApplicationExistsError:
+                # A concurrent start won the partial unique index; its draft is
+                # the one to resume.
+                pass
         if residence is not None:
             self._record_residence(user_id, residence)
-        return self._view(user_id)
+        application = self._applications.get_open_for_user(user_id)
+        if application is None:
+            raise KycApplicationNotEditableError("The application could not be opened.")
+        return self._detail(application)
 
     def patch(
         self,
         user_id: uuid.UUID,
+        application_id: uuid.UUID,
         fields: dict,
         *,
         expected_version: int,
-    ) -> KycOnboardingView:
+    ) -> KycApplicationDetailView:
         self._users.require_by_id(user_id)
-        application = self._require_editable(user_id)
+        application = self._require_editable(self._require_own(user_id, application_id))
         catalogue = self._onboarding.load()
         allowed = {
             requirement.name
@@ -135,26 +202,24 @@ class KycOnboardingController:
                 changes,
                 expected_version=expected_version,
             )
-        return self._view(user_id)
+        return self._detail(self._require_own(user_id, application_id))
 
     def submit(
         self,
         user_id: uuid.UUID,
+        application_id: uuid.UUID,
         *,
         expected_version: int,
         consent: bool,
-    ) -> KycOnboardingView:
+    ) -> KycApplicationDetailView:
         self._users.require_by_id(user_id)
-        application = self._current_application(user_id)
-        if application is None:
-            raise KycApplicationNotEditableError(
-                "There is no application to submit. Start onboarding first."
-            )
+        application = self._require_own(user_id, application_id)
         if application.status in {
             KycStatus.SUBMITTED.value,
             KycStatus.UNDER_REVIEW.value,
         }:
-            return self._view(user_id)
+            # A retried submit: the first one landed.
+            return self._detail(application)
         if not consent:
             raise InvalidKycDraftError(
                 "Consent to process this information is required before submitting."
@@ -205,7 +270,7 @@ class KycOnboardingController:
             actor_user_id=user_id,
             processing_consented_at=utcnow(),
         )
-        return self._view(user_id)
+        return self._detail(self._require_own(user_id, application_id))
 
     def _identification_changes(
         self,
@@ -262,32 +327,58 @@ class KycOnboardingController:
             user_id
         ) or self._applications.get_latest_for_user(user_id)
 
-    def _require_editable(self, user_id: uuid.UUID) -> KycApplication:
-        application = self._applications.get_open_for_user(user_id)
-        catalogue = self._onboarding.load()
-        if application is None or application.status not in catalogue.editable_statuses:
+    def _require_own(
+        self, user_id: uuid.UUID, application_id: uuid.UUID
+    ) -> KycApplication:
+        application = self._applications.get_by_id(application_id)
+        if application is None or application.user_id != user_id:
+            raise UnknownKycApplicationError(str(application_id))
+        return application
+
+    def _require_editable(self, application: KycApplication) -> KycApplication:
+        if application.status not in self._onboarding.load().editable_statuses:
             raise KycApplicationNotEditableError(
-                "There is no draft to save. Start onboarding first."
+                "This application can no longer be changed."
             )
         return application
+
+    def _stored_types(self, application: KycApplication | None) -> frozenset[str]:
+        if application is None:
+            return frozenset()
+        return stored_types(
+            self._documents.list_for_application(
+                application.application_id, stored_only=True
+            )
+        )
+
+    def _detail(self, application: KycApplication) -> KycApplicationDetailView:
+        catalogue = self._onboarding.load()
+        types = self._stored_types(application)
+        return KycApplicationDetailView(
+            application=application,
+            editable=application.status in catalogue.editable_statuses,
+            applicant_message=self._applications.applicant_message(application),
+            timeline=self._applications.list_application_history(
+                application.application_id
+            ),
+            next_step=next_step(
+                application, types, catalogue, self._jurisdictions.load()
+            ),
+            stored_document_types=tuple(sorted(types)),
+            pep_relationships=self._rules.list_pep_relationships(),
+            catalogue=catalogue,
+        )
 
     def _view(self, user_id: uuid.UUID) -> KycOnboardingView:
         catalogue = self._onboarding.load()
         application = self._current_application(user_id)
-        types: frozenset[str] = frozenset()
-        if application is not None:
-            types = stored_types(
-                self._documents.list_for_application(
-                    application.application_id, stored_only=True
-                )
-            )
+        types = self._stored_types(application)
         return KycOnboardingView(
             standing=self._applications.get_standing(user_id),
             application=application,
             next_step=next_step(
                 application, types, catalogue, self._jurisdictions.load()
             ),
-            rejection_reason=self._applications.latest_rejection_reason(user_id),
             stored_document_types=tuple(sorted(types)),
             pep_relationships=self._rules.list_pep_relationships(),
             catalogue=catalogue,

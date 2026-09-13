@@ -147,7 +147,9 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
 
         return KycStanding(
             status=(
-                KycStatus.NOT_STARTED if latest is None else KycStatus(latest.status)
+                KycStatus.NOT_STARTED
+                if latest is None
+                else KycStatus(latest.effective_status)
             ),
             tier=tier_number,
             application_id=None if latest is None else latest.application_id,
@@ -358,51 +360,57 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             .where(KycApplicationHistory.status == KycStatus.SUBMITTED.value)
         )
 
-    def latest_rejection_reason(self, user_id: uuid.UUID) -> str | None:
-        """What the applicant may be told about the latest reviewer action.
+    def applicant_message(self, application: KycApplication) -> str | None:
+        """What the applicant may be told about the reviewer's latest action on
+        this application, and only this one.
 
-        A `more_info_required` application still in flight shows the named
-        fields or documents (`reason_text`). A rejection shows the catalogue
-        message for the reason code, never the reviewer's internal note, and
-        never a tipping-off reason. Legacy rows with no code keep `reason_text`
-        so an older attempt still explains itself.
+        `more_info_required` shows the fields or documents the reviewer named
+        (`reason_text`). `rejected` shows the catalogue message for the reason
+        code, never the reviewer's internal note, and never a tipping-off
+        reason; legacy rows with no code keep `reason_text` so an older attempt
+        still explains itself. Anything else has nothing to say — which is what
+        keeps an old rejection off a newer approval.
         """
-        current = db.session.scalars(
-            select(KycApplication)
-            .where(KycApplication.user_id == user_id)
-            .where(KycApplication.status == KycStatus.MORE_INFO_REQUIRED.value)
-            .order_by(KycApplication.created_at.desc())
-        ).first()
-        if current is not None:
-            decision = db.session.scalars(
-                select(KycDecision)
-                .where(KycDecision.application_id == current.application_id)
-                .where(KycDecision.decision == KycStatus.MORE_INFO_REQUIRED.value)
-                .order_by(KycDecision.decided_at.desc())
-            ).first()
-            if decision is not None:
-                return decision.reason_text
-
-        rejected = db.session.scalars(
-            select(KycApplication)
-            .where(KycApplication.user_id == user_id)
-            .where(KycApplication.status == KycStatus.REJECTED.value)
-            .order_by(KycApplication.created_at.desc())
-        ).first()
-        if rejected is None:
+        if application.status not in {
+            KycStatus.MORE_INFO_REQUIRED.value,
+            KycStatus.REJECTED.value,
+        }:
             return None
         decision = db.session.scalars(
             select(KycDecision)
-            .where(KycDecision.application_id == rejected.application_id)
-            .where(KycDecision.decision == KycStatus.REJECTED.value)
+            .where(KycDecision.application_id == application.application_id)
+            .where(KycDecision.decision == application.status)
             .order_by(KycDecision.decided_at.desc())
         ).first()
         if decision is None:
             return None
+        if application.status == KycStatus.MORE_INFO_REQUIRED.value:
+            return decision.reason_text
         message = applicant_message_for(decision.reason_code)
         if message is not None:
             return message
         return decision.reason_text
+
+    def list_history_for_user(
+        self, user_id: uuid.UUID
+    ) -> dict[uuid.UUID, list[KycApplicationHistory]]:
+        """Every status change on the user's applications, oldest first, keyed
+        by application — one query for the whole history page."""
+        rows = db.session.scalars(
+            select(KycApplicationHistory)
+            .join(
+                KycApplication,
+                KycApplication.application_id == KycApplicationHistory.application_id,
+            )
+            .where(KycApplication.user_id == user_id)
+            .order_by(
+                KycApplicationHistory.changed_at, KycApplicationHistory.history_id
+            )
+        ).all()
+        grouped: dict[uuid.UUID, list[KycApplicationHistory]] = {}
+        for row in rows:
+            grouped.setdefault(row.application_id, []).append(row)
+        return grouped
 
     @db_transaction
     def apply_draft_update(
@@ -432,14 +440,8 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
                 f"Application {application_id} is no longer at version "
                 f"{expected_version}; reload it and save again"
             )
-        db.session.add(
-            KycApplicationHistory(
-                application_id=application_id,
-                status=application.status,
-                version_after=expected_version + 1,
-                changed_at=now,
-            )
-        )
+        # No history row: a draft save changes no status, and history records
+        # status changes only. The version bump is what guards concurrent saves.
         db.session.flush()
         db.session.expire_all()
         updated = db.session.get(KycApplication, application_id)
@@ -666,17 +668,9 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
                 f"{expected_version}; reload it and decide again"
             )
 
-        db.session.add(
-            KycApplicationHistory(
-                application_id=application_id,
-                status=status.value,
-                version_after=expected_version + 1,
-                risk_rating=rating,
-                reason_text=reason,
-                changed_by_user_id=actor_user_id,
-                changed_at=now,
-            )
-        )
+        # No history row: the status is unchanged. The override is recorded
+        # in kyc_assessment_audit, with who, the computed and final rating, and
+        # why.
         self._record_assessment(
             application_id,
             computed_risk_rating=application.risk_rating,

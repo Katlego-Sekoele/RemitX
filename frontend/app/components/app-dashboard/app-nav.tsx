@@ -15,7 +15,7 @@ import {
 import { isKycVerified } from "~/lib/kyc-onboarding"
 import { APP_ROUTE_INDEX } from "~/routes/app/app.routes"
 
-function isActive(pathname: string, href: string): boolean {
+function matches(pathname: string, href: string): boolean {
   if (href === "/app") return pathname === "/app"
   return pathname === href || pathname.startsWith(`${href}/`)
 }
@@ -28,12 +28,21 @@ export function AppNav() {
   const { pathname } = useLocation()
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const kycIncomplete = !isKycVerified(onboarding.data?.standing.status)
+  const items = APP_ROUTE_INDEX.filter(
+    (item) => !(item.hideWhenVerified && onboarding.data && !kycIncomplete)
+  )
+  // Nested items share a prefix (Profile, Profile › Verification); only the
+  // most specific match is active.
+  const activeHref = items
+    .map((item) => hrefForPath(item.route.path))
+    .filter((href) => matches(pathname, href))
+    .sort((a, b) => b.length - a.length)[0]
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Navigation</SidebarGroupLabel>
       <SidebarMenu>
-        {APP_ROUTE_INDEX.map((item) => {
+        {items.map((item) => {
           const href = hrefForPath(item.route.path)
           const Icon = item.icon ? PhosphorIcons[item.icon] : undefined
           const showBadge = Boolean(item.kycAttention && kycIncomplete)
@@ -46,7 +55,7 @@ export function AppNav() {
                     ? `${item.label} — complete verification to send`
                     : item.label
                 }
-                isActive={isActive(pathname, href)}
+                isActive={href === activeHref}
                 render={<Link to={href} />}
               >
                 {Icon ? <Icon /> : null}

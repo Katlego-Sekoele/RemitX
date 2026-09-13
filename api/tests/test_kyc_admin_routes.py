@@ -407,7 +407,10 @@ def test_reject_needs_a_reason_code_and_hides_the_internal_note_from_the_applica
             },
         )
         (decision,) = _decisions(application.application_id)
-        reason = KycApplicationRepository().latest_rejection_reason(applicant.id)
+        db.session.expire_all()
+        reason = KycApplicationRepository().applicant_message(
+            db.session.get(KycApplication, application.application_id)
+        )
         code, note = decision.reason_code, decision.reason_text
 
     assert response.status_code == 200
@@ -441,7 +444,10 @@ def test_request_info_names_what_the_applicant_must_fix():
                 "reason_text": "Please re-upload a clearer photo of your ID.",
             },
         )
-        reason = KycApplicationRepository().latest_rejection_reason(applicant.id)
+        db.session.expire_all()
+        reason = KycApplicationRepository().applicant_message(
+            db.session.get(KycApplication, application.application_id)
+        )
 
     assert response.status_code == 200
     assert response.json()["status"] == "more_info_required"

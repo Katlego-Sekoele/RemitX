@@ -1,6 +1,9 @@
 """The status machine: every legal move, every illegal one, and the database's
 agreement with the Python enum."""
 
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.errors.kyc import IllegalKycTransitionError
@@ -12,8 +15,10 @@ from remitx_api.models.orm.kyc_lifecycle import (
     LEGAL_TRANSITIONS,
     OPEN_STATUSES,
     KycStatus,
+    effective_status,
     sql_value_list,
 )
+from remitx_api.models.schemas.kyc import KycApplicationRead, KycApplicationReadPII
 from sqlalchemy.exc import IntegrityError
 from tests.kyc_helpers import insert_application, make_user, seed_kyc_reference_data
 
@@ -161,3 +166,41 @@ def test_the_database_rejects_not_started_on_an_application(app_context):
     with pytest.raises(IntegrityError):
         db.session.commit()
     db.session.rollback()
+
+
+# --- expiry ---------------------------------------------------------------------
+
+
+def test_an_approval_expires_on_its_review_date_and_not_before():
+    now = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+    approved = KycStatus.APPROVED.value
+
+    assert effective_status(approved, now + timedelta(seconds=1), now) == (
+        KycStatus.APPROVED
+    )
+    assert effective_status(approved, now, now) == KycStatus.REVIEW_DUE
+    assert effective_status(approved, now - timedelta(days=1), now) == (
+        KycStatus.REVIEW_DUE
+    )
+    # Naive values come back from SQLite and are read as UTC.
+    assert effective_status(approved, now.replace(tzinfo=None), now) == (
+        KycStatus.REVIEW_DUE
+    )
+    assert effective_status(approved, None, now) == KycStatus.APPROVED
+    assert effective_status(KycStatus.REJECTED.value, now, now) == KycStatus.REJECTED
+
+
+def test_staff_schemas_report_an_expired_approval_as_review_due():
+    now = datetime.now(UTC)
+    application = KycApplication(
+        application_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        status=KycStatus.APPROVED.value,
+        next_review_at=now - timedelta(minutes=1),
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+
+    assert KycApplicationRead.model_validate(application).status == "review_due"
+    assert KycApplicationReadPII.model_validate(application).status == "review_due"
