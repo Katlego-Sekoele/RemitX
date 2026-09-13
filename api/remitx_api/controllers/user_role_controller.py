@@ -17,8 +17,8 @@ calling ``db.session`` directly — see CLAUDE.md.
 """
 
 import uuid
-from datetime import UTC, datetime
 
+from remitx_api.clock import utcnow
 from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.roles import (
     LastProtectedRoleHolderError,
@@ -45,10 +45,6 @@ from remitx_api.repositories.toxic_combination_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.repositories.user_role_repository import UserRoleRepository
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class UserRoleController:

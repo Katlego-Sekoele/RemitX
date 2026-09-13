@@ -16,14 +16,22 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_application_status import KycApplicationStatusRecord
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_pep_relationship import KycPepRelationshipRecord
 from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
+from remitx_api.models.orm.kyc_risk_rating import KycRiskRatingRecord
+from remitx_api.models.orm.kyc_risk_signal import KycRiskSignalRecord
 from remitx_api.models.orm.kyc_seed import (
     APPLICATION_STATUS_SEEDS,
+    PEP_RELATIONSHIP_SEEDS,
     PROGRESSION_SEEDS,
     REASON_CODE_SEEDS,
+    RISK_RATING_SEEDS,
+    RISK_SIGNAL_SEEDS,
+    TIER_SEEDS,
     precompute_progression_id,
 )
 from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusProgression
+from remitx_api.models.orm.kyc_tier import KycTier
 from remitx_api.models.orm.user import User
 from sqlalchemy import select
 
@@ -32,7 +40,9 @@ ID_NUMBER = "9001015800085"
 
 
 def seed_kyc_reference_data() -> None:
-    """Load reason codes and status progressions for tests using create_all()."""
+    """Load the KYC reference rows a migrated database would hold — statuses,
+    reason codes, progressions, tiers, the risk rule set and PEP relationships
+    — for tests using create_all()."""
     existing = db.session.scalars(select(KycApplicationStatusRecord).limit(1)).first()
     if existing is not None:
         return
@@ -67,6 +77,53 @@ def seed_kyc_reference_data() -> None:
             )
         )
 
+    for seed in TIER_SEEDS:
+        db.session.add(
+            KycTier(
+                tier=seed.tier,
+                name=seed.name,
+                description=seed.description,
+                daily_limit_zar=seed.daily_limit_zar,
+                monthly_limit_zar=seed.monthly_limit_zar,
+                requires_source_of_wealth=seed.requires_source_of_wealth,
+            )
+        )
+    # Tiers are flushed first: every rating's `max_tier` references one.
+    db.session.flush()
+
+    for seed in RISK_RATING_SEEDS:
+        db.session.add(
+            KycRiskRatingRecord(
+                rating=seed.rating,
+                description=seed.description,
+                min_score=seed.min_score,
+                max_score=seed.max_score,
+                severity=seed.severity,
+                max_tier=seed.max_tier,
+                limit_percent=seed.limit_percent,
+                review_interval_days=seed.review_interval_days,
+                requires_senior_approval=seed.requires_senior_approval,
+            )
+        )
+
+    for seed in RISK_SIGNAL_SEEDS:
+        db.session.add(
+            KycRiskSignalRecord(
+                signal=seed.signal,
+                description=seed.description,
+                score_effect=seed.score_effect,
+                is_active=True,
+            )
+        )
+
+    for seed in PEP_RELATIONSHIP_SEEDS:
+        db.session.add(
+            KycPepRelationshipRecord(
+                relationship=seed.relationship,
+                description=seed.description,
+            )
+        )
+
     db.session.commit()
 
 
@@ -91,7 +148,12 @@ def insert_application(
     created_at: datetime | None = None,
     tier_granted: int | None = None,
     with_pii: bool = False,
+    **declared,
 ) -> KycApplication:
+    """Insert an application directly. `declared` sets any other column —
+    `nationality="NA"`, `is_foreign_prominent_public_official=True` — after
+    `with_pii`, so a test can start from a complete SA applicant and change
+    only the one fact it is about."""
     seed_kyc_reference_data()
     application = KycApplication(
         user_id=user_id,
@@ -114,6 +176,8 @@ def insert_application(
         application.residential_city = "Cape Town"
         application.residential_postal_code = "8001"
         application.residential_country = "ZA"
+    for field, value in declared.items():
+        setattr(application, field, value)
     db.session.add(application)
     db.session.commit()
     return application

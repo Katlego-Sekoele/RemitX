@@ -11,7 +11,7 @@ has to compare.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -24,6 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 from remitx_api.models.orm.kyc_lifecycle import (
     KycDocumentStatus,
@@ -44,10 +45,6 @@ MAX_SIZE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENTS_PER_APPLICATION = 6
 
 SHA256_HEX_LENGTH = 64
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class KycDocument(Base):

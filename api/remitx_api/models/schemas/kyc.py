@@ -18,13 +18,26 @@ skimming a queue needs to tell two applications apart, and "the one ending
 
 import uuid
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    model_validator,
+)
 
 MASK_CHARACTER = "•"
 # Enough to disambiguate two rows, not enough to identify anyone. A South
 # African ID number is 13 digits, so four leaves nine hidden.
 VISIBLE_SUFFIX_LENGTH = 4
+# Free text is masked to a fixed length, so the mask says "something was
+# declared" without leaking how long it was.
+FREE_TEXT_MASK = MASK_CHARACTER * 8
+
+MIN_REASON_LENGTH = 10
+MAX_REASON_LENGTH = 500
 
 
 def mask_tail(value: str | None, visible: int = VISIBLE_SUFFIX_LENGTH) -> str | None:
@@ -69,6 +82,15 @@ def mask_email(value: str | None) -> str | None:
     return f"{local[0]}{MASK_CHARACTER * (len(local) - 1)}@{domain}"
 
 
+def mask_free_text(value: str | None) -> str | None:
+    """A declared narrative — a PEP's position, a source of wealth. Any part
+    of it can identify someone, so none of it survives; only whether it was
+    given does, which is what a reviewer skimming the queue needs to know."""
+    if value is None:
+        return None
+    return FREE_TEXT_MASK
+
+
 def mask_year_only(value: date | None) -> str | None:
     """Keep the year: it is what an age check needs, and a year alone is not
     the birth date an identity thief needs."""
@@ -94,7 +116,25 @@ class _ApplicationBase(BaseModel):
     # not identifying on its own.
     residential_city: str | None = None
     residential_country: str | None = None
+    expected_monthly_volume_zar: Decimal | None = None
+    # The PEP answers and the country are not masked: whether someone declared
+    # themselves politically exposed is what routes the application, and a
+    # country is not identifying. The position and details are, and are masked.
+    is_domestic_prominent_influential_person: bool | None = None
+    is_foreign_prominent_public_official: bool | None = None
+    is_pep_family_or_close_associate: bool | None = None
+    declares_pep: bool = False
+    pep_relationship: str | None = None
+    pep_country: str | None = None
+    # Computed at submission, and the reviewer's override beside it — both are
+    # shown, never merged. Not PII.
+    risk_score: int | None = None
     risk_rating: str | None = None
+    risk_rating_override: str | None = None
+    risk_rating_override_reason: str | None = None
+    risk_rating_overridden_by_user_id: uuid.UUID | None = None
+    risk_rating_overridden_at: datetime | None = None
+    effective_risk_rating: str | None = None
     tier_granted: int | None = None
     submitted_at: datetime | None = None
     next_review_at: datetime | None = None
@@ -107,6 +147,7 @@ class _ApplicationBase(BaseModel):
     @field_serializer(
         "submitted_at",
         "next_review_at",
+        "risk_rating_overridden_at",
         "created_at",
         "updated_at",
         when_used="unless-none",
@@ -131,6 +172,10 @@ class KycApplicationRead(_ApplicationBase):
     residential_line1: str | None = None
     residential_line2: str | None = None
     residential_postal_code: str | None = None
+    source_of_funds_detail: str | None = None
+    pep_position: str | None = None
+    pep_details: str | None = None
+    source_of_wealth: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -161,6 +206,10 @@ class KycApplicationRead(_ApplicationBase):
             residential_line1=mask_tail(read("residential_line1")),
             residential_line2=mask_tail(read("residential_line2")),
             residential_postal_code=mask_tail(read("residential_postal_code")),
+            source_of_funds_detail=mask_free_text(read("source_of_funds_detail")),
+            pep_position=mask_free_text(read("pep_position")),
+            pep_details=mask_free_text(read("pep_details")),
+            source_of_wealth=mask_free_text(read("source_of_wealth")),
         )
         return masked
 
@@ -177,6 +226,10 @@ class KycApplicationReadPII(_ApplicationBase):
     residential_line1: str | None = None
     residential_line2: str | None = None
     residential_postal_code: str | None = None
+    source_of_funds_detail: str | None = None
+    pep_position: str | None = None
+    pep_details: str | None = None
+    source_of_wealth: str | None = None
 
 
 class KycDecisionRead(BaseModel):
@@ -203,7 +256,7 @@ class KycDecisionRead(BaseModel):
 
 
 class KycStandingRead(BaseModel):
-    """A user's KYC status and limit tier, derived rather than stored — see
+    """A user's KYC status, tier and limits, derived rather than stored — see
     `KycApplicationRepository.get_standing`."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -211,6 +264,111 @@ class KycStandingRead(BaseModel):
     status: str
     tier: int
     application_id: uuid.UUID | None = None
+    risk_rating: str | None = None
+    limit_percent: int
+    daily_limit_zar: Decimal
+    monthly_limit_zar: Decimal
+
+
+# --- Risk rule set ---------------------------------------------------------------
+
+
+class KycRiskSignalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    signal: str
+    description: str
+    score_effect: int
+    is_active: bool
+
+
+class KycRiskRatingRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    rating: str
+    description: str
+    min_score: int
+    max_score: int
+    severity: int
+    max_tier: int
+    limit_percent: int
+    review_interval_days: int
+    requires_senior_approval: bool
+
+
+class KycTierRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tier: int
+    name: str
+    description: str
+    daily_limit_zar: Decimal
+    monthly_limit_zar: Decimal
+    requires_source_of_wealth: bool
+
+
+class KycPepRelationshipRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    relationship: str
+    description: str
+
+
+class KycRiskRulesRead(BaseModel):
+    """The rule set exactly as the server scores against it — read from the
+    same rows, so a page showing it cannot drift from what is enforced."""
+
+    signals: list[KycRiskSignalRead]
+    ratings: list[KycRiskRatingRead]
+    tiers: list[KycTierRead]
+    pep_relationships: list[KycPepRelationshipRead]
+
+
+class KycMatchedSignalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    signal: str
+    score_effect: int
+
+
+class KycAssessmentAuditRead(BaseModel):
+    """One rating or tier change: computed, final, and why they differ."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    audit_id: uuid.UUID
+    application_id: uuid.UUID
+    computed_risk_rating: str | None = None
+    final_risk_rating: str | None = None
+    risk_score: int | None = None
+    matched_signals: list[KycMatchedSignalRead] = []
+    computed_tier: int | None = None
+    final_tier: int | None = None
+    reason: str | None = None
+    actor_user_id: uuid.UUID | None = None
+    recorded_at: datetime
+
+    @field_serializer("recorded_at")
+    def _as_utc(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).isoformat()
+
+
+class KycRiskOverrideRequest(BaseModel):
+    # Stripped before the length check, so ten spaces is not a reason.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    rating: str = Field(description="A rating from kyc_risk_ratings, e.g. high.")
+    reason: str = Field(
+        min_length=MIN_REASON_LENGTH,
+        max_length=MAX_REASON_LENGTH,
+        description="Why the computed rating is wrong. Recorded with the override.",
+    )
+    expected_version: int = Field(
+        ge=1,
+        description="The application version the reviewer was looking at.",
+    )
 
 
 class KycDocumentRead(BaseModel):

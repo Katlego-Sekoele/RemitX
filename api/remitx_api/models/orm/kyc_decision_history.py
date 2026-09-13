@@ -6,16 +6,13 @@ The prior status is the previous row for the same application, ordered by
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class KycDecisionHistory(Base):

@@ -20,16 +20,13 @@ in the KYC tables says "this account is stopped", so it lives here.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 def reference_base(first_name: str | None) -> str:

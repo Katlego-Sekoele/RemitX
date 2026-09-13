@@ -427,3 +427,110 @@ export function getKycDocumentUrl(
     `/admin/kyc/documents/${documentId}/url`
   )
 }
+
+/** One application in the KYC reviewer queue — the API's masked view, so PII
+ * arrives already masked and free-text declarations as a fixed mask. */
+export type KycApplication = {
+  application_id: string
+  user_id: string
+  status: string
+  full_name: string | null
+  nationality: string | null
+  residential_country: string | null
+  id_type: string | null
+  source_of_funds: string | null
+  source_of_wealth: string | null
+  expected_monthly_volume_zar: string | null
+  declares_pep: boolean
+  pep_relationship: string | null
+  pep_country: string | null
+  /** Computed at submission. Never changed by a reviewer. */
+  risk_score: number | null
+  risk_rating: string | null
+  /** A reviewer's rating, kept beside the computed one — both are shown. */
+  risk_rating_override: string | null
+  risk_rating_override_reason: string | null
+  effective_risk_rating: string | null
+  tier_granted: number | null
+  submitted_at: string | null
+  /** Echoed back on any change, so a stale page loses instead of overwriting. */
+  version: number
+  created_at: string
+}
+
+export function listKycApplications(
+  getToken: GetToken,
+  riskRating: string | null
+): Promise<KycApplication[]> {
+  const query = riskRating
+    ? `?risk_rating=${encodeURIComponent(riskRating)}`
+    : ""
+  return request<KycApplication[]>(getToken, `/admin/kyc/applications${query}`)
+}
+
+export type KycRiskSignal = {
+  signal: string
+  description: string
+  score_effect: number
+  is_active: boolean
+}
+
+export type KycRiskRating = {
+  rating: string
+  description: string
+  min_score: number
+  max_score: number
+  severity: number
+  max_tier: number
+  limit_percent: number
+  review_interval_days: number
+  requires_senior_approval: boolean
+}
+
+export type KycTier = {
+  tier: number
+  name: string
+  description: string
+  daily_limit_zar: string
+  monthly_limit_zar: string
+  requires_source_of_wealth: boolean
+}
+
+export type KycPepRelationship = {
+  relationship: string
+  description: string
+}
+
+/** The risk rule set, read from the rows the server scores against — so the
+ * page explaining a rating cannot drift from how it was computed. */
+export type KycRiskRules = {
+  signals: KycRiskSignal[]
+  ratings: KycRiskRating[]
+  tiers: KycTier[]
+  pep_relationships: KycPepRelationship[]
+}
+
+export function getKycRiskRules(getToken: GetToken): Promise<KycRiskRules> {
+  return request<KycRiskRules>(getToken, "/admin/kyc/risk-rules")
+}
+
+export function overrideKycRiskRating(
+  getToken: GetToken,
+  applicationId: string,
+  rating: string,
+  reason: string,
+  expectedVersion: number
+): Promise<KycApplication> {
+  return request<KycApplication>(
+    getToken,
+    `/admin/kyc/applications/${applicationId}/risk-rating-override`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        rating,
+        reason,
+        expected_version: expectedVersion,
+      }),
+    }
+  )
+}

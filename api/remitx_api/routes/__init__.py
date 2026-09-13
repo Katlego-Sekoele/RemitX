@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from remitx_api.routes.admin.deposits import router as admin_deposits_router
+from remitx_api.routes.admin.kyc import router as admin_kyc_router
 from remitx_api.routes.admin.kyc_documents import (
     router as admin_kyc_documents_router,
 )
@@ -27,4 +28,5 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(admin_roles_router)
     app.include_router(admin_user_roles_router)
     app.include_router(admin_deposits_router)
+    app.include_router(admin_kyc_router)
     app.include_router(admin_kyc_documents_router)

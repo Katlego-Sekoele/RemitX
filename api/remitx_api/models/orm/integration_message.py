@@ -9,21 +9,18 @@ throwaway SQLite under test.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, Index, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 
 BODY_MAX_LENGTH = 280
 
 STATUS_PENDING = "PENDING"
 STATUS_PROCESSED = "PROCESSED"
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class IntegrationMessage(Base):

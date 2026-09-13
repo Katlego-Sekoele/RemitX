@@ -8,6 +8,8 @@
 export const PERMISSIONS = {
   cashinRead: "cashin:read",
   cashinConfirm: "cashin:confirm",
+  kycApplicationRead: "kyc:application:read",
+  kycRiskWrite: "kyc:risk:write",
   roleRead: "role:read",
   roleGrant: "role:grant",
   roleRevoke: "role:revoke",

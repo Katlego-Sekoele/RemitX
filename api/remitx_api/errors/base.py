@@ -36,3 +36,15 @@ class ConflictError(DomainError):
     """The request is well formed but the domain's state refuses it."""
 
     status_code = status.HTTP_409_CONFLICT
+
+
+class ForbiddenError(DomainError):
+    """The caller is authenticated, but this particular record needs a
+    permission they do not hold.
+
+    Route dependencies (`RequirePermission`) answer 403 for anything decidable
+    from the route alone. This is for the rest: refusals that depend on the
+    data, which no route-level gate can see.
+    """
+
+    status_code = status.HTTP_403_FORBIDDEN
