@@ -15,10 +15,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip"
-import type { MyPermission } from "~/lib/api"
-import { useApi } from "~/lib/use-api"
+import type { MyPermissionResponse } from "~/client"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/my-roles"
+import { api } from "~/client"
 
 const moduleName = import.meta.filename
 const pageRoutingContextByModuleName = adminRouteContext(moduleName)
@@ -30,7 +30,7 @@ export function meta(): Route.MetaDescriptors {
   ]
 }
 
-function PermissionBadge({ permission, description }: MyPermission) {
+function PermissionBadge({ permission, description }: MyPermissionResponse) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -51,11 +51,7 @@ function PermissionBadge({ permission, description }: MyPermission) {
 }
 
 export default function MyRoles() {
-  const api = useApi()
-  const roles = useQuery({
-    queryKey: ["me", "roles"],
-    queryFn: api.getMyRoles,
-  })
+  const roles = useQuery(api.me.listMyRoles())
 
   return (
     <AdminPageFrame module={moduleName}>

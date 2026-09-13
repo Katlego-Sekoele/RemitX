@@ -1,12 +1,12 @@
 """Request/response schemas for the integration smoke-test endpoints."""
 
 import uuid
-from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_serializer
+from pydantic import ConfigDict, StringConstraints
 
 from remitx_api.models.orm.integration_message import BODY_MAX_LENGTH
+from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 MessageBody = Annotated[
     str,
@@ -18,31 +18,15 @@ MessageBody = Annotated[
 ]
 
 
-class IntegrationMessageCreate(BaseModel):
+class IntegrationMessageCreate(Schema):
     body: MessageBody
 
 
-class IntegrationMessageRead(BaseModel):
+class IntegrationMessageRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     body: str
     status: str
-    created_at: datetime
-    processed_at: datetime | None = None
-
-    @field_serializer("created_at", "processed_at")
-    def _as_utc(self, value: datetime | None) -> str | None:
-        """Always emit an offset, whatever the backend stored.
-
-        Postgres TIMESTAMPTZ round-trips as aware, but SQLite silently drops
-        the offset, so the same row would serialize as "...T00:40:00" there and
-        "...T00:40:00+00:00" in production. A JS client parses the offsetless
-        form as *local* time, so the two differ by the viewer's UTC offset.
-        Timestamps are written as UTC, so naive values are tagged as UTC here.
-        """
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    created_at: UtcDateTime
+    processed_at: UtcDateTime | None = None

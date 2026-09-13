@@ -1,5 +1,6 @@
 import { useAuth } from "@clerk/react-router"
 
+import { api } from "~/client"
 import { useClerkMounted } from "~/components/clerk-mounted"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router"
@@ -13,8 +14,7 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { useMePermissions } from "~/hooks/use-permissions"
-import { KYC_ONBOARDING_KEY, pathForStep } from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
+import { pathForStep } from "~/lib/kyc-onboarding"
 
 /**
  * Signed-in prompt on the home page. Does not force a redirect — a deep link
@@ -31,12 +31,10 @@ export function VerificationCard() {
 function SignedInVerificationCard() {
   const { isSignedIn } = useAuth()
   const access = useMePermissions()
-  const api = useApi()
   const isAdmin = access.data?.is_admin === true
   const isCustomer = Boolean(isSignedIn) && access.isSuccess && !isAdmin
   const query = useQuery({
-    queryKey: KYC_ONBOARDING_KEY,
-    queryFn: api.getKycOnboarding,
+    ...api.kyc.onboarding.getApplication(),
     enabled: isCustomer,
   })
   const standing = query.data?.standing.status

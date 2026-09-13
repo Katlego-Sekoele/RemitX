@@ -1,21 +1,34 @@
 import { useAuth, useClerk } from "@clerk/react-router"
-import { useEffect } from "react"
+import { useEffect, useLayoutEffect } from "react"
 
+import { setTokenGetter } from "~/lib/api-client-config"
 import { setSessionExpiredHandler } from "~/lib/query-client"
 
 /**
- * Bridges API auth failures into UI actions the query cache cannot reach.
+ * Bridges Clerk into the API client and query cache, both module singletons
+ * that cannot call hooks.
+ *
+ * The session token is handed to the generated client, which attaches it to
+ * every call the spec marks as authenticated.
+ *
+ * Auth failures become UI actions:
  *
  * 401 → Clerk sign-in (session expired or missing). 403 → ``notifyForbidden``
  * via the query cache, which admin layout turns into the access-denied page.
  * Hiding nav links is usability; server 403 is the security boundary.
  *
- * Renders nothing. Exists because the query cache is a module singleton built
- * outside React.
+ * Renders nothing.
  */
 export function AuthErrorBridge() {
-  const { isSignedIn } = useAuth()
+  const { getToken, isSignedIn } = useAuth()
   const clerk = useClerk()
+
+  // Layout effect: runs before any passive effect in the tree, so before the
+  // first query subscribes and fetches.
+  useLayoutEffect(() => {
+    setTokenGetter(getToken)
+    return () => setTokenGetter(null)
+  }, [getToken])
 
   useEffect(() => {
     setSessionExpiredHandler(() => {

@@ -10,14 +10,10 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
-import {
-  isKycVerified,
-  KYC_ONBOARDING_KEY,
-  pathForStep,
-} from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
+import { isKycVerified, pathForStep } from "~/lib/kyc-onboarding"
 import type { Route } from "./+types/index"
 import { PageHeader, PageHeaderTitle } from "~/components/ui/page-header"
+import { api } from "~/client"
 
 const ROUTE_MODULE = "routes/app/index.tsx"
 
@@ -26,11 +22,7 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export default function AppHome() {
-  const api = useApi()
-  const onboarding = useQuery({
-    queryKey: KYC_ONBOARDING_KEY,
-    queryFn: api.getKycOnboarding,
-  })
+  const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const verified = isKycVerified(onboarding.data?.standing.status)
 
   return (

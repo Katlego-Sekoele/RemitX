@@ -8,9 +8,8 @@ import { SelfDeclaredNotice } from "~/components/kyc/self-declared-notice"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Skeleton } from "~/components/ui/skeleton"
 import { useKycReferenceQuery } from "~/hooks/use-kyc-reference"
-import { KYC_ONBOARDING_KEY } from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
 import type { Route } from "./+types/layout"
+import { api } from "~/client"
 
 export function meta(): Route.MetaDescriptors {
   return [
@@ -25,13 +24,9 @@ function stepFromPath(pathname: string) {
 }
 
 export default function OnboardingLayout() {
-  const api = useApi()
   const { pathname } = useLocation()
   const current = stepFromPath(pathname)
-  const query = useQuery({
-    queryKey: KYC_ONBOARDING_KEY,
-    queryFn: api.getKycOnboarding,
-  })
+  const query = useQuery(api.kyc.onboarding.getApplication())
   // Steps read countries and identity schemes synchronously, so both load
   // before any step renders.
   const reference = useKycReferenceQuery()

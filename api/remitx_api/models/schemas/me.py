@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from remitx_api.models.schemas.base import Schema
 
 
-class MeAccessResponse(BaseModel):
+class MeAccessResponse(Schema):
     permissions: list[str]
     is_admin: bool = Field(
         description=(
@@ -11,12 +13,12 @@ class MeAccessResponse(BaseModel):
     )
 
 
-class MyPermissionResponse(BaseModel):
+class MyPermissionResponse(Schema):
     permission: str
     description: str
 
 
-class MyRoleResponse(BaseModel):
+class MyRoleResponse(Schema):
     name: str
     display_name: str
     description: str

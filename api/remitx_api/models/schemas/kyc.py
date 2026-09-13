@@ -17,16 +17,16 @@ skimming a queue needs to tell two applications apart, and "the one ending
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 
 from pydantic import (
-    BaseModel,
     ConfigDict,
     Field,
-    field_serializer,
     model_validator,
 )
+
+from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 MASK_CHARACTER = "•"
 # Enough to disambiguate two rows, not enough to identify anyone. A South
@@ -99,7 +99,7 @@ def mask_year_only(value: date | None) -> str | None:
     return f"{value.year}-{MASK_CHARACTER * 2}-{MASK_CHARACTER * 2}"
 
 
-class _ApplicationBase(BaseModel):
+class _ApplicationBase(Schema):
     """Fields that carry no PII, shared by both views."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -136,33 +136,17 @@ class _ApplicationBase(BaseModel):
     risk_rating_override: str | None = None
     risk_rating_override_reason: str | None = None
     risk_rating_overridden_by_user_id: uuid.UUID | None = None
-    risk_rating_overridden_at: datetime | None = None
+    risk_rating_overridden_at: UtcDateTime | None = None
     effective_risk_rating: str | None = None
     tier_granted: int | None = None
-    submitted_at: datetime | None = None
-    processing_consented_at: datetime | None = None
-    next_review_at: datetime | None = None
+    submitted_at: UtcDateTime | None = None
+    processing_consented_at: UtcDateTime | None = None
+    next_review_at: UtcDateTime | None = None
     # The value a caller must echo back to decide this application — see
     # KycController.transition.
     version: int
-    created_at: datetime
-    updated_at: datetime
-
-    @field_serializer(
-        "submitted_at",
-        "processing_consented_at",
-        "next_review_at",
-        "risk_rating_overridden_at",
-        "created_at",
-        "updated_at",
-        when_used="unless-none",
-    )
-    def _as_utc(self, value: datetime) -> str:
-        # See models/schemas/integration_message.py for why this is needed:
-        # SQLite drops the tz offset Postgres preserves.
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class KycApplicationRead(_ApplicationBase):
@@ -237,7 +221,7 @@ class KycApplicationReadPII(_ApplicationBase):
     source_of_wealth: str | None = None
 
 
-class KycDecisionRead(BaseModel):
+class KycDecisionRead(Schema):
     """A reviewer's decision. No applicant PII, so there is one view of it —
     but `reason_text` is written by a reviewer for an applicant, so it goes to
     the applicant and to staff, and nowhere else."""
@@ -251,16 +235,10 @@ class KycDecisionRead(BaseModel):
     reason_code: str | None = None
     reason_text: str | None = None
     decided_by_user_id: uuid.UUID | None = None
-    decided_at: datetime
-
-    @field_serializer("decided_at")
-    def _as_utc(self, value: datetime) -> str:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    decided_at: UtcDateTime
 
 
-class KycStandingRead(BaseModel):
+class KycStandingRead(Schema):
     """A user's KYC status, tier and limits, derived rather than stored — see
     `KycApplicationRepository.get_standing`."""
 
@@ -278,7 +256,7 @@ class KycStandingRead(BaseModel):
 # --- Risk rule set ---------------------------------------------------------------
 
 
-class KycRiskSignalRead(BaseModel):
+class KycRiskSignalRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     signal: str
@@ -287,7 +265,7 @@ class KycRiskSignalRead(BaseModel):
     is_active: bool
 
 
-class KycRiskRatingRead(BaseModel):
+class KycRiskRatingRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     rating: str
@@ -301,7 +279,7 @@ class KycRiskRatingRead(BaseModel):
     requires_senior_approval: bool
 
 
-class KycTierRead(BaseModel):
+class KycTierRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     tier: int
@@ -312,14 +290,14 @@ class KycTierRead(BaseModel):
     requires_source_of_wealth: bool
 
 
-class KycPepRelationshipRead(BaseModel):
+class KycPepRelationshipRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     relationship: str
     description: str
 
 
-class KycRiskRulesRead(BaseModel):
+class KycRiskRulesRead(Schema):
     """The rule set exactly as the server scores against it — read from the
     same rows, so a page showing it cannot drift from what is enforced."""
 
@@ -329,14 +307,14 @@ class KycRiskRulesRead(BaseModel):
     pep_relationships: list[KycPepRelationshipRead]
 
 
-class KycMatchedSignalRead(BaseModel):
+class KycMatchedSignalRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     signal: str
     score_effect: int
 
 
-class KycAssessmentAuditRead(BaseModel):
+class KycAssessmentAuditRead(Schema):
     """One rating or tier change: computed, final, and why they differ."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -351,16 +329,10 @@ class KycAssessmentAuditRead(BaseModel):
     final_tier: int | None = None
     reason: str | None = None
     actor_user_id: uuid.UUID | None = None
-    recorded_at: datetime
-
-    @field_serializer("recorded_at")
-    def _as_utc(self, value: datetime) -> str:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    recorded_at: UtcDateTime
 
 
-class KycRiskOverrideRequest(BaseModel):
+class KycRiskOverrideRequest(Schema):
     # Stripped before the length check, so ten spaces is not a reason.
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -376,7 +348,7 @@ class KycRiskOverrideRequest(BaseModel):
     )
 
 
-class KycDocumentRead(BaseModel):
+class KycDocumentRead(Schema):
     """Document metadata. `storage_path` is deliberately absent: a caller who
     knows the object key is one misconfigured bucket away from the file, and
     handing out access is the upload ticket's job, through a signed URL."""
@@ -390,10 +362,4 @@ class KycDocumentRead(BaseModel):
     size_bytes: int
     sha256: str
     uploaded_by_user_id: uuid.UUID
-    uploaded_at: datetime
-
-    @field_serializer("uploaded_at")
-    def _as_utc(self, value: datetime) -> str:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    uploaded_at: UtcDateTime

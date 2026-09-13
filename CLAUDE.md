@@ -26,6 +26,7 @@ Monorepo with two apps sharing one env file:
 - [frontend/](frontend/) — React Router v7 (SPA) + Tailwind v4 + shadcn/ui
 - [infra/](infra/) — Terraform (Render). Azure destroy roots: [infra/legacy-azure/](infra/legacy-azure/)
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
+- [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
 - [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
@@ -76,7 +77,8 @@ cd frontend
 npm ci
 npm run dev          # vite dev server on 5173
 npm run lint         # typecheck + prettier --check
-npm run typecheck    # react-router typegen && tsc
+npm run generate:api # Hey API client from openapi.json (dev/build/typecheck run it)
+npm run typecheck    # generate:api && react-router typegen && tsc
 npm run format       # prettier --write
 npx shadcn@latest add <component>
 ```
@@ -88,7 +90,7 @@ npx shadcn@latest add <component>
 python3 -m pre_commit run --all-files
 ```
 
-Pre-commit runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
+Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
 
 ## API architecture
 
@@ -102,7 +104,9 @@ models/orm/   SQLAlchemy ORM entities (Base)
 extensions.py shared `db` session + DeclarativeBase
 ```
 
-Adding an endpoint means: ORM model → repository (if needed) → controller → thin route in `routes/`, registered in [api/remitx_api/routes/\_\_init\_\_.py](api/remitx_api/routes/__init__.py) via `register_routers`.
+Adding an endpoint means: ORM model → repository (if needed) → controller → thin route in `routes/`, registered in [api/remitx_api/routes/\_\_init\_\_.py](api/remitx_api/routes/__init__.py) via `register_routers` → `python scripts/export_openapi.py` to update the spec the frontend client is generated from.
+
+**The OpenAPI spec is the frontend contract** ([api/remitx_api/openapi.py](api/remitx_api/openapi.py)). Every route needs a `summary=` (plus a docstring for anything non-obvious) and `responses=error_responses(...)` for the refusals it can answer; its router carries one `Tag`. Tags are dotted (`admin.users`) and become the client namespace (`api.admin.users`). The operation id is the handler's function name, so name handlers as the client function should read (`list_roles` → `listRoles`) and keep them unique. Request/response models inherit `Schema`, and timestamps use `UtcDateTime`. [api/tests/test_openapi.py](api/tests/test_openapi.py) enforces all of this and fails on a stale `frontend/openapi.json`.
 
 Things that bite:
 
@@ -128,6 +132,7 @@ React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/reac
 - Path alias `~/*` → `app/*`.
 - Tailwind v4 configured entirely in CSS ([frontend/app/app.css](frontend/app/app.css)) — no `tailwind.config`. shadcn uses the `base-lyra` style over `@base-ui/react`, Phosphor icons, and CSS variables.
 - Prettier enforces **no semicolons**, double quotes, 2-space indent, 80 cols, with Tailwind class sorting (`cn`, `cva` aware). Match it; the hook rewrites files otherwise.
+- API calls go through the Hey API client generated into `app/client/` (gitignored), namespaced by OpenAPI tag: `useQuery(api.admin.roles.listRoles())`, `useMutation(api.admin.users.grantUserRole())`, raw requests via `sdk.*`, types from `~/client`. Don't import the flat `sdk.gen` / `react-query.gen` modules. Never hand-write request functions or response types. See [frontend/README.md](frontend/README.md#calling-the-api).
 - API base URL reaches the client via `VITE_API_URL`.
 - Theme: `next-themes` in [frontend/app/components/theme-provider.tsx](frontend/app/components/theme-provider.tsx); light / dark / auto toggle in [frontend/app/components/theme-toggle.tsx](frontend/app/components/theme-toggle.tsx). Palette tokens live in `app.css` (`:root` and `.dark`).
 

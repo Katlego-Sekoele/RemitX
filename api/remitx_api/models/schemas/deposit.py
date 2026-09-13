@@ -1,13 +1,12 @@
 """Request/response schemas for the admin deposit-reconciliation endpoints."""
 
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, field_serializer
+from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
-class DepositRow(BaseModel):
+class DepositRow(Schema):
     """One bank-statement line, as parsed client-side from the uploaded CSV."""
 
     reference: str | None = None
@@ -15,11 +14,11 @@ class DepositRow(BaseModel):
     date: str | None = None
 
 
-class ProcessDepositsRequest(BaseModel):
+class ProcessDepositsRequest(Schema):
     rows: list[DepositRow]
 
 
-class ProcessedDepositRead(BaseModel):
+class ProcessedDepositRead(Schema):
     deposit_id: uuid.UUID
     reference: str | None
     amount: Decimal
@@ -29,21 +28,13 @@ class ProcessedDepositRead(BaseModel):
     confirmed_by: str | None
 
 
-class PendingDepositRead(BaseModel):
+class PendingDepositRead(Schema):
     deposit_id: uuid.UUID
     reference: str | None
     amount: Decimal
     currency: str
-    created_at: datetime
-
-    @field_serializer("created_at")
-    def _as_utc(self, value: datetime) -> str:
-        # See models/schemas/integration_message.py for why this is needed:
-        # SQLite drops the tz offset Postgres preserves.
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+    created_at: UtcDateTime
 
 
-class ApproveDepositRequest(BaseModel):
+class ApproveDepositRequest(Schema):
     user_id: uuid.UUID

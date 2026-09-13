@@ -38,7 +38,7 @@ import {
   useOnboarding,
   useSaveStep,
 } from "~/hooks/use-onboarding"
-import type { KycCountry } from "~/lib/api"
+import type { KycCountryRead as KycCountry } from "~/client"
 
 const answer = z.enum(["yes", "no"], "Answer yes or no.")
 

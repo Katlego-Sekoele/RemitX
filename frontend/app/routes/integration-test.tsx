@@ -25,10 +25,11 @@ import {
 } from "~/components/ui/table"
 import { cn } from "~/lib/utils"
 import type { Route } from "./+types/integration-test"
-import { MESSAGE_MAX_LENGTH, type IntegrationMessage } from "~/lib/api"
-import { useApi } from "~/lib/use-api"
+import type { IntegrationMessageRead as IntegrationMessage } from "~/client"
+import { MESSAGE_MAX_LENGTH } from "~/lib/api"
+import { api } from "~/client"
 
-const MESSAGES_KEY = ["integration-messages"]
+const MESSAGES_KEY = api.integration.listIntegrationMessages().queryKey
 
 // Stop polling if the worker never picks the message up, rather than
 // hammering the API for as long as the tab stays open.
@@ -61,7 +62,6 @@ export default function IntegrationTest() {
   const [listRequested, setListRequested] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
-  const api = useApi()
 
   // Spread to count code points, matching Python's len() and Postgres's
   // length(). String.length counts UTF-16 units, so an emoji would read as 2
@@ -72,8 +72,7 @@ export default function IntegrationTest() {
   const canSend = length > 0 && !tooLong
 
   const messages = useQuery({
-    queryKey: MESSAGES_KEY,
-    queryFn: api.listIntegrationMessages,
+    ...api.integration.listIntegrationMessages(),
     enabled: listRequested,
     // Poll only while the worker still owes us something, then stop on its
     // own. No timers to clean up, and no polling once everything is settled.
@@ -94,7 +93,7 @@ export default function IntegrationTest() {
   })
 
   const send = useMutation({
-    mutationFn: api.sendIntegrationMessage,
+    ...api.integration.createIntegrationMessage(),
     onSuccess: (created) => {
       setDraft("")
       setListRequested(true)
@@ -135,7 +134,7 @@ export default function IntegrationTest() {
                   className="flex flex-col gap-2 sm:flex-row"
                   onSubmit={(event) => {
                     event.preventDefault()
-                    if (canSend) send.mutate(trimmed)
+                    if (canSend) send.mutate({ body: { body: trimmed } })
                   }}
                 >
                   <Input

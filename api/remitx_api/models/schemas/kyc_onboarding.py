@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
+from remitx_api.models.schemas.base import Schema
 from remitx_api.models.schemas.kyc import (
     KycApplicationReadPII,
     KycPepRelationshipRead,
@@ -21,14 +23,14 @@ from remitx_api.models.schemas.kyc import (
 )
 
 
-class KycOnboardingStepRead(BaseModel):
+class KycOnboardingStepRead(Schema):
     step: str
     position: int
     role: str
     description: str
 
 
-class KycApplicationPatch(BaseModel):
+class KycApplicationPatch(Schema):
     """Partial save. Absent fields are left alone; sent fields are validated."""
 
     model_config = ConfigDict(extra="forbid")
@@ -61,7 +63,7 @@ class KycApplicationPatch(BaseModel):
     source_of_wealth: str | None = None
 
 
-class KycStartRequest(BaseModel):
+class KycStartRequest(Schema):
     """Optional. Welcome sends the residence so a country RemitX does not
     operate in is refused before a draft exists; resume sends nothing."""
 
@@ -70,14 +72,14 @@ class KycStartRequest(BaseModel):
     residential_country: str | None = None
 
 
-class KycSubmitRequest(BaseModel):
+class KycSubmitRequest(Schema):
     model_config = ConfigDict(extra="forbid")
 
     expected_version: int = Field(ge=1)
     consent: bool
 
 
-class KycOnboardingRead(BaseModel):
+class KycOnboardingRead(Schema):
     standing: KycStandingRead
     application: KycApplicationReadPII | None = None
     next_step: str
@@ -87,24 +89,24 @@ class KycOnboardingRead(BaseModel):
     steps: list[KycOnboardingStepRead]
 
 
-class KycCountryRead(BaseModel):
+class KycCountryRead(Schema):
     code: str
     name: str
     operates_in: bool
 
 
-class KycIdentitySchemeRead(BaseModel):
+class KycIdentitySchemeRead(Schema):
     scheme: str
     country: str | None
     id_type: str
     label: str
     requires_expiry: bool
-    input_mode: str
+    input_mode: Literal["numeric", "text"]
     number_hint: str
     document_hint: str
 
 
-class KycReferenceRead(BaseModel):
+class KycReferenceRead(Schema):
     """Countries and identity schemes. Static between migrations and free of
     PII, so the client fetches it once rather than with every draft save."""
 

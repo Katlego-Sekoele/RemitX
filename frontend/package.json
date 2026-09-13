@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "generate:api": "openapi-ts",
+    "predev": "npm run generate:api",
+    "prebuild": "npm run generate:api",
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc",
+    "typecheck": "npm run generate:api && react-router typegen && tsc",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx}\"",
     "lint": "npm run typecheck && npm run format:check"
@@ -47,6 +50,7 @@
     "zod": "^4.6.4"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
     "@react-router/dev": "7.15.1",
     "@tailwindcss/vite": "^4",
     "@types/node": "^22",

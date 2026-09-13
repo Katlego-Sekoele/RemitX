@@ -1,18 +1,14 @@
 import { useAuth } from "@clerk/react-router"
 import { useQuery } from "@tanstack/react-query"
 
+import { api } from "~/client"
 import type { PermissionCode } from "~/lib/permissions"
-import { useApi } from "~/lib/use-api"
-
-export const ME_ACCESS_KEY = ["me", "access"] as const
 
 export function useMePermissions() {
-  const api = useApi()
   const { isSignedIn } = useAuth()
 
   return useQuery({
-    queryKey: ME_ACCESS_KEY,
-    queryFn: api.getMyAccess,
+    ...api.me.listMyPermissions(),
     staleTime: 60_000,
     enabled: Boolean(isSignedIn),
   })

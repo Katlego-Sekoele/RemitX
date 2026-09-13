@@ -5,6 +5,7 @@ import {
   DocumentKindIcon,
   KycDocumentViewer,
 } from "~/components/admin/kyc-document-viewer"
+import { api } from "~/client"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
@@ -18,9 +19,8 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { useHasPermission } from "~/hooks/use-permissions"
-import type { KycDocument } from "~/lib/api"
+import type { KycDocumentRead as KycDocument } from "~/client"
 import { PERMISSIONS } from "~/lib/permissions"
-import { useApi } from "~/lib/use-api"
 
 function formatSize(bytes: number) {
   const kilobytes = bytes / 1024
@@ -50,7 +50,6 @@ export function KycApplicationDocuments({
   applicationId: string
 }) {
   const canRead = useHasPermission(PERMISSIONS.kycDocumentRead)
-  const api = useApi()
   const [selected, setSelected] = useState<KycDocument | null>(null)
 
   useEffect(() => {
@@ -58,8 +57,9 @@ export function KycApplicationDocuments({
   }, [applicationId])
 
   const documents = useQuery({
-    queryKey: ["kyc-documents", applicationId],
-    queryFn: () => api.listApplicationDocuments(applicationId),
+    ...api.admin.kyc.documents.listApplicationDocuments({
+      query: { application_id: applicationId },
+    }),
     enabled: canRead && applicationId.length > 0,
   })
 
