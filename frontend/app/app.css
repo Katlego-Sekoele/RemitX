@@ -1,3 +1,6 @@
+/* Clerk injects its styles at runtime; ClerkProvider's cssLayerName puts them
+   in `clerk`, below utilities, so appearance classes can override them. */
+@layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 @import "@clerk/themes/shadcn.css";
 @import "tw-animate-css";
