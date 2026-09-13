@@ -5,9 +5,9 @@ happened in the request that wrote this entry" — a KYC approval and the tier
 grant beside it are one action to a person and two rows to the database.
 Passing that id down through every controller signature would put a plumbing
 parameter in every use case, so it lives in a ContextVar for the same reason
-the database session does (see extensions.py): FastAPI copies the context into
-the worker thread a sync route runs in, so a handler sees the id belonging to
-its own request and nothing else.
+the database session does (see ``remitx_api.db.request_db_session``): FastAPI
+copies the context into the worker thread a sync route runs in, so a handler
+sees the id belonging to its own request and nothing else.
 """
 
 from contextvars import ContextVar

@@ -855,6 +855,18 @@
             ],
             "title": "Residential Postal Code"
           },
+          "reviewer_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer User Id"
+          },
           "risk_rating": {
             "anyOf": [
               {
@@ -1025,6 +1037,7 @@
           "processing_consented_at",
           "next_review_at",
           "version",
+          "reviewer_user_id",
           "created_at",
           "updated_at",
           "full_name",
@@ -1338,6 +1351,18 @@
             ],
             "title": "Residential Postal Code"
           },
+          "reviewer_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer User Id"
+          },
           "risk_rating": {
             "anyOf": [
               {
@@ -1508,6 +1533,7 @@
           "processing_consented_at",
           "next_review_at",
           "version",
+          "reviewer_user_id",
           "created_at",
           "updated_at",
           "full_name",
@@ -1524,6 +1550,59 @@
           "source_of_wealth"
         ],
         "title": "KycApplicationReadPII",
+        "type": "object"
+      },
+      "KycApproveRequest": {
+        "properties": {
+          "expected_version": {
+            "description": "The application version the reviewer was looking at.",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to identity_verified.",
+            "title": "Reason Code"
+          },
+          "reason_text": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional internal note. Not shown to the applicant.",
+            "title": "Reason Text"
+          },
+          "tier_granted": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the default verified tier. Needs kyc:risk:write.",
+            "title": "Tier Granted"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "KycApproveRequest",
         "type": "object"
       },
       "KycAssessmentAuditRead": {
@@ -1947,6 +2026,48 @@
         "title": "KycPepRelationshipRead",
         "type": "object"
       },
+      "KycQueueCountRead": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "KycQueueCountRead",
+        "type": "object"
+      },
+      "KycReasonCodeRead": {
+        "description": "A catalogue row plus whether the applicant may ever see it.\n\n`visible_to_applicant` is false for tipping-off reasons (fraud, sanctions):\nthe reviewer still picks the code, the applicant gets a generic refusal.",
+        "properties": {
+          "applicant_message": {
+            "title": "Applicant Message",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "visible_to_applicant": {
+            "title": "Visible To Applicant",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason_code",
+          "description",
+          "applicant_message",
+          "visible_to_applicant"
+        ],
+        "title": "KycReasonCodeRead",
+        "type": "object"
+      },
       "KycReferenceRead": {
         "description": "Countries and identity schemes. Static between migrations and free of\nPII, so the client fetches it once rather than with every draft save.",
         "properties": {
@@ -1970,6 +2091,84 @@
           "identity_schemes"
         ],
         "title": "KycReferenceRead",
+        "type": "object"
+      },
+      "KycRejectRequest": {
+        "properties": {
+          "expected_version": {
+            "description": "The application version the reviewer was looking at.",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "internal_note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Staff-only. Never shown to the applicant.",
+            "title": "Internal Note"
+          },
+          "reason_code": {
+            "description": "A code from kyc_reason_codes.",
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason_code"
+        ],
+        "title": "KycRejectRequest",
+        "type": "object"
+      },
+      "KycRequestInfoRequest": {
+        "properties": {
+          "expected_version": {
+            "description": "The application version the reviewer was looking at.",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason_code": {
+            "description": "A code from kyc_reason_codes.",
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "reason_text": {
+            "description": "What the applicant must fix. They see this verbatim.",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason_code",
+          "reason_text"
+        ],
+        "title": "KycRequestInfoRequest",
+        "type": "object"
+      },
+      "KycReviewRequest": {
+        "properties": {
+          "expected_version": {
+            "description": "The application version the reviewer was looking at.",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "KycReviewRequest",
         "type": "object"
       },
       "KycRiskOverrideRequest": {
@@ -3110,6 +3309,25 @@
               "description": "Statuses to include. Defaults to submitted, under_review.",
               "title": "Status"
             }
+          },
+          {
+            "description": "Only applications submitted at least this many days ago.",
+            "in": "query",
+            "name": "min_age_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only applications submitted at least this many days ago.",
+              "title": "Min Age Days"
+            }
           }
         ],
         "responses": {
@@ -3164,6 +3382,194 @@
           }
         ],
         "summary": "List the KYC reviewer queue",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}": {
+      "get": {
+        "description": "Masked. Revealing PII is a separate, audited action.",
+        "operationId": "get_review_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get one KYC application",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/approve": {
+      "post": {
+        "description": "Sets status, grants the tier, and writes the decision in one transaction.\n\nNeeds ``kyc:application:decide``.",
+        "operationId": "approve_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Approve a KYC application",
         "tags": [
           "admin.kyc.applications"
         ]
@@ -3247,6 +3653,303 @@
           }
         ],
         "summary": "List an application's risk assessment history",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/reject": {
+      "post": {
+        "description": "Needs a reason code. The internal note is never shown to the applicant.",
+        "operationId": "reject_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycRejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Reject a KYC application",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/request-info": {
+      "post": {
+        "description": "``reason_text`` names the fields or documents the applicant must fix.",
+        "operationId": "request_application_info",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycRequestInfoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Send a KYC application back for more information",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/reveal-pii": {
+      "post": {
+        "description": "Writes a ``kyc.pii.viewed`` audit entry. Needs ``kyc:application:read_pii``.",
+        "operationId": "reveal_application_pii",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationReadPII"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Reveal an application's unmasked identity fields",
         "tags": [
           "admin.kyc.applications"
         ]
@@ -3356,6 +4059,105 @@
           }
         ],
         "summary": "Override an application's risk rating",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/start-review": {
+      "post": {
+        "description": "Moves ``submitted`` to ``under_review``. Already claimed stays as it is\nso a second reviewer sees who has it.",
+        "operationId": "start_application_review",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Claim a submitted application for review",
         "tags": [
           "admin.kyc.applications"
         ]
@@ -3550,6 +4352,104 @@
         "summary": "Get a short-lived link to a KYC document for review",
         "tags": [
           "admin.kyc.documents"
+        ]
+      }
+    },
+    "/admin/kyc/queue-count": {
+      "get": {
+        "description": "Submitted plus under review \u2014 the badge on the admin nav.",
+        "operationId": "get_queue_count",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycQueueCountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Count applications waiting on a reviewer",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/reason-codes": {
+      "get": {
+        "description": "The controlled list a reject or request-info must name.",
+        "operationId": "list_reason_codes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycReasonCodeRead"
+                  },
+                  "title": "Response List Reason Codes",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List KYC reviewer reason codes",
+        "tags": [
+          "admin.kyc.applications"
         ]
       }
     },

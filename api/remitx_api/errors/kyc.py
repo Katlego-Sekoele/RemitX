@@ -56,6 +56,18 @@ class IncompleteKycDeclarationError(DomainError):
         self.missing_fields = missing_fields
 
 
+class KycSelfReviewError(ForbiddenError):
+    """A reviewer may not claim or decide their own application."""
+
+
+class UnknownKycReasonCodeError(DomainError):
+    """A reason code named by a caller is not a row in `kyc_reason_codes`."""
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(f"Unknown KYC reason code: {reason_code}")
+        self.reason_code = reason_code
+
+
 class KycSeniorApprovalRequiredError(ForbiddenError):
     """Only a holder of `kyc:application:decide` may decide this application —
     it carries a PEP declaration, or its risk rating requires senior approval."""

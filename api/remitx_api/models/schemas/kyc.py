@@ -145,6 +145,8 @@ class _ApplicationBase(Schema):
     # The value a caller must echo back to decide this application — see
     # KycController.transition.
     version: int
+    # Who last moved this application to `under_review`, if anyone has.
+    reviewer_user_id: uuid.UUID | None = None
     created_at: UtcDateTime
     updated_at: UtcDateTime
 
@@ -236,6 +238,71 @@ class KycDecisionRead(Schema):
     reason_text: str | None = None
     decided_by_user_id: uuid.UUID | None = None
     decided_at: UtcDateTime
+
+
+class KycReasonCodeRead(Schema):
+    """A catalogue row plus whether the applicant may ever see it.
+
+    `visible_to_applicant` is false for tipping-off reasons (fraud, sanctions):
+    the reviewer still picks the code, the applicant gets a generic refusal.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    reason_code: str
+    description: str
+    applicant_message: str
+    visible_to_applicant: bool
+
+
+class KycQueueCountRead(Schema):
+    count: int
+
+
+class KycReviewRequest(Schema):
+    expected_version: int = Field(
+        ge=1,
+        description="The application version the reviewer was looking at.",
+    )
+
+
+class KycApproveRequest(KycReviewRequest):
+    reason_code: str | None = Field(
+        default=None,
+        description="Defaults to identity_verified.",
+    )
+    reason_text: str | None = Field(
+        default=None,
+        max_length=MAX_REASON_LENGTH,
+        description="Optional internal note. Not shown to the applicant.",
+    )
+    tier_granted: int | None = Field(
+        default=None,
+        ge=1,
+        description="Override the default verified tier. Needs kyc:risk:write.",
+    )
+
+
+class KycRejectRequest(KycReviewRequest):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason_code: str = Field(description="A code from kyc_reason_codes.")
+    internal_note: str | None = Field(
+        default=None,
+        max_length=MAX_REASON_LENGTH,
+        description="Staff-only. Never shown to the applicant.",
+    )
+
+
+class KycRequestInfoRequest(KycReviewRequest):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason_code: str = Field(description="A code from kyc_reason_codes.")
+    reason_text: str = Field(
+        min_length=MIN_REASON_LENGTH,
+        max_length=MAX_REASON_LENGTH,
+        description="What the applicant must fix. They see this verbatim.",
+    )
 
 
 class KycStandingRead(Schema):
