@@ -149,6 +149,28 @@ class KycDocumentType(StrEnum):
     SOURCE_OF_FUNDS = "source_of_funds"
 
 
+class KycDocumentStatus(StrEnum):
+    """Where an upload has got to.
+
+    A document exists as a row before it exists as bytes: `POST /kyc/documents`
+    writes `pending` and hands back a signed upload URL, and only the
+    completion call - which checks the object's real size and sniffs its real
+    content type - promotes it to `stored`.
+
+    Two states rather than one because the gap between them is where every
+    interesting failure lives. A browser that closes mid-upload, a client that
+    declared a 40 KB PNG and PUT something else, a signature that expired
+    before the file finished: all of them leave `pending`, which no retrieval
+    path will serve and no reviewer will ever see.
+    """
+
+    PENDING = "pending"
+    STORED = "stored"
+
+
+DOCUMENT_STATUSES = tuple(KycDocumentStatus)
+
+
 class KycReasonCode(StrEnum):
     """Why a reviewer decided what they did.
 

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from remitx_api.config import Config
 from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
+from remitx_api.middleware import MaxBodySizeMiddleware, RequestIdMiddleware
 from remitx_api.routes import register_routers
 
 
@@ -25,6 +26,15 @@ def create_app(config_class: type[Config] = Config) -> FastAPI:
     config = config_class()
     app = FastAPI(lifespan=_lifespan)
     app.state.config = config
+
+    # Starlette runs the *last* middleware added outermost, so this reads
+    # inside out: CORS, then the request id, then the body guard, then
+    # routing. CORS has to stay outside the guard — a 413 without CORS
+    # headers reaches the browser as an opaque network error rather than as
+    # the refusal it is — and the guard has to stay outside routing, so an
+    # oversized body costs nothing even on a path that does not exist.
+    app.add_middleware(MaxBodySizeMiddleware)
+    app.add_middleware(RequestIdMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

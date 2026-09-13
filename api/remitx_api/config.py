@@ -58,6 +58,50 @@ class Config:
     def WORKER_WAKE_URL(self) -> str:
         return os.getenv("WORKER_WAKE_URL", "").strip()
 
+    # --- Object storage (Neon Object Storage in the cloud, MinIO locally) ---
+    #
+    # KYC documents are bytes, and bytes do not belong in Postgres: a database
+    # dump taken to debug something should not contain a stranger's passport.
+    # The API never handles the upload itself - it signs a URL and the browser
+    # PUTs straight to the bucket.
+
+    @property
+    def OBJECT_STORAGE_ENDPOINT_URL(self) -> str:
+        """S3 endpoint the API itself talks to (container-internal locally)."""
+        return os.getenv("OBJECT_STORAGE_ENDPOINT_URL", "").strip()
+
+    @property
+    def OBJECT_STORAGE_PUBLIC_ENDPOINT_URL(self) -> str:
+        """Endpoint the *browser* uses, which presigned URLs must be signed for.
+
+        The host is part of the SigV4 signature, so a URL signed for
+        ``http://minio:9000`` fails when the browser resolves
+        ``http://localhost:9000``. In the cloud both are the same host and
+        this stays unset.
+        """
+        return (
+            os.getenv("OBJECT_STORAGE_PUBLIC_ENDPOINT_URL", "").strip()
+            or self.OBJECT_STORAGE_ENDPOINT_URL
+        )
+
+    @property
+    def OBJECT_STORAGE_BUCKET(self) -> str:
+        return os.getenv("OBJECT_STORAGE_BUCKET", "kyc-documents").strip()
+
+    @property
+    def OBJECT_STORAGE_REGION(self) -> str:
+        # Neon Object Storage ignores the region but SigV4 requires one in the
+        # credential scope, so it has to be some agreed string.
+        return os.getenv("OBJECT_STORAGE_REGION", "auto").strip()
+
+    @property
+    def OBJECT_STORAGE_ACCESS_KEY_ID(self) -> str:
+        return os.getenv("OBJECT_STORAGE_ACCESS_KEY_ID", "")
+
+    @property
+    def OBJECT_STORAGE_SECRET_ACCESS_KEY(self) -> str:
+        return os.getenv("OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
+
     @property
     def PLATFORM_WALLET_ADDRESS(self) -> str:
         return os.getenv("PLATFORM_WALLET_ADDRESS", "")

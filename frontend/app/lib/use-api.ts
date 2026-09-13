@@ -3,6 +3,7 @@ import { useMemo } from "react"
 
 import {
   approveDeposit,
+  getKycDocumentUrl,
   getMyAccess,
   getMyRoles,
   getUserAccess,
@@ -11,14 +12,18 @@ import {
   listPendingDeposits,
   listRoles,
   listAdmins,
+  listApplicationDocuments,
   listToxicCombinations,
   processDeposits,
   revokeRole,
   searchUsers,
   sendIntegrationMessage,
+  uploadKycDocument,
   type DepositRow,
+  type DocumentAccessUrl,
   type GrantRoleResult,
   type IntegrationMessage,
+  type KycDocument,
   type MePermission,
   type MyRole,
   type PendingDeposit,
@@ -58,6 +63,18 @@ export function useApi() {
         userId: string
       ): Promise<ProcessedDeposit> =>
         approveDeposit(getToken, depositId, userId),
+      listApplicationDocuments: (
+        applicationId: string
+      ): Promise<KycDocument[]> =>
+        listApplicationDocuments(getToken, applicationId),
+      getKycDocumentUrl: (documentId: string): Promise<DocumentAccessUrl> =>
+        getKycDocumentUrl(getToken, documentId),
+      uploadKycDocument: (
+        applicationId: string,
+        documentType: string,
+        file: File
+      ): Promise<KycDocument> =>
+        uploadKycDocument(getToken, applicationId, documentType, file),
       listRoles: (): Promise<Role[]> => listRoles(getToken),
       listToxicCombinations: (): Promise<ToxicCombination[]> =>
         listToxicCombinations(getToken),

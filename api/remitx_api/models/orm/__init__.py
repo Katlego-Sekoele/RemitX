@@ -2,6 +2,7 @@
 
 from remitx_api.extensions import Base
 from remitx_api.models.orm.account import Account
+from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
 from remitx_api.models.orm.deposit import Deposit
 from remitx_api.models.orm.integration_message import IntegrationMessage
 from remitx_api.models.orm.kyc_application import KycApplication
@@ -23,6 +24,9 @@ from remitx_api.models.orm.user_role import UserRole
 
 __all__ = [
     "Account",
+    "AuditAction",
+    "AuditLog",
+    "AuditSubject",
     "Base",
     "Deposit",
     "IntegrationMessage",
