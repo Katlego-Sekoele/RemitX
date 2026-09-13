@@ -8,6 +8,7 @@ from remitx_api.config import Config
 from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
 from remitx_api.middleware import MaxBodySizeMiddleware, RequestIdMiddleware
+from remitx_api.openapi import DESCRIPTION, TAGS, TITLE, VERSION, operation_id
 from remitx_api.routes import register_routers
 
 
@@ -24,7 +25,14 @@ async def _lifespan(app: FastAPI):
 
 def create_app(config_class: type[Config] = Config) -> FastAPI:
     config = config_class()
-    app = FastAPI(lifespan=_lifespan)
+    app = FastAPI(
+        title=TITLE,
+        version=VERSION,
+        description=DESCRIPTION,
+        openapi_tags=TAGS,
+        generate_unique_id_function=operation_id,
+        lifespan=_lifespan,
+    )
     app.state.config = config
 
     # Starlette runs the *last* middleware added outermost, so this reads

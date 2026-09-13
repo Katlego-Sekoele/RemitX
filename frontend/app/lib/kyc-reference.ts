@@ -1,6 +1,8 @@
-import type { KycCountry, KycIdentityScheme, KycReference } from "~/lib/api"
-
-export const KYC_REFERENCE_KEY = ["kyc", "reference"] as const
+import type {
+  KycCountryRead as KycCountry,
+  KycIdentitySchemeRead as KycIdentityScheme,
+  KycReferenceRead as KycReference,
+} from "~/client"
 
 /** The select value for "I live in a country RemitX does not serve". */
 export const OUTSIDE_OPERATING_COUNTRIES = "elsewhere"

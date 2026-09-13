@@ -40,9 +40,12 @@ import {
 } from "~/components/ui/table"
 import type { Route } from "./+types/process-deposits"
 import { useHasPermission } from "~/hooks/use-permissions"
-import type { DepositRow, PendingDeposit } from "~/lib/api"
+import {
+  api,
+  type DepositRow,
+  type PendingDepositRead as PendingDeposit,
+} from "~/client"
 import { PERMISSIONS } from "~/lib/permissions"
-import { useApi } from "~/lib/use-api"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 
 const moduleName = import.meta.filename
@@ -54,8 +57,6 @@ export function meta(): Route.MetaDescriptors {
     { name: "robots", content: "noindex" },
   ]
 }
-
-const PENDING_KEY = ["pending-deposits"]
 
 // How long "Simulation completed" stays up before the upload dialog closes
 // itself.
@@ -118,17 +119,15 @@ export default function ProcessDeposits() {
 }
 
 function ProcessDepositsPage() {
-  const api = useApi()
   const queryClient = useQueryClient()
   const canConfirm = useHasPermission(PERMISSIONS.cashinConfirm)
 
-  const pending = useQuery({
-    queryKey: PENDING_KEY,
-    queryFn: api.listPendingDeposits,
-  })
+  const pending = useQuery(api.admin.deposits.listPendingDeposits())
 
   const refreshPending = () =>
-    queryClient.invalidateQueries({ queryKey: PENDING_KEY })
+    queryClient.invalidateQueries({
+      queryKey: api.admin.deposits.listPendingDeposits().queryKey,
+    })
 
   return (
     <AdminPageFrame module={moduleName}>
@@ -163,7 +162,6 @@ function ProcessDepositsPage() {
 }
 
 function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
-  const api = useApi()
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [rows, setRows] = useState<CsvRow[]>([])
@@ -172,7 +170,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const process = useMutation({
-    mutationFn: () => api.processDeposits(toDepositRows(rows)),
+    ...api.admin.deposits.processDeposits(),
     onSuccess: () => {
       onProcessed()
       setCompleted(true)
@@ -300,7 +298,9 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
           <DialogFooter>
             <Button
               type="button"
-              onClick={() => process.mutate()}
+              onClick={() =>
+                process.mutate({ body: { rows: toDepositRows(rows) } })
+              }
               disabled={!canRun || process.isPending}
             >
               {process.isPending
@@ -382,12 +382,11 @@ function ApproveDialog({
   deposit: PendingDeposit
   onResolved: () => void
 }) {
-  const api = useApi()
   const [open, setOpen] = useState(false)
   const [userId, setUserId] = useState("")
 
   const approve = useMutation({
-    mutationFn: () => api.approveDeposit(deposit.deposit_id, userId.trim()),
+    ...api.admin.deposits.approveDeposit(),
     onSuccess: () => {
       onResolved()
       setOpen(false)
@@ -423,7 +422,12 @@ function ApproveDialog({
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault()
-            if (userId.trim()) approve.mutate()
+            if (userId.trim()) {
+              approve.mutate({
+                path: { deposit_id: deposit.deposit_id },
+                body: { user_id: userId.trim() },
+              })
+            }
           }}
         >
           <Input

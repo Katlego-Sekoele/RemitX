@@ -29,19 +29,24 @@ from remitx_api.models.schemas.kyc import (
     KycRiskOverrideRequest,
     KycRiskRulesRead,
 )
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.repositories.kyc_risk_rule_repository import KycRiskRuleRepository
 from remitx_api.routes.routers import create_admin_router
 
 router: APIRouter = create_admin_router(
     permission=PermissionCode.KYC_APPLICATION_READ,
     prefix="/admin/kyc",
-    tags=["admin"],
+    tags=[Tag.ADMIN_KYC_APPLICATIONS],
 )
 controller = KycController()
 rules = KycRiskRuleRepository()
 
 
-@router.get("/applications", response_model=list[KycApplicationRead])
+@router.get(
+    "/applications",
+    response_model=list[KycApplicationRead],
+    summary="List the KYC reviewer queue",
+)
 def list_applications(
     risk_rating: Annotated[
         str | None,
@@ -57,7 +62,11 @@ def list_applications(
     return [KycApplicationRead.model_validate(row) for row in applications]
 
 
-@router.get("/risk-rules", response_model=KycRiskRulesRead)
+@router.get(
+    "/risk-rules",
+    response_model=KycRiskRulesRead,
+    summary="Get the KYC risk rule set",
+)
 def get_risk_rules():
     """Signals, rating bands, tiers and PEP relationships, as scored against."""
     return KycRiskRulesRead(
@@ -71,6 +80,8 @@ def get_risk_rules():
 @router.get(
     "/applications/{application_id}/assessment-audit",
     response_model=list[KycAssessmentAuditRead],
+    summary="List an application's risk assessment history",
+    responses=error_responses(404),
 )
 def list_assessment_audit(application_id: uuid.UUID):
     """Every rating and tier change on one application, oldest first."""
@@ -90,6 +101,8 @@ def list_assessment_audit(application_id: uuid.UUID):
     "/applications/{application_id}/risk-rating-override",
     response_model=KycApplicationRead,
     dependencies=[Depends(RequirePermission(PermissionCode.KYC_RISK_WRITE))],
+    summary="Override an application's risk rating",
+    responses=error_responses(400, 404, 409),
 )
 def override_risk_rating(
     application_id: uuid.UUID,
@@ -97,7 +110,10 @@ def override_risk_rating(
     # Not a gate — the dependency above is. The override records who made it.
     actor: User = Depends(get_current_user),
 ):
-    """Set a reviewer's rating beside the computed one. Both survive."""
+    """Set a reviewer's rating beside the computed one. Both survive.
+
+    Needs ``kyc:risk:write``. ``expected_version`` must match the application's.
+    """
     application = controller.override_risk_rating(
         application_id,
         payload.rating,

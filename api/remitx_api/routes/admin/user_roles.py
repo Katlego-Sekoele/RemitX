@@ -30,20 +30,26 @@ from remitx_api.models.schemas.role import (
     UserRoleRead,
     UserSearchRead,
 )
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.routes.routers import create_admin_router
 
 router: APIRouter = create_admin_router(
     permission=PermissionCode.ROLE_READ,
     prefix="/admin/users",
-    tags=["admin"],
+    tags=[Tag.ADMIN_USERS],
 )
 controller = UserRoleController()
 users = UserRepository()
 
 
-@router.get("/admins", response_model=list[AdminMemberRead])
+@router.get(
+    "/admins",
+    response_model=list[AdminMemberRead],
+    summary="List staff holding admin roles",
+)
 def list_admins():
+    """Everyone with at least one active admin role, with those roles."""
     return controller.list_admins()
 
 
@@ -51,13 +57,21 @@ def list_admins():
     "/search",
     response_model=list[UserSearchRead],
     dependencies=[Depends(RequirePermission(PermissionCode.USER_READ))],
+    summary="Search users by email",
 )
 def search_users(email: str = Query(min_length=3, description="Email fragment.")):
+    """Case-insensitive substring match. Needs ``user:read``."""
     return users.search_by_email(email)
 
 
-@router.get("/{user_id}/roles", response_model=UserAccessRead)
+@router.get(
+    "/{user_id}/roles",
+    response_model=UserAccessRead,
+    summary="Get a user's roles and grant history",
+    responses=error_responses(404),
+)
 def get_user_access(user_id: uuid.UUID):
+    """Effective permissions, plus every grant ever made, revoked ones included."""
     return controller.get_access(user_id)
 
 
@@ -65,6 +79,8 @@ def get_user_access(user_id: uuid.UUID):
     "/{user_id}/roles",
     response_model=RoleGrantResult,
     dependencies=[Depends(RequirePermission(PermissionCode.ROLE_GRANT))],
+    summary="Grant a role to a user",
+    responses=error_responses(400, 404, 409),
 )
 def grant_user_role(
     user_id: uuid.UUID,
@@ -73,7 +89,11 @@ def grant_user_role(
     # and whether that is the same person receiving it.
     actor: User = Depends(get_current_user),
 ):
-    """Grant a role. Already held means the existing grant back, not a duplicate."""
+    """Grant a role. Already held means the existing grant back, not a duplicate.
+
+    Needs ``role:grant``. A grant that completes a toxic combination must set
+    ``toxic_combination_acknowledged``.
+    """
     return controller.grant(user_id, payload, actor.id)
 
 
@@ -81,6 +101,8 @@ def grant_user_role(
     "/{user_id}/roles/{role}",
     response_model=UserRoleRead,
     dependencies=[Depends(RequirePermission(PermissionCode.ROLE_REVOKE))],
+    summary="Revoke a role from a user",
+    responses=error_responses(404, 409),
 )
 def revoke_user_role(
     user_id: uuid.UUID,
@@ -88,5 +110,5 @@ def revoke_user_role(
     payload: RoleRevokeRequest,
     actor: User = Depends(get_current_user),
 ):
-    """Revoke a role: stamps the row, never deletes it."""
+    """Revoke a role: stamps the row, never deletes it. Needs ``role:revoke``."""
     return controller.revoke(user_id, role, payload.reason, actor.id)

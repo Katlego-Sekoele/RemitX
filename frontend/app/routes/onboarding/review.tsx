@@ -28,13 +28,13 @@ import {
 } from "~/components/ui/item"
 import { useKycReference } from "~/hooks/use-kyc-reference"
 import { errorMessage, useOnboarding } from "~/hooks/use-onboarding"
-import { KYC_ONBOARDING_KEY, pathForStep } from "~/lib/kyc-onboarding"
+import { api } from "~/client"
+import { pathForStep } from "~/lib/kyc-onboarding"
 import {
   countryName,
   isOperatingCountry,
   resolveScheme,
 } from "~/lib/kyc-reference"
-import { useApi } from "~/lib/use-api"
 
 const SOURCE_OF_FUNDS: Record<string, string> = {
   salary: "Salary",
@@ -90,7 +90,6 @@ function displayDate(value: string | null | undefined) {
 }
 
 export default function Review() {
-  const api = useApi()
   const onboarding = useOnboarding()
   const application = onboarding.application
   const reference = useKycReference()
@@ -102,12 +101,12 @@ export default function Review() {
   })
   const consented = form.watch("consent")
   const submit = useMutation({
-    mutationFn: (consent: boolean) => {
-      if (!application) throw new Error("Start onboarding first.")
-      return api.submitKycOnboarding(application.version, consent)
-    },
+    ...api.kyc.onboarding.submitApplication(),
     onSuccess: (data) => {
-      queryClient.setQueryData(KYC_ONBOARDING_KEY, data)
+      queryClient.setQueryData(
+        api.kyc.onboarding.getApplication().queryKey,
+        data
+      )
       navigate(pathForStep("status"))
     },
   })
@@ -233,7 +232,14 @@ export default function Review() {
       </CardContent>
       <form
         noValidate
-        onSubmit={form.handleSubmit((values) => submit.mutate(values.consent))}
+        onSubmit={form.handleSubmit((values) =>
+          submit.mutate({
+            body: {
+              expected_version: application.version,
+              consent: values.consent,
+            },
+          })
+        )}
       >
         <CardFooter className="flex flex-col items-stretch gap-4">
           <Controller

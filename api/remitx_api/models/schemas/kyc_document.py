@@ -12,22 +12,13 @@ query parameters and are declared on the route.
 """
 
 import uuid
-from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import ConfigDict
 
-
-def _utc_isoformat(value: datetime | None) -> str | None:
-    """Always emit an offset, whatever the backend stored — see
-    schemas/integration_message.py for why SQLite makes this necessary."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).isoformat()
+from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
-class KycDocumentRead(BaseModel):
+class KycDocumentRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     document_id: uuid.UUID
@@ -38,25 +29,17 @@ class KycDocumentRead(BaseModel):
     size_bytes: int
     sha256: str | None = None
     uploaded_by_user_id: uuid.UUID
-    uploaded_at: datetime
-    stored_at: datetime | None = None
+    uploaded_at: UtcDateTime
+    stored_at: UtcDateTime | None = None
     # Whether the applicant may still remove it: never once a reviewer has
     # been given it. Always false on staff routes.
     removable: bool = False
 
-    @field_serializer("uploaded_at", "stored_at")
-    def _as_utc(self, value: datetime | None) -> str | None:
-        return _utc_isoformat(value)
 
-
-class DocumentAccessUrl(BaseModel):
+class DocumentAccessUrl(Schema):
     """A read URL good for minutes. There is no long-lived alternative."""
 
     document_id: uuid.UUID
     content_type: str
     url: str
-    expires_at: datetime
-
-    @field_serializer("expires_at")
-    def _as_utc(self, value: datetime) -> str | None:
-        return _utc_isoformat(value)
+    expires_at: UtcDateTime

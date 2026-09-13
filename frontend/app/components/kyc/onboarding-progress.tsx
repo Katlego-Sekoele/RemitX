@@ -7,7 +7,7 @@ import {
   StepperStatus,
   StepperTrigger,
 } from "~/components/ui/stepper"
-import type { KycOnboardingStep } from "~/lib/api"
+import type { KycOnboardingStepRead as KycOnboardingStep } from "~/client"
 import { pathForStep } from "~/lib/kyc-onboarding"
 
 const STEP_TITLES: Record<string, string> = {

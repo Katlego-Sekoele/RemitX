@@ -6,17 +6,15 @@ import {
 } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 
+import { api } from "~/client"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import { Skeleton } from "~/components/ui/skeleton"
-import type { KycDocument } from "~/lib/api"
-import { useApi } from "~/lib/use-api"
+import type { KycDocumentRead as KycDocument } from "~/client"
 
 /** Ask for a fresh link a little before the five-minute one expires, so a
  * reviewer reading a long document does not watch it go blank. */
 const URL_REFRESH_MS = 4 * 60 * 1000
-
-export const KYC_DOCUMENT_URL_KEY = "kyc-document-url"
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
@@ -30,11 +28,10 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
  * page; the upload was also sniffed as a real PDF and is served with that type.
  */
 export function KycDocumentViewer({ document }: { document: KycDocument }) {
-  const api = useApi()
-
   const link = useQuery({
-    queryKey: [KYC_DOCUMENT_URL_KEY, document.document_id],
-    queryFn: () => api.getKycDocumentUrl(document.document_id),
+    ...api.admin.kyc.documents.getDocumentUrl({
+      path: { document_id: document.document_id },
+    }),
     refetchInterval: URL_REFRESH_MS,
     // The link is short-lived by design, so a cached one is worse than none.
     gcTime: URL_REFRESH_MS,

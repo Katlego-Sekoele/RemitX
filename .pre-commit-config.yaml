@@ -22,6 +22,15 @@ repos:
         files: ^api/
         pass_filenames: false
 
+      # Before the tests, which fail on a stale spec, and before the
+      # frontend hook, whose typecheck generates the client from it.
+      - id: api-openapi
+        name: api OpenAPI spec (regenerate frontend/openapi.json)
+        entry: scripts/hooks/run-api-openapi.sh
+        language: script
+        files: ^api/remitx_api/
+        pass_filenames: false
+
       - id: api-tests
         name: api tests (pytest)
         entry: scripts/hooks/run-api-tests.sh

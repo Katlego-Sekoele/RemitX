@@ -6,7 +6,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "~/components/ui/combobox"
-import type { KycCountry } from "~/lib/api"
+import type { KycCountryRead as KycCountry } from "~/client"
 
 // Module-level so their identities never change between renders.
 const countryLabel = (country: KycCountry) => country.name

@@ -1,10 +1,15 @@
-"""Router factories that enforce auth at mount time, not per handler."""
+"""Router factories that enforce auth at mount time, not per handler.
 
-from fastapi import APIRouter, Depends
+Each also declares its auth to OpenAPI — the bearer scheme and the 401/403 it
+can answer — so the generated client knows which calls carry the session.
+"""
+
+from fastapi import APIRouter, Depends, Security
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.auth.permissions import RequirePermission
 from remitx_api.models.orm.permission import PermissionCode
+from remitx_api.openapi import bearer_scheme, error_responses
 
 
 def create_public_router(**kwargs) -> APIRouter:
@@ -14,7 +19,11 @@ def create_public_router(**kwargs) -> APIRouter:
 
 def create_customer_router(**kwargs) -> APIRouter:
     """Every route on this router requires an authenticated session."""
-    return APIRouter(dependencies=[Depends(get_current_user)], **kwargs)
+    return APIRouter(
+        dependencies=[Security(bearer_scheme), Depends(get_current_user)],
+        responses=error_responses(401),
+        **kwargs,
+    )
 
 
 def create_admin_router(permission: PermissionCode, **kwargs) -> APIRouter:
@@ -34,8 +43,10 @@ def create_admin_router(permission: PermissionCode, **kwargs) -> APIRouter:
     """
     return APIRouter(
         dependencies=[
+            Security(bearer_scheme),
             Depends(get_current_user),
             Depends(RequirePermission(permission)),
         ],
+        responses=error_responses(401, 403),
         **kwargs,
     )

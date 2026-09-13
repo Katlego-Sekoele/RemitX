@@ -12,8 +12,8 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { errorMessage, useOnboarding } from "~/hooks/use-onboarding"
-import { KYC_ONBOARDING_KEY, pathForStep } from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
+import { pathForStep } from "~/lib/kyc-onboarding"
+import { api } from "~/client"
 
 const COPY: Record<string, { title: string; body: string }> = {
   not_started: {
@@ -51,15 +51,17 @@ const COPY: Record<string, { title: string; body: string }> = {
 }
 
 export default function Status() {
-  const api = useApi()
   const onboarding = useOnboarding()
   const queryClient = useQueryClient()
   const status = onboarding.application?.status ?? onboarding.standing.status
   const copy = COPY[status] ?? COPY.not_started
   const start = useMutation({
-    mutationFn: () => api.startKycOnboarding(),
+    ...api.kyc.onboarding.startApplication(),
     onSuccess: (data) => {
-      queryClient.setQueryData(KYC_ONBOARDING_KEY, data)
+      queryClient.setQueryData(
+        api.kyc.onboarding.getApplication().queryKey,
+        data
+      )
     },
   })
 
@@ -84,7 +86,7 @@ export default function Status() {
         {status === "rejected" ||
         status === "review_due" ||
         status === "not_started" ? (
-          <Button onClick={() => start.mutate()} disabled={start.isPending}>
+          <Button onClick={() => start.mutate({})} disabled={start.isPending}>
             {start.isPending ? "Starting…" : "Start an application"}
           </Button>
         ) : null}

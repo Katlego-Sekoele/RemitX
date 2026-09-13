@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select"
-import type { KycReference } from "~/lib/api"
+import type { KycReferenceRead as KycReference } from "~/client"
 import {
   isOperatingCountry,
   operatingCountries,

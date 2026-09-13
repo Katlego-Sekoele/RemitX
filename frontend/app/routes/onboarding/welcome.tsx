@@ -28,9 +28,9 @@ import {
 } from "~/components/ui/field"
 import { useKycReference } from "~/hooks/use-kyc-reference"
 import { errorMessage, useOnboarding } from "~/hooks/use-onboarding"
-import { KYC_ONBOARDING_KEY, pathForStep } from "~/lib/kyc-onboarding"
+import { pathForStep } from "~/lib/kyc-onboarding"
 import { OUTSIDE_OPERATING_COUNTRIES } from "~/lib/kyc-reference"
-import { useApi } from "~/lib/use-api"
+import { api } from "~/client"
 
 const schema = z.object({
   residence: z
@@ -42,7 +42,6 @@ const schema = z.object({
 })
 
 export default function Welcome() {
-  const api = useApi()
   const onboarding = useOnboarding()
   const reference = useKycReference()
   const navigate = useNavigate()
@@ -58,9 +57,12 @@ export default function Welcome() {
     },
   })
   const start = useMutation({
-    mutationFn: api.startKycOnboarding,
+    ...api.kyc.onboarding.startApplication(),
     onSuccess: (data) => {
-      queryClient.setQueryData(KYC_ONBOARDING_KEY, data)
+      queryClient.setQueryData(
+        api.kyc.onboarding.getApplication().queryKey,
+        data
+      )
       navigate(
         pathForStep(data.next_step === "welcome" ? "identity" : data.next_step)
       )
@@ -76,7 +78,9 @@ export default function Welcome() {
       </CardHeader>
       <form
         className="flex flex-col gap-4"
-        onSubmit={form.handleSubmit((values) => start.mutate(values.residence))}
+        onSubmit={form.handleSubmit((values) =>
+          start.mutate({ body: { residential_country: values.residence } })
+        )}
       >
         <CardContent className="flex flex-col gap-5">
           <Controller

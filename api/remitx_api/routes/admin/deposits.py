@@ -21,12 +21,13 @@ from remitx_api.models.schemas.deposit import (
     ProcessDepositsRequest,
     ProcessedDepositRead,
 )
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
 
 router: APIRouter = create_admin_router(
     permission=PermissionCode.CASHIN_READ,
     prefix="/admin/deposits",
-    tags=["admin"],
+    tags=[Tag.ADMIN_DEPOSITS],
 )
 controller = DepositController()
 
@@ -35,14 +36,22 @@ controller = DepositController()
     "/process",
     response_model=list[ProcessedDepositRead],
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
+    summary="Reconcile bank-statement rows into deposits",
 )
 def process_deposits(payload: ProcessDepositsRequest):
+    """Rows whose reference matches a user are confirmed and credited; the rest
+    wait in the pending queue for manual matching. Needs ``cashin:confirm``."""
     rows = [row.model_dump() for row in payload.rows]
     return controller.process_deposits(rows)
 
 
-@router.get("/pending", response_model=list[PendingDepositRead])
+@router.get(
+    "/pending",
+    response_model=list[PendingDepositRead],
+    summary="List deposits awaiting manual matching",
+)
 def list_pending_deposits():
+    """Deposits whose reference matched no user."""
     return controller.list_pending()
 
 
@@ -50,6 +59,8 @@ def list_pending_deposits():
     "/{deposit_id}/approve",
     response_model=ProcessedDepositRead,
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
+    summary="Match a pending deposit to a user",
+    responses=error_responses(400),
 )
 def approve_deposit(
     deposit_id: uuid.UUID,
@@ -58,6 +69,7 @@ def approve_deposit(
     # because the resolved deposit records who confirmed it.
     operator: User = Depends(get_current_user),
 ):
+    """Confirms the deposit against ``user_id``. Needs ``cashin:confirm``."""
     try:
         return controller.approve(deposit_id, payload.user_id, operator.id)
     except ValueError as exc:
