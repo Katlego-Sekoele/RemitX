@@ -1,6 +1,7 @@
 import { Show, UserButton } from "@clerk/react-router"
 import { Link } from "react-router"
 
+import { OpenDashboardButton } from "~/components/open-dashboard-button"
 import { Button } from "~/components/ui/button"
 
 /** Clerk-backed chrome controls — requires `ClerkProvider`. */
@@ -28,6 +29,7 @@ export function ClerkAuthControls() {
         </>
       }
     >
+      <OpenDashboardButton size="sm" />
       <UserButton />
     </Show>
   )

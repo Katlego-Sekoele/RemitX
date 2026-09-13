@@ -3,6 +3,7 @@
 from remitx_api.extensions import Base
 from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
+from remitx_api.models.orm.country import Country
 from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.deposit import Deposit
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -16,7 +17,15 @@ from remitx_api.models.orm.kyc_assessment_audit_signal import KycAssessmentAudit
 from remitx_api.models.orm.kyc_decision import KycDecision
 from remitx_api.models.orm.kyc_decision_history import KycDecisionHistory
 from remitx_api.models.orm.kyc_document import KycDocument
+from remitx_api.models.orm.kyc_identity_scheme import KycIdentityScheme
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_onboarding_editable_status import (
+    KycOnboardingEditableStatus,
+)
+from remitx_api.models.orm.kyc_onboarding_requirement import (
+    KycOnboardingRequirement,
+)
+from remitx_api.models.orm.kyc_onboarding_step import KycOnboardingStep
 from remitx_api.models.orm.kyc_pep_relationship import KycPepRelationshipRecord
 from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
 from remitx_api.models.orm.kyc_risk_rating import KycRiskRatingRecord
@@ -38,7 +47,6 @@ __all__ = [
     "AuditLog",
     "AuditSubject",
     "Base",
-    "Beneficiary",
     "Deposit",
     "ExchangeRate",
     "IntegrationMessage",
@@ -54,6 +62,10 @@ __all__ = [
     "KycRiskSignalRecord",
     "KycDecisionHistory",
     "KycDocument",
+    "KycIdentityScheme",
+    "KycOnboardingEditableStatus",
+    "KycOnboardingRequirement",
+    "KycOnboardingStep",
     "KycPepRelationshipRecord",
     "KycStatus",
     "KycTier",

@@ -16,6 +16,7 @@ import pytest
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.extensions import db
 from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
+from remitx_api.models.orm.kyc_application_history import KycApplicationHistory
 from remitx_api.models.orm.kyc_document import (
     MAX_DOCUMENTS_PER_APPLICATION,
     MAX_SIZE_BYTES,
@@ -501,3 +502,114 @@ def test_a_reviewer_sees_verified_evidence_only(
     ).json()
 
     assert [item["document_id"] for item in listed] == [stored_id]
+
+
+# ----------------------------------------------------------------------
+# Removal
+# ----------------------------------------------------------------------
+
+
+def _mark_submitted(application, at: datetime) -> None:
+    """Record that the application was put in front of a reviewer at `at`."""
+    db.session.add(
+        KycApplicationHistory(
+            application_id=application.application_id,
+            status=KycStatus.SUBMITTED.value,
+            version_after=application.version + 1,
+            changed_at=at,
+        )
+    )
+    db.session.commit()
+
+
+def test_an_unreviewed_upload_can_be_removed_and_is_audited(applicant_client, storage):
+    client, user, application = applicant_client
+    uploaded = _upload(client, application.application_id).json()
+
+    listed = client.get(
+        DOCUMENTS, params={"application_id": str(application.application_id)}
+    ).json()
+    response = client.delete(f"{DOCUMENTS}/{uploaded['document_id']}")
+
+    assert listed[0]["removable"] is True
+    assert response.status_code == 204
+    assert _rows(application.application_id) == []
+    assert storage.deleted
+    (entry,) = [
+        row
+        for row in _audit_entries()
+        if row.action == AuditAction.KYC_DOCUMENT_REMOVED.value
+    ]
+    assert entry.actor_user_id == user.id
+    assert entry.subject_type == AuditSubject.KYC_DOCUMENT.value
+    assert entry.before["document_type"] == "id_document"
+
+
+def test_a_document_a_reviewer_was_given_cannot_be_removed(applicant_client, storage):
+    client, _, application = applicant_client
+    uploaded = _upload(client, application.application_id).json()
+    # Sent to a reviewer, then returned for more information.
+    _mark_submitted(application, datetime.now(UTC) + timedelta(seconds=1))
+    application.status = KycStatus.MORE_INFO_REQUIRED.value
+    db.session.commit()
+
+    listed = client.get(
+        DOCUMENTS, params={"application_id": str(application.application_id)}
+    ).json()
+    response = client.delete(f"{DOCUMENTS}/{uploaded['document_id']}")
+
+    assert listed[0]["removable"] is False
+    assert response.status_code == 409
+    assert "replacement" in response.json()["detail"]
+    assert len(_rows(application.application_id)) == 1
+    assert storage.deleted == []
+
+
+def test_a_replacement_uploaded_after_review_can_be_removed(applicant_client):
+    client, _, application = applicant_client
+    _mark_submitted(application, datetime.now(UTC) - timedelta(minutes=5))
+    application.status = KycStatus.MORE_INFO_REQUIRED.value
+    db.session.commit()
+    replacement = _upload(client, application.application_id).json()
+
+    response = client.delete(f"{DOCUMENTS}/{replacement['document_id']}")
+
+    assert response.status_code == 204
+
+
+def test_nothing_can_be_removed_while_the_application_is_with_a_reviewer(
+    applicant_client,
+):
+    client, _, application = applicant_client
+    uploaded = _upload(client, application.application_id).json()
+    application.status = KycStatus.SUBMITTED.value
+    db.session.commit()
+
+    response = client.delete(f"{DOCUMENTS}/{uploaded['document_id']}")
+
+    assert response.status_code == 409
+    assert len(_rows(application.application_id)) == 1
+
+
+def test_another_applicants_document_cannot_be_removed(applicant_client):
+    client, _, _ = applicant_client
+    stranger = make_kyc_user("remove_stranger")
+    theirs = insert_application(stranger.id)
+    document = KycDocument(
+        application_id=theirs.application_id,
+        document_type="id_document",
+        status=KycDocumentStatus.STORED.value,
+        storage_path=f"kyc/{theirs.application_id}/{uuid.uuid4()}",
+        content_type="application/pdf",
+        size_bytes=len(PDF),
+        sha256=hashlib.sha256(PDF).hexdigest(),
+        uploaded_by_user_id=stranger.id,
+        stored_at=datetime.now(UTC),
+    )
+    db.session.add(document)
+    db.session.commit()
+
+    response = client.delete(f"{DOCUMENTS}/{document.document_id}")
+
+    assert response.status_code == 404
+    assert len(_rows(theirs.application_id)) == 1

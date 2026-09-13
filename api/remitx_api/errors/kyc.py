@@ -35,6 +35,14 @@ class UnknownKycApplicationError(NotFoundError):
     """Raised when an action targets an application id that doesn't exist."""
 
 
+class InvalidKycDraftError(DomainError):
+    """A field on a partial save is the wrong shape or format."""
+
+
+class KycApplicationNotEditableError(KycConflictError):
+    """The application is no longer a draft the applicant can change."""
+
+
 class IncompleteKycDeclarationError(DomainError):
     """Submission refused: a declaration the risk rules score makes other
     fields mandatory, and they are missing — a PEP declaration without a source
@@ -79,3 +87,27 @@ class KycRiskRulesMisconfiguredError(RuntimeError):
     should surface as a 500 and an alert, not as a 4xx telling an applicant to
     try again.
     """
+
+
+class KycIdentitySchemesMisconfiguredError(RuntimeError):
+    """A `kyc_identity_schemes` row names a validator that does not exist.
+
+    A 500 for the same reason as `KycRiskRulesMisconfiguredError`: no applicant
+    input fixes it.
+    """
+
+
+class UnsupportedJurisdictionError(DomainError):
+    """The applicant lives in a country RemitX does not operate in."""
+
+    def __init__(self, country_name: str, operating_names: list[str]) -> None:
+        served = (
+            " and ".join(operating_names)
+            if len(operating_names) <= 2
+            else ", ".join(operating_names[:-1]) + " and " + operating_names[-1]
+        )
+        super().__init__(
+            f"We don't operate in {country_name} yet. RemitX currently serves "
+            f"residents of {served}."
+        )
+        self.country_name = country_name

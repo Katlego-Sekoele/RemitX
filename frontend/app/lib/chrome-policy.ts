@@ -25,6 +25,12 @@ export const CHROME_RULES: readonly ChromeRule[] = [
     match: (pathname) => pathname === "/app" || pathname.startsWith("/app/"),
   },
   {
+    id: "onboarding-legacy",
+    mode: "hidden",
+    match: (pathname) =>
+      pathname === "/onboarding" || pathname.startsWith("/onboarding/"),
+  },
+  {
     id: "auth",
     mode: "auth",
     match: (pathname) =>

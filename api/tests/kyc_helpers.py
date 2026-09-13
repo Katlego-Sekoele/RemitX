@@ -13,18 +13,35 @@ import uuid
 from datetime import UTC, datetime
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.country import Country
+from remitx_api.models.orm.country_seed import COUNTRY_SEEDS
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_application_status import KycApplicationStatusRecord
+from remitx_api.models.orm.kyc_identity_scheme import KycIdentityScheme
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_onboarding_editable_status import (
+    KycOnboardingEditableStatus,
+)
+from remitx_api.models.orm.kyc_onboarding_requirement import (
+    KycOnboardingRequirement,
+)
+from remitx_api.models.orm.kyc_onboarding_step import KycOnboardingStep
 from remitx_api.models.orm.kyc_pep_relationship import KycPepRelationshipRecord
 from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
 from remitx_api.models.orm.kyc_risk_rating import KycRiskRatingRecord
 from remitx_api.models.orm.kyc_risk_signal import KycRiskSignalRecord
 from remitx_api.models.orm.kyc_seed import (
     APPLICATION_STATUS_SEEDS,
+    ID_EXPIRY_REQUIREMENT_SEEDS,
+    IDENTITY_SCHEME_SEEDS,
+    JURISDICTION_RISK_SIGNAL_SEEDS,
+    ONBOARDING_EDITABLE_STATUS_SEEDS,
+    ONBOARDING_REQUIREMENT_SEEDS,
+    ONBOARDING_STEP_SEEDS,
     PEP_RELATIONSHIP_SEEDS,
     PROGRESSION_SEEDS,
     REASON_CODE_SEEDS,
+    RETIRED_RISK_SIGNALS,
     RISK_RATING_SEEDS,
     RISK_SIGNAL_SEEDS,
     TIER_SEEDS,
@@ -41,8 +58,8 @@ ID_NUMBER = "9001015800085"
 
 def seed_kyc_reference_data() -> None:
     """Load the KYC reference rows a migrated database would hold — statuses,
-    reason codes, progressions, tiers, the risk rule set and PEP relationships
-    — for tests using create_all()."""
+    reason codes, progressions, tiers, the risk rule set, PEP relationships,
+    countries and identity schemes — for tests using create_all()."""
     existing = db.session.scalars(select(KycApplicationStatusRecord).limit(1)).first()
     if existing is not None:
         return
@@ -106,13 +123,34 @@ def seed_kyc_reference_data() -> None:
             )
         )
 
-    for seed in RISK_SIGNAL_SEEDS:
+    for seed in (*RISK_SIGNAL_SEEDS, *JURISDICTION_RISK_SIGNAL_SEEDS):
         db.session.add(
             KycRiskSignalRecord(
                 signal=seed.signal,
                 description=seed.description,
                 score_effect=seed.score_effect,
-                is_active=True,
+                is_active=seed.signal not in RETIRED_RISK_SIGNALS,
+            )
+        )
+
+    for seed in COUNTRY_SEEDS:
+        db.session.add(
+            Country(code=seed.code, name=seed.name, operates_in=seed.operates_in)
+        )
+    db.session.flush()
+
+    for seed in IDENTITY_SCHEME_SEEDS:
+        db.session.add(
+            KycIdentityScheme(
+                scheme=seed.scheme,
+                country=seed.country,
+                id_type=seed.id_type,
+                label=seed.label,
+                validator=seed.validator,
+                requires_expiry=seed.requires_expiry,
+                input_mode=seed.input_mode,
+                number_hint=seed.number_hint,
+                document_hint=seed.document_hint,
             )
         )
 
@@ -123,6 +161,31 @@ def seed_kyc_reference_data() -> None:
                 description=seed.description,
             )
         )
+
+    for seed in ONBOARDING_STEP_SEEDS:
+        db.session.add(
+            KycOnboardingStep(
+                step=seed.step,
+                position=seed.position,
+                role=seed.role,
+                description=seed.description,
+            )
+        )
+    db.session.flush()
+
+    for seed in (*ONBOARDING_REQUIREMENT_SEEDS, *ID_EXPIRY_REQUIREMENT_SEEDS):
+        db.session.add(
+            KycOnboardingRequirement(
+                step=seed.step,
+                name=seed.name,
+                kind=seed.kind,
+                required_when=seed.required_when,
+                copy_on_resubmit=seed.copy_on_resubmit,
+            )
+        )
+
+    for status in ONBOARDING_EDITABLE_STATUS_SEEDS:
+        db.session.add(KycOnboardingEditableStatus(status=status))
 
     db.session.commit()
 

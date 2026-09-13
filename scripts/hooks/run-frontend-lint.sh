@@ -21,7 +21,8 @@ npm run format
 cd "$root"
 while IFS= read -r file; do
   [[ -n "$file" ]] && git add "$file"
-done < <(git diff --name-only HEAD -- frontend/ || true)
+# Deleted paths are already staged as deletions; `git add` would fail on them.
+done < <(git diff --name-only --diff-filter=d HEAD -- frontend/ || true)
 
 cd "$root/frontend"
 npm run lint

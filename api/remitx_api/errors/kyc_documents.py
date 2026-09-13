@@ -42,6 +42,11 @@ class ApplicationClosedToDocumentsError(ConflictError):
     """The application has reached an outcome; its evidence is now fixed."""
 
 
+class DocumentNotRemovableError(ConflictError):
+    """The document is evidence a reviewer has already been given, or the
+    application is no longer the applicant's to edit."""
+
+
 class UploadNotVerifiedError(ConflictError):
     """The object in the bucket is not the one that was declared.
 

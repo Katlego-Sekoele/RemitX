@@ -153,6 +153,7 @@ def test_submitting_stamps_submitted_at_once(app_context):
     )
     first_submitted_at = submitted.submitted_at
     assert first_submitted_at is not None
+    assert submitted.processing_consented_at is None
 
     controller.transition(
         application.application_id,

@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
@@ -268,6 +268,14 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             user_id=user_id,
             status=KycStatus.IN_PROGRESS.value,
         )
+        previous = self.get_latest_for_user(user_id)
+        if previous is not None:
+            from remitx_api.repositories.kyc_onboarding_repository import (
+                KycOnboardingRepository,
+            )
+
+            for field in KycOnboardingRepository().load().copy_fields:
+                setattr(application, field, getattr(previous, field))
         db.session.add(application)
         try:
             db.session.flush()
@@ -286,6 +294,84 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         )
         return application
 
+    def last_submitted_at(self, application_id: uuid.UUID):
+        """When this application was most recently put in front of a reviewer,
+        or None if it never has been. A more_info_required round trip
+        resubmits, so this is the latest `submitted` history row, not the
+        first-submission column."""
+        return db.session.scalar(
+            select(func.max(KycApplicationHistory.changed_at))
+            .where(KycApplicationHistory.application_id == application_id)
+            .where(KycApplicationHistory.status == KycStatus.SUBMITTED.value)
+        )
+
+    def latest_rejection_reason(self, user_id: uuid.UUID) -> str | None:
+        """The reason on the most recent rejected attempt, if any.
+
+        Shown on a resubmission so the applicant knows what to fix, without
+        overwriting the rejected row.
+        """
+        rejected = db.session.scalars(
+            select(KycApplication)
+            .where(KycApplication.user_id == user_id)
+            .where(KycApplication.status == KycStatus.REJECTED.value)
+            .order_by(KycApplication.created_at.desc())
+        ).first()
+        if rejected is None:
+            return None
+        decision = db.session.scalars(
+            select(KycDecision)
+            .where(KycDecision.application_id == rejected.application_id)
+            .where(KycDecision.decision == KycStatus.REJECTED.value)
+            .order_by(KycDecision.decided_at.desc())
+        ).first()
+        if decision is None:
+            return None
+        return decision.reason_text
+
+    @db_transaction
+    def apply_draft_update(
+        self,
+        application_id: uuid.UUID,
+        changes: dict,
+        *,
+        expected_version: int,
+    ) -> KycApplication:
+        application = db.session.get(KycApplication, application_id)
+        if application is None:
+            raise UnknownKycApplicationError(str(application_id))
+        now = utcnow()
+        result = db.session.execute(
+            update(KycApplication)
+            .where(KycApplication.application_id == application_id)
+            .where(KycApplication.version == expected_version)
+            .values(
+                **changes,
+                version=expected_version + 1,
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 0:
+            raise KycVersionConflictError(
+                f"Application {application_id} is no longer at version "
+                f"{expected_version}; reload it and save again"
+            )
+        db.session.add(
+            KycApplicationHistory(
+                application_id=application_id,
+                status=application.status,
+                version_after=expected_version + 1,
+                changed_at=now,
+            )
+        )
+        db.session.flush()
+        db.session.expire_all()
+        updated = db.session.get(KycApplication, application_id)
+        if updated is None:
+            raise UnknownKycApplicationError(str(application_id))
+        return updated
+
     @db_transaction
     def apply_transition(
         self,
@@ -299,6 +385,7 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         risk_assessment: RiskAssessment | None = None,
         tier_decision: TierDecision | None = None,
         review_interval_days: int | None = None,
+        processing_consented_at: datetime | None = None,
     ) -> KycApplication:
         """Move an application to `to_status`, with everything the move writes.
 
@@ -336,6 +423,8 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             changes["risk_rating"] = risk_assessment.rating
         if to_status is KycStatus.SUBMITTED and application.submitted_at is None:
             changes["submitted_at"] = now
+        if processing_consented_at is not None:
+            changes["processing_consented_at"] = processing_consented_at
         if to_status is KycStatus.APPROVED:
             if tier_decision is None:
                 tier_decision = TierDecision(KYC_TIER_VERIFIED, KYC_TIER_VERIFIED)

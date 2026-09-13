@@ -16,6 +16,14 @@ import {
   listAdmins,
   listApplicationDocuments,
   listToxicCombinations,
+  getKycOnboarding,
+  getKycReference,
+  startKycOnboarding,
+  patchKycOnboarding,
+  submitKycOnboarding,
+  listMyKycDocuments,
+  getMyKycDocumentUrl,
+  removeMyKycDocument,
   overrideKycRiskRating,
   processDeposits,
   revokeRole,
@@ -28,6 +36,8 @@ import {
   type IntegrationMessage,
   type KycApplication,
   type KycDocument,
+  type KycOnboarding,
+  type KycReference,
   type KycRiskRules,
   type MePermission,
   type MyRole,
@@ -117,6 +127,27 @@ export function useApi() {
           reason,
           expectedVersion
         ),
+      getKycOnboarding: (): Promise<KycOnboarding> =>
+        getKycOnboarding(getToken),
+      startKycOnboarding: (
+        residentialCountry?: string
+      ): Promise<KycOnboarding> =>
+        startKycOnboarding(getToken, residentialCountry),
+      getKycReference: (): Promise<KycReference> => getKycReference(getToken),
+      patchKycOnboarding: (
+        body: Record<string, unknown>
+      ): Promise<KycOnboarding> => patchKycOnboarding(getToken, body),
+      submitKycOnboarding: (
+        expectedVersion: number,
+        consent: boolean
+      ): Promise<KycOnboarding> =>
+        submitKycOnboarding(getToken, expectedVersion, consent),
+      listMyKycDocuments: (applicationId: string): Promise<KycDocument[]> =>
+        listMyKycDocuments(getToken, applicationId),
+      getMyKycDocumentUrl: (documentId: string): Promise<DocumentAccessUrl> =>
+        getMyKycDocumentUrl(getToken, documentId),
+      removeMyKycDocument: (documentId: string): Promise<void> =>
+        removeMyKycDocument(getToken, documentId),
     }),
     [getToken]
   )

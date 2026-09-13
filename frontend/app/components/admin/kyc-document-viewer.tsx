@@ -1,7 +1,13 @@
-import { FileTextIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react"
+import {
+  ArrowSquareOutIcon,
+  FileTextIcon,
+  ImageIcon,
+  WarningIcon,
+} from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
+import { Button } from "~/components/ui/button"
 import { Skeleton } from "~/components/ui/skeleton"
 import type { KycDocument } from "~/lib/api"
 import { useApi } from "~/lib/use-api"
@@ -15,20 +21,13 @@ export const KYC_DOCUMENT_URL_KEY = "kyc-document-url"
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
 /**
- * Renders one uploaded document.
+ * Renders one uploaded document from its short-lived, audited URL.
  *
- * An uploaded file is untrusted input from a stranger — the only untrusted
- * binary this platform accepts — so it is never injected as HTML and never
- * rendered in this page's origin. A PDF goes into a fully sandboxed iframe
- * (no scripts, no forms, no same-origin access, no popups); an image goes
- * into an `<img>`, which cannot execute anything at all. SVG is not in the
- * accepted set precisely because it would be a document rather than a
- * picture.
- *
- * The URL is fetched on demand rather than passed in: every issue of one is
- * recorded in the audit log against the reviewer who asked, and a link that
- * outlived the page it was rendered on would be a link nobody is accountable
- * for.
+ * Images go in an `<img>`, which cannot run anything. PDFs go in an iframe
+ * *without* `sandbox`: Chromium's and Edge's PDF viewers refuse to load in a
+ * sandboxed frame. That is safe because the URL is on the storage origin, not
+ * this app's, so the same-origin policy already keeps the file away from this
+ * page; the upload was also sniffed as a real PDF and is served with that type.
  */
 export function KycDocumentViewer({ document }: { document: KycDocument }) {
   const api = useApi()
@@ -76,17 +75,23 @@ export function KycDocumentViewer({ document }: { document: KycDocument }) {
   }
 
   return (
-    <iframe
-      // Empty sandbox: everything the file might try is denied, including
-      // script, same-origin access, form submission and top-level navigation.
-      // If a browser will not render a PDF under it, that is the safe failure
-      // — loosening the sandbox to make rendering work would defeat it.
-      sandbox=""
-      src={url}
-      title={`${document.document_type} submitted with this application`}
-      className="h-[28rem] w-full rounded-lg border bg-muted"
-      referrerPolicy="no-referrer"
-    />
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        nativeButton={false}
+        render={<a href={url} target="_blank" rel="noopener noreferrer" />}
+      >
+        <ArrowSquareOutIcon data-icon="inline-start" />
+        Open in new tab
+      </Button>
+      <iframe
+        src={url}
+        title={`${document.document_type} submitted with this application`}
+        className="h-[28rem] w-full rounded-lg border"
+        referrerPolicy="no-referrer"
+      />
+    </div>
   )
 }
 

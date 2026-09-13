@@ -40,6 +40,9 @@ class KycDocumentRead(BaseModel):
     uploaded_by_user_id: uuid.UUID
     uploaded_at: datetime
     stored_at: datetime | None = None
+    # Whether the applicant may still remove it: never once a reviewer has
+    # been given it. Always false on staff routes.
+    removable: bool = False
 
     @field_serializer("uploaded_at", "stored_at")
     def _as_utc(self, value: datetime | None) -> str | None:

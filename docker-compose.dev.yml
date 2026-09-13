@@ -50,18 +50,18 @@ services:
   # the application code cannot tell the two apart — only the endpoint and
   # credentials change.
   minio:
-    # MinIO publishes only `latest` and timestamped RELEASE tags, so there is
-    # no `16-alpine`-style pin to use here. Local development only.
-    image: minio/minio:latest
+    # Official minio/minio images were pulled from Docker Hub. Chainguard's
+    # rebuild is the local stand-in; it speaks the same S3 API.
+    image: cgr.dev/chainguard/minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY_ID:-remitx-local}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:-remitx-local-secret}
       # No CORS configuration: uploads go to the API, and a document is read
       # back by an <img> or an <iframe>, neither of which is a CORS request.
     ports:
-      - "${MINIO_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -74,14 +74,16 @@ services:
   # applied — an identity document reachable by anyone holding its URL is the
   # single worst outcome available here.
   minio-setup:
-    image: minio/mc:latest
+    # Same image as the server: it ships `mc`, and the dedicated client image
+    # is distroless (no shell to chain alias / mb / anonymous).
+    image: cgr.dev/chainguard/minio
     depends_on:
       minio:
         condition: service_healthy
     environment:
-      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
-      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID}
-      OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-kyc-documents}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:-remitx-local}
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:-remitx-local-secret}
     entrypoint: >
       sh -c "
       mc alias set local http://minio:9000 $${OBJECT_STORAGE_ACCESS_KEY_ID} $${OBJECT_STORAGE_SECRET_ACCESS_KEY} &&
@@ -118,7 +120,7 @@ services:
       # The host is part of the SigV4 signature, so a URL signed for the wrong
       # one fails with a 403 that names nothing.
       OBJECT_STORAGE_ENDPOINT_URL: http://minio:9000
-      OBJECT_STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:${MINIO_PORT}
+      OBJECT_STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:${MINIO_PORT:-9000}
     ports:
       - "${PORT}:${PORT}"
     volumes:

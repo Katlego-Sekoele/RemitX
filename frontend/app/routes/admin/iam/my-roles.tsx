@@ -63,10 +63,6 @@ export default function MyRoles() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           {pageRoutingContextByModuleName?.title}
         </h1>
-        <p className="max-w-xl text-sm text-muted-foreground">
-          Operational roles currently assigned to your account. Hover a
-          permission to read what it allows.
-        </p>
       </div>
 
       {roles.isLoading ? (
@@ -77,10 +73,6 @@ export default function MyRoles() {
         <Card>
           <CardHeader>
             <CardTitle>No roles assigned</CardTitle>
-            <CardDescription>
-              You can reach the staff portal, but no operational roles are
-              recorded for your account yet.
-            </CardDescription>
           </CardHeader>
         </Card>
       ) : (
