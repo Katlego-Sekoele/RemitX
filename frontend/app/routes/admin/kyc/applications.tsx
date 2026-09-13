@@ -8,17 +8,12 @@ import { useState } from "react"
 
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
+import { KycApplicationDocuments } from "~/components/admin/kyc-application-documents"
 import { SelfDeclaredNotice } from "~/components/kyc/self-declared-notice"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -37,6 +32,7 @@ import {
 } from "~/components/ui/dropdown-menu"
 import { Input } from "~/components/ui/input"
 import { Skeleton } from "~/components/ui/skeleton"
+import { useKycReferenceQuery } from "~/hooks/use-kyc-reference"
 import {
   Table,
   TableBody,
@@ -46,8 +42,9 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { useHasPermission } from "~/hooks/use-permissions"
-import type { KycApplication, KycRiskRating, KycRiskRules } from "~/lib/api"
+import type { KycApplication, KycRiskRating } from "~/lib/api"
 import { PERMISSIONS } from "~/lib/permissions"
+import { countryName } from "~/lib/kyc-reference"
 import { useApi } from "~/lib/use-api"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/applications"
@@ -70,11 +67,6 @@ const queueKey = (rating: string) => ["admin", "kyc", "applications", rating]
 // A rating may only be overridden while a decision is pending — the server
 // refuses anything else (repositories/kyc_application_repository.py).
 const OVERRIDABLE_STATUSES = new Set(["submitted", "under_review"])
-
-const zar = new Intl.NumberFormat("en-ZA", {
-  style: "currency",
-  currency: "ZAR",
-})
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
@@ -127,6 +119,7 @@ export default function KycApplications() {
 function KycApplicationsPage() {
   const api = useApi()
   const [rating, setRating] = useState(ALL_RATINGS)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const rules = useQuery({ queryKey: RULES_KEY, queryFn: api.getKycRiskRules })
   const applications = useQuery({
@@ -144,9 +137,7 @@ function KycApplicationsPage() {
           {pageRoutingContext?.title}
         </h1>
         <p className="max-w-xl text-sm text-muted-foreground">
-          Applications waiting on a reviewer, highest risk first and then oldest
-          first. Where a reviewer has overridden a rating, the override decides
-          the order and both ratings are shown.
+          Highest risk first.
         </p>
       </div>
 
@@ -154,13 +145,7 @@ function KycApplicationsPage() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-col gap-1.5">
-            <CardTitle>Review queue</CardTitle>
-            <CardDescription>
-              Submitted and under-review applications. Personal details are
-              masked.
-            </CardDescription>
-          </div>
+          <CardTitle>Review queue</CardTitle>
           <RatingFilter ratings={ratings} value={rating} onChange={setRating} />
         </CardHeader>
         <CardContent>
@@ -169,27 +154,15 @@ function KycApplicationsPage() {
             loading={applications.isPending}
             error={applications.isError ? applications.error : null}
             ratings={ratings}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
           />
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>How a rating is computed</CardTitle>
-          <CardDescription>
-            Read from the rule rows the server scores against. Every signal that
-            applies adds its effect to a 0–100 score; the score&apos;s band is
-            the rating, and the rating scales the tier&apos;s limits.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RuleReference
-            rules={rules.data}
-            loading={rules.isPending}
-            error={rules.isError ? rules.error : null}
-          />
-        </CardContent>
-      </Card>
+      {selectedId ? (
+        <KycApplicationDocuments applicationId={selectedId} />
+      ) : null}
     </AdminPageFrame>
   )
 }
@@ -237,12 +210,17 @@ function QueueTable({
   loading,
   error,
   ratings,
+  selectedId,
+  onSelect,
 }: {
   applications: KycApplication[] | undefined
   loading: boolean
   error: unknown
   ratings: readonly KycRiskRating[]
+  selectedId: string | null
+  onSelect: (applicationId: string) => void
 }) {
+  const { data: reference } = useKycReferenceQuery()
   const canOverride = useHasPermission(PERMISSIONS.kycRiskWrite)
 
   if (loading) return <Skeleton className="h-24 w-full" />
@@ -280,13 +258,30 @@ function QueueTable({
       </TableHeader>
       <TableBody>
         {applications.map((application) => (
-          <TableRow key={application.application_id}>
+          <TableRow
+            key={application.application_id}
+            data-state={
+              selectedId === application.application_id ? "selected" : undefined
+            }
+            aria-selected={selectedId === application.application_id}
+            aria-label={`View documents for ${application.full_name ?? "applicant"}`}
+            className="cursor-pointer"
+            tabIndex={0}
+            onClick={() => onSelect(application.application_id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault()
+                onSelect(application.application_id)
+              }
+            }}
+          >
             <TableCell>
               <div className="flex flex-col">
                 <span>{application.full_name ?? "—"}</span>
                 <span className="text-[11px] text-muted-foreground">
-                  {application.nationality ?? "—"} national, lives in{" "}
-                  {application.residential_country ?? "—"}
+                  {countryName(reference, application.nationality)} national,
+                  lives in{" "}
+                  {countryName(reference, application.residential_country)}
                 </span>
               </div>
             </TableCell>
@@ -327,7 +322,10 @@ function QueueTable({
                 <span className="text-muted-foreground">No</span>
               )}
             </TableCell>
-            <TableCell>
+            <TableCell
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
               {canOverride && OVERRIDABLE_STATUSES.has(application.status) && (
                 <OverrideDialog application={application} ratings={ratings} />
               )}
@@ -383,7 +381,7 @@ function OverrideDialog({
         }
       }}
     >
-      <DialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
+      <DialogTrigger render={<Button variant="ghost" size="icon-sm" />}>
         <PencilSimpleIcon />
         <span className="sr-only">Override risk rating</span>
       </DialogTrigger>
@@ -391,10 +389,8 @@ function OverrideDialog({
         <DialogHeader>
           <DialogTitle>Override risk rating</DialogTitle>
           <DialogDescription>
-            Computed as {humanise(application.risk_rating)} (score{" "}
-            {application.risk_score ?? "—"}). The computed rating is kept; your
-            rating is recorded beside it with your reason, and decides the tier
-            cap, limits and who may approve.
+            Computed: {humanise(application.risk_rating)} (score{" "}
+            {application.risk_score ?? "—"})
           </DialogDescription>
         </DialogHeader>
 
@@ -446,10 +442,6 @@ function OverrideDialog({
               placeholder="Why the computed rating is wrong"
               disabled={override.isPending}
             />
-            <p className="text-[11px] text-muted-foreground">
-              Required, and kept in the assessment audit with the computed and
-              final ratings.
-            </p>
           </div>
 
           {override.isError && (
@@ -470,151 +462,5 @@ function OverrideDialog({
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function RuleReference({
-  rules,
-  loading,
-  error,
-}: {
-  rules: KycRiskRules | undefined
-  loading: boolean
-  error: unknown
-}) {
-  if (loading) return <Skeleton className="h-32 w-full" />
-
-  if (error || !rules) {
-    return (
-      <Alert variant="destructive">
-        <WarningIcon />
-        <AlertTitle>Could not load the rule set</AlertTitle>
-        <AlertDescription>{errorMessage(error)}</AlertDescription>
-      </Alert>
-    )
-  }
-
-  const tierLimits = new Map(rules.tiers.map((tier) => [tier.tier, tier]))
-
-  return (
-    <div className="flex flex-col gap-6">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Signal</TableHead>
-            <TableHead>Applies when</TableHead>
-            <TableHead className="text-right">Effect</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.signals.map((signal) => (
-            <TableRow key={signal.signal}>
-              <TableCell className="font-mono text-[11px]">
-                {signal.signal}
-              </TableCell>
-              <TableCell className="whitespace-normal">
-                {signal.description}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {signal.is_active ? (
-                  `+${signal.score_effect}`
-                ) : (
-                  <Badge variant="outline">Inactive</Badge>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Rating</TableHead>
-            <TableHead>Score</TableHead>
-            <TableHead>Max tier</TableHead>
-            <TableHead>Limits</TableHead>
-            <TableHead>Next review</TableHead>
-            <TableHead>Decided by</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.ratings.map((row) => {
-            const cap = tierLimits.get(row.max_tier)
-            return (
-              <TableRow key={row.rating}>
-                <TableCell>
-                  <Badge
-                    variant={ratingVariant(row.rating, rules.ratings)}
-                    className="capitalize"
-                  >
-                    {humanise(row.rating)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {row.min_score}–{row.max_score}
-                </TableCell>
-                <TableCell>
-                  {row.max_tier}
-                  {cap ? ` (${cap.name})` : ""}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {row.limit_percent}% of tier
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {row.review_interval_days} days
-                </TableCell>
-                <TableCell>
-                  {row.requires_senior_approval
-                    ? "Compliance officer"
-                    : "Reviewer with decide permission"}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Tier</TableHead>
-            <TableHead>Daily</TableHead>
-            <TableHead>Monthly</TableHead>
-            <TableHead>Requires</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.tiers.map((tier) => (
-            <TableRow key={tier.tier}>
-              <TableCell>
-                <div className="flex flex-col">
-                  <span>
-                    {tier.tier} — {tier.name}
-                  </span>
-                  <span className="text-[11px] whitespace-normal text-muted-foreground">
-                    {tier.description}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {zar.format(Number(tier.daily_limit_zar))}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {zar.format(Number(tier.monthly_limit_zar))}
-              </TableCell>
-              <TableCell>
-                {tier.requires_source_of_wealth ? "Source of wealth" : "—"}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      <p className="text-xs text-muted-foreground">
-        A PEP declaration always needs a compliance officer&apos;s decision,
-        whatever its score.
-      </p>
-    </div>
   )
 }

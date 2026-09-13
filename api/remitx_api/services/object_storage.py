@@ -75,9 +75,8 @@ class ObjectStorage(Protocol):
         """The object's real size and type, or ``None`` if it is not there."""
 
     def delete(self, key: str) -> None:
-        """Remove an object. Used when a write could not be completed, never
-        on a stored document — retention is a lifecycle concern, not a
-        route's."""
+        """Remove an object: one whose write could not be completed, or an
+        upload an applicant removed before any reviewer was given it."""
 
 
 class S3ObjectStorage:

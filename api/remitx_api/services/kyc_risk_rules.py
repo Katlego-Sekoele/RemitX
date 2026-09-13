@@ -7,14 +7,19 @@ rating. With the rule set the migrations seed (models/orm/kyc_seed.py):
     Signal                                 Fires when                   Effect
     ─────────────────────────────────────  ───────────────────────────  ──────
     pep_declared                           any PEP declaration              60
-    foreign_jurisdiction                   non-ZA nationality, or           25
-                                           address outside ZA
     expected_volume_above_standard_limit   expected monthly volume          25
                                            above the tier 1 monthly
                                            limit
     source_of_funds_other                  source of funds `other`          25
                                            with free text
-    non_sa_identity_document               ID document not a SA ID          25
+    nationality_differs_from_residence     nationality is not the           25
+                                           country of residence
+    non_national_identity_document         identified by passport           25
+
+`foreign_jurisdiction` and `non_sa_identity_document`, which measured against
+South Africa alone, are deactivated rows with no detector: once RemitX
+operated in the US they rated a US citizen with an SSN as foreign. Assessments
+that fired them still reference them.
 
     Rating   Score     Max tier  Limits  Next review  Officer must decide
     ───────  ────────  ────────  ──────  ───────────  ───────────────────
@@ -64,7 +69,6 @@ from remitx_api.models.orm.kyc_lifecycle import (
     KycSourceOfFunds,
 )
 
-SOUTH_AFRICA = "ZA"
 CENTS = Decimal("0.01")
 
 
@@ -229,18 +233,8 @@ class Allowance:
 # completeness is the submission check's job, not the scorer's.
 
 
-def _is_outside_south_africa(country: str | None) -> bool:
-    return country is not None and country.strip().upper() != SOUTH_AFRICA
-
-
 def _detect_pep_declared(facts: RiskFacts, _rules: RiskRuleSet) -> bool:
     return facts.declares_pep
-
-
-def _detect_foreign_jurisdiction(facts: RiskFacts, _rules: RiskRuleSet) -> bool:
-    return _is_outside_south_africa(facts.nationality) or _is_outside_south_africa(
-        facts.residential_country
-    )
 
 
 def _detect_expected_volume_above_standard_limit(
@@ -256,23 +250,35 @@ def _detect_source_of_funds_other(facts: RiskFacts, _rules: RiskRuleSet) -> bool
     return facts.source_of_funds == KycSourceOfFunds.OTHER.value
 
 
-def _detect_non_sa_identity_document(facts: RiskFacts, _rules: RiskRuleSet) -> bool:
-    # A national ID issued by another country is not a SA ID either.
-    if facts.id_type is None:
+def _detect_nationality_differs_from_residence(
+    facts: RiskFacts, _rules: RiskRuleSet
+) -> bool:
+    # Residence is always a country RemitX operates in — onboarding refuses any
+    # other — so this is the cross-border fact, not "lives abroad".
+    if facts.nationality is None or facts.residential_country is None:
         return False
-    return facts.id_type != KycIdType.NATIONAL_ID.value or _is_outside_south_africa(
-        facts.issuing_country
+    return (
+        facts.nationality.strip().upper() != facts.residential_country.strip().upper()
     )
+
+
+def _detect_non_national_identity_document(
+    facts: RiskFacts, _rules: RiskRuleSet
+) -> bool:
+    # A national ID can only be saved under a scheme whose number has a
+    # checkable structure (a check digit, the SSN rules). A passport number's
+    # check is far weaker, and that difference is the risk.
+    return facts.id_type == KycIdType.PASSPORT.value
 
 
 SIGNAL_DETECTORS: dict[str, Callable[[RiskFacts, RiskRuleSet], bool]] = {
     "pep_declared": _detect_pep_declared,
-    "foreign_jurisdiction": _detect_foreign_jurisdiction,
     "expected_volume_above_standard_limit": (
         _detect_expected_volume_above_standard_limit
     ),
     "source_of_funds_other": _detect_source_of_funds_other,
-    "non_sa_identity_document": _detect_non_sa_identity_document,
+    "nationality_differs_from_residence": (_detect_nationality_differs_from_residence),
+    "non_national_identity_document": _detect_non_national_identity_document,
 }
 
 

@@ -80,10 +80,28 @@ def list_my_documents(
     application_id: uuid.UUID,
     user: User = Depends(get_current_user),
 ):
-    return controller.list_own_documents(
+    documents = controller.list_own_documents(
         user_id=user.id,
         application_id=application_id,
     )
+    removable = controller.removable_document_ids(
+        user_id=user.id,
+        application_id=application_id,
+    )
+    return [
+        KycDocumentRead.model_validate(document).model_copy(
+            update={"removable": document.document_id in removable}
+        )
+        for document in documents
+    ]
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_my_document(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    controller.remove_document(user_id=user.id, document_id=document_id)
 
 
 @router.get("/{document_id}/url", response_model=DocumentAccessUrl)

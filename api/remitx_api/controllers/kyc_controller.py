@@ -12,6 +12,7 @@ refusals that depend on the application in hand.
 """
 
 import uuid
+from datetime import datetime
 
 from remitx_api.errors.kyc import (
     IllegalKycTransitionError,
@@ -95,6 +96,7 @@ class KycController:
         reason_code: KycReasonCode | str | None = None,
         reason_text: str | None = None,
         tier_granted: int | None = None,
+        processing_consented_at: datetime | None = None,
     ) -> KycApplication:
         """Move an application to `to_status`.
 
@@ -157,6 +159,7 @@ class KycController:
             risk_assessment=risk_assessment,
             tier_decision=tier_decision,
             review_interval_days=None if band is None else band.review_interval_days,
+            processing_consented_at=processing_consented_at,
         )
 
     def override_risk_rating(

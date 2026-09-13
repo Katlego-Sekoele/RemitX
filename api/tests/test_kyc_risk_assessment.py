@@ -118,8 +118,8 @@ def test_submission_stores_the_score_rating_and_the_signals_behind_them(controll
     assert entry.reason is None
     assert entry.final_tier is None
     assert sorted((row.signal, row.score_effect) for row in signals) == [
-        ("foreign_jurisdiction", 25),
-        ("non_sa_identity_document", 25),
+        ("nationality_differs_from_residence", 25),
+        ("non_national_identity_document", 25),
     ]
 
 
@@ -158,7 +158,7 @@ def test_scoring_reads_the_weights_in_the_database(controller):
     """Reweighting a row changes the next submission — no release involved."""
     db.session.execute(
         update(KycRiskSignalRecord)
-        .where(KycRiskSignalRecord.signal == "non_sa_identity_document")
+        .where(KycRiskSignalRecord.signal == "non_national_identity_document")
         .values(score_effect=70)
     )
     db.session.commit()
@@ -172,7 +172,7 @@ def test_scoring_reads_the_weights_in_the_database(controller):
 def test_a_deactivated_signal_scores_nothing(controller):
     db.session.execute(
         update(KycRiskSignalRecord)
-        .where(KycRiskSignalRecord.signal == "foreign_jurisdiction")
+        .where(KycRiskSignalRecord.signal == "nationality_differs_from_residence")
         .values(is_active=False)
     )
     db.session.commit()
@@ -189,7 +189,7 @@ def test_reweighting_later_does_not_rewrite_an_earlier_assessment(controller):
 
     db.session.execute(
         update(KycRiskSignalRecord)
-        .where(KycRiskSignalRecord.signal == "non_sa_identity_document")
+        .where(KycRiskSignalRecord.signal == "non_national_identity_document")
         .values(score_effect=70)
     )
     db.session.commit()

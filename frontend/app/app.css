@@ -53,6 +53,39 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-pink: var(--brand-pink);
+  --animate-logo-stroke: logo-stroke 1.6s ease-in-out infinite;
+  --animate-logo-arrow: logo-arrow 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+  /* Logo loader: the X's strokes pulse in turn... */
+  @keyframes logo-stroke {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* ...while the arrow arrives, holds, and is sent off up and to the right. */
+  @keyframes logo-arrow {
+    0% {
+      opacity: 0;
+      transform: translate(-64px, 64px);
+    }
+    35%,
+    65% {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(96px, -96px);
+    }
+  }
 }
 
 /* Refined A: cool slate neutrals (~238°) + rose primary #D72169 */
@@ -81,6 +114,10 @@
   --chart-4: oklch(0.72 0.06 238);
   --chart-5: oklch(0.65 0.14 4.71);
   --radius: 0.875rem;
+  /* The logo's own colours (public/remitx-logo-*.svg). */
+  --brand-cyan: #02b0e2;
+  --brand-navy: #01213b;
+  --brand-pink: #ec1f59;
   --sidebar: oklch(0.97 0.008 238);
   --sidebar-foreground: oklch(0.22 0.02 238);
   --sidebar-primary: oklch(0.577 0.215 4.71);
@@ -92,6 +129,7 @@
 }
 
 .dark {
+  --brand-navy: #e8eef4;
   --background: oklch(0.2 0.02 238);
   --foreground: oklch(0.97 0.006 238);
   --card: oklch(0.255 0.022 238);

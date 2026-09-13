@@ -30,9 +30,11 @@ reviewer and applicant alike, because "who looked at whose identity document"
 is a question POPIA expects an answer to.
 
 Deleting an application does not delete its documents. FICA §23 retention runs
-five years from the end of the relationship, so removal is a lifecycle concern
-and nothing here offers it. The one object this controller deletes is one whose
-row could not be completed, and which was therefore never evidence of anything.
+five years from the end of the relationship. What an applicant *may* remove is
+an upload no reviewer has been given: while the draft is still theirs to edit,
+a wrong file is a mistake, not a record. Once an application is submitted with
+a document attached, that document is evidence and stays — the applicant
+uploads a replacement instead. Every removal is audited.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ from remitx_api.errors.kyc import UnknownKycApplicationError
 from remitx_api.errors.kyc_documents import (
     ApplicationClosedToDocumentsError,
     DocumentLimitReachedError,
+    DocumentNotRemovableError,
     DocumentNotStoredError,
     DocumentTooLargeError,
     DuplicateDocumentError,
@@ -77,6 +80,9 @@ from remitx_api.repositories.kyc_application_repository import (
     KycApplicationRepository,
 )
 from remitx_api.repositories.kyc_document_repository import KycDocumentRepository
+from remitx_api.repositories.kyc_onboarding_repository import (
+    KycOnboardingRepository,
+)
 from remitx_api.services.audit_service import record_audit
 from remitx_api.services.file_signatures import (
     CONTENT_TYPE_SVG,
@@ -90,6 +96,11 @@ logger = logging.getLogger(__name__)
 # Five minutes: long enough to open a PDF, short enough that a URL pasted into
 # a chat is dead before anyone clicks it.
 ACCESS_URL_TTL_SECONDS = 5 * 60
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite drops the offset Postgres keeps; compare like with like."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def utcnow() -> datetime:
@@ -371,6 +382,82 @@ class KycDocumentController:
             },
         )
         return document, signed
+
+    # ------------------------------------------------------------------
+    # Removal
+    # ------------------------------------------------------------------
+
+    def removable_document_ids(
+        self,
+        *,
+        user_id: uuid.UUID,
+        application_id: uuid.UUID,
+    ) -> frozenset[uuid.UUID]:
+        """Which of the applicant's documents they may still remove."""
+        application = self._require_own_application(application_id, user_id)
+        return frozenset(
+            document.document_id
+            for document in self._documents.list_for_application(application_id)
+            if self._removal_refusal(application, document) is None
+        )
+
+    @db_transaction
+    def remove_document(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+    ) -> None:
+        """Remove an upload no reviewer has seen: the row, the object, and an
+        audit entry saying so.
+
+        The row goes first and the object last, inside the transaction, so a
+        storage failure rolls the row back and leaves the document intact.
+        """
+        document = self._require_own_document(document_id, user_id)
+        application = self._applications.get_by_id(document.application_id)
+        refusal = self._removal_refusal(application, document)
+        if refusal is not None:
+            raise DocumentNotRemovableError(refusal)
+
+        record_audit(
+            actor_user_id=user_id,
+            action=AuditAction.KYC_DOCUMENT_REMOVED,
+            subject_type=AuditSubject.KYC_DOCUMENT,
+            subject_id=document.document_id,
+            before={
+                "application_id": str(document.application_id),
+                "document_type": document.document_type,
+                "status": document.status,
+                "sha256": document.sha256,
+            },
+        )
+        storage_path = document.storage_path
+        db.session.delete(document)
+        db.session.flush()
+        self.storage.delete(storage_path)
+
+    def _removal_refusal(
+        self,
+        application: KycApplication | None,
+        document: KycDocument,
+    ) -> str | None:
+        """Why this document may not be removed, or None if it may."""
+        editable = KycOnboardingRepository().load().editable_statuses
+        if application is None or application.status not in editable:
+            return (
+                "This application is with a reviewer, so its documents can't be "
+                "changed."
+            )
+        submitted_at = self._applications.last_submitted_at(application.application_id)
+        if submitted_at is not None and _as_utc(submitted_at) >= _as_utc(
+            document.uploaded_at
+        ):
+            return (
+                "A reviewer has already seen this document, so it stays on "
+                "record. Upload a replacement instead."
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Internals

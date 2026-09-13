@@ -110,6 +110,9 @@ class _ApplicationBase(BaseModel):
     nationality: str | None = None
     id_type: str | None = None
     issuing_country: str | None = None
+    # An expiry date identifies nobody on its own, and a reviewer needs it
+    # unmasked to see that the passport was valid.
+    id_expiry_date: date | None = None
     source_of_funds: str | None = None
     # City and country are not masked in either view: a reviewer has to be able
     # to see the jurisdiction to judge the application at all, and a city is
@@ -137,6 +140,7 @@ class _ApplicationBase(BaseModel):
     effective_risk_rating: str | None = None
     tier_granted: int | None = None
     submitted_at: datetime | None = None
+    processing_consented_at: datetime | None = None
     next_review_at: datetime | None = None
     # The value a caller must echo back to decide this application — see
     # KycController.transition.
@@ -146,6 +150,7 @@ class _ApplicationBase(BaseModel):
 
     @field_serializer(
         "submitted_at",
+        "processing_consented_at",
         "next_review_at",
         "risk_rating_overridden_at",
         "created_at",

@@ -22,6 +22,8 @@ import {
   SOCIAL_IMAGE_URL,
   THEME_COLOR,
 } from "~/lib/site"
+import { PageLoader } from "~/components/remitx-loader"
+import { Toaster } from "~/components/ui/sonner"
 import type { Route } from "./+types/root"
 import "./app.css"
 
@@ -94,13 +96,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            {children}
+            <Toaster />
+          </ThemeProvider>
         </QueryClientProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
     </html>
   )
+}
+
+/** Shown while route modules load and before the app hydrates. */
+export function HydrateFallback() {
+  return <PageLoader label="Loading RemitX" />
 }
 
 export default function App() {

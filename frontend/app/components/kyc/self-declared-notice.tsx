@@ -8,36 +8,17 @@ type SelfDeclaredNoticeProps = {
   audience: "reviewer" | "applicant"
 }
 
-/**
- * The scope caveat every KYC screen has to state: nothing an applicant
- * declares is checked against a sanctions list, a PEP database or an
- * adverse-media source. Declarations are self-declared and reviewed by a
- * person — claiming screening that does not happen is worse than not
- * screening, so no screen showing a declaration or a risk rating leaves this
- * out.
- */
+/** Declarations are the applicant's own and are never screened against
+ * sanctions, PEP or adverse-media lists — no screen may imply otherwise. */
 export function SelfDeclaredNotice({ audience }: SelfDeclaredNoticeProps) {
   return (
     <Alert>
       <ShieldWarningIcon />
-      <AlertTitle>Self-declared, not screened</AlertTitle>
+      <AlertTitle>Self-declared</AlertTitle>
       <AlertDescription>
-        {audience === "reviewer" ? (
-          <>
-            Every declaration here — politically exposed person status, source
-            of funds, source of wealth, nationality — is the applicant&apos;s
-            own, and the risk rating is computed from those declarations alone.
-            None of it has been checked against any sanctions list, PEP register
-            or adverse-media source.
-          </>
-        ) : (
-          <>
-            What you declare is reviewed by our compliance team. RemitX does not
-            check it against any sanctions list, PEP register or adverse-media
-            source, so please answer accurately — a false declaration is grounds
-            to reject or close your account.
-          </>
-        )}
+        {audience === "reviewer"
+          ? "Declarations haven't been screened against sanctions or PEP lists."
+          : "Answer accurately. A false declaration can get your application rejected."}
       </AlertDescription>
     </Alert>
   )
