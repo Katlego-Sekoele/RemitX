@@ -1,9 +1,18 @@
-from contextvars import ContextVar
-
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+from remitx_api.db.request_db_session import (
+    current_request_db_session,
+    require_request_db_session,
+    reset_request_db_session,
+    set_request_db_session,
+)
+from remitx_api.db.rls import (
+    adopt_row_security_role,
+    register_row_security_listeners,
+)
 
 
 class Base(DeclarativeBase):
@@ -39,19 +48,9 @@ def build_engine(database_url: str):
         )
     if database_url.startswith("sqlite"):
         return create_engine(database_url)
-    return create_engine(database_url, pool_pre_ping=True, pool_recycle=300)
-
-
-# Per-request, not per-process. FastAPI runs sync (`def`) routes in an anyio
-# worker thread and serves requests concurrently, so a single shared session
-# attribute lets one request close the session another is still writing
-# through — losing writes and raising "session is not active" under load.
-# ContextVars are copied into anyio worker threads, so sync routes see the
-# session opened for their own request and nothing else.
-_session_cv: ContextVar[Session | None] = ContextVar(
-    "remitx_db_session",
-    default=None,
-)
+    engine = create_engine(database_url, pool_pre_ping=True, pool_recycle=300)
+    adopt_row_security_role(engine)
+    return engine
 
 
 class Database:
@@ -61,10 +60,7 @@ class Database:
 
     @property
     def session(self) -> Session:
-        session = _session_cv.get()
-        if session is None:
-            raise RuntimeError("Database session is not active")
-        return session
+        return require_request_db_session()
 
     def init(self, database_url: str) -> None:
         self.engine = build_engine(database_url)
@@ -73,21 +69,19 @@ class Database:
             autoflush=False,
             autocommit=False,
         )
+        register_row_security_listeners()
 
     def open_session(self):
         """Open a session for the current context, returning a reset token."""
         if self._session_factory is None:
             raise RuntimeError("Database is not initialized")
-        return _session_cv.set(self._session_factory())
+        return set_request_db_session(self._session_factory())
 
     def close_session(self, token=None) -> None:
-        session = _session_cv.get()
+        session = current_request_db_session()
         if session is not None:
             session.close()
-        if token is None:
-            _session_cv.set(None)
-        else:
-            _session_cv.reset(token)
+        reset_request_db_session(token)
 
     def create_all(self) -> None:
         if self.engine is None:

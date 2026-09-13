@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, Security
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.auth.permissions import RequirePermission
+from remitx_api.db.rls import bound_row_security_context
 from remitx_api.models.orm.permission import PermissionCode
+from remitx_api.models.orm.user import User
 from remitx_api.openapi import bearer_scheme, error_responses
 
 
@@ -17,10 +19,24 @@ def create_public_router(**kwargs) -> APIRouter:
     return APIRouter(**kwargs)
 
 
+def _bind_customer_row_security_context(user: User = Depends(get_current_user)):
+    with bound_row_security_context(user.id, is_admin_route=False):
+        yield
+
+
+def _bind_admin_row_security_context(user: User = Depends(get_current_user)):
+    with bound_row_security_context(user.id, is_admin_route=True):
+        yield
+
+
 def create_customer_router(**kwargs) -> APIRouter:
     """Every route on this router requires an authenticated session."""
     return APIRouter(
-        dependencies=[Security(bearer_scheme), Depends(get_current_user)],
+        dependencies=[
+            Security(bearer_scheme),
+            Depends(get_current_user),
+            Depends(_bind_customer_row_security_context),
+        ],
         responses=error_responses(401),
         **kwargs,
     )
@@ -39,13 +55,16 @@ def create_admin_router(permission: PermissionCode, **kwargs) -> APIRouter:
         )
 
     Handlers never check permissions themselves, and nothing under ``/admin``
-    gates on a role name or on a flag on the User row.
+    gates on a role name or on a flag on the User row. Because the route
+    requires a permission, the caller is bound with ``is_admin_route`` so
+    Postgres RLS treats them as a reviewer.
     """
     return APIRouter(
         dependencies=[
             Security(bearer_scheme),
             Depends(get_current_user),
             Depends(RequirePermission(permission)),
+            Depends(_bind_admin_row_security_context),
         ],
         responses=error_responses(401, 403),
         **kwargs,

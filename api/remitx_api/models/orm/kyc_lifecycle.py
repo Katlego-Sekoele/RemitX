@@ -194,6 +194,50 @@ class KycReasonCode(StrEnum):
     OTHER = "other"
 
 
+# Applicant-facing copy for a decision. The reviewer's free text stays
+# internal — FICA tipping-off (§29) forbids telling an applicant they were
+# flagged for fraud or a sanctions hit, and a reviewer's note is not a
+# customer-safe explanation of the other codes either.
+GENERIC_REFUSAL_MESSAGE = (
+    "We could not verify this application. You may start a new one."
+)
+TIPPING_OFF_REASON_CODES = frozenset(
+    {KycReasonCode.SUSPECTED_FRAUD, KycReasonCode.SANCTIONS_MATCH}
+)
+APPLICANT_REASON_MESSAGES: dict[KycReasonCode, str] = {
+    KycReasonCode.IDENTITY_VERIFIED: "Your identity has been verified.",
+    KycReasonCode.DOCUMENT_ILLEGIBLE: (
+        "A submitted document was not clear enough to read."
+    ),
+    KycReasonCode.DOCUMENT_EXPIRED: "A submitted document has expired.",
+    KycReasonCode.DOCUMENT_MISSING: "A required document was missing.",
+    KycReasonCode.DETAILS_MISMATCH: (
+        "The details you declared do not match your documents."
+    ),
+    KycReasonCode.SANCTIONS_MATCH: GENERIC_REFUSAL_MESSAGE,
+    KycReasonCode.SUSPECTED_FRAUD: GENERIC_REFUSAL_MESSAGE,
+    KycReasonCode.UNSUPPORTED_JURISDICTION: (
+        "We don't operate in your country of residence."
+    ),
+    KycReasonCode.UNDER_AGE: "You must be 18 or older to use RemitX.",
+    KycReasonCode.OTHER: "We could not approve this application.",
+}
+
+
+def applicant_message_for(reason_code: str | None) -> str | None:
+    """What an applicant may be told about a rejection. Never the internal
+    note, and never a tipping-off reason."""
+    if reason_code is None:
+        return None
+    try:
+        code = KycReasonCode(reason_code)
+    except ValueError:
+        return GENERIC_REFUSAL_MESSAGE
+    if code in TIPPING_OFF_REASON_CODES:
+        return GENERIC_REFUSAL_MESSAGE
+    return APPLICANT_REASON_MESSAGES[code]
+
+
 def sql_value_list(values) -> str:
     """Render an iterable of enum members as a SQL `IN (...)` body.
 

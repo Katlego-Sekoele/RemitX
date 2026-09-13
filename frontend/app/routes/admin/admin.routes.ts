@@ -71,7 +71,18 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         },
         label: "Applications",
         permission: "kyc:application:read",
-        childItems: [],
+        // The sidebar lists one level under each group, so pages nested here
+        // are routed and breadcrumbed but get no sidebar button.
+        childItems: [
+          {
+            route: {
+              path: "admin/kyc/applications/:applicationId",
+              module: "routes/admin/kyc/application-review.tsx",
+            },
+            label: "Review",
+            permission: "kyc:application:read",
+          },
+        ],
       },
       {
         route: {

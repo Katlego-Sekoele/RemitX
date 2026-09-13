@@ -67,9 +67,9 @@ class KycDecision(Base):
         ForeignKey("kyc_reason_codes.reason_code", ondelete="RESTRICT"),
         nullable=True,
     )
-    # Free text for the applicant — "the address on your utility bill does not
-    # match the one you declared". Named fields go here, which is what makes
-    # more_info_required more useful than a bare rejection.
+    # Reviewer's note. For `more_info_required` the applicant sees this
+    # (named fields or documents). For a rejection it stays internal — the
+    # applicant gets the catalogue message for `reason_code` instead.
     reason_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Nullable for a future automated decision (a sanctions screen declining an
     # application with no human involved). `KycController.transition` requires

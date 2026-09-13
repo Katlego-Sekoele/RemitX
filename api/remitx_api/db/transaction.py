@@ -9,7 +9,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, TypeVar
 
-from remitx_api.extensions import db
+from remitx_api.db.request_db_session import require_request_db_session
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -18,12 +18,13 @@ R = TypeVar("R")
 def db_transaction(fn: Callable[P, R]) -> Callable[P, R]:
     @wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        session = require_request_db_session()
         try:
             result = fn(*args, **kwargs)
-            db.session.commit()
+            session.commit()
             return result
         except Exception:
-            db.session.rollback()
+            session.rollback()
             raise
 
     return wrapper

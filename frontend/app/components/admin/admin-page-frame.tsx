@@ -5,12 +5,18 @@ import { adminRouteContext } from "~/routes/admin/admin.routes"
 
 type AdminPageFrameProps = {
   module: string
+  /** Replaces the registry label as the last crumb, e.g. a record's name. */
+  title?: string
   children: ReactNode
 }
 
-export function AdminPageFrame({ module, children }: AdminPageFrameProps) {
+export function AdminPageFrame({
+  module,
+  title: titleOverride,
+  children,
+}: AdminPageFrameProps) {
   const context = adminRouteContext(module)
-  const title = context?.title ?? "Admin"
+  const title = titleOverride ?? context?.title ?? "Admin"
   const parent = context?.parent
 
   const crumbs = parent
