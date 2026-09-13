@@ -122,7 +122,7 @@ or the Neon API), then a key pair scoped to it:
 |---------|-----|-----------|
 | `OBJECT_STORAGE_BUCKET` | `remitx-qa-kyc-documents` | `remitx-prod-kyc-documents` |
 | `OBJECT_STORAGE_ENDPOINT_URL` | the bucket's S3 endpoint | the bucket's S3 endpoint |
-| `OBJECT_STORAGE_REGION` | `auto` | `auto` |
+| `OBJECT_STORAGE_REGION` | `eu-central-1` | `eu-central-1` |
 | `OBJECT_STORAGE_ACCESS_KEY_ID` | bucket key | bucket key |
 | `OBJECT_STORAGE_SECRET_ACCESS_KEY` | bucket secret | bucket secret |
 
