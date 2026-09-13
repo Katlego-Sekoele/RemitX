@@ -296,11 +296,8 @@ export default function IdDocument() {
                       id="id_expiry_date"
                       range="future"
                       value={field.value}
-                      onChange={(value) => {
-                        field.onChange(value)
-                        field.onBlur()
-                      }}
-                      placeholder="Select expiry date"
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
                       invalid={fieldState.invalid}
                     />
                     {fieldState.invalid ? (
