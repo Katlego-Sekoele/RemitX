@@ -55,7 +55,7 @@ class Tag:
 
 TAGS: list[dict[str, str]] = [
     {"name": Tag.SYSTEM, "description": "Liveness probe. No session required."},
-    {"name": Tag.ME, "description": "The signed-in caller's own access."},
+    {"name": Tag.ME, "description": "The signed-in caller's own profile and access."},
     {
         "name": Tag.INTEGRATION,
         "description": "Round-trip test messages through the settlement queue.",

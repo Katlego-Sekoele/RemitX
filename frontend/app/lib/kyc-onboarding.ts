@@ -28,6 +28,8 @@ export function isOpenStatus(status: string | undefined): boolean {
   return OPEN_STATUSES.has(status ?? "")
 }
 
+/** Standing and history: the Verification page of Clerk's <UserProfile>. An
+ * application and its wizard are routes of their own beneath it. */
 export function verificationPath(): string {
   return "/app/profile/verification"
 }

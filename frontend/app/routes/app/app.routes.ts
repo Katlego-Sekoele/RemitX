@@ -7,6 +7,16 @@ type AppRoute = {
   module: string
 }
 
+export type AppSubNavItem = {
+  path: string
+  label: string
+  icon?: PhosphorIconName
+  /** Active only on this exact path, not on paths beneath it. */
+  exact?: boolean
+  /** Show an attention badge on this item while KYC is not approved. */
+  kycAttention?: boolean
+}
+
 export type AppRouteIndex = {
   route: AppRoute
   label: string
@@ -14,9 +24,31 @@ export type AppRouteIndex = {
   icon?: PhosphorIconName
   /** Show an attention badge on this item while KYC is not approved. */
   kycAttention?: boolean
-  /** Leave this item out of the sidebar once KYC is approved. */
-  hideWhenVerified?: boolean
+  /** Sections of the page, listed beneath it in the sidebar. */
+  children?: readonly AppSubNavItem[]
 }
+
+// Profile is Clerk's <UserProfile> with its own navbar hidden; these drive it
+// by path instead (see routes/app/profile.tsx). Each `path` must match the
+// page's `url` there, or Clerk's default page path for account and security.
+export const PROFILE_SECTIONS: readonly AppSubNavItem[] = [
+  {
+    path: "app/profile",
+    label: "Account",
+    icon: "UserCircleIcon",
+    exact: true,
+  },
+  { path: "app/profile/contact", label: "Contact", icon: "PhoneIcon" },
+  {
+    // An application and its wizard live beneath this path too, and keep
+    // this item active.
+    path: "app/profile/verification",
+    label: "Verification",
+    icon: "IdentificationBadgeIcon",
+    kycAttention: true,
+  },
+  { path: "app/profile/security", label: "Security", icon: "ShieldCheckIcon" },
+]
 
 export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
   {
@@ -24,18 +56,6 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     label: "Overview",
     order: 0,
     icon: "HouseIcon",
-  },
-  {
-    // Lives under Profile; surfaced in the sidebar only until it is done.
-    route: {
-      path: "app/profile/verification",
-      module: "routes/app/verification/history.tsx",
-    },
-    label: "Verification",
-    order: 10,
-    icon: "IdentificationBadgeIcon",
-    kycAttention: true,
-    hideWhenVerified: true,
   },
   {
     route: {
@@ -51,14 +71,27 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     label: "Profile",
     order: 30,
     icon: "UserIcon",
+    kycAttention: true,
+    children: PROFILE_SECTIONS,
   },
 ]
 
-export function getFlattenedAppRoutes(): AppRoute[] {
-  return APP_ROUTE_INDEX.filter(
-    // Declared with their layouts in routes.ts.
-    (node) => !node.route.path.startsWith("app/profile/verification")
-  ).map((node) => node.route)
+export function getFlattenedAppRoutes(
+  additionalManualRoutes: AppRoute[] = []
+): AppRoute[] {
+  // A manual route replaces the index's route for the same module rather than
+  // duplicating it (route ids are module paths) — e.g. Profile's splat, which
+  // Clerk's path routing needs and which matches the bare path too. A Set of
+  // route objects would not dedupe: each object is distinct.
+  const manualModules = new Set(
+    additionalManualRoutes.map((route) => route.module)
+  )
+  return [
+    ...APP_ROUTE_INDEX.map((node) => node.route).filter(
+      (route) => !manualModules.has(route.module)
+    ),
+    ...additionalManualRoutes,
+  ]
 }
 
 export type AppRouteContext = {

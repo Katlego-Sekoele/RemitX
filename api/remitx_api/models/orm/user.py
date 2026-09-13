@@ -90,6 +90,11 @@ class User(Base):
         unique=True,
         index=True,
     )
+    # Contact mobile, E.164, edited on the profile page. Clerk's sign-in
+    # strategies do not require a phone, so it lives here. Not identity
+    # evidence: the verified mobile stays on the approved `kyc_applications`
+    # row and this never overwrites it.
+    mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set when compliance stops the account (`user:suspend`). Deliberately not
     # part of the KYC state machine: a suspended user may well be KYC-approved,
     # and lifting the suspension should not have to reconstruct where their

@@ -16,12 +16,10 @@ export default [
   route("sign-up/*", "routes/sign-up.tsx"),
   layout("routes/protected.tsx", [
     layout("routes/app/layout.tsx", [
-      ...getFlattenedAppRoutes().map(({ path, module }) => route(path, module)),
+      ...getFlattenedAppRoutes([
+        { path: "app/profile/*", module: "routes/app/profile.tsx" },
+      ]).map(({ path, module }) => route(path, module)),
       layout("routes/app/verification/layout.tsx", [
-        route(
-          "app/profile/verification",
-          "routes/app/verification/history.tsx"
-        ),
         route(
           "app/profile/verification/new",
           "routes/app/verification/new.tsx"
@@ -62,13 +60,6 @@ export default [
         ]),
       ]),
     ]),
-    // Verification's earlier homes. Splats match the bare path too.
-    route("app/verification/*", "routes/app/verification/legacy-redirect.tsx", {
-      id: "legacy-app-verification",
-    }),
-    route("onboarding/*", "routes/app/verification/legacy-redirect.tsx", {
-      id: "legacy-onboarding",
-    }),
     route("integration-test", "routes/integration-test.tsx"),
     layout(
       "routes/admin/layout.tsx",

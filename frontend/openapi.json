@@ -3197,6 +3197,69 @@
         "title": "ProcessedDepositRead",
         "type": "object"
       },
+      "ProfileRead": {
+        "description": "The caller's own profile. Unmasked: it is their own data. Name, avatar\nand security settings are Clerk's and are edited in Clerk's component.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account email, owned by Clerk.",
+            "title": "Email"
+          },
+          "kyc": {
+            "$ref": "#/components/schemas/KycStandingRead"
+          },
+          "mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contact mobile, E.164.",
+            "title": "Mobile Number"
+          }
+        },
+        "required": [
+          "email",
+          "mobile_number",
+          "kyc"
+        ],
+        "title": "ProfileRead",
+        "type": "object"
+      },
+      "ProfileUpdate": {
+        "additionalProperties": false,
+        "description": "Null clears the mobile.",
+        "properties": {
+          "mobile_number": {
+            "anyOf": [
+              {
+                "pattern": "^\\+[1-9]\\d{7,14}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "International format, for example +27821234567.",
+            "title": "Mobile Number"
+          }
+        },
+        "required": [
+          "mobile_number"
+        ],
+        "title": "ProfileUpdate",
+        "type": "object"
+      },
       "RoleGrantRequest": {
         "properties": {
           "reason": {
@@ -6549,6 +6612,98 @@
         ]
       }
     },
+    "/me": {
+      "get": {
+        "description": "Contact mobile, KYC status and tier, and the daily and monthly limits\nthat tier carries.",
+        "operationId": "get_my_profile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get the caller's profile",
+        "tags": [
+          "me"
+        ]
+      },
+      "patch": {
+        "description": "Verified identity is not editable here.",
+        "operationId": "update_my_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Update the caller's contact mobile",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/me/permissions": {
       "get": {
         "description": "The union of every active role's permissions. Drives which admin pages\nthe portal shows; the server still gates each route on its own.",
@@ -6634,7 +6789,7 @@
       "name": "system"
     },
     {
-      "description": "The signed-in caller's own access.",
+      "description": "The signed-in caller's own profile and access.",
       "name": "me"
     },
     {
