@@ -32,9 +32,11 @@ function subItemActive(pathname: string, item: AppSubNavItem): boolean {
   return item.exact ? pathname === href : matches(pathname, href)
 }
 
-function AttentionBadge() {
+// The badge's primitive positions itself off a sibling `peer/menu-button`;
+// sub-buttons aren't peers, so sub items centre it explicitly.
+function AttentionBadge({ className }: { className?: string }) {
   return (
-    <SidebarMenuBadge>
+    <SidebarMenuBadge className={className}>
       <Badge variant="destructive">
         <PhosphorIcons.WarningCircleIcon aria-hidden="true" />
         <span className="sr-only">
@@ -92,7 +94,7 @@ export function AppNav() {
                           <span>{child.label}</span>
                         </SidebarMenuSubButton>
                         {child.kycAttention && kycIncomplete ? (
-                          <AttentionBadge />
+                          <AttentionBadge className="top-1/2 -translate-y-1/2" />
                         ) : null}
                       </SidebarMenuSubItem>
                     )
