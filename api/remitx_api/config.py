@@ -66,6 +66,11 @@ class Config:
     def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
         return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
 
+    # exchangerate-api.com key, used by services/exchange_rate_provider.py.
+    @property
+    def EXCHANGE_RATE_API_KEY(self) -> str:
+        return os.getenv("EXCHANGE_RATE_API_KEY", "")
+
 
 class TestConfig(Config):
     TESTING = True
