@@ -9,13 +9,20 @@ from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.integration_message import IntegrationMessage
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_application_history import KycApplicationHistory
+from remitx_api.models.orm.kyc_application_risk_view import kyc_application_risk
 from remitx_api.models.orm.kyc_application_status import KycApplicationStatusRecord
+from remitx_api.models.orm.kyc_assessment_audit import KycAssessmentAudit
+from remitx_api.models.orm.kyc_assessment_audit_signal import KycAssessmentAuditSignal
 from remitx_api.models.orm.kyc_decision import KycDecision
 from remitx_api.models.orm.kyc_decision_history import KycDecisionHistory
 from remitx_api.models.orm.kyc_document import KycDocument
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.kyc_pep_relationship import KycPepRelationshipRecord
 from remitx_api.models.orm.kyc_reason_code import KycReasonCodeRecord
+from remitx_api.models.orm.kyc_risk_rating import KycRiskRatingRecord
+from remitx_api.models.orm.kyc_risk_signal import KycRiskSignalRecord
 from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusProgression
+from remitx_api.models.orm.kyc_tier import KycTier
 from remitx_api.models.orm.permission import Permission, PermissionCode
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.role import Role
@@ -38,12 +45,18 @@ __all__ = [
     "KycApplication",
     "KycApplicationHistory",
     "KycApplicationStatusRecord",
+    "KycAssessmentAudit",
+    "KycAssessmentAuditSignal",
     "KycDecision",
     "KycApplicationStatusProgression",
     "KycReasonCodeRecord",
+    "KycRiskRatingRecord",
+    "KycRiskSignalRecord",
     "KycDecisionHistory",
     "KycDocument",
+    "KycPepRelationshipRecord",
     "KycStatus",
+    "KycTier",
     "Permission",
     "PermissionCode",
     "Quote",
@@ -53,4 +66,5 @@ __all__ = [
     "Transaction",
     "User",
     "UserRole",
+    "kyc_application_risk",
 ]

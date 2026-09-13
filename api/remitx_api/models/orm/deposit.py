@@ -15,7 +15,6 @@ not. `tx_id` always points at the one `transactions` row this deposit is:
 """
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,10 +32,6 @@ PAYMENT_METHODS = (
 )
 
 CONFIRMED_BY_SYSTEM = "system"
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class Deposit(Base):

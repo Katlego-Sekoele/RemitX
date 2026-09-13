@@ -21,15 +21,18 @@ models/schemas/kyc.py, whose default masks; the unmasked schema is gated on
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     Text,
     Uuid,
@@ -37,19 +40,26 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 from remitx_api.models.orm.kyc_lifecycle import (
+    MAX_RISK_SCORE,
+    MIN_RISK_SCORE,
     OPEN_STATUSES,
     KycIdType,
-    KycRiskRating,
     KycSourceOfFunds,
     KycStatus,
     sql_value_list,
 )
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
+# The override columns travel together: a rating with no reason, or a reason
+# with nobody answerable for it, is not an override the log can defend.
+_OVERRIDE_COLUMNS = (
+    "risk_rating_override",
+    "risk_rating_override_reason",
+    "risk_rating_overridden_by_user_id",
+    "risk_rating_overridden_at",
+)
 
 
 class KycApplication(Base):
@@ -65,14 +75,27 @@ class KycApplication(Base):
             name="kyc_applications_source_of_funds_valid",
         ),
         CheckConstraint(
-            f"risk_rating IS NULL OR risk_rating IN ({sql_value_list(KycRiskRating)})",
-            name="kyc_applications_risk_rating_valid",
-        ),
-        CheckConstraint(
             "tier_granted IS NULL OR tier_granted >= 0",
             name="kyc_applications_tier_granted_non_negative",
         ),
         CheckConstraint("version >= 1", name="kyc_applications_version_positive"),
+        CheckConstraint(
+            "expected_monthly_volume_zar IS NULL OR expected_monthly_volume_zar >= 0",
+            name="kyc_applications_expected_monthly_volume_non_negative",
+        ),
+        CheckConstraint(
+            "risk_score IS NULL OR "
+            f"(risk_score >= {MIN_RISK_SCORE} AND risk_score <= {MAX_RISK_SCORE})",
+            name="kyc_applications_risk_score_in_range",
+        ),
+        CheckConstraint(
+            "("
+            + " AND ".join(f"{column} IS NULL" for column in _OVERRIDE_COLUMNS)
+            + ") OR ("
+            + " AND ".join(f"{column} IS NOT NULL" for column in _OVERRIDE_COLUMNS)
+            + ")",
+            name="kyc_applications_risk_override_complete",
+        ),
         # One application in flight per user, enforced by the database rather
         # than a read-then-write check in Python, which two concurrent
         # submissions would both pass. Partial, so the rejected and approved
@@ -136,6 +159,50 @@ class KycApplication(Base):
     residential_postal_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     residential_country: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Free text, required when `source_of_funds` is `other` — "other" alone
+    # tells a reviewer nothing.
+    source_of_funds_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the applicant expects to send per month. Compared against the tier 1
+    # monthly limit in `kyc_tiers` by the risk rules, never enforced as a limit.
+    expected_monthly_volume_zar: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2),
+        nullable=True,
+    )
+
+    # --- PEP self-declaration (FICA §21F-§21H) ----------------------------
+    # Self-declared and reviewed by a human. Nothing here has been checked
+    # against a sanctions list, PEP database or adverse-media source, and no
+    # screen may say otherwise.
+    #
+    # Three questions rather than one "are you a PEP?", in FICA's own terms, so
+    # the answer says which kind — a foreign official is not a domestic one.
+    is_domestic_prominent_influential_person: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+    )
+    is_foreign_prominent_public_official: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+    )
+    is_pep_family_or_close_associate: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+    )
+    # Required on submission when any of the three is true.
+    pep_relationship: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("kyc_pep_relationships.relationship", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    pep_position: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ISO 3166-1 alpha-2.
+    pep_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pep_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where the applicant's wealth came from, as opposed to where this money
+    # came from. Enhanced due diligence: required on submission for a PEP, and
+    # for any approval to a tier whose `kyc_tiers.requires_source_of_wealth`.
+    source_of_wealth: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # --- Review outcome ---------------------------------------------------
     # Set by the in_progress -> submitted transition and never cleared, so a
     # more_info_required round trip keeps the original submission time.
@@ -143,8 +210,41 @@ class KycApplication(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    risk_rating: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tier_granted: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # The *computed* assessment, written at every submission by the rules in
+    # services/kyc_risk_rules.py. Never written by a reviewer — an override
+    # goes in the columns below, so both values survive.
+    risk_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    risk_rating: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("kyc_risk_ratings.rating", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # A reviewer's override of `risk_rating`, with the mandatory reason. Kept
+    # across a more_info_required round trip: resubmitting rescores the
+    # application but does not quietly undo a reviewer's judgement.
+    risk_rating_override: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("kyc_risk_ratings.rating", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    risk_rating_override_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    risk_rating_overridden_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    risk_rating_overridden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    tier_granted: Mapped[int | None] = mapped_column(
+        SmallInteger,
+        ForeignKey("kyc_tiers.tier", ondelete="RESTRICT"),
+        nullable=True,
+    )
     # Ongoing due diligence (FICA §21C). Written on approval; nothing reads it
     # yet — see models/orm/kyc_lifecycle.py for why it exists anyway.
     next_review_at: Mapped[datetime | None] = mapped_column(
@@ -175,3 +275,20 @@ class KycApplication(Base):
         default=utcnow,
         onupdate=utcnow,
     )
+
+    @property
+    def declares_pep(self) -> bool:
+        """Yes to any of the three PEP questions."""
+        return any(
+            (
+                self.is_domestic_prominent_influential_person,
+                self.is_foreign_prominent_public_official,
+                self.is_pep_family_or_close_associate,
+            )
+        )
+
+    @property
+    def effective_risk_rating(self) -> str | None:
+        """The rating decisions are made against: the override if a reviewer
+        set one, the computed rating otherwise."""
+        return self.risk_rating_override or self.risk_rating

@@ -15,7 +15,7 @@ on `AccountRepository`.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -30,6 +30,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 
 TYPE_USER = "USER"
@@ -65,13 +66,6 @@ CURRENCY_REFERENCE_SUFFIX = {
     CURRENCY_NAD: "nad",
     CURRENCY_TOKEN: "tok",
 }
-
-
-def utcnow() -> datetime:
-    """
-    Return the current UTC time for `created_at` default.
-    """
-    return datetime.now(UTC)
 
 
 def create_account_reference(base_reference: str, currency: str) -> str:

@@ -5,16 +5,13 @@ Baseline role-permission rows are seeded at migration time with a null
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class RolePermission(Base):
