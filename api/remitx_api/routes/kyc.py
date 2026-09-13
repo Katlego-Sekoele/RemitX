@@ -27,9 +27,10 @@ from remitx_api.models.schemas.kyc_onboarding import (
     KycStartRequest,
     KycSubmitRequest,
 )
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
 
-router: APIRouter = create_customer_router(prefix="/kyc", tags=["kyc"])
+router: APIRouter = create_customer_router(prefix="/kyc", tags=[Tag.KYC_ONBOARDING])
 controller = KycOnboardingController()
 
 
@@ -57,8 +58,13 @@ def _read(view: KycOnboardingView) -> KycOnboardingRead:
     )
 
 
-@router.get("/reference", response_model=KycReferenceRead)
+@router.get(
+    "/reference",
+    response_model=KycReferenceRead,
+    summary="Get onboarding reference data",
+)
 def get_reference():
+    """Countries, and the identity schemes each one accepts."""
     # Authenticated by the router; the reference data is the same for everyone.
     catalogue = controller.reference()
     return KycReferenceRead(
@@ -86,8 +92,13 @@ def get_reference():
     )
 
 
-@router.get("/application", response_model=KycOnboardingRead)
+@router.get(
+    "/application",
+    response_model=KycOnboardingRead,
+    summary="Get the caller's KYC application",
+)
 def get_application(user: User = Depends(get_current_user)):
+    """Standing, the current draft if any, and the step to resume at."""
     return _read(controller.get(user.id))
 
 
@@ -95,30 +106,48 @@ def get_application(user: User = Depends(get_current_user)):
     "/application",
     response_model=KycOnboardingRead,
     status_code=status.HTTP_200_OK,
+    summary="Start or resume a KYC application",
+    responses=error_responses(400, 409),
 )
 def start_application(
     payload: Annotated[KycStartRequest | None, Body()] = None,
     user: User = Depends(get_current_user),
 ):
+    """Idempotent: an open draft is returned as it is. A residence outside the
+    countries RemitX operates in is refused before any application exists."""
     residential_country = None if payload is None else payload.residential_country
     return _read(controller.start(user.id, residential_country=residential_country))
 
 
-@router.patch("/application", response_model=KycOnboardingRead)
+@router.patch(
+    "/application",
+    response_model=KycOnboardingRead,
+    summary="Save fields on the KYC draft",
+    responses=error_responses(400, 404, 409),
+)
 def patch_application(
     payload: KycApplicationPatch,
     user: User = Depends(get_current_user),
 ):
+    """Only the fields sent are changed. ``expected_version`` must match the
+    draft's, so a stale tab gets a 409 instead of overwriting."""
     fields = payload.model_dump(exclude_unset=True)
     expected_version = fields.pop("expected_version")
     return _read(controller.patch(user.id, fields, expected_version=expected_version))
 
 
-@router.post("/submit", response_model=KycOnboardingRead)
+@router.post(
+    "/submit",
+    response_model=KycOnboardingRead,
+    summary="Submit the KYC application for review",
+    responses=error_responses(400, 404, 409),
+)
 def submit_application(
     payload: KycSubmitRequest,
     user: User = Depends(get_current_user),
 ):
+    """Scores the application and queues it for a reviewer. Refused while any
+    required field or document is missing, or without processing consent."""
     return _read(
         controller.submit(
             user.id,

@@ -41,14 +41,14 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { useHasPermission } from "~/hooks/use-permissions"
-import type {
-  AdminMember,
-  Role,
-  ToxicCombination,
-  UserSearchResult,
-} from "~/lib/api"
+import {
+  api,
+  type AdminMemberRead as AdminMember,
+  type RoleRead as Role,
+  type ToxicCombinationRead as ToxicCombination,
+  type UserSearchRead as UserSearchResult,
+} from "~/client"
 import { PERMISSIONS } from "~/lib/permissions"
-import { useApi } from "~/lib/use-api"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/access"
 
@@ -64,10 +64,6 @@ export function meta(): Route.MetaDescriptors {
     { name: "robots", content: "noindex" },
   ]
 }
-
-const ADMINS_KEY = ["admin", "admins"]
-const ROLES_KEY = ["admin", "roles"]
-const TOXIC_KEY = ["admin", "toxic-combinations"]
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
@@ -124,20 +120,18 @@ export default function Access() {
 }
 
 function AccessPage() {
-  const api = useApi()
   const queryClient = useQueryClient()
   const canGrant = useHasPermission(PERMISSIONS.roleGrant)
   const canSearch = useHasPermission(PERMISSIONS.userRead)
 
-  const admins = useQuery({ queryKey: ADMINS_KEY, queryFn: api.listAdmins })
-  const roles = useQuery({ queryKey: ROLES_KEY, queryFn: api.listRoles })
-  const toxicCombinations = useQuery({
-    queryKey: TOXIC_KEY,
-    queryFn: api.listToxicCombinations,
-  })
+  const admins = useQuery(api.admin.users.listAdmins())
+  const roles = useQuery(api.admin.roles.listRoles())
+  const toxicCombinations = useQuery(api.admin.roles.listToxicCombinations())
 
   const refreshAdmins = () =>
-    queryClient.invalidateQueries({ queryKey: ADMINS_KEY })
+    queryClient.invalidateQueries({
+      queryKey: api.admin.users.listAdmins().queryKey,
+    })
 
   return (
     <AdminPageFrame module={ROUTE_MODULE}>
@@ -267,13 +261,11 @@ function AccessDialog({
   member: AdminMember
   onChanged: () => void
 }) {
-  const api = useApi()
   const [open, setOpen] = useState(false)
   const canRevoke = useHasPermission(PERMISSIONS.roleRevoke)
 
   const access = useQuery({
-    queryKey: ["admin", "access", member.user_id],
-    queryFn: () => api.getUserAccess(member.user_id),
+    ...api.admin.users.getUserAccess({ path: { user_id: member.user_id } }),
     enabled: open,
   })
 
@@ -389,12 +381,11 @@ function RevokeDialog({
   displayName: string
   onRevoked: () => void
 }) {
-  const api = useApi()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState("")
 
   const revoke = useMutation({
-    mutationFn: () => api.revokeRole(userId, role, reason.trim()),
+    ...api.admin.users.revokeUserRole(),
     onSuccess: () => {
       onRevoked()
       setOpen(false)
@@ -425,7 +416,11 @@ function RevokeDialog({
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault()
-            if (reason.trim()) revoke.mutate()
+            if (reason.trim())
+              revoke.mutate({
+                path: { user_id: userId, role },
+                body: { reason: reason.trim() },
+              })
           }}
         >
           <ReasonField
@@ -469,7 +464,6 @@ function GrantDialog({
   canSearch: boolean
   onGranted: () => void
 }) {
-  const api = useApi()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<UserSearchResult | null>(null)
@@ -478,14 +472,14 @@ function GrantDialog({
   const [acknowledged, setAcknowledged] = useState(false)
 
   const results = useQuery({
-    queryKey: ["admin", "user-search", search.trim()],
-    queryFn: () => api.searchUsers(search.trim()),
+    ...api.admin.users.searchUsers({ query: { email: search.trim() } }),
     enabled: canSearch && open && search.trim().length >= 3 && !selected,
   })
 
   const access = useQuery({
-    queryKey: ["admin", "access", selected?.user_id],
-    queryFn: () => api.getUserAccess(selected!.user_id),
+    ...api.admin.users.getUserAccess({
+      path: { user_id: selected?.user_id ?? "" },
+    }),
     enabled: selected != null,
   })
 
@@ -498,8 +492,7 @@ function GrantDialog({
   )
 
   const grant = useMutation({
-    mutationFn: () =>
-      api.grantRole(selected!.user_id, roleName, reason.trim(), acknowledged),
+    ...api.admin.users.grantUserRole(),
     onSuccess: () => {
       onGranted()
       setOpen(false)
@@ -544,7 +537,16 @@ function GrantDialog({
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
-            if (canSubmit) grant.mutate()
+            if (canSubmit && selected) {
+              grant.mutate({
+                path: { user_id: selected.user_id },
+                body: {
+                  role: roleName,
+                  reason: reason.trim(),
+                  toxic_combination_acknowledged: acknowledged,
+                },
+              })
+            }
           }}
         >
           <div className="flex flex-col gap-2">

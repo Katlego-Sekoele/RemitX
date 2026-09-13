@@ -1,5 +1,3 @@
-export const KYC_ONBOARDING_KEY = ["kyc", "onboarding"] as const
-
 const VERIFIED_STANDING = new Set(["approved", "review_due"])
 
 export function isKycVerified(status: string | undefined): boolean {

@@ -42,10 +42,13 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { useHasPermission } from "~/hooks/use-permissions"
-import type { KycApplication, KycRiskRating } from "~/lib/api"
+import {
+  api,
+  type KycApplicationRead as KycApplication,
+  type KycRiskRatingRead as KycRiskRating,
+} from "~/client"
 import { PERMISSIONS } from "~/lib/permissions"
 import { countryName } from "~/lib/kyc-reference"
-import { useApi } from "~/lib/use-api"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/applications"
 
@@ -61,8 +64,6 @@ export function meta(): Route.MetaDescriptors {
 }
 
 const ALL_RATINGS = "all"
-const RULES_KEY = ["admin", "kyc", "risk-rules"]
-const queueKey = (rating: string) => ["admin", "kyc", "applications", rating]
 
 // A rating may only be overridden while a decision is pending — the server
 // refuses anything else (repositories/kyc_application_repository.py).
@@ -117,16 +118,15 @@ export default function KycApplications() {
 }
 
 function KycApplicationsPage() {
-  const api = useApi()
   const [rating, setRating] = useState(ALL_RATINGS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const rules = useQuery({ queryKey: RULES_KEY, queryFn: api.getKycRiskRules })
-  const applications = useQuery({
-    queryKey: queueKey(rating),
-    queryFn: () =>
-      api.listKycApplications(rating === ALL_RATINGS ? null : rating),
-  })
+  const rules = useQuery(api.admin.kyc.applications.getRiskRules())
+  const applications = useQuery(
+    api.admin.kyc.applications.listApplications({
+      query: rating === ALL_RATINGS ? {} : { risk_rating: rating },
+    })
+  )
 
   const ratings = rules.data?.ratings ?? []
 
@@ -345,23 +345,17 @@ function OverrideDialog({
   application: KycApplication
   ratings: readonly KycRiskRating[]
 }) {
-  const api = useApi()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [rating, setRating] = useState("")
   const [reason, setReason] = useState("")
 
   const override = useMutation({
-    mutationFn: () =>
-      api.overrideKycRiskRating(
-        application.application_id,
-        rating,
-        reason.trim(),
-        application.version
-      ),
+    ...api.admin.kyc.applications.overrideRiskRating(),
     onSuccess: () => {
+      // Keys match partially, so this refreshes every rating filter's queue.
       queryClient.invalidateQueries({
-        queryKey: ["admin", "kyc", "applications"],
+        queryKey: api.admin.kyc.applications.listApplications().queryKey,
       })
       setOpen(false)
     },
@@ -398,7 +392,16 @@ function OverrideDialog({
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
-            if (canSubmit) override.mutate()
+            if (canSubmit) {
+              override.mutate({
+                path: { application_id: application.application_id },
+                body: {
+                  rating,
+                  reason: reason.trim(),
+                  expected_version: application.version,
+                },
+              })
+            }
           }}
         >
           <DropdownMenu>

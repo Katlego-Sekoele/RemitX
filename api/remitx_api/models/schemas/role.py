@@ -1,9 +1,10 @@
 """Request/response schemas for the role catalogue and role administration."""
 
 import uuid
-from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
+from pydantic import ConfigDict, Field, computed_field
+
+from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 # A reason is mandatory on every grant and revoke, and long enough to be a
 # sentence rather than a keystroke. It costs the granter five seconds and
@@ -13,17 +14,7 @@ MIN_REASON_LENGTH = 10
 MAX_REASON_LENGTH = 500
 
 
-def _as_utc(value: datetime | None) -> str | None:
-    # See models/schemas/integration_message.py: SQLite drops the tz offset
-    # Postgres preserves.
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).isoformat()
-
-
-class RoleRead(BaseModel):
+class RoleRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     role_id: uuid.UUID
@@ -35,14 +26,14 @@ class RoleRead(BaseModel):
     permissions: list[str]
 
 
-class ToxicCombinationRead(BaseModel):
+class ToxicCombinationRead(Schema):
     """A pair of permissions the access page warns about before a grant."""
 
     permissions: list[str]
     explanation: str
 
 
-class RoleGrantRequest(BaseModel):
+class RoleGrantRequest(Schema):
     role: str = Field(description="Machine name of the role, e.g. iam_admin.")
     reason: str = Field(
         min_length=MIN_REASON_LENGTH,
@@ -59,7 +50,7 @@ class RoleGrantRequest(BaseModel):
     )
 
 
-class RoleRevokeRequest(BaseModel):
+class RoleRevokeRequest(Schema):
     reason: str = Field(
         min_length=MIN_REASON_LENGTH,
         max_length=MAX_REASON_LENGTH,
@@ -67,18 +58,18 @@ class RoleRevokeRequest(BaseModel):
     )
 
 
-class UserRoleRead(BaseModel):
+class UserRoleRead(Schema):
     """One row of the append-only grant history, live or revoked."""
 
     user_role_id: uuid.UUID
     role: str
     display_name: str
-    granted_at: datetime
+    granted_at: UtcDateTime
     granted_by: uuid.UUID | None
     grant_reason: str | None
     self_granted: bool
     toxic_combination_acknowledged: bool
-    revoked_at: datetime | None
+    revoked_at: UtcDateTime | None
     revoked_by: uuid.UUID | None
     revoke_reason: str | None
 
@@ -87,12 +78,8 @@ class UserRoleRead(BaseModel):
     def active(self) -> bool:
         return self.revoked_at is None
 
-    @field_serializer("granted_at", "revoked_at")
-    def _serialize_timestamps(self, value: datetime | None) -> str | None:
-        return _as_utc(value)
 
-
-class UserAccessRead(BaseModel):
+class UserAccessRead(Schema):
     """Everything the access page shows about one person's access."""
 
     user_id: uuid.UUID
@@ -102,7 +89,7 @@ class UserAccessRead(BaseModel):
     roles: list[UserRoleRead]
 
 
-class RoleGrantResult(BaseModel):
+class RoleGrantResult(Schema):
     grant: UserRoleRead
     created: bool = Field(
         description=(
@@ -116,33 +103,25 @@ class RoleGrantResult(BaseModel):
     )
 
 
-class AdminRoleRead(BaseModel):
+class AdminRoleRead(Schema):
     role: str
     display_name: str
-    granted_at: datetime
+    granted_at: UtcDateTime
     self_granted: bool
 
-    @field_serializer("granted_at")
-    def _serialize_granted_at(self, value: datetime) -> str | None:
-        return _as_utc(value)
 
-
-class AdminMemberRead(BaseModel):
+class AdminMemberRead(Schema):
     """One row of the admin list: a person and the roles they hold now."""
 
     user_id: uuid.UUID
     email: str | None
     base_reference: str
     roles: list[AdminRoleRead]
-    last_granted_at: datetime
+    last_granted_at: UtcDateTime
     has_self_grant: bool
 
-    @field_serializer("last_granted_at")
-    def _serialize_last_granted_at(self, value: datetime) -> str | None:
-        return _as_utc(value)
 
-
-class UserSearchRead(BaseModel):
+class UserSearchRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: uuid.UUID = Field(validation_alias="id")

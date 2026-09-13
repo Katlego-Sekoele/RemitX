@@ -36,7 +36,7 @@ import {
   useOnboarding,
   useSaveStep,
 } from "~/hooks/use-onboarding"
-import type { KycReference } from "~/lib/api"
+import type { KycReferenceRead as KycReference } from "~/client"
 import {
   countryName,
   numberLabel,

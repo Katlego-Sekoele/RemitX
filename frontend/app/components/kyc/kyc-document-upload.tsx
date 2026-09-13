@@ -31,10 +31,8 @@ import {
   AlertDialogTrigger,
 } from "~/components/ui/alert-dialog"
 import { FieldError } from "~/components/ui/field"
-import type { KycDocument } from "~/lib/api"
+import { api, sdk, type KycDocumentRead as KycDocument } from "~/client"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { KYC_ONBOARDING_KEY } from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
 import { toast } from "sonner"
 
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf"
@@ -67,14 +65,13 @@ function StoredAttachment({
   document: KycDocument
   onRemoved: () => void
 }) {
-  const api = useApi()
   const [opening, setOpening] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
   const failed = document.status !== "stored"
   const uploaded = new Date(document.uploaded_at).toLocaleDateString()
   const label = typeLabel(document.content_type)
   const remove = useMutation({
-    mutationFn: () => api.removeMyKycDocument(document.document_id),
+    ...api.kyc.documents.removeMyDocument(),
     onSuccess: () => {
       toast.success(`${label} removed`)
       onRemoved()
@@ -87,7 +84,10 @@ function StoredAttachment({
     setOpening(true)
     setOpenError(null)
     try {
-      const access = await api.getMyKycDocumentUrl(document.document_id)
+      const { data: access } = await sdk.kyc.documents.getMyDocumentUrl({
+        path: { document_id: document.document_id },
+        throwOnError: true,
+      })
       window.open(access.url, "_blank", "noopener,noreferrer")
     } catch (error) {
       setOpenError(errorMessage(error))
@@ -156,7 +156,11 @@ function StoredAttachment({
                   <AlertDialogCancel>Keep it</AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
-                    onClick={() => remove.mutate()}
+                    onClick={() =>
+                      remove.mutate({
+                        path: { document_id: document.document_id },
+                      })
+                    }
                   >
                     Remove
                   </AlertDialogAction>
@@ -184,29 +188,29 @@ export function KycDocumentUpload({
   hint: string
   onError: (message: string | null) => void
 }) {
-  const api = useApi()
   const queryClient = useQueryClient()
   const generatedId = useId()
   const inputId = id || generatedId
   const [dragging, setDragging] = useState(false)
   const [pendingName, setPendingName] = useState<string | null>(null)
 
+  const documentsQuery = { query: { application_id: applicationId ?? "" } }
   const documents = useQuery({
-    queryKey: ["kyc", "documents", applicationId],
-    queryFn: () => api.listMyKycDocuments(applicationId!),
+    ...api.kyc.documents.listMyDocuments(documentsQuery),
     enabled: Boolean(applicationId),
   })
 
   function refresh() {
     queryClient.invalidateQueries({
-      queryKey: ["kyc", "documents", applicationId],
+      queryKey: api.kyc.documents.listMyDocuments(documentsQuery).queryKey,
     })
-    queryClient.invalidateQueries({ queryKey: KYC_ONBOARDING_KEY })
+    queryClient.invalidateQueries({
+      queryKey: api.kyc.onboarding.getApplication().queryKey,
+    })
   }
 
   const upload = useMutation({
-    mutationFn: (file: File) =>
-      api.uploadKycDocument(applicationId!, documentType, file),
+    ...api.kyc.documents.uploadDocument(),
     onSuccess: () => {
       setPendingName(null)
       onError(null)
@@ -230,7 +234,14 @@ export function KycDocumentUpload({
     }
     setPendingName(file.name)
     onError(null)
-    upload.mutate(file)
+    upload.mutate({
+      query: { application_id: applicationId!, document_type: documentType },
+      body: file,
+      // The file's own type, which the API holds to its leading bytes. An
+      // empty one is dropped (null) so the API can say it needs one, rather
+      // than the spec's first listed type being sent in its place.
+      headers: { "Content-Type": file.type || null },
+    })
   }
 
   return (

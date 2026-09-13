@@ -2,6 +2,7 @@ import * as PhosphorIcons from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router"
 
+import { api } from "~/client"
 import { Badge } from "~/components/ui/badge"
 import {
   SidebarGroup,
@@ -11,8 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "~/components/ui/sidebar"
-import { isKycVerified, KYC_ONBOARDING_KEY } from "~/lib/kyc-onboarding"
-import { useApi } from "~/lib/use-api"
+import { isKycVerified } from "~/lib/kyc-onboarding"
 import { APP_ROUTE_INDEX } from "~/routes/app/app.routes"
 
 function isActive(pathname: string, href: string): boolean {
@@ -26,11 +26,7 @@ function hrefForPath(path: string): string {
 
 export function AppNav() {
   const { pathname } = useLocation()
-  const api = useApi()
-  const onboarding = useQuery({
-    queryKey: KYC_ONBOARDING_KEY,
-    queryFn: api.getKycOnboarding,
-  })
+  const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const kycIncomplete = !isKycVerified(onboarding.data?.standing.status)
 
   return (

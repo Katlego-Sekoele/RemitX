@@ -1,0 +1,5114 @@
+{
+  "components": {
+    "schemas": {
+      "AdminMemberRead": {
+        "description": "One row of the admin list: a person and the roles they hold now.",
+        "properties": {
+          "base_reference": {
+            "title": "Base Reference",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "has_self_grant": {
+            "title": "Has Self Grant",
+            "type": "boolean"
+          },
+          "last_granted_at": {
+            "title": "Last Granted At",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/AdminRoleRead"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "base_reference",
+          "roles",
+          "last_granted_at",
+          "has_self_grant"
+        ],
+        "title": "AdminMemberRead",
+        "type": "object"
+      },
+      "AdminRoleRead": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "granted_at": {
+            "title": "Granted At",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "self_granted": {
+            "title": "Self Granted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "role",
+          "display_name",
+          "granted_at",
+          "self_granted"
+        ],
+        "title": "AdminRoleRead",
+        "type": "object"
+      },
+      "ApproveDepositRequest": {
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ApproveDepositRequest",
+        "type": "object"
+      },
+      "DepositRow": {
+        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "DepositRow",
+        "type": "object"
+      },
+      "DocumentAccessUrl": {
+        "description": "A read URL good for minutes. There is no long-lived alternative.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "content_type",
+          "url",
+          "expires_at"
+        ],
+        "title": "DocumentAccessUrl",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "Every refusal that is not a validation failure: ``HTTPException`` and\n``DomainError`` both answer in this shape.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthRead": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthRead",
+        "type": "object"
+      },
+      "IntegrationMessageCreate": {
+        "properties": {
+          "body": {
+            "maxLength": 280,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "IntegrationMessageCreate",
+        "type": "object"
+      },
+      "IntegrationMessageRead": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "body",
+          "status",
+          "created_at",
+          "processed_at"
+        ],
+        "title": "IntegrationMessageRead",
+        "type": "object"
+      },
+      "KycApplicationPatch": {
+        "additionalProperties": false,
+        "description": "Partial save. Absent fields are left alone; sent fields are validated.",
+        "properties": {
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "expected_monthly_volume_zar": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Monthly Volume Zar"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id_expiry_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Expiry Date"
+          },
+          "id_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number"
+          },
+          "id_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Type"
+          },
+          "is_domestic_prominent_influential_person": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Domestic Prominent Influential Person"
+          },
+          "is_foreign_prominent_public_official": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Foreign Prominent Public Official"
+          },
+          "is_pep_family_or_close_associate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pep Family Or Close Associate"
+          },
+          "issuing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuing Country"
+          },
+          "mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobile Number"
+          },
+          "nationality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nationality"
+          },
+          "pep_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Country"
+          },
+          "pep_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Details"
+          },
+          "pep_position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Position"
+          },
+          "pep_relationship": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Relationship"
+          },
+          "residential_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential City"
+          },
+          "residential_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Country"
+          },
+          "residential_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line1"
+          },
+          "residential_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line2"
+          },
+          "residential_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Postal Code"
+          },
+          "source_of_funds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds"
+          },
+          "source_of_funds_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds Detail"
+          },
+          "source_of_wealth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Wealth"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "KycApplicationPatch",
+        "type": "object"
+      },
+      "KycApplicationRead": {
+        "description": "The default view. Masked during validation, so the instance itself never\nholds a full value \u2014 there is no serializer to forget to apply.",
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "declares_pep": {
+            "default": false,
+            "title": "Declares Pep",
+            "type": "boolean"
+          },
+          "effective_risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Risk Rating"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "expected_monthly_volume_zar": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Monthly Volume Zar"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id_expiry_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Expiry Date"
+          },
+          "id_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number"
+          },
+          "id_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Type"
+          },
+          "is_domestic_prominent_influential_person": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Domestic Prominent Influential Person"
+          },
+          "is_foreign_prominent_public_official": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Foreign Prominent Public Official"
+          },
+          "is_pep_family_or_close_associate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pep Family Or Close Associate"
+          },
+          "issuing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuing Country"
+          },
+          "mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobile Number"
+          },
+          "nationality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nationality"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "pep_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Country"
+          },
+          "pep_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Details"
+          },
+          "pep_position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Position"
+          },
+          "pep_relationship": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Relationship"
+          },
+          "processing_consented_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Consented At"
+          },
+          "residential_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential City"
+          },
+          "residential_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Country"
+          },
+          "residential_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line1"
+          },
+          "residential_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line2"
+          },
+          "residential_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Postal Code"
+          },
+          "risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating"
+          },
+          "risk_rating_overridden_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Overridden At"
+          },
+          "risk_rating_overridden_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Overridden By User Id"
+          },
+          "risk_rating_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Override"
+          },
+          "risk_rating_override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Override Reason"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "source_of_funds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds"
+          },
+          "source_of_funds_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds Detail"
+          },
+          "source_of_wealth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Wealth"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tier_granted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Granted"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "application_id",
+          "user_id",
+          "status",
+          "nationality",
+          "id_type",
+          "issuing_country",
+          "id_expiry_date",
+          "source_of_funds",
+          "residential_city",
+          "residential_country",
+          "expected_monthly_volume_zar",
+          "is_domestic_prominent_influential_person",
+          "is_foreign_prominent_public_official",
+          "is_pep_family_or_close_associate",
+          "declares_pep",
+          "pep_relationship",
+          "pep_country",
+          "risk_score",
+          "risk_rating",
+          "risk_rating_override",
+          "risk_rating_override_reason",
+          "risk_rating_overridden_by_user_id",
+          "risk_rating_overridden_at",
+          "effective_risk_rating",
+          "tier_granted",
+          "submitted_at",
+          "processing_consented_at",
+          "next_review_at",
+          "version",
+          "created_at",
+          "updated_at",
+          "full_name",
+          "date_of_birth",
+          "id_number",
+          "mobile_number",
+          "email",
+          "residential_line1",
+          "residential_line2",
+          "residential_postal_code",
+          "source_of_funds_detail",
+          "pep_position",
+          "pep_details",
+          "source_of_wealth"
+        ],
+        "title": "KycApplicationRead",
+        "type": "object"
+      },
+      "KycApplicationReadPII": {
+        "description": "Unmasked. A route returning this must depend on\n`RequirePermission(PermissionCode.KYC_APPLICATION_READ_PII)`.",
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "declares_pep": {
+            "default": false,
+            "title": "Declares Pep",
+            "type": "boolean"
+          },
+          "effective_risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Risk Rating"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "expected_monthly_volume_zar": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Monthly Volume Zar"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id_expiry_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Expiry Date"
+          },
+          "id_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number"
+          },
+          "id_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Type"
+          },
+          "is_domestic_prominent_influential_person": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Domestic Prominent Influential Person"
+          },
+          "is_foreign_prominent_public_official": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Foreign Prominent Public Official"
+          },
+          "is_pep_family_or_close_associate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pep Family Or Close Associate"
+          },
+          "issuing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuing Country"
+          },
+          "mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobile Number"
+          },
+          "nationality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nationality"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "pep_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Country"
+          },
+          "pep_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Details"
+          },
+          "pep_position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Position"
+          },
+          "pep_relationship": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Relationship"
+          },
+          "processing_consented_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Consented At"
+          },
+          "residential_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential City"
+          },
+          "residential_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Country"
+          },
+          "residential_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line1"
+          },
+          "residential_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line2"
+          },
+          "residential_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Postal Code"
+          },
+          "risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating"
+          },
+          "risk_rating_overridden_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Overridden At"
+          },
+          "risk_rating_overridden_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Overridden By User Id"
+          },
+          "risk_rating_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Override"
+          },
+          "risk_rating_override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating Override Reason"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "source_of_funds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds"
+          },
+          "source_of_funds_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds Detail"
+          },
+          "source_of_wealth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Wealth"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tier_granted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Granted"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "application_id",
+          "user_id",
+          "status",
+          "nationality",
+          "id_type",
+          "issuing_country",
+          "id_expiry_date",
+          "source_of_funds",
+          "residential_city",
+          "residential_country",
+          "expected_monthly_volume_zar",
+          "is_domestic_prominent_influential_person",
+          "is_foreign_prominent_public_official",
+          "is_pep_family_or_close_associate",
+          "declares_pep",
+          "pep_relationship",
+          "pep_country",
+          "risk_score",
+          "risk_rating",
+          "risk_rating_override",
+          "risk_rating_override_reason",
+          "risk_rating_overridden_by_user_id",
+          "risk_rating_overridden_at",
+          "effective_risk_rating",
+          "tier_granted",
+          "submitted_at",
+          "processing_consented_at",
+          "next_review_at",
+          "version",
+          "created_at",
+          "updated_at",
+          "full_name",
+          "date_of_birth",
+          "id_number",
+          "mobile_number",
+          "email",
+          "residential_line1",
+          "residential_line2",
+          "residential_postal_code",
+          "source_of_funds_detail",
+          "pep_position",
+          "pep_details",
+          "source_of_wealth"
+        ],
+        "title": "KycApplicationReadPII",
+        "type": "object"
+      },
+      "KycAssessmentAuditRead": {
+        "description": "One rating or tier change: computed, final, and why they differ.",
+        "properties": {
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "audit_id": {
+            "format": "uuid",
+            "title": "Audit Id",
+            "type": "string"
+          },
+          "computed_risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed Risk Rating"
+          },
+          "computed_tier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed Tier"
+          },
+          "final_risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Risk Rating"
+          },
+          "final_tier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Tier"
+          },
+          "matched_signals": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KycMatchedSignalRead"
+            },
+            "title": "Matched Signals",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          }
+        },
+        "required": [
+          "audit_id",
+          "application_id",
+          "computed_risk_rating",
+          "final_risk_rating",
+          "risk_score",
+          "matched_signals",
+          "computed_tier",
+          "final_tier",
+          "reason",
+          "actor_user_id",
+          "recorded_at"
+        ],
+        "title": "KycAssessmentAuditRead",
+        "type": "object"
+      },
+      "KycCountryRead": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "operates_in": {
+            "title": "Operates In",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "operates_in"
+        ],
+        "title": "KycCountryRead",
+        "type": "object"
+      },
+      "KycDocumentRead": {
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_type": {
+            "title": "Document Type",
+            "type": "string"
+          },
+          "removable": {
+            "default": false,
+            "title": "Removable",
+            "type": "boolean"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stored_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored At"
+          },
+          "uploaded_at": {
+            "title": "Uploaded At",
+            "type": "string"
+          },
+          "uploaded_by_user_id": {
+            "format": "uuid",
+            "title": "Uploaded By User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "application_id",
+          "document_type",
+          "status",
+          "content_type",
+          "size_bytes",
+          "sha256",
+          "uploaded_by_user_id",
+          "uploaded_at",
+          "stored_at",
+          "removable"
+        ],
+        "title": "KycDocumentRead",
+        "type": "object"
+      },
+      "KycDocumentType": {
+        "enum": [
+          "id_document",
+          "proof_of_address",
+          "selfie",
+          "source_of_funds"
+        ],
+        "title": "KycDocumentType",
+        "type": "string"
+      },
+      "KycIdentitySchemeRead": {
+        "properties": {
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "document_hint": {
+            "title": "Document Hint",
+            "type": "string"
+          },
+          "id_type": {
+            "title": "Id Type",
+            "type": "string"
+          },
+          "input_mode": {
+            "enum": [
+              "numeric",
+              "text"
+            ],
+            "title": "Input Mode",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "number_hint": {
+            "title": "Number Hint",
+            "type": "string"
+          },
+          "requires_expiry": {
+            "title": "Requires Expiry",
+            "type": "boolean"
+          },
+          "scheme": {
+            "title": "Scheme",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheme",
+          "country",
+          "id_type",
+          "label",
+          "requires_expiry",
+          "input_mode",
+          "number_hint",
+          "document_hint"
+        ],
+        "title": "KycIdentitySchemeRead",
+        "type": "object"
+      },
+      "KycMatchedSignalRead": {
+        "properties": {
+          "score_effect": {
+            "title": "Score Effect",
+            "type": "integer"
+          },
+          "signal": {
+            "title": "Signal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal",
+          "score_effect"
+        ],
+        "title": "KycMatchedSignalRead",
+        "type": "object"
+      },
+      "KycOnboardingRead": {
+        "properties": {
+          "application": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KycApplicationReadPII"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_step": {
+            "title": "Next Step",
+            "type": "string"
+          },
+          "pep_relationships": {
+            "items": {
+              "$ref": "#/components/schemas/KycPepRelationshipRead"
+            },
+            "title": "Pep Relationships",
+            "type": "array"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "standing": {
+            "$ref": "#/components/schemas/KycStandingRead"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/KycOnboardingStepRead"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "stored_document_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stored Document Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "standing",
+          "application",
+          "next_step",
+          "rejection_reason",
+          "stored_document_types",
+          "pep_relationships",
+          "steps"
+        ],
+        "title": "KycOnboardingRead",
+        "type": "object"
+      },
+      "KycOnboardingStepRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "position",
+          "role",
+          "description"
+        ],
+        "title": "KycOnboardingStepRead",
+        "type": "object"
+      },
+      "KycPepRelationshipRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "relationship": {
+            "title": "Relationship",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship",
+          "description"
+        ],
+        "title": "KycPepRelationshipRead",
+        "type": "object"
+      },
+      "KycReferenceRead": {
+        "description": "Countries and identity schemes. Static between migrations and free of\nPII, so the client fetches it once rather than with every draft save.",
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/KycCountryRead"
+            },
+            "title": "Countries",
+            "type": "array"
+          },
+          "identity_schemes": {
+            "items": {
+              "$ref": "#/components/schemas/KycIdentitySchemeRead"
+            },
+            "title": "Identity Schemes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "countries",
+          "identity_schemes"
+        ],
+        "title": "KycReferenceRead",
+        "type": "object"
+      },
+      "KycRiskOverrideRequest": {
+        "properties": {
+          "expected_version": {
+            "description": "The application version the reviewer was looking at.",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "rating": {
+            "description": "A rating from kyc_risk_ratings, e.g. high.",
+            "title": "Rating",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the computed rating is wrong. Recorded with the override.",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating",
+          "reason",
+          "expected_version"
+        ],
+        "title": "KycRiskOverrideRequest",
+        "type": "object"
+      },
+      "KycRiskRatingRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "limit_percent": {
+            "title": "Limit Percent",
+            "type": "integer"
+          },
+          "max_score": {
+            "title": "Max Score",
+            "type": "integer"
+          },
+          "max_tier": {
+            "title": "Max Tier",
+            "type": "integer"
+          },
+          "min_score": {
+            "title": "Min Score",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "requires_senior_approval": {
+            "title": "Requires Senior Approval",
+            "type": "boolean"
+          },
+          "review_interval_days": {
+            "title": "Review Interval Days",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rating",
+          "description",
+          "min_score",
+          "max_score",
+          "severity",
+          "max_tier",
+          "limit_percent",
+          "review_interval_days",
+          "requires_senior_approval"
+        ],
+        "title": "KycRiskRatingRead",
+        "type": "object"
+      },
+      "KycRiskRulesRead": {
+        "description": "The rule set exactly as the server scores against it \u2014 read from the\nsame rows, so a page showing it cannot drift from what is enforced.",
+        "properties": {
+          "pep_relationships": {
+            "items": {
+              "$ref": "#/components/schemas/KycPepRelationshipRead"
+            },
+            "title": "Pep Relationships",
+            "type": "array"
+          },
+          "ratings": {
+            "items": {
+              "$ref": "#/components/schemas/KycRiskRatingRead"
+            },
+            "title": "Ratings",
+            "type": "array"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/KycRiskSignalRead"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/KycTierRead"
+            },
+            "title": "Tiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "signals",
+          "ratings",
+          "tiers",
+          "pep_relationships"
+        ],
+        "title": "KycRiskRulesRead",
+        "type": "object"
+      },
+      "KycRiskSignalRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "score_effect": {
+            "title": "Score Effect",
+            "type": "integer"
+          },
+          "signal": {
+            "title": "Signal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal",
+          "description",
+          "score_effect",
+          "is_active"
+        ],
+        "title": "KycRiskSignalRead",
+        "type": "object"
+      },
+      "KycStandingRead": {
+        "description": "A user's KYC status, tier and limits, derived rather than stored \u2014 see\n`KycApplicationRepository.get_standing`.",
+        "properties": {
+          "application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Id"
+          },
+          "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Limit Zar",
+            "type": "string"
+          },
+          "limit_percent": {
+            "title": "Limit Percent",
+            "type": "integer"
+          },
+          "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Limit Zar",
+            "type": "string"
+          },
+          "risk_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Rating"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "tier",
+          "application_id",
+          "risk_rating",
+          "limit_percent",
+          "daily_limit_zar",
+          "monthly_limit_zar"
+        ],
+        "title": "KycStandingRead",
+        "type": "object"
+      },
+      "KycStartRequest": {
+        "additionalProperties": false,
+        "description": "Optional. Welcome sends the residence so a country RemitX does not\noperate in is refused before a draft exists; resume sends nothing.",
+        "properties": {
+          "residential_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Country"
+          }
+        },
+        "title": "KycStartRequest",
+        "type": "object"
+      },
+      "KycStatus": {
+        "enum": [
+          "not_started",
+          "in_progress",
+          "submitted",
+          "under_review",
+          "more_info_required",
+          "approved",
+          "rejected",
+          "review_due"
+        ],
+        "title": "KycStatus",
+        "type": "string"
+      },
+      "KycSubmitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "consent": {
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version",
+          "consent"
+        ],
+        "title": "KycSubmitRequest",
+        "type": "object"
+      },
+      "KycTierRead": {
+        "properties": {
+          "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Limit Zar",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Limit Zar",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_source_of_wealth": {
+            "title": "Requires Source Of Wealth",
+            "type": "boolean"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tier",
+          "name",
+          "description",
+          "daily_limit_zar",
+          "monthly_limit_zar",
+          "requires_source_of_wealth"
+        ],
+        "title": "KycTierRead",
+        "type": "object"
+      },
+      "MeAccessResponse": {
+        "properties": {
+          "is_admin": {
+            "description": "True when the caller holds an active role with is_admin set in the catalogue. Gates staff portal access.",
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions",
+          "is_admin"
+        ],
+        "title": "MeAccessResponse",
+        "type": "object"
+      },
+      "MyPermissionResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "permission": {
+            "title": "Permission",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission",
+          "description"
+        ],
+        "title": "MyPermissionResponse",
+        "type": "object"
+      },
+      "MyRoleResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/MyPermissionResponse"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "permissions"
+        ],
+        "title": "MyRoleResponse",
+        "type": "object"
+      },
+      "PendingDepositRead": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "deposit_id": {
+            "format": "uuid",
+            "title": "Deposit Id",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "reference",
+          "amount",
+          "currency",
+          "created_at"
+        ],
+        "title": "PendingDepositRead",
+        "type": "object"
+      },
+      "ProcessDepositsRequest": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DepositRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "ProcessDepositsRequest",
+        "type": "object"
+      },
+      "ProcessedDepositRead": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "deposit_id": {
+            "format": "uuid",
+            "title": "Deposit Id",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "reference",
+          "amount",
+          "currency",
+          "status",
+          "user_id",
+          "confirmed_by"
+        ],
+        "title": "ProcessedDepositRead",
+        "type": "object"
+      },
+      "RoleGrantRequest": {
+        "properties": {
+          "reason": {
+            "description": "Why this person needs this role. Recorded against the grant.",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "description": "Machine name of the role, e.g. iam_admin.",
+            "title": "Role",
+            "type": "string"
+          },
+          "toxic_combination_acknowledged": {
+            "default": false,
+            "description": "Set when the granter was shown a separation-of-duties warning and went ahead anyway. Recorded, never enforced \u2014 the server warns rather than blocks.",
+            "title": "Toxic Combination Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "role",
+          "reason"
+        ],
+        "title": "RoleGrantRequest",
+        "type": "object"
+      },
+      "RoleGrantResult": {
+        "properties": {
+          "created": {
+            "description": "False when the user already held the role and the existing grant was returned unchanged, rather than a duplicate row inserted.",
+            "title": "Created",
+            "type": "boolean"
+          },
+          "grant": {
+            "$ref": "#/components/schemas/UserRoleRead"
+          },
+          "toxic_combinations": {
+            "description": "Separation-of-duties warnings this grant leaves in place.",
+            "items": {
+              "$ref": "#/components/schemas/ToxicCombinationRead"
+            },
+            "title": "Toxic Combinations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grant",
+          "created",
+          "toxic_combinations"
+        ],
+        "title": "RoleGrantResult",
+        "type": "object"
+      },
+      "RoleRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_admin": {
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "is_grantable": {
+            "title": "Is Grantable",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "role_id": {
+            "format": "uuid",
+            "title": "Role Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_id",
+          "name",
+          "display_name",
+          "description",
+          "is_admin",
+          "is_grantable",
+          "permissions"
+        ],
+        "title": "RoleRead",
+        "type": "object"
+      },
+      "RoleRevokeRequest": {
+        "properties": {
+          "reason": {
+            "description": "Why this role is being taken away. Recorded against the row.",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RoleRevokeRequest",
+        "type": "object"
+      },
+      "ToxicCombinationRead": {
+        "description": "A pair of permissions the access page warns about before a grant.",
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions",
+          "explanation"
+        ],
+        "title": "ToxicCombinationRead",
+        "type": "object"
+      },
+      "UserAccessRead": {
+        "description": "Everything the access page shows about one person's access.",
+        "properties": {
+          "base_reference": {
+            "title": "Base Reference",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/UserRoleRead"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "base_reference",
+          "permissions",
+          "roles"
+        ],
+        "title": "UserAccessRead",
+        "type": "object"
+      },
+      "UserRoleRead": {
+        "description": "One row of the append-only grant history, live or revoked.",
+        "properties": {
+          "active": {
+            "readOnly": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "grant_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Reason"
+          },
+          "granted_at": {
+            "title": "Granted At",
+            "type": "string"
+          },
+          "granted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By"
+          },
+          "revoke_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoke Reason"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "revoked_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked By"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "self_granted": {
+            "title": "Self Granted",
+            "type": "boolean"
+          },
+          "toxic_combination_acknowledged": {
+            "title": "Toxic Combination Acknowledged",
+            "type": "boolean"
+          },
+          "user_role_id": {
+            "format": "uuid",
+            "title": "User Role Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_role_id",
+          "role",
+          "display_name",
+          "granted_at",
+          "granted_by",
+          "grant_reason",
+          "self_granted",
+          "toxic_combination_acknowledged",
+          "revoked_at",
+          "revoked_by",
+          "revoke_reason",
+          "active"
+        ],
+        "title": "UserRoleRead",
+        "type": "object"
+      },
+      "UserSearchRead": {
+        "properties": {
+          "base_reference": {
+            "title": "Base Reference",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "base_reference"
+        ],
+        "title": "UserSearchRead",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ClerkSession": {
+        "description": "A Clerk session token.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "ZAR to RLUSD remittance on the XRP Ledger Testnet. Authenticated routes take a Clerk session token as a bearer token.",
+    "title": "RemitX API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/admin/deposits/pending": {
+      "get": {
+        "description": "Deposits whose reference matched no user.",
+        "operationId": "list_pending_deposits",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingDepositRead"
+                  },
+                  "title": "Response List Pending Deposits",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List deposits awaiting manual matching",
+        "tags": [
+          "admin.deposits"
+        ]
+      }
+    },
+    "/admin/deposits/process": {
+      "post": {
+        "description": "Rows whose reference matches a user are confirmed and credited; the rest\nwait in the pending queue for manual matching. Needs ``cashin:confirm``.",
+        "operationId": "process_deposits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessDepositsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProcessedDepositRead"
+                  },
+                  "title": "Response Process Deposits",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Reconcile bank-statement rows into deposits",
+        "tags": [
+          "admin.deposits"
+        ]
+      }
+    },
+    "/admin/deposits/{deposit_id}/approve": {
+      "post": {
+        "description": "Confirms the deposit against ``user_id``. Needs ``cashin:confirm``.",
+        "operationId": "approve_deposit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deposit_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deposit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDepositRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessedDepositRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Match a pending deposit to a user",
+        "tags": [
+          "admin.deposits"
+        ]
+      }
+    },
+    "/admin/kyc/applications": {
+      "get": {
+        "description": "The reviewer queue: highest risk first, then oldest submission first.",
+        "operationId": "list_applications",
+        "parameters": [
+          {
+            "description": "Only applications whose effective rating is this.",
+            "in": "query",
+            "name": "risk_rating",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only applications whose effective rating is this.",
+              "title": "Risk Rating"
+            }
+          },
+          {
+            "description": "Statuses to include. Defaults to submitted, under_review.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/KycStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Statuses to include. Defaults to submitted, under_review.",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycApplicationRead"
+                  },
+                  "title": "Response List Applications",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the KYC reviewer queue",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/assessment-audit": {
+      "get": {
+        "description": "Every rating and tier change on one application, oldest first.",
+        "operationId": "list_assessment_audit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycAssessmentAuditRead"
+                  },
+                  "title": "Response List Assessment Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List an application's risk assessment history",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/applications/{application_id}/risk-rating-override": {
+      "post": {
+        "description": "Set a reviewer's rating beside the computed one. Both survive.\n\nNeeds ``kyc:risk:write``. ``expected_version`` must match the application's.",
+        "operationId": "override_risk_rating",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycRiskOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Override an application's risk rating",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/kyc/documents": {
+      "get": {
+        "description": "Metadata only. Listing does not count as having seen a document.",
+        "operationId": "list_application_documents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycDocumentRead"
+                  },
+                  "title": "Response List Application Documents",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List an application's KYC documents",
+        "tags": [
+          "admin.kyc.documents"
+        ]
+      }
+    },
+    "/admin/kyc/documents/{document_id}/url": {
+      "get": {
+        "description": "A signed URL that expires in minutes, audited against the reviewer. Once\na reviewer has opened a document the applicant can no longer remove it.",
+        "operationId": "get_document_url",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAccessUrl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage is not configured."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get a short-lived link to a KYC document for review",
+        "tags": [
+          "admin.kyc.documents"
+        ]
+      }
+    },
+    "/admin/kyc/risk-rules": {
+      "get": {
+        "description": "Signals, rating bands, tiers and PEP relationships, as scored against.",
+        "operationId": "get_risk_rules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycRiskRulesRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get the KYC risk rule set",
+        "tags": [
+          "admin.kyc.applications"
+        ]
+      }
+    },
+    "/admin/roles": {
+      "get": {
+        "description": "Every role with the permissions it carries, as the server enforces them.",
+        "operationId": "list_roles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleRead"
+                  },
+                  "title": "Response List Roles",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the role catalogue",
+        "tags": [
+          "admin.roles"
+        ]
+      }
+    },
+    "/admin/roles/toxic-combinations": {
+      "get": {
+        "description": "Permission pairs the access page warns about before confirming a grant.\n\nRead from the same rows the grant is checked against, so the warning a\ngranter sees cannot drift from what the server records \u2014 and so changing\na rule is an ``UPDATE``, not a redeploy.",
+        "operationId": "list_toxic_combinations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToxicCombinationRead"
+                  },
+                  "title": "Response List Toxic Combinations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List toxic permission combinations",
+        "tags": [
+          "admin.roles"
+        ]
+      }
+    },
+    "/admin/users/admins": {
+      "get": {
+        "description": "Everyone with at least one active admin role, with those roles.",
+        "operationId": "list_admins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminMemberRead"
+                  },
+                  "title": "Response List Admins",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List staff holding admin roles",
+        "tags": [
+          "admin.users"
+        ]
+      }
+    },
+    "/admin/users/search": {
+      "get": {
+        "description": "Case-insensitive substring match. Needs ``user:read``.",
+        "operationId": "search_users",
+        "parameters": [
+          {
+            "description": "Email fragment.",
+            "in": "query",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "description": "Email fragment.",
+              "minLength": 3,
+              "title": "Email",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserSearchRead"
+                  },
+                  "title": "Response Search Users",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Search users by email",
+        "tags": [
+          "admin.users"
+        ]
+      }
+    },
+    "/admin/users/{user_id}/roles": {
+      "get": {
+        "description": "Effective permissions, plus every grant ever made, revoked ones included.",
+        "operationId": "get_user_access",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccessRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get a user's roles and grant history",
+        "tags": [
+          "admin.users"
+        ]
+      },
+      "post": {
+        "description": "Grant a role. Already held means the existing grant back, not a duplicate.\n\nNeeds ``role:grant``. A grant that completes a toxic combination must set\n``toxic_combination_acknowledged``.",
+        "operationId": "grant_user_role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleGrantResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Grant a role to a user",
+        "tags": [
+          "admin.users"
+        ]
+      }
+    },
+    "/admin/users/{user_id}/roles/{role}": {
+      "delete": {
+        "description": "Revoke a role: stamps the row, never deletes it. Needs ``role:revoke``.",
+        "operationId": "revoke_user_role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRoleRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Revoke a role from a user",
+        "tags": [
+          "admin.users"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Answers without a session or a database round trip.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check the API is up",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/integration-messages": {
+      "get": {
+        "description": "Newest first.",
+        "operationId": "list_integration_messages",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationMessageRead"
+                  },
+                  "title": "Response List Integration Messages",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List recent test messages",
+        "tags": [
+          "integration"
+        ]
+      },
+      "post": {
+        "description": "Stored as pending and handed to the worker, which marks it processed.",
+        "operationId": "create_integration_message",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationMessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationMessageRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Send a test message through the queue",
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/kyc/application": {
+      "get": {
+        "description": "Standing, the current draft if any, and the step to resume at.",
+        "operationId": "get_application",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycOnboardingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get the caller's KYC application",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      },
+      "patch": {
+        "description": "Only the fields sent are changed. ``expected_version`` must match the\ndraft's, so a stale tab gets a 409 instead of overwriting.",
+        "operationId": "patch_application",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycApplicationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycOnboardingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Save fields on the KYC draft",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      },
+      "post": {
+        "description": "Idempotent: an open draft is returned as it is. A residence outside the\ncountries RemitX operates in is refused before any application exists.",
+        "operationId": "start_application",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/KycStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycOnboardingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Start or resume a KYC application",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      }
+    },
+    "/kyc/documents": {
+      "get": {
+        "description": "Metadata only, never the bytes, for one of the caller's applications.",
+        "operationId": "list_my_documents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycDocumentRead"
+                  },
+                  "title": "Response List My Documents",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's KYC documents",
+        "tags": [
+          "kyc.documents"
+        ]
+      },
+      "post": {
+        "description": "The body is the file itself, sent with its own ``Content-Type``. The\ntype is checked against the file's leading bytes before it is stored.\n\nNo body parameter is declared, so the framework leaves the request stream\nalone and `read_upload` decides how much of it is read.",
+        "operationId": "upload_document",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "document_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/KycDocumentType"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/pdf": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycDocumentRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upload is too large."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage is not configured."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Upload a KYC document",
+        "tags": [
+          "kyc.documents"
+        ]
+      }
+    },
+    "/kyc/documents/{document_id}": {
+      "delete": {
+        "description": "Only while no reviewer has seen it.",
+        "operationId": "remove_my_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Remove a KYC document",
+        "tags": [
+          "kyc.documents"
+        ]
+      }
+    },
+    "/kyc/documents/{document_id}/url": {
+      "get": {
+        "description": "A signed URL that expires in minutes. Every one issued is audited.",
+        "operationId": "get_my_document_url",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAccessUrl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage is not configured."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get a short-lived link to a KYC document",
+        "tags": [
+          "kyc.documents"
+        ]
+      }
+    },
+    "/kyc/reference": {
+      "get": {
+        "description": "Countries, and the identity schemes each one accepts.",
+        "operationId": "get_reference",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycReferenceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get onboarding reference data",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      }
+    },
+    "/kyc/submit": {
+      "post": {
+        "description": "Scores the application and queues it for a reviewer. Refused while any\nrequired field or document is missing, or without processing consent.",
+        "operationId": "submit_application",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycOnboardingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Submit the KYC application for review",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      }
+    },
+    "/me/permissions": {
+      "get": {
+        "description": "The union of every active role's permissions. Drives which admin pages\nthe portal shows; the server still gates each route on its own.",
+        "operationId": "list_my_permissions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get the caller's effective permissions",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/me/roles": {
+      "get": {
+        "description": "Active roles only, each with the permissions it carries.",
+        "operationId": "list_my_roles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyRoleResponse"
+                  },
+                  "title": "Response List My Roles",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's roles",
+        "tags": [
+          "me"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Liveness probe. No session required.",
+      "name": "system"
+    },
+    {
+      "description": "The signed-in caller's own access.",
+      "name": "me"
+    },
+    {
+      "description": "Round-trip test messages through the settlement queue.",
+      "name": "integration"
+    },
+    {
+      "description": "The applicant's resumable KYC application.",
+      "name": "kyc.onboarding"
+    },
+    {
+      "description": "The applicant's own KYC evidence uploads.",
+      "name": "kyc.documents"
+    },
+    {
+      "description": "The role catalogue.",
+      "name": "admin.roles"
+    },
+    {
+      "description": "Who holds which staff role, and granting and revoking them.",
+      "name": "admin.users"
+    },
+    {
+      "description": "ZAR cash-in reconciliation against bank statements.",
+      "name": "admin.deposits"
+    },
+    {
+      "description": "The reviewer queue and risk ratings.",
+      "name": "admin.kyc.applications"
+    },
+    {
+      "description": "Audited reviewer access to KYC evidence.",
+      "name": "admin.kyc.documents"
+    }
+  ]
+}
