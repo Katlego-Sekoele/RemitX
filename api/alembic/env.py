@@ -101,6 +101,11 @@ def run_migrations_online() -> None:
                     text("SELECT pg_advisory_xact_lock(:key)"),
                     {"key": MIGRATION_LOCK_KEY},
                 )
+                # Behind a transaction pooler (Neon's -pooler host) the server
+                # connection can carry a session role another client left, e.g.
+                # `remitx_app`, which owns nothing, so DDL fails with "must be
+                # owner". LOCAL keeps the reset to this transaction.
+                connection.execute(text("SET LOCAL ROLE NONE"))
 
             context.run_migrations()
 

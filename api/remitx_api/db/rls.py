@@ -6,7 +6,7 @@ session. ``is_admin_route`` is true when the route requires a permission
 connection as ``SET LOCAL`` settings, and clears them again after the
 statement; FORCE ROW LEVEL SECURITY on ``kyc_applications`` does the
 filtering. Unbound sessions (workers, migrations, tests) leave the settings
-empty and see every row. None of it applies unless the connection runs as a
+empty and see every row. None of it applies unless the transaction runs as a
 role that RLS binds — see ``adopt_row_security_role``.
 """
 
@@ -76,26 +76,36 @@ def register_row_security_listeners() -> None:
 
 
 def adopt_row_security_role(engine: Engine) -> None:
-    """Run every connection from ``engine`` as ``remitx_app``.
+    """Run every transaction on ``engine`` as ``remitx_app``.
 
     Postgres skips RLS for superusers and BYPASSRLS roles, which is what the
     connection URL logs in as (Docker's ``POSTGRES_USER``, Neon's owner).
-    ``SET ROLE`` drops those attributes for the session. It is committed
-    because the pool's rollback-on-return would otherwise undo it.
+    ``SET LOCAL ROLE`` drops those attributes until the transaction ends.
+
+    It must be per transaction, not per session. Neon's ``-pooler`` host is
+    PgBouncer in transaction mode: a client's next transaction can land on a
+    different server connection, so a session ``SET ROLE`` would silently run
+    some requests as the owner and bypass RLS, and leak ``remitx_app`` into
+    whichever client (e.g. a migration) picked that server connection up.
     Migrations build their own engine and keep the owner.
     """
 
-    @event.listens_for(engine, "connect")
-    def _set_role(dbapi_connection, _connection_record) -> None:
-        cursor = dbapi_connection.cursor()
+    @event.listens_for(engine, "begin")
+    def _set_local_role(conn) -> None:
+        if conn.dialect.name != "postgresql":
+            return
+        # The raw DBAPI cursor opens the transaction SQLAlchemy is beginning,
+        # so the role holds for every statement in it and ends with it.
+        cursor = conn.connection.dbapi_connection.cursor()
         try:
             # Utility statements take no bind parameters; quote as an identifier.
             cursor.execute(
-                pg_sql.SQL("SET ROLE {}").format(pg_sql.Identifier(APP_DATABASE_ROLE))
+                pg_sql.SQL("SET LOCAL ROLE {}").format(
+                    pg_sql.Identifier(APP_DATABASE_ROLE)
+                )
             )
         finally:
             cursor.close()
-        dbapi_connection.commit()
 
 
 def _copy_row_security_context_to_connection(

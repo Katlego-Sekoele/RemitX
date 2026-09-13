@@ -69,3 +69,33 @@ def test_setting_row_security_uses_the_statement_cursor_and_clearing_does_not():
     statement_cursor.fetchall.assert_called_once()
     extra_cursor.execute.assert_called_once()
     extra_cursor.close.assert_called()
+
+
+def test_the_app_role_is_set_per_transaction_not_per_session():
+    """A session-level SET ROLE does not survive Neon's transaction pooler.
+
+    The next transaction can land on another server connection and run as the
+    BYPASSRLS owner, while the role leaks to whoever gets this one — the QA
+    migration that failed with "must be owner of table users".
+    """
+    from unittest.mock import Mock
+
+    from remitx_api.db.rls import adopt_row_security_role
+    from sqlalchemy import create_engine
+
+    engine = create_engine("postgresql+psycopg2://u:p@localhost/db")
+    adopt_row_security_role(engine)
+
+    begin_listeners = list(engine.dispatch.begin)
+    assert len(begin_listeners) == 1
+
+    cursor = Mock()
+    conn = Mock()
+    conn.dialect.name = "postgresql"
+    conn.connection.dbapi_connection.cursor.return_value = cursor
+
+    begin_listeners[0](conn)
+
+    (statement,), _ = cursor.execute.call_args
+    assert repr(statement).startswith("Composed([SQL('SET LOCAL ROLE ')")
+    cursor.close.assert_called_once()
