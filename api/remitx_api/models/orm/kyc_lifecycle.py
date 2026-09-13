@@ -34,6 +34,7 @@ should not cost the applicant their whole attempt, so that edge returns to
 describe how refresh would work, at the cost of one column.
 """
 
+from datetime import UTC, datetime
 from enum import StrEnum
 
 # Ongoing due diligence (FICA §21C): how far ahead of an approval the next
@@ -125,6 +126,38 @@ APPLICATION_STATUSES = tuple(
 # someone's allowance the moment a review falls due would punish them for the
 # platform's scheduling.
 VERIFIED_STATUSES = frozenset({KycStatus.APPROVED, KycStatus.REVIEW_DUE})
+
+# A new application may be opened from these standings and no others: the user
+# is still onboarding, or their verification has expired. An approval in force
+# blocks it, so an approved customer cannot open a draft by accident.
+STARTABLE_STANDINGS = frozenset(
+    {KycStatus.NOT_STARTED, KycStatus.REJECTED, KycStatus.REVIEW_DUE}
+)
+
+
+def effective_status(
+    status: str, next_review_at: datetime | None, now: datetime
+) -> KycStatus:
+    """The status to report: an approval past its `next_review_at` is
+    `review_due`.
+
+    Derived on read rather than written by a scheduler, so expiry lands on the
+    exact instant with nothing to run. The stored row keeps `approved`; every
+    reader that reports status goes through here so admin and applicant agree.
+    """
+    if (
+        status == KycStatus.APPROVED.value
+        and next_review_at is not None
+        # SQLite hands back naive datetimes; every stored timestamp is UTC.
+        and (
+            next_review_at
+            if next_review_at.tzinfo is not None
+            else next_review_at.replace(tzinfo=UTC)
+        )
+        <= now
+    ):
+        return KycStatus.REVIEW_DUE
+    return KycStatus(status)
 
 
 class KycIdType(StrEnum):

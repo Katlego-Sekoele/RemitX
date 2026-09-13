@@ -244,6 +244,23 @@ def test_an_override_is_stored_beside_the_computed_rating(controller, officer):
     assert entry.actor_user_id == officer.id
 
 
+def test_an_override_adds_no_status_history(controller, officer):
+    submitted = _submit(controller, _draft())
+    repo = KycApplicationRepository()
+    before = repo.list_application_history(submitted.application_id)
+
+    controller.override_risk_rating(
+        submitted.application_id,
+        "high",
+        reason="Adverse information from the reviewer's own notes.",
+        expected_version=submitted.version,
+        actor_user_id=officer.id,
+    )
+
+    after = repo.list_application_history(submitted.application_id)
+    assert [row.history_id for row in after] == [row.history_id for row in before]
+
+
 def test_the_view_reports_the_effective_rating_and_its_consequences(
     controller, officer
 ):

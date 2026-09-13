@@ -31,6 +31,11 @@ class OpenApplicationExistsError(KycConflictError):
     """This user already has an application in flight."""
 
 
+class KycApplicationStartNotAllowedError(KycConflictError):
+    """A new application may only be opened while the user is still onboarding
+    or their verification has expired — see `STARTABLE_STANDINGS`."""
+
+
 class UnknownKycApplicationError(NotFoundError):
     """Raised when an action targets an application id that doesn't exist."""
 

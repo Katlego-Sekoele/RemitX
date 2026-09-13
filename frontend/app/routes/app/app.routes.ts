@@ -14,6 +14,8 @@ export type AppRouteIndex = {
   icon?: PhosphorIconName
   /** Show an attention badge on this item while KYC is not approved. */
   kycAttention?: boolean
+  /** Leave this item out of the sidebar once KYC is approved. */
+  hideWhenVerified?: boolean
 }
 
 export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
@@ -24,14 +26,16 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     icon: "HouseIcon",
   },
   {
+    // Lives under Profile; surfaced in the sidebar only until it is done.
     route: {
-      path: "app/verification",
-      module: "routes/onboarding/welcome.tsx",
+      path: "app/profile/verification",
+      module: "routes/app/verification/history.tsx",
     },
     label: "Verification",
     order: 10,
     icon: "IdentificationBadgeIcon",
     kycAttention: true,
+    hideWhenVerified: true,
   },
   {
     route: {
@@ -52,7 +56,8 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
 
 export function getFlattenedAppRoutes(): AppRoute[] {
   return APP_ROUTE_INDEX.filter(
-    (node) => !node.route.path.startsWith("app/verification")
+    // Declared with their layouts in routes.ts.
+    (node) => !node.route.path.startsWith("app/profile/verification")
   ).map((node) => node.route)
 }
 

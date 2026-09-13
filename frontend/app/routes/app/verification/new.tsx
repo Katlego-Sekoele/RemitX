@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { IdentificationCardIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Controller, useForm } from "react-hook-form"
-import { useNavigate } from "react-router"
+import { Navigate, useNavigate } from "react-router"
 import * as z from "zod"
 
 import {
@@ -26,9 +26,16 @@ import {
   FieldError,
   FieldLabel,
 } from "~/components/ui/field"
+import { Skeleton } from "~/components/ui/skeleton"
 import { useKycReference } from "~/hooks/use-kyc-reference"
-import { errorMessage, useOnboarding } from "~/hooks/use-onboarding"
-import { pathForStep } from "~/lib/kyc-onboarding"
+import { errorMessage, storeApplication } from "~/hooks/use-onboarding"
+import {
+  applicationPath,
+  applicationStepPath,
+  canStartApplication,
+  isOpenStatus,
+  verificationPath,
+} from "~/lib/kyc-onboarding"
 import { OUTSIDE_OPERATING_COUNTRIES } from "~/lib/kyc-reference"
 import { api } from "~/client"
 
@@ -41,8 +48,42 @@ const schema = z.object({
     }),
 })
 
-export default function Welcome() {
-  const onboarding = useOnboarding()
+/** Starting an application: the one place residence is asked before a draft
+ * exists. An open application is resumed instead, and a customer whose
+ * approval still stands has nothing to start. */
+export default function NewApplication() {
+  const standing = useQuery(api.kyc.onboarding.getApplication())
+
+  if (standing.isPending) return <Skeleton className="h-40 w-full" />
+  if (standing.isError) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Could not load your verification</AlertTitle>
+        <AlertDescription>{errorMessage(standing.error)}</AlertDescription>
+      </Alert>
+    )
+  }
+
+  const current = standing.data.application
+  if (current && isOpenStatus(current.status)) {
+    return <Navigate to={applicationPath(current.application_id)} replace />
+  }
+  if (!canStartApplication(standing.data.standing.status)) {
+    return <Navigate to={verificationPath()} replace />
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-2xl">
+      <StartForm previousResidence={current?.residential_country} />
+    </div>
+  )
+}
+
+function StartForm({
+  previousResidence,
+}: {
+  previousResidence: string | null | undefined
+}) {
   const reference = useKycReference()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -50,21 +91,19 @@ export default function Welcome() {
     resolver: zodResolver(schema),
     mode: "onTouched",
     defaultValues: {
-      residence: residenceFormValue(
-        reference,
-        onboarding.application?.residential_country
-      ),
+      residence: residenceFormValue(reference, previousResidence),
     },
   })
   const start = useMutation({
     ...api.kyc.onboarding.startApplication(),
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        api.kyc.onboarding.getApplication().queryKey,
-        data
-      )
+      storeApplication(queryClient, data)
+      const id = data.application.application_id
       navigate(
-        pathForStep(data.next_step === "welcome" ? "identity" : data.next_step)
+        applicationStepPath(
+          id,
+          data.next_step === "welcome" ? "identity" : data.next_step
+        )
       )
     },
   })
@@ -73,7 +112,7 @@ export default function Welcome() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Verification</CardTitle>
+        <CardTitle>New application</CardTitle>
         <CardDescription>Takes about five minutes.</CardDescription>
       </CardHeader>
       <form
@@ -120,11 +159,6 @@ export default function Welcome() {
             </ul>
           </div>
           <p>You can leave and come back — your progress is saved.</p>
-          {onboarding.standing.status === "approved" ? (
-            <p>
-              A reviewer has already approved an application on this account.
-            </p>
-          ) : null}
         </CardContent>
         <CardFooter className="flex flex-col items-stretch gap-3">
           {start.isError ? (

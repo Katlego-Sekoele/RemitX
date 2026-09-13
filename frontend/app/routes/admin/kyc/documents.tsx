@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router"
 
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
-import { KycApplicationDocuments } from "~/components/admin/kyc-application-documents"
+import { KycApplicationDocuments } from "~/components/kyc/kyc-application-documents"
 import { Button } from "~/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
@@ -83,7 +83,10 @@ function KycDocumentsPage() {
       </Card>
 
       {applicationId.length > 0 ? (
-        <KycApplicationDocuments applicationId={applicationId} />
+        <KycApplicationDocuments
+          applicationId={applicationId}
+          audience="staff"
+        />
       ) : null}
     </AdminPageFrame>
   )

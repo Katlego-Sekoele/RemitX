@@ -1,29 +1,57 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
 import { useNavigate, useOutletContext } from "react-router"
 
 import {
   api,
   sdk,
   type KycApplicationPatch,
-  type KycOnboardingRead as KycOnboarding,
+  type KycApplicationDetailRead as KycApplicationDetail,
 } from "~/client"
-import { pathForStep } from "~/lib/kyc-onboarding"
+import { applicationStepPath } from "~/lib/kyc-onboarding"
 
+/** The application the wizard is editing, loaded by `steps-layout.tsx`. */
 export function useOnboarding() {
-  return useOutletContext<KycOnboarding>()
+  return useOutletContext<KycApplicationDetail>()
 }
 
 export function nextPathAfter(
-  onboarding: KycOnboarding,
+  detail: KycApplicationDetail,
   current: string
 ): string {
-  const index = onboarding.steps.findIndex((step) => step.step === current)
-  const following = onboarding.steps[index + 1]
-  return pathForStep(following?.step ?? onboarding.next_step)
+  const index = detail.steps.findIndex((step) => step.step === current)
+  const following = detail.steps[index + 1]
+  return applicationStepPath(
+    detail.application.application_id,
+    following?.step ?? detail.next_step
+  )
+}
+
+/** Put a fresh detail in the cache, and mark the standing and history stale —
+ * a save or submit can change either. */
+export function storeApplication(
+  queryClient: QueryClient,
+  detail: KycApplicationDetail
+) {
+  queryClient.setQueryData(
+    api.kyc.onboarding.getMyApplication({
+      path: { application_id: detail.application.application_id },
+    }).queryKey,
+    detail
+  )
+  queryClient.invalidateQueries({
+    queryKey: api.kyc.onboarding.getApplication().queryKey,
+  })
+  queryClient.invalidateQueries({
+    queryKey: api.kyc.onboarding.listMyApplications().queryKey,
+  })
 }
 
 export function useSaveStep(current: string) {
-  const onboarding = useOnboarding()
+  const { application } = useOnboarding()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -31,27 +59,15 @@ export function useSaveStep(current: string) {
     mutationFn: async (
       fields: Omit<KycApplicationPatch, "expected_version">
     ) => {
-      let version = onboarding.application?.version
-      if (version === undefined) {
-        const { data: started } = await sdk.kyc.onboarding.startApplication({
-          throwOnError: true,
-        })
-        version = started.application?.version
-        if (version === undefined) {
-          throw new Error("Could not start an application.")
-        }
-      }
       const { data } = await sdk.kyc.onboarding.patchApplication({
-        body: { expected_version: version, ...fields },
+        path: { application_id: application.application_id },
+        body: { expected_version: application.version, ...fields },
         throwOnError: true,
       })
       return data
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        api.kyc.onboarding.getApplication().queryKey,
-        data
-      )
+      storeApplication(queryClient, data)
       navigate(nextPathAfter(data, current))
     },
   })

@@ -264,6 +264,459 @@
         "title": "IntegrationMessageRead",
         "type": "object"
       },
+      "KycApplicantApplicationRead": {
+        "description": "One of the caller's own applications, unmasked, without internal\nassessment data.",
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "declares_pep": {
+            "default": false,
+            "title": "Declares Pep",
+            "type": "boolean"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "expected_monthly_volume_zar": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Monthly Volume Zar"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id_expiry_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Expiry Date"
+          },
+          "id_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number"
+          },
+          "id_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Type"
+          },
+          "is_domestic_prominent_influential_person": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Domestic Prominent Influential Person"
+          },
+          "is_foreign_prominent_public_official": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Foreign Prominent Public Official"
+          },
+          "is_pep_family_or_close_associate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pep Family Or Close Associate"
+          },
+          "issuing_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuing Country"
+          },
+          "mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobile Number"
+          },
+          "nationality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nationality"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "pep_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Country"
+          },
+          "pep_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Details"
+          },
+          "pep_position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Position"
+          },
+          "pep_relationship": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pep Relationship"
+          },
+          "processing_consented_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Consented At"
+          },
+          "residential_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential City"
+          },
+          "residential_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Country"
+          },
+          "residential_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line1"
+          },
+          "residential_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Line2"
+          },
+          "residential_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Postal Code"
+          },
+          "source_of_funds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds"
+          },
+          "source_of_funds_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Funds Detail"
+          },
+          "source_of_wealth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Of Wealth"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tier_granted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Granted"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "application_id",
+          "status",
+          "version",
+          "tier_granted",
+          "created_at",
+          "submitted_at",
+          "processing_consented_at",
+          "next_review_at",
+          "full_name",
+          "date_of_birth",
+          "nationality",
+          "id_type",
+          "issuing_country",
+          "id_number",
+          "id_expiry_date",
+          "mobile_number",
+          "email",
+          "residential_line1",
+          "residential_line2",
+          "residential_city",
+          "residential_postal_code",
+          "residential_country",
+          "source_of_funds",
+          "source_of_funds_detail",
+          "expected_monthly_volume_zar",
+          "is_domestic_prominent_influential_person",
+          "is_foreign_prominent_public_official",
+          "is_pep_family_or_close_associate",
+          "declares_pep",
+          "pep_relationship",
+          "pep_position",
+          "pep_country",
+          "pep_details",
+          "source_of_wealth"
+        ],
+        "title": "KycApplicantApplicationRead",
+        "type": "object"
+      },
+      "KycApplicationDetailRead": {
+        "properties": {
+          "applicant_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applicant Message"
+          },
+          "application": {
+            "$ref": "#/components/schemas/KycApplicantApplicationRead"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "next_step": {
+            "title": "Next Step",
+            "type": "string"
+          },
+          "pep_relationships": {
+            "items": {
+              "$ref": "#/components/schemas/KycPepRelationshipRead"
+            },
+            "title": "Pep Relationships",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/KycOnboardingStepRead"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "stored_document_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stored Document Types",
+            "type": "array"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/KycStatusEventRead"
+            },
+            "title": "Timeline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "application",
+          "editable",
+          "applicant_message",
+          "timeline",
+          "next_step",
+          "stored_document_types",
+          "pep_relationships",
+          "steps"
+        ],
+        "title": "KycApplicationDetailRead",
+        "type": "object"
+      },
       "KycApplicationPatch": {
         "additionalProperties": false,
         "description": "Partial save. Absent fields are left alone; sent fields are validated.",
@@ -1552,6 +2005,83 @@
         "title": "KycApplicationReadPII",
         "type": "object"
       },
+      "KycApplicationSummaryRead": {
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tier_granted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Granted"
+          }
+        },
+        "required": [
+          "application_id",
+          "status",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "tier_granted",
+          "next_review_at",
+          "editable"
+        ],
+        "title": "KycApplicationSummaryRead",
+        "type": "object"
+      },
       "KycApproveRequest": {
         "properties": {
           "expected_version": {
@@ -1917,11 +2447,12 @@
         "type": "object"
       },
       "KycOnboardingRead": {
+        "description": "Standing and the application the applicant is on now.",
         "properties": {
           "application": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/KycApplicationReadPII"
+                "$ref": "#/components/schemas/KycApplicantApplicationRead"
               },
               {
                 "type": "null"
@@ -1938,17 +2469,6 @@
             },
             "title": "Pep Relationships",
             "type": "array"
-          },
-          "rejection_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rejection Reason"
           },
           "standing": {
             "$ref": "#/components/schemas/KycStandingRead"
@@ -1972,7 +2492,6 @@
           "standing",
           "application",
           "next_step",
-          "rejection_reason",
           "stored_document_types",
           "pep_relationships",
           "steps"
@@ -2351,17 +2870,6 @@
             "title": "Monthly Limit Zar",
             "type": "string"
           },
-          "risk_rating": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Risk Rating"
-          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2375,7 +2883,6 @@
           "status",
           "tier",
           "application_id",
-          "risk_rating",
           "limit_percent",
           "daily_limit_zar",
           "monthly_limit_zar"
@@ -2415,6 +2922,24 @@
         ],
         "title": "KycStatus",
         "type": "string"
+      },
+      "KycStatusEventRead": {
+        "properties": {
+          "changed_at": {
+            "title": "Changed At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "changed_at"
+        ],
+        "title": "KycStatusEventRead",
+        "type": "object"
       },
       "KycSubmitRequest": {
         "additionalProperties": false,
@@ -5166,7 +5691,7 @@
     },
     "/kyc/application": {
       "get": {
-        "description": "Standing, the current draft if any, and the step to resume at.",
+        "description": "Standing, the application the caller is on now if any, and its next\nstep. The whole history is `GET /kyc/applications`.",
         "operationId": "get_application",
         "responses": {
           "200": {
@@ -5195,14 +5720,218 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Get the caller's KYC application",
+        "summary": "Get the caller's KYC standing",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      }
+    },
+    "/kyc/applications": {
+      "get": {
+        "description": "Newest first.",
+        "operationId": "list_my_applications",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KycApplicationSummaryRead"
+                  },
+                  "title": "Response List My Applications",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's KYC applications",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      },
+      "post": {
+        "description": "Returns the open application if there is one. Otherwise opens a new one,\nbut only while the caller has no approval or it has expired \u2014 409 while an\napproval is in force. A residence outside the countries RemitX operates in\nis refused before any application exists.",
+        "operationId": "start_application",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/KycStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Start or resume a KYC application",
+        "tags": [
+          "kyc.onboarding"
+        ]
+      }
+    },
+    "/kyc/applications/{application_id}": {
+      "get": {
+        "description": "The caller's own values, the applicant-safe reviewer message, and the\nstatus timeline. Another user's application is a 404.",
+        "operationId": "get_my_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycApplicationDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Get one of the caller's KYC applications",
         "tags": [
           "kyc.onboarding"
         ]
       },
       "patch": {
-        "description": "Only the fields sent are changed. ``expected_version`` must match the\ndraft's, so a stale tab gets a 409 instead of overwriting.",
+        "description": "Only the fields sent are changed. ``expected_version`` must match the\ndraft's, so a stale tab gets a 409 instead of overwriting. Refused once the\napplication is no longer editable.",
         "operationId": "patch_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5218,7 +5947,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KycOnboardingRead"
+                  "$ref": "#/components/schemas/KycApplicationDetailRead"
                 }
               }
             },
@@ -5280,37 +6009,44 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Save fields on the KYC draft",
+        "summary": "Save fields on a KYC draft",
         "tags": [
           "kyc.onboarding"
         ]
-      },
+      }
+    },
+    "/kyc/applications/{application_id}/submit": {
       "post": {
-        "description": "Idempotent: an open draft is returned as it is. A residence outside the\ncountries RemitX operates in is refused before any application exists.",
-        "operationId": "start_application",
+        "description": "Scores the application and queues it for a reviewer. Refused while any\nrequired field or document is missing, or without processing consent.",
+        "operationId": "submit_application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/KycStartRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Payload"
+                "$ref": "#/components/schemas/KycSubmitRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KycOnboardingRead"
+                  "$ref": "#/components/schemas/KycApplicationDetailRead"
                 }
               }
             },
@@ -5335,6 +6071,16 @@
               }
             },
             "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
           },
           "409": {
             "content": {
@@ -5362,7 +6108,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Start or resume a KYC application",
+        "summary": "Submit a KYC application for review",
         "tags": [
           "kyc.onboarding"
         ]
@@ -5798,93 +6544,6 @@
           }
         ],
         "summary": "Get onboarding reference data",
-        "tags": [
-          "kyc.onboarding"
-        ]
-      }
-    },
-    "/kyc/submit": {
-      "post": {
-        "description": "Scores the application and queues it for a reviewer. Refused while any\nrequired field or document is missing, or without processing consent.",
-        "operationId": "submit_application",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KycSubmitRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KycOnboardingRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The request was refused."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No valid session."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not found."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The current state refuses the request."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "ClerkSession": []
-          }
-        ],
-        "summary": "Submit the KYC application for review",
         "tags": [
           "kyc.onboarding"
         ]

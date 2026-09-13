@@ -19,11 +19,18 @@ import {
   DescriptionList,
   DescriptionTerm,
 } from "~/components/ui/description-list"
-import type { KycApplicationRead, KycApplicationReadPii } from "~/client"
+import type {
+  KycApplicantApplicationRead,
+  KycApplicationRead,
+  KycApplicationReadPii,
+} from "~/client"
 import { useKycReferenceQuery } from "~/hooks/use-kyc-reference"
 import { countryName } from "~/lib/kyc-reference"
 
-type Application = KycApplicationRead | KycApplicationReadPii
+/** The declared fields, masked (staff), revealed (staff) or the applicant's
+ * own. These cards read nothing else, so they are shared by both portals. */
+type Application =
+  KycApplicationRead | KycApplicationReadPii | KycApplicantApplicationRead
 
 function Section({
   title,

@@ -49,6 +49,7 @@ from remitx_api.models.orm.kyc_lifecycle import (
     KycIdType,
     KycSourceOfFunds,
     KycStatus,
+    effective_status,
     sql_value_list,
 )
 
@@ -321,6 +322,11 @@ class KycApplication(Base):
                 self.is_pep_family_or_close_associate,
             )
         )
+
+    @property
+    def effective_status(self) -> str:
+        """The status to report — see `kyc_lifecycle.effective_status`."""
+        return effective_status(self.status, self.next_review_at, utcnow()).value
 
     @property
     def effective_risk_rating(self) -> str | None:

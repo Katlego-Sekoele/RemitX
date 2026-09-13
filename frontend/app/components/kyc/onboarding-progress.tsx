@@ -8,7 +8,7 @@ import {
   StepperTrigger,
 } from "~/components/ui/stepper"
 import type { KycOnboardingStepRead as KycOnboardingStep } from "~/client"
-import { pathForStep } from "~/lib/kyc-onboarding"
+import { applicationStepPath } from "~/lib/kyc-onboarding"
 
 const STEP_TITLES: Record<string, string> = {
   identity: "About you",
@@ -29,10 +29,12 @@ function titleFor(step: string) {
  * applicant may jump to; everything before it has been saved.
  */
 export function OnboardingProgress({
+  applicationId,
   steps,
   current,
   nextStep,
 }: {
+  applicationId: string
   steps: KycOnboardingStep[]
   current: string
   nextStep: string
@@ -55,7 +57,7 @@ export function OnboardingProgress({
       maxStep={reachable}
       onStepChange={(step) => {
         const target = trail[step - 1]
-        if (target) navigate(pathForStep(target.step))
+        if (target) navigate(applicationStepPath(applicationId, target.step))
       }}
     >
       <nav aria-label="Onboarding progress" className="flex flex-col gap-3">

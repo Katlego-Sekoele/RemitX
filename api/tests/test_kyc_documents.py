@@ -175,6 +175,11 @@ def test_the_object_key_carries_no_identifying_value(applicant_client):
     assert document.storage_path == (
         f"kyc/{application.application_id}/{document.document_id}"
     )
+    # Checked with the generated ids blanked out: random hex contains short
+    # digit runs like the postal code often enough to fail a run at random.
+    key_shape = document.storage_path.replace(
+        str(application.application_id), "<application>"
+    ).replace(str(document.document_id), "<document>")
     for identifying in (
         ID_NUMBER,
         "Thandiwe",
@@ -184,7 +189,7 @@ def test_the_object_key_carries_no_identifying_value(applicant_client):
         "8001",
         "id_document",
     ):
-        assert identifying not in document.storage_path
+        assert identifying not in key_shape
 
 
 def test_a_declared_type_outside_the_allowlist_is_refused(applicant_client, storage):

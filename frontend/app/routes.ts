@@ -17,26 +17,58 @@ export default [
   layout("routes/protected.tsx", [
     layout("routes/app/layout.tsx", [
       ...getFlattenedAppRoutes().map(({ path, module }) => route(path, module)),
-      layout("routes/onboarding/layout.tsx", [
-        route("app/verification", "routes/onboarding/welcome.tsx"),
-        route("app/verification/identity", "routes/onboarding/identity.tsx"),
+      layout("routes/app/verification/layout.tsx", [
         route(
-          "app/verification/id-document",
-          "routes/onboarding/id-document.tsx"
+          "app/profile/verification",
+          "routes/app/verification/history.tsx"
         ),
-        route("app/verification/address", "routes/onboarding/address.tsx"),
-        route("app/verification/contact", "routes/onboarding/contact.tsx"),
-        route("app/verification/financial", "routes/onboarding/financial.tsx"),
         route(
-          "app/verification/declarations",
-          "routes/onboarding/declarations.tsx"
+          "app/profile/verification/new",
+          "routes/app/verification/new.tsx"
         ),
-        route("app/verification/review", "routes/onboarding/review.tsx"),
-        route("app/verification/status", "routes/onboarding/status.tsx"),
+        route(
+          "app/profile/verification/:applicationId",
+          "routes/app/verification/application.tsx"
+        ),
+        layout("routes/app/verification/steps-layout.tsx", [
+          route(
+            "app/profile/verification/:applicationId/identity",
+            "routes/app/verification/identity.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/id-document",
+            "routes/app/verification/id-document.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/address",
+            "routes/app/verification/address.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/contact",
+            "routes/app/verification/contact.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/financial",
+            "routes/app/verification/financial.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/declarations",
+            "routes/app/verification/declarations.tsx"
+          ),
+          route(
+            "app/profile/verification/:applicationId/review",
+            "routes/app/verification/review.tsx"
+          ),
+        ]),
       ]),
     ]),
-    route("onboarding", "routes/onboarding/legacy-redirect.tsx"),
-    route("onboarding/*", "routes/onboarding/legacy-redirect-splat.tsx"),
+    // Verification's earlier homes. Splats match the bare path too.
+    route("app/verification/*", "routes/app/verification/legacy-redirect.tsx", {
+      id: "legacy-app-verification",
+    }),
+    route("onboarding/*", "routes/app/verification/legacy-redirect.tsx", {
+      id: "legacy-onboarding",
+    }),
     route("integration-test", "routes/integration-test.tsx"),
     layout(
       "routes/admin/layout.tsx",
