@@ -11,9 +11,12 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "~/components/ui/sidebar"
 import { isKycVerified } from "~/lib/kyc-onboarding"
-import { APP_ROUTE_INDEX } from "~/routes/app/app.routes"
+import { type AppSubNavItem, APP_ROUTE_INDEX } from "~/routes/app/app.routes"
 
 function matches(pathname: string, href: string): boolean {
   if (href === "/app") return pathname === "/app"
@@ -24,25 +27,36 @@ function hrefForPath(path: string): string {
   return `/${path}`
 }
 
+function subItemActive(pathname: string, item: AppSubNavItem): boolean {
+  const href = hrefForPath(item.path)
+  return item.exact ? pathname === href : matches(pathname, href)
+}
+
+function AttentionBadge() {
+  return (
+    <SidebarMenuBadge>
+      <Badge variant="destructive">
+        <PhosphorIcons.WarningCircleIcon aria-hidden="true" />
+        <span className="sr-only">
+          Verification required before you can send
+        </span>
+      </Badge>
+    </SidebarMenuBadge>
+  )
+}
+
 export function AppNav() {
   const { pathname } = useLocation()
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
-  const kycIncomplete = !isKycVerified(onboarding.data?.standing.status)
-  const items = APP_ROUTE_INDEX.filter(
-    (item) => !(item.hideWhenVerified && onboarding.data && !kycIncomplete)
-  )
-  // Nested items share a prefix (Profile, Profile › Verification); only the
-  // most specific match is active.
-  const activeHref = items
-    .map((item) => hrefForPath(item.route.path))
-    .filter((href) => matches(pathname, href))
-    .sort((a, b) => b.length - a.length)[0]
+  // Until the standing loads, assume nothing needs attention.
+  const kycIncomplete =
+    Boolean(onboarding.data) && !isKycVerified(onboarding.data?.standing.status)
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Navigation</SidebarGroupLabel>
       <SidebarMenu>
-        {items.map((item) => {
+        {APP_ROUTE_INDEX.map((item) => {
           const href = hrefForPath(item.route.path)
           const Icon = item.icon ? PhosphorIcons[item.icon] : undefined
           const showBadge = Boolean(item.kycAttention && kycIncomplete)
@@ -55,21 +69,35 @@ export function AppNav() {
                     ? `${item.label} — complete verification to send`
                     : item.label
                 }
-                isActive={href === activeHref}
+                isActive={matches(pathname, href)}
                 render={<Link to={href} />}
               >
                 {Icon ? <Icon /> : null}
                 <span>{item.label}</span>
               </SidebarMenuButton>
-              {showBadge ? (
-                <SidebarMenuBadge>
-                  <Badge variant="destructive">
-                    <PhosphorIcons.WarningCircleIcon aria-hidden="true" />
-                    <span className="sr-only">
-                      Verification required before you can send
-                    </span>
-                  </Badge>
-                </SidebarMenuBadge>
+              {showBadge && !item.children ? <AttentionBadge /> : null}
+              {item.children ? (
+                <SidebarMenuSub>
+                  {item.children.map((child) => {
+                    const ChildIcon = child.icon
+                      ? PhosphorIcons[child.icon]
+                      : undefined
+                    return (
+                      <SidebarMenuSubItem key={child.path}>
+                        <SidebarMenuSubButton
+                          isActive={subItemActive(pathname, child)}
+                          render={<Link to={hrefForPath(child.path)} />}
+                        >
+                          {ChildIcon ? <ChildIcon /> : null}
+                          <span>{child.label}</span>
+                        </SidebarMenuSubButton>
+                        {child.kycAttention && kycIncomplete ? (
+                          <AttentionBadge />
+                        ) : null}
+                      </SidebarMenuSubItem>
+                    )
+                  })}
+                </SidebarMenuSub>
               ) : null}
             </SidebarMenuItem>
           )

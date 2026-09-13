@@ -20,7 +20,8 @@ export default function VerificationLayout() {
 
   return (
     <AppPageFrame
-      module="routes/app/verification/history.tsx"
+      module="routes/app/profile.tsx"
+      title="Verification"
       parents={[{ label: "Profile", href: "/app/profile" }]}
     >
       {reference.isLoading ? (

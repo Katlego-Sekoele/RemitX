@@ -7,6 +7,8 @@ type Crumb = { label: string; href?: string }
 
 type AppPageFrameProps = {
   module: string
+  /** Overrides the title looked up from `module`, for pages nested in it. */
+  title?: string
   /** Crumbs between "Account" and the page title, for nested pages. */
   parents?: Crumb[]
   children: ReactNode
@@ -14,11 +16,12 @@ type AppPageFrameProps = {
 
 export function AppPageFrame({
   module,
+  title: titleOverride,
   parents = [],
   children,
 }: AppPageFrameProps) {
   const context = appRouteContext(module)
-  const title = context?.title ?? "Account"
+  const title = titleOverride ?? context?.title ?? "Account"
 
   return (
     <AppShell

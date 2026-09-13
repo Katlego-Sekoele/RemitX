@@ -22,7 +22,7 @@ export function ClerkTree({ children }: { children: ReactNode }) {
       afterSignOutUrl="/"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      appearance={{ theme: shadcn }}
+      appearance={{ theme: shadcn, cssLayerName: "clerk" }}
     >
       <ClerkMountedContext.Provider value={true}>
         <AuthErrorBridge />
