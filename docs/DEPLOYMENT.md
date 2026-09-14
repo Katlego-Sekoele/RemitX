@@ -174,8 +174,18 @@ eventually live.
 
 Free web services spin down after 15 minutes idle. After enqueue the API
 `GET`s `WORKER_WAKE_URL` (the worker `/health`) if that variable is set.
-Failures are logged and do not fail the API request. Unset the variable to
-disable the ping (local Compose, or a future always-on worker).
+Unset the variable to disable the ping (local Compose, or a future always-on
+worker).
+
+Ordering is the point: `send_task` is synchronous and raises if the broker
+cannot be reached, so the message is on Redis before anything is pinged, and
+a publish that fails pings nothing. The ping itself runs on a background
+thread and only logs on failure — a cold instance answers 502 while it boots,
+and a task already on Redis is not lost by a ping that did not land. Waking
+is what the request must not wait for: a burst of five enqueues against a
+4-second cold instance returns in 0.13 s and sends one ping, because wakes
+collapse while one is outstanding (the booting worker drains the whole queue
+regardless).
 
 On worker boot, `PENDING` integration messages are re-enqueued. That covers
 a free Key Value restart wiping the broker. Settlement stays idempotent.
