@@ -23,7 +23,26 @@ class HealthHandler(BaseHTTPRequestHandler):
         return
 
 
+# Held so a forked Celery child can drop the descriptor it inherited; see
+# close_inherited_socket.
+_server: ThreadingHTTPServer | None = None
+
+
 def serve_health(port: int | None = None) -> None:
+    global _server
     listen_port = port if port is not None else int(os.getenv("PORT", "4200"))
-    server = ThreadingHTTPServer(("0.0.0.0", listen_port), HealthHandler)
-    server.serve_forever()
+    _server = ThreadingHTTPServer(("0.0.0.0", listen_port), HealthHandler)
+    _server.serve_forever()
+
+
+def close_inherited_socket() -> None:
+    """Close the listening socket in a process that did not open it.
+
+    Only the socket, never ``shutdown()``: that blocks until ``serve_forever``
+    acknowledges, and the forked child has no such loop to answer.
+    """
+    global _server
+    if _server is None:
+        return
+    _server.socket.close()
+    _server = None
