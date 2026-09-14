@@ -230,6 +230,14 @@ secrets. Details: [infra/legacy-azure/README.md](../infra/legacy-azure/README.md
 - **Celery not consuming:** confirm the worker web service is up (wake URL
   reachable) and `REDIS_URL` uses the shared Key Value with the right `/0` or
   `/1`.
+- **Worker restart loop, "Ran out of memory (used over 512MB)", wake URL
+  502s:** the pool is too wide for the instance. The worker banner prints its
+  own `concurrency: N (prefork)`; each process imports `remitx_api` and costs
+  roughly 100 MB, so N=8 needs ~925 MB against a 512 MB cap. A worker killed
+  this way dies between `mingle: all alone` and `celery@... ready` — the
+  absence of a `ready` line is the tell, and it means no task was ever
+  consumed and the boot-time `PENDING` reclaim never ran. `CELERY_CONCURRENCY`
+  sets N (Terraform pins it to 2); lower it to 1 for more headroom.
 - **750 instance-hours exhausted:** all free web services suspend until next
   month. Spun-down time does not count.
 - **Custom domain verify failed:** DNS may still be propagating; retry in the

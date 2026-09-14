@@ -34,6 +34,13 @@ class Config:
     # Shared by the API producer and the worker consumer. Both read it
     # from here so neither package has to import the other.
     CELERY_QUEUE = os.getenv("CELERY_QUEUE", "settlement")
+    # Celery's own default is os.cpu_count(), which is the wrong number on a
+    # memory-capped host: Render reports the underlying box's 8 cores while
+    # the free instance is capped at 512 MB. Nine processes that each import
+    # remitx_api (FastAPI + SQLAlchemy + boto3 + clerk + xrpl) measured
+    # ~925 MB, so the worker was OOM-killed between "mingle" and "ready" and
+    # consumed nothing. Concurrency here is bounded by memory, not cores.
+    CELERY_CONCURRENCY = int(os.getenv("CELERY_CONCURRENCY", "2"))
     CORS_ORIGINS = _split_csv(os.getenv("CORS_ORIGINS", "http://localhost:5173"))
 
     # Alembic owns the Postgres schema in every environment (see

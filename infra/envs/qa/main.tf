@@ -49,6 +49,10 @@ locals {
     CLERK_SECRET_KEY    = var.clerk_secret_key
     XRPL_ENCRYPTION_KEY = var.xrpl_encryption_key
     CELERY_QUEUE        = "settlement"
+    # Explicit because Celery's default is the host's core count (8 here),
+    # which has nothing to do with the free instance's 512 MB. Each pool
+    # process imports remitx_api and costs ~100 MB.
+    CELERY_CONCURRENCY = "2"
   }
 
   # One map for the module and the api_env_vars output. The service ignores
