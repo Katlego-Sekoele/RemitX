@@ -31,10 +31,7 @@ output "cors_origins" {
 }
 
 output "api_env_vars" {
-  value = merge(local.worker_env, {
-    CORS_ORIGINS    = local.cors_origins
-    WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
-  })
+  value     = local.api_env
   sensitive = true
 }
 

@@ -49,7 +49,26 @@ locals {
     CLERK_SECRET_KEY    = var.clerk_secret_key
     XRPL_ENCRYPTION_KEY = var.xrpl_encryption_key
     CELERY_QUEUE        = "settlement"
+    # Explicit because Celery's default is the host's core count (8 here),
+    # which has nothing to do with the free instance's 512 MB. Each pool
+    # process imports remitx_api and costs ~100 MB.
+    CELERY_CONCURRENCY = "2"
   }
+
+  # One map for the module and the api_env_vars output. The service ignores
+  # env_vars after creation, so the output is what actually reaches Render;
+  # a hand-kept copy there silently dropped keys.
+  api_env = merge(local.worker_env, {
+    CORS_ORIGINS    = local.cors_origins
+    WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
+    # Only the API signs upload and download URLs; the worker never touches
+    # documents, so the bucket credential stays out of its environment.
+    OBJECT_STORAGE_ENDPOINT_URL      = var.object_storage_endpoint_url
+    OBJECT_STORAGE_BUCKET            = var.object_storage_bucket
+    OBJECT_STORAGE_REGION            = var.object_storage_region
+    OBJECT_STORAGE_ACCESS_KEY_ID     = var.object_storage_access_key_id
+    OBJECT_STORAGE_SECRET_ACCESS_KEY = var.object_storage_secret_access_key
+  })
 }
 
 module "worker" {
@@ -87,16 +106,6 @@ module "api" {
   branch          = var.git_branch
   dockerfile_path = "./api/Dockerfile"
   docker_context  = "./api"
-  env_vars = merge(local.worker_env, {
-    CORS_ORIGINS    = local.cors_origins
-    WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
-    # Only the API signs upload and download URLs; the worker never touches
-    # documents, so the bucket credential stays out of its environment.
-    OBJECT_STORAGE_ENDPOINT_URL      = var.object_storage_endpoint_url
-    OBJECT_STORAGE_BUCKET            = var.object_storage_bucket
-    OBJECT_STORAGE_REGION            = var.object_storage_region
-    OBJECT_STORAGE_ACCESS_KEY_ID     = var.object_storage_access_key_id
-    OBJECT_STORAGE_SECRET_ACCESS_KEY = var.object_storage_secret_access_key
-  })
-  custom_domain = var.api_custom_domain
+  env_vars        = local.api_env
+  custom_domain   = var.api_custom_domain
 }

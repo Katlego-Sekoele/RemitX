@@ -35,6 +35,25 @@ def configure(session_factory) -> None:
     _session_factory = session_factory
 
 
+def dispose() -> None:
+    """Return pooled connections and drop the factory; the next use rebuilds.
+
+    The startup reclaim runs in the pool parent, which then never touches the
+    database again. Without this it holds an idle Postgres pool for the life
+    of the worker - connections Neon counts and memory the 512 MB instance
+    cannot spare.
+    """
+    global _session_factory
+    if _session_factory is None:
+        return
+    # getattr: tests can configure() any session-returning callable, not
+    # necessarily a sessionmaker with a bind to release.
+    bind = getattr(_session_factory, "kw", {}).get("bind")
+    if bind is not None:
+        bind.dispose()
+    _session_factory = None
+
+
 def get_session_factory():
     global _session_factory
     if _session_factory is None:

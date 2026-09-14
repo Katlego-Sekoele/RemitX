@@ -174,8 +174,18 @@ eventually live.
 
 Free web services spin down after 15 minutes idle. After enqueue the API
 `GET`s `WORKER_WAKE_URL` (the worker `/health`) if that variable is set.
-Failures are logged and do not fail the API request. Unset the variable to
-disable the ping (local Compose, or a future always-on worker).
+Unset the variable to disable the ping (local Compose, or a future always-on
+worker).
+
+Ordering is the point: `send_task` is synchronous and raises if the broker
+cannot be reached, so the message is on Redis before anything is pinged, and
+a publish that fails pings nothing. The ping itself runs on a background
+thread and only logs on failure — a cold instance answers 502 while it boots,
+and a task already on Redis is not lost by a ping that did not land. Waking
+is what the request must not wait for: a burst of five enqueues against a
+4-second cold instance returns in 0.13 s and sends one ping, because wakes
+collapse while one is outstanding (the booting worker drains the whole queue
+regardless).
 
 On worker boot, `PENDING` integration messages are re-enqueued. That covers
 a free Key Value restart wiping the broker. Settlement stays idempotent.
@@ -230,6 +240,14 @@ secrets. Details: [infra/legacy-azure/README.md](../infra/legacy-azure/README.md
 - **Celery not consuming:** confirm the worker web service is up (wake URL
   reachable) and `REDIS_URL` uses the shared Key Value with the right `/0` or
   `/1`.
+- **Worker restart loop, "Ran out of memory (used over 512MB)", wake URL
+  502s:** the pool is too wide for the instance. The worker banner prints its
+  own `concurrency: N (prefork)`; each process imports `remitx_api` and costs
+  roughly 100 MB, so N=8 needs ~925 MB against a 512 MB cap. A worker killed
+  this way dies between `mingle: all alone` and `celery@... ready` — the
+  absence of a `ready` line is the tell, and it means no task was ever
+  consumed and the boot-time `PENDING` reclaim never ran. `CELERY_CONCURRENCY`
+  sets N (Terraform pins it to 2); lower it to 1 for more headroom.
 - **750 instance-hours exhausted:** all free web services suspend until next
   month. Spun-down time does not count.
 - **Custom domain verify failed:** DNS may still be propagating; retry in the

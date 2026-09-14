@@ -165,9 +165,9 @@ function Calendar({
 }
 
 /**
- * Month/year picker built on the base-ui Select. DayPicker's default native
- * <select> doesn't open reliably inside the base-ui Popover the DatePicker
- * renders it in.
+ * Month and year navigation through our Select instead of a native one:
+ * DayPicker's native `<select>` doesn't open reliably inside the base-ui
+ * Popover the DatePicker renders it in.
  */
 function CalendarDropdown({
   options = [],
@@ -178,12 +178,15 @@ function CalendarDropdown({
 }: DropdownProps) {
   return (
     <Select
-      items={options}
+      items={options.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }))}
       value={Number(value)}
       disabled={disabled}
       onValueChange={(next) => {
         if (next === null) return
-        // DayPicker's navigation handlers read `event.target.value`.
+        // DayPicker reads the choice from a native select's change event.
         onChange?.({
           target: { value: String(next) },
         } as React.ChangeEvent<HTMLSelectElement>)
@@ -192,7 +195,7 @@ function CalendarDropdown({
       <SelectTrigger size="sm" aria-label={ariaLabel}>
         <SelectValue />
       </SelectTrigger>
-      <SelectContent className="max-h-72">
+      <SelectContent className="max-h-64 min-w-0">
         {options.map((option) => (
           <SelectItem
             key={option.value}
@@ -243,4 +246,4 @@ function CalendarDayButton({
   )
 }
 
-export { Calendar, CalendarDayButton }
+export { Calendar, CalendarDayButton, CalendarDropdown }
