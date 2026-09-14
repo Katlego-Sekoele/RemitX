@@ -15,6 +15,13 @@ celery.autodiscover_tasks(["remitx_worker"])
 
 @worker_ready.connect
 def _reclaim_on_ready(**_kwargs) -> None:
+    from remitx_worker import db
     from remitx_worker.reclaim import reclaim_pending_messages
 
-    reclaim_pending_messages()
+    try:
+        reclaim_pending_messages()
+    finally:
+        # This runs in the pool parent, after the children have forked. Its
+        # engine is its own and is never used again, so hand the connections
+        # back rather than idling on them for the worker's lifetime.
+        db.dispose()
