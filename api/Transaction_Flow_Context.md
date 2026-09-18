@@ -111,7 +111,7 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Bank Account`, amount 970.00, type `remittance`, **pending**
 - `transactions` → credit `RemitX XRPL Treasury Wallet`, debit **Sipho's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
 - `transactions` → credit **Sipho's `uctusd` account**, debit **Tendai's `uctusd` account**, amount 52.432432, type `remittance`, **pending** — this is the row `remittances.tx_id` (`NOT NULL`) points at
-- `quotes` → **CONSUMED**
+- `quotes` → **USED** (not yet implemented — see §8 #11)
 
 Sipho's `uctusd` account nets to exactly zero across the two token legs, once they confirm — it's a momentary pass-through that exists so the sender's own activity history shows the tokens they sent, not a balance they ever actually held.
 
@@ -245,17 +245,18 @@ erDiagram
         uuid beneficiary_account_id FK
         decimal sender_amount
         string sender_currency
-        decimal sender_token_amount
-        decimal receiver_token_amount
-        string token
-        decimal transaction_fee
-        uuid exchange_rate_id FK
-        decimal exchange_rate
+        decimal sender_transaction_fee
+        decimal token_amount
+        string token_name
+        uuid fiat_to_token_exchange_rate_id FK
+        decimal fiat_to_token_exchange_rate
+        uuid fiat_exchange_rate_id FK
+        decimal fiat_exchange_rate
         decimal exchange_rate_margin
         decimal receiver_amount
         string receiver_currency
-        decimal payout_fee
-        decimal estimated_payout
+        decimal receiver_payout_fee
+        decimal receiver_payout_estimate
         datetime created_at
         datetime expires_at
         enum status
@@ -315,20 +316,27 @@ CREATE TABLE quotes (
     beneficiary_account_id UUID NOT NULL REFERENCES accounts(account_id),
     sender_amount          NUMERIC(20,8) NOT NULL,
     sender_currency        VARCHAR(8) NOT NULL,
-    sender_token_amount    NUMERIC(20,8) NOT NULL,
-    receiver_token_amount  NUMERIC(20,8) NOT NULL,
-    token                  VARCHAR(8) NOT NULL,
-    transaction_fee        NUMERIC(20,8) NOT NULL,
-    exchange_rate_id       UUID REFERENCES exchange_rates(id),
-    exchange_rate          NUMERIC(20,8) NOT NULL,
+    sender_transaction_fee NUMERIC(20,8) NOT NULL,
+    token_amount           NUMERIC(20,8) NOT NULL,
+    token_name             VARCHAR(8) NOT NULL,
+    -- Required: token units per 1 sender_currency (the inverse of
+    -- sender_currency's USD quote — multiply, don't divide, for
+    -- token_amount). Id null only for USD (peg needs no lookup).
+    fiat_to_token_exchange_rate_id UUID REFERENCES exchange_rates(id),
+    fiat_to_token_exchange_rate    NUMERIC(20,8) NOT NULL,
+    -- Required: direct sender_currency <-> receiver_payout_currency rate,
+    -- always backed by a real ExchangeRate row, even when the two
+    -- currencies match. Doesn't feed settlement math.
+    fiat_exchange_rate_id  UUID NOT NULL REFERENCES exchange_rates(id),
+    fiat_exchange_rate     NUMERIC(20,8) NOT NULL,
     exchange_rate_margin   NUMERIC(20,8) NOT NULL,
     receiver_amount        NUMERIC(20,8) NOT NULL,
     receiver_currency      VARCHAR(8) NOT NULL,
-    payout_fee             NUMERIC(20,8) NOT NULL,
-    estimated_payout       NUMERIC(20,8) NOT NULL,
+    receiver_payout_fee    NUMERIC(20,8) NOT NULL,
+    receiver_payout_estimate NUMERIC(20,8) NOT NULL,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at             TIMESTAMPTZ NOT NULL,
-    status                 VARCHAR(16) NOT NULL   -- ACTIVE, CONSUMED, EXPIRED
+    status                 VARCHAR(16) NOT NULL   -- ACTIVE, USED, EXPIRED
 );
 ```
 
@@ -368,25 +376,42 @@ CREATE TABLE quotes (
 
 ---
 
-## 5. Fees -> to be determined *(unchanged from before this redesign)*
+## 5. Fees — decided and implemented
 
-| Fee | Example | Covers |
+| Fee | Rate | Covers |
 |---|---|---|
-| Fixed remittance | ZAR 25 | Per-transaction costs that don't scale |
-| Percentage | 1.0% | Risk that scales with size |
-| FX margin | 1.5% | Holding FX risk across the fixing interval |
-| Withdrawal | 1.5 tokens | Burn transaction and payout rails |
+| Fixed remittance | R15 flat, converted into the sender's own currency | Processing overhead — noticeably below Mukuru's ~R89–137 fee range |
+| Percentage | 0.5% of sender_amount | Modest, transparent, scales with value, like Wise |
+| FX margin | 1.0% over mid-market USD/sender_currency | Real revenue driver — still far below Mukuru's 1.4–3% or Western Union's implied margin |
+| Cash-out fee | 0.75% of the beneficiary payout-currency amount redeemed | Covers the fiat liquidity-pool cost flagged as the platform's remaining working-capital need (§7) |
 
-The FX margin is a spread on the mid rate, not a separate line the customer pays.
+The FX margin is a spread on the mid rate, not a separate line the customer pays. The cash-out fee replaces the earlier flat "1.5 tokens" withdrawal-fee placeholder — it now scales with the amount redeemed, same rationale as the percentage fee. No real cash-out flow exists yet, so `receiver_amount`/`receiver_payout_fee`/`receiver_payout_estimate` on a quote are a display estimate, in the beneficiary's own payout currency (`receiver_currency`, e.g. ZWL — converted directly from the sender's net amount via `fiat_exchange_rate`, not routed through the token leg) of what they'd net if they redeemed today (`models/orm/quote.py`).
+
+**All-in cost on a R1,000 ZAR send: ~2.3%** — roughly 6–7x cheaper than the SA national average (15.65%), competitive with Wise/TransferGo, while still leaving more cost-to-serve headroom than Mukuru/Mama Money.
+
+**Currency-generality (resolves Open Question #8):** `FIXED_FEE_ZAR` is denominated in ZAR. When `sender_currency` isn't ZAR, `quote_service._convert_zar_fee_to_sender_currency` converts it via each currency's own token/USD peg — `FIXED_FEE_ZAR * (token units per ZAR) / (token units per sender_currency)` — reusing the sender leg's already-fetched rate rather than a separate ZAR-quote_currency pair fetch. This makes the fixed fee real for every supported sender currency, not just ZAR.
+
+Implemented in `config.py`'s `Config` class, sourced from `.env`: `FIXED_FEE_ZAR`, `PERCENTAGE_FEE_RATE`, `FX_MARGIN_RATE`, `CASH_OUT_FEE_RATE`.
+
+Also uncertain: whether a separate **token fee** (for minting/burning uctusd
+itself, distinct from the remittance fee above and the cash-out fee) will
+be charged — see Open Question #9.
 
 ---
 
 ## 6. Config
 
+Sourced from the root `.env` (`.env.example`), read directly by `Config` (`api/remitx_api/config.py`) and referenced as `Config.<NAME>` from `services/quote_service.py` and `services/exchange_rate_service.py`:
+
 ```python
-RATE_FIXING_INTERVAL_HOURS = 24
-QUOTE_TTL_MINUTES = 15
+RATE_FIXING_INTERVAL_HOURS = 1
 MAX_RATE_STALENESS_HOURS = 26  # refuse to quote past this
+QUOTE_TTL_MINUTES = 15
+
+FIXED_FEE_ZAR = 15  # converted into sender_currency when it isn't ZAR — see §5
+PERCENTAGE_FEE_RATE = 0.005
+FX_MARGIN_RATE = 0.01
+CASH_OUT_FEE_RATE = 0.0075
 
 DAILY_LIMIT_ZAR_UNVERIFIED = (
     0  # brief's Unverified tier — rejected outright, not just limited
@@ -420,6 +445,11 @@ Deliberately unresolved for now — flagging rather than guessing:
 5. **A sender's ZAR balance doesn't actually drop until settlement confirms.** Since all four of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window — the sufficient-balance check at quote/confirm time reads the raw stored balance, which doesn't yet reflect money already committed to a still-pending remittance. That's a double-spend window: two remittances could each pass the check against the same, still-intact funds. Options: check an *available* balance (raw balance minus the sender's own still-`pending` outgoing legs) instead of the raw column; or accept it as a documented limitation of this prototype (§7). Not yet decided.
 6. `currencies`, `exchange_rates`, `fee_config`, `xrpl_accounts`, `xrpl_settlements`, `audit_log` haven't been reconciled with this new ledger shape yet — carried over from the earlier design, unchanged, to revisit later.
 7. **`process_deposits` has no protection against reprocessing the same bank statement.** Nothing keys on the statement line — no unique constraint, no dedup check — so uploading the same CSV twice (or an overlapping date range), a plausible mistake given it's a manual admin file-picker action, gives every matched line a brand-new `transactions` + `deposits` row and increases the account balance again. No test covers re-running it. Same failure category the brief calls out for the queue ("prevent duplicate messages from crediting more than once"), just hitting the reconciliation step instead — worth fixing (e.g. a unique constraint on the statement line, or hashing it) before calling Phase A done.
+8. ~~The fixed remittance fee's amount and currency-generality.~~ **Resolved.** Fee amounts are decided (§5): R15 fixed, 0.5% percentage, 1.0% FX margin, 0.75% cash-out. The fixed fee's currency-generality gap is also closed: it's denominated in ZAR and converted into `sender_currency` via each currency's USD peg at quote time (§5), so the beneficiary-free preview quote (§2 Phase B1) gets a real fixed fee for any supported sender currency, not just ZAR. The FX margin remains a rate *spread* (percentage), which is already currency-general by construction — nothing to convert.
+9. **Whether uctusd issuance/burning itself carries a separate token fee.** Today's fee model (§5) only has a remittance-side fee (percentage + FX margin, since #8) and a withdrawal/cash-out fee. Not decided: whether allocating (minting) tokens to a beneficiary at settlement, or burning them at withdrawal, itself carries an additional platform fee distinct from those two. Flagging as a possibility, not deciding either way — would need its own `§5` line and its own field on the relevant transaction/quote model if it's ever added.
+10. **Every monetary amount should end up at 2 decimal places, including uctusd — decided, not yet implemented.** Auditing `quote_service.price_remittance` found `fee`/`margin` aren't `.quantize()`d the way `token_amount` already is, so SQLite (tests) and Postgres (prod) could silently disagree on the stored value for the same computation. Chasing that further: the intended fix is 2 decimals everywhere, fiat *and* token — uctusd's current 8-decimal convention isn't an XRPL requirement (IOU amounts on XRPL use up to 15 significant digits with a floating exponent, not a fixed decimal-place cap), it looks borrowed from Bitcoin's satoshi convention, so nothing blocks moving it to 2. Two real obstacles once this is actually done: (a) `accounts.account_balance` and `transactions.amount` are single columns shared by both fiat and token rows (distinguished only by a `currency` string), and their migrations are already applied elsewhere (merged well before this one), so narrowing them from `Numeric(20,8)` needs a real new migration — per this repo's own migration-safety rule, a narrowing change on a live table should go through expand/contract across two releases, not one; (b) `token_amount = net * fiat_to_token_exchange_rate` is a multiplication that rarely lands on a round number, so rounding to 2 decimals sheds more of the fractional remainder than 8 decimals does today — worth being deliberate about when implementing, not just mechanical. A full sweep (every `Numeric(20,8)` column, every `.quantize(...)` call, every 8-decimal-formatted test assertion) hasn't been done yet.
+11. **No function yet marks a `Quote` `USED`.** Phase B2/C describe a remittance confirmation flipping the quote's status once its legs are confirmed, but no `remittances` table, confirmation controller, or settlement task exists in code yet (`models/orm/quote.py` only defines `STATUS_ACTIVE`/`STATUS_USED`/`STATUS_EXPIRED`; nothing transitions a row out of `ACTIVE`). Needed: a function that sets a `Quote`'s `status` to `USED` when the remittance referencing its `quote_id` is confirmed/completed — following the same guarded-update pattern already used elsewhere in this codebase (`transaction_repository.confirm_pending_deposit_transaction`, `remitx_worker/tasks.py::process_integration_message`: `UPDATE ... WHERE id=? AND status=<prior>`, idempotent against redelivery).
+12. **No quote-receipt lookup exists yet.** There's no endpoint or function that fetches a `Quote` (and the remittance it produced) for a user browsing their transaction history and looking up details on a specific transaction — needed once transaction history itself exists (no `GET /wallet`/transactions listing exists yet either, despite §2 Phase D describing one).
 
 ---
 

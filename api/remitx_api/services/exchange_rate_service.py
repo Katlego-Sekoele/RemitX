@@ -4,17 +4,18 @@ Lazy fetch-on-demand rather than a scheduled job: a caller asking for the
 active rate gets the stored one if it's still valid, otherwise a fresh fetch
 is made and stored right then. If the live fetch itself fails, the most
 recent stored rate is reused as long as it isn't older than
-MAX_RATE_STALENESS_HOURS; past that, this refuses to quote rather than
-fabricate a price.
+Config.MAX_RATE_STALENESS_HOURS; past that, this refuses to quote rather
+than fabricate a price.
 
 This service only validates and fetches a *given* pair. Deciding which pair
 a particular quote needs is the caller's job (see services/quote_service.py's
-`_usd_rate`).
+`_token_rate`).
 """
 
 import logging
 from datetime import UTC, datetime, timedelta
 
+from remitx_api.config import Config
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_NAD,
@@ -27,10 +28,6 @@ from remitx_api.repositories.exchange_rate_repository import ExchangeRateReposit
 from remitx_api.services.exchange_rate_provider import (
     ExchangeRateApiProvider,
     RateFetchError,
-)
-from remitx_api.services.quote_config import (
-    MAX_RATE_STALENESS_HOURS,
-    RATE_FIXING_INTERVAL_HOURS,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +74,7 @@ def get_active_rate(
             fetched_at = fallback_rate.fetched_at
             if fetched_at.tzinfo is None:
                 fetched_at = fetched_at.replace(tzinfo=UTC)
-            if now - fetched_at <= timedelta(hours=MAX_RATE_STALENESS_HOURS):
+            if now - fetched_at <= timedelta(hours=Config.MAX_RATE_STALENESS_HOURS):
                 return fallback_rate
         raise RateUnavailableError(
             "live rate fetch failed and no recent-enough stored rate exists"
@@ -89,7 +86,7 @@ def get_active_rate(
         quote_currency=quote_currency,
         rate=rate_value,
         fetched_at=now,
-        valid_until=now + timedelta(hours=RATE_FIXING_INTERVAL_HOURS),
+        valid_until=now + timedelta(hours=Config.RATE_FIXING_INTERVAL_HOURS),
     )
     db.session.add(api_fetched_rate)
     db.session.commit()

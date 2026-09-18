@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -70,6 +71,24 @@ class Config:
     @property
     def EXCHANGE_RATE_API_KEY(self) -> str:
         return os.getenv("EXCHANGE_RATE_API_KEY", "")
+
+    # --- Quote generation (services/quote_service.py, exchange_rate_service.py) ---
+    # Decided fee model — Transaction_Flow_Context.md §5. FIXED_FEE_ZAR is
+    # denominated in ZAR and converted into the sender's own currency at
+    # quote time when it isn't ZAR (see services/quote_service.py).
+    RATE_FIXING_INTERVAL_HOURS = int(os.getenv("RATE_FIXING_INTERVAL_HOURS", "1"))
+    MAX_RATE_STALENESS_HOURS = int(os.getenv("MAX_RATE_STALENESS_HOURS", "26"))
+    QUOTE_TTL_MINUTES = int(os.getenv("QUOTE_TTL_MINUTES", "15"))
+    FIXED_FEE_ZAR = Decimal(os.getenv("FIXED_FEE_ZAR", "15"))
+    PERCENTAGE_FEE_RATE = Decimal(os.getenv("PERCENTAGE_FEE_RATE", "0.005"))
+    FX_MARGIN_RATE = Decimal(os.getenv("FX_MARGIN_RATE", "0.01"))
+    CASH_OUT_FEE_RATE = Decimal(os.getenv("CASH_OUT_FEE_RATE", "0.0075"))
+    DAILY_LIMIT_ZAR_UNVERIFIED = Decimal(os.getenv("DAILY_LIMIT_ZAR_UNVERIFIED", "0"))
+    MONTHLY_LIMIT_ZAR_UNVERIFIED = Decimal(
+        os.getenv("MONTHLY_LIMIT_ZAR_UNVERIFIED", "0")
+    )
+    DAILY_LIMIT_ZAR = Decimal(os.getenv("DAILY_LIMIT_ZAR", "3000"))
+    MONTHLY_LIMIT_ZAR = Decimal(os.getenv("MONTHLY_LIMIT_ZAR", "25000"))
 
 
 class TestConfig(Config):

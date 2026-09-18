@@ -1,6 +1,7 @@
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
@@ -10,6 +11,7 @@ from remitx_api.models.orm.account import (
     Account,
     create_account_reference,
 )
+from remitx_api.models.orm.transaction import STATUS_PENDING, Transaction
 from remitx_api.repositories.repository import Repository
 
 
@@ -80,3 +82,18 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             .where(Account.account_id == account_id)
             .values(account_balance=Account.account_balance + amount)
         )
+
+    def get_available_balance(self, account_id: uuid.UUID) -> Decimal:
+        """Raw balance minus this account's own still-pending outgoing legs
+        (Transaction_Flow_Context.md §8, Open Question #5) — what a quote
+        must check instead of the raw column, so two quotes can't both pass
+        against the same, not-yet-debited funds.
+        """
+        account = self.get_by_id(account_id)
+        pending_outgoing = db.session.scalar(
+            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                Transaction.credit_account_id == account_id,
+                Transaction.status == STATUS_PENDING,
+            )
+        )
+        return account.account_balance - pending_outgoing
