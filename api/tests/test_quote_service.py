@@ -8,21 +8,26 @@ from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
+from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
     TYPE_REMITTANCE,
     Transaction,
 )
-from remitx_api.models.orm.user import KYC_APPROVED
 from remitx_api.repositories.account_repository import AccountRepository
-from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service, quote_service
 from remitx_api.services.exchange_rate_provider import RateFetchError
+from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
 
 def _approve(user):
-    user.kyc_status = KYC_APPROVED
-    return UserRepository().save(user)
+    """KYC standing is derived from `kyc_applications`, not stored on
+    `User` (see models/orm/user.py) — approve by inserting an approved
+    application row rather than setting an attribute."""
+    insert_application(
+        user.id, status=KycStatus.APPROVED, tier_granted=KYC_TIER_VERIFIED
+    )
+    return user
 
 
 def _store_rate(
@@ -199,6 +204,10 @@ def test_insufficient_available_balance_is_rejected_even_with_raw_balance_to_spa
 
 def test_unverified_sender_is_rejected(app_context):
     _store_rate()
+    # No application row is inserted for this sender, so get_standing derives
+    # NOT_STARTED — but KycTier still needs seeding, since KYC_TIER_NONE is
+    # looked up regardless of whether any application exists.
+    seed_kyc_reference_data()
     sender = UserController().ensure_provisioned(
         "user_quote_unverified", lambda: "unverified@example.com", lambda: "Unverified"
     )

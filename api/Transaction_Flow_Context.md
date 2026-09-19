@@ -186,14 +186,6 @@ erDiagram
         string relationship
         datetime created_at
     }
-    BENEFICIARIES {
-        uuid beneficiary_id PK
-        uuid sender_user_id FK "the sender who added this contact"
-        uuid linked_user_id FK "the registered user this contact resolves to"
-        string payout_currency
-        string relationship
-        datetime created_at
-    }
     ACCOUNTS {
         uuid account_id PK
         uuid user_id FK "NULL only for type=EXTERNAL"
@@ -359,8 +351,9 @@ CREATE TABLE quotes (
 | `users` | `base_reference` and `suspended_at`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. Carries neither a staff flag (RBAC's `user_roles` decides that) nor a KYC status: a user's KYC standing is derived from `kyc_applications`, not copied here. |
 | `kyc_applications`, `kyc_documents`, `kyc_decisions` | One row per KYC attempt, its evidence, and the append-only log of reviewer decisions. Outside the money flow, so not drawn above — see remitx_api/models/orm/kyc_lifecycle.py for the status machine. |
 | `currencies`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
-| `exchange_rates` | Built (§2, Phase B1) — a real API-backed rate, fetched lazily. §4 below still describes the original, unbuilt design; not yet reconciled with what's actually implemented. |
-| `xrpl_accounts`, `xrpl_settlements`, `audit_log` | Not yet reconciled with the new ledger shape. See §8. |
+| `exchange_rates` | Built (§2, Phase B1; §4) — a real API-backed rate, fetched lazily. |
+| `xrpl_accounts`, `xrpl_settlements` | Not yet reconciled with the new ledger shape. See §8. |
+| `audit_log` | Built, but for RBAC/KYC actions, not this ledger — see `models/orm/audit_log.py`. Not drawn above; outside the money flow. |
 
 **Write rules:**
 
@@ -374,11 +367,13 @@ CREATE TABLE quotes (
 
 ---
 
-## 4. Exchange Rates *(unchanged from before this redesign — not yet revisited)*
+## 4. Exchange Rates — built, as lazy fetch-on-demand rather than a scheduled job
 
-- **`rate_fetcher.py`** (APScheduler) calls the rate API on a timer and `INSERT`s a new `exchange_rates` row with `valid_until = fetched_at + FIXING_INTERVAL`.
-- **`rate_service.get_active_rate()`** returns the newest row where `valid_until > NOW()`. If none exists, the API refuses to quote rather than using a stale price.
-- Put the provider behind a `RateProvider` interface with a mock implementation.
+No `rate_fetcher.py`/APScheduler timer exists or is planned — fetching is triggered by demand, not a clock:
+
+- **`exchange_rate_provider.ExchangeRateApiProvider`** — the `RateProvider` interface (a `Protocol`, not an ABC) behind which the real call lives: `httpx.get` against exchangerate-api.com's pair-conversion endpoint (`EXCHANGE_RATE_API_KEY`, §6). Tests fake this class directly rather than monkeypatching `httpx`.
+- **`exchange_rate_service.get_active_rate(base_currency, quote_currency)`** — the single entry point every quote calculation goes through (`quote_service._token_rate`/`_direct_fiat_rate`). Reuses a stored `exchange_rates` row while `valid_until > now`; on expiry, fetches live and `INSERT`s a new row with `valid_until = fetched_at + RATE_FIXING_INTERVAL_HOURS`. If the live fetch itself fails, falls back to the most recent stored row *of any age* as long as it's within `MAX_RATE_STALENESS_HOURS`; past that, raises `RateUnavailableError` — the API refuses to quote rather than use a stale or fabricated price. Raises `UnsupportedCurrencyError` up front for any pair outside `SUPPORTED_CURRENCIES` (`USD`, `ZAR`, `ZWL`, `NAD`).
+- `ExchangeRateRepository.get_current_rate`/`get_most_recent_rate` back the two lookups above.
 
 **Two expiries, different jobs:** `exchange_rates.valid_until` = how long a *price* is publishable. `quotes.expires_at` (15 min) = how long a *customer's* price is honoured.
 
@@ -450,8 +445,8 @@ Deliberately unresolved for now — flagging rather than guessing:
 2. ~~A quote can reference a beneficiary or sender account that doesn't exist yet.~~ **Resolved.** Both of a user's accounts are created eagerly at signup (§2, Phase A) — every user already has a `uctusd` account before anyone could ever quote a remittance to them.
 3. **Nothing stops a platform/external account being seeded twice.** `scripts/seed_platform_accounts.py` checks `get_platform_account_by_label(label)` before inserting, so re-running the script is safe — but nothing at the schema level stops a second, differently-run script or a manual insert from creating a duplicate. Worth a `UNIQUE (type, label, account_currency) WHERE type <> 'USER'` if that's ever a real risk.
 4. ~~Withdrawal request vs. approval.~~ **Resolved.** No approval gate — the customer's request itself creates the `withdraws` row and its pending redeem-leg transaction (§2, Phase E). An admin-triggered batch action settles every pending one, mirroring Phase A's reconciliation-button pattern.
-5. **A sender's ZAR balance doesn't actually drop until settlement confirms.** Since all four of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window — the sufficient-balance check at quote/confirm time reads the raw stored balance, which doesn't yet reflect money already committed to a still-pending remittance. That's a double-spend window: two remittances could each pass the check against the same, still-intact funds. Options: check an *available* balance (raw balance minus the sender's own still-`pending` outgoing legs) instead of the raw column; or accept it as a documented limitation of this prototype (§7). Not yet decided.
-6. `currencies`, `exchange_rates`, `fee_config`, `xrpl_accounts`, `xrpl_settlements`, `audit_log` haven't been reconciled with this new ledger shape yet — carried over from the earlier design, unchanged, to revisit later.
+5. ~~A sender's ZAR balance doesn't actually drop until settlement confirms.~~ **Resolved, at quote time.** Since all four of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window. `quote_service.create_quote` no longer checks the raw stored balance for this reason — it calls `AccountRepository.get_available_balance`, which nets the sender's raw balance against their own still-`pending` outgoing legs, so a second quote against the same, still-intact raw balance is rejected (`InsufficientBalanceError`). Not fully closed: this check runs at quote creation, not at the (not-yet-built) remittance-confirmation step B2 — a quote issued against an available balance that later gets spent by something else before B2 confirms is still a gap, but the specific double-spend this question named (two quotes/remittances both passing against the same raw balance) is fixed.
+6. `currencies`, `fee_config`, `xrpl_accounts`, `xrpl_settlements` haven't been reconciled with this new ledger shape yet — carried over from the earlier design, unchanged, to revisit later. (`exchange_rates` is now built — see §4 — and `audit_log` exists, tracking RBAC/KYC actions rather than the money-flow tables above; neither belongs on this list anymore.)
 7. **`process_deposits` has no protection against reprocessing the same bank statement.** Nothing keys on the statement line — no unique constraint, no dedup check — so uploading the same CSV twice (or an overlapping date range), a plausible mistake given it's a manual admin file-picker action, gives every matched line a brand-new `transactions` + `deposits` row and increases the account balance again. No test covers re-running it. Same failure category the brief calls out for the queue ("prevent duplicate messages from crediting more than once"), just hitting the reconciliation step instead — worth fixing (e.g. a unique constraint on the statement line, or hashing it) before calling Phase A done.
 8. ~~The fixed remittance fee's amount and currency-generality.~~ **Resolved.** Fee amounts are decided (§5): R15 fixed, 0.5% percentage, 1.0% FX margin, 0.75% cash-out. The fixed fee's currency-generality gap is also closed: it's denominated in ZAR and converted into `sender_currency` via each currency's USD peg at quote time (§5), so the beneficiary-free preview quote (§2 Phase B1) gets a real fixed fee for any supported sender currency, not just ZAR. The FX margin remains a rate *spread* (percentage), which is already currency-general by construction — nothing to convert.
 9. **Whether uctusd issuance/burning itself carries a separate token fee.** Today's fee model (§5) only has a remittance-side fee (percentage + FX margin, since #8) and a withdrawal/cash-out fee. Not decided: whether allocating (minting) tokens to a beneficiary at settlement, or burning them at withdrawal, itself carries an additional platform fee distinct from those two. Flagging as a possibility, not deciding either way — would need its own `§5` line and its own field on the relevant transaction/quote model if it's ever added.

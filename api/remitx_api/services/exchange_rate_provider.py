@@ -39,12 +39,11 @@ class ExchangeRateApiProvider:
         url = _PAIR_URL.format(
             api_key=api_key, base=base_currency, quote=quote_currency
         )
-        # Try to fetch the rate from the external API 
-        # (No retry logic here; if it fails, we fall back to a stored rate)
+        # No retry logic here; if it fails, we fall back to a stored rate.
         try:
-            response = httpx.get(url, timeout=5) 
-            response.raise_for_status() # Raise an error for non-2xx responses # TODO: Consider if this is neeeded or nto
-            payload = response.json() # Parse the JSON response
+            response = httpx.get(url, timeout=5)
+            response.raise_for_status()
+            payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise RateFetchError(f"rate fetch failed: {exc}") from exc
 

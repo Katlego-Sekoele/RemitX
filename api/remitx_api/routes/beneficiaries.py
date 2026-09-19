@@ -17,9 +17,10 @@ from remitx_api.models.schemas.beneficiary import (
     BeneficiaryLookupResponse,
     BeneficiaryRead,
 )
+from remitx_api.openapi import Tag
 from remitx_api.routes.routers import create_customer_router
 
-router = create_customer_router(prefix="/beneficiaries", tags=["beneficiaries"])
+router = create_customer_router(prefix="/beneficiaries", tags=[Tag.BENEFICIARIES])
 controller = BeneficiaryController()
 
 

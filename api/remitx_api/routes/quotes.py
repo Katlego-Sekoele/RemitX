@@ -9,6 +9,7 @@ from remitx_api.models.schemas.quote import (
     QuotePreviewRequest,
     QuoteRead,
 )
+from remitx_api.openapi import Tag
 from remitx_api.routes.routers import create_customer_router
 from remitx_api.services.exchange_rate_service import (
     RateUnavailableError,
@@ -21,7 +22,7 @@ from remitx_api.services.quote_service import (
     UnknownBeneficiaryError,
 )
 
-router = create_customer_router(prefix="/quotes", tags=["quotes"])
+router = create_customer_router(prefix="/quotes", tags=[Tag.QUOTES])
 controller = QuoteController()
 
 

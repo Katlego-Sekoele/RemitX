@@ -21,17 +21,22 @@ from remitx_api.config import Config
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_USD, CURRENCY_ZAR
 from remitx_api.models.orm.quote import STATUS_ACTIVE, Quote
-from remitx_api.models.orm.user import KYC_APPROVED
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.beneficiary_repository import BeneficiaryRepository
+from remitx_api.repositories.kyc_application_repository import (
+    KycApplicationRepository,
+)
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
 
 
 # Custom exceptions for quote creation.
 class KycNotApprovedError(Exception):
-    """Sender's KYC isn't APPROVED — brief: "Only approved users may send
-    remittances." UNVERIFIED is rejected outright, never just limited."""
+    """Sender's KYC standing isn't verified — brief: "Only approved users may
+    send remittances." A sender who never verified, or whose verification
+    was rejected, is turned away outright, never just limited. Standing is
+    derived from `kyc_applications` (KycApplicationRepository.get_standing),
+    not stored on `User` — see models/orm/user.py."""
 
 
 class LimitExceededError(Exception):
@@ -205,7 +210,7 @@ def create_quote(
     sender = users.get_by_id(sender_user_id)
     if sender is None:
         raise ValueError(f"User {sender_user_id} does not exist")
-    if sender.kyc_status != KYC_APPROVED:
+    if not KycApplicationRepository().get_standing(sender_user_id).is_verified:
         raise KycNotApprovedError(str(sender_user_id))
 
     # Simplified ceiling check — see LimitExceededError.
