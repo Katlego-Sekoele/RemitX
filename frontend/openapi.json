@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "AccountRead": {
-        "description": "A read-only representation of a customer currency account.",
+        "description": "A read-only representation of a customer currency account.\nCan be used to display the account's current balance and currency.",
         "properties": {
           "account_id": {
             "format": "uuid",
@@ -3514,6 +3514,10 @@
             "title": "Beneficiary Id",
             "type": "string"
           },
+          "receiver_payout_currency": {
+            "title": "Receiver Payout Currency",
+            "type": "string"
+          },
           "sender_amount": {
             "anyOf": [
               {
@@ -3525,11 +3529,17 @@
               }
             ],
             "title": "Sender Amount"
+          },
+          "sender_currency": {
+            "title": "Sender Currency",
+            "type": "string"
           }
         },
         "required": [
           "beneficiary_id",
-          "sender_amount"
+          "sender_amount",
+          "sender_currency",
+          "receiver_payout_currency"
         ],
         "title": "QuoteCreateRequest",
         "type": "object"
@@ -3639,9 +3649,9 @@
       },
       "QuoteRead": {
         "properties": {
-          "beneficiary_account_id": {
+          "beneficiary_user_id": {
             "format": "uuid",
-            "title": "Beneficiary Account Id",
+            "title": "Beneficiary User Id",
             "type": "string"
           },
           "created_at": {
@@ -3691,11 +3701,6 @@
             "title": "Receiver Payout Fee",
             "type": "string"
           },
-          "sender_account_id": {
-            "format": "uuid",
-            "title": "Sender Account Id",
-            "type": "string"
-          },
           "sender_amount": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Amount",
@@ -3708,6 +3713,11 @@
           "sender_transaction_fee": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Transaction Fee",
+            "type": "string"
+          },
+          "sender_user_id": {
+            "format": "uuid",
+            "title": "Sender User Id",
             "type": "string"
           },
           "status": {
@@ -3726,8 +3736,8 @@
         },
         "required": [
           "quote_id",
-          "sender_account_id",
-          "beneficiary_account_id",
+          "sender_user_id",
+          "beneficiary_user_id",
           "sender_amount",
           "sender_currency",
           "token_amount",

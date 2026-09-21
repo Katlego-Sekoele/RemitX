@@ -237,7 +237,9 @@ def _seed_treasury_funding(treasury_account: Account, issuer_account: Account) -
             confirmed_at=datetime.now(UTC),
         )
     )
-    AccountRepository().increase_balance(treasury_account.account_id, balance)
+    account_repo = AccountRepository()
+    account_repo.decrease_balance(issuer_account.account_id, balance)
+    account_repo.increase_balance(treasury_account.account_id, balance)
     db.session.commit()
     print(f"Recorded treasury funding: {balance} uctusd")
 

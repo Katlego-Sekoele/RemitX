@@ -1,6 +1,13 @@
 """The worker half of remittance settlement (Transaction_Flow_Context.md §2
 Phase C).
 
+`settle_remittance` no longer confirms or credits anything itself — every
+one of a remittance's seven legs stays pending until the treasury burn
+resolves (see test_worker_burn_treasury_tokens.py for that). Its only job
+here is handing off to `burn_treasury_tokens`, guarded by nothing more than
+"is there still a pending burn leg for this quote" — the burn leg's own
+claim (in `burn_treasury_tokens`) is what actually makes redelivery safe.
+
 Runs the task function directly against a scratch SQLite file — no broker
 involved, mirroring test_integration_message_task.py exactly.
 """
@@ -15,8 +22,6 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
     TYPE_EXTERNAL,
-    TYPE_PLATFORM_FIAT,
-    TYPE_PLATFORM_REVENUE,
     TYPE_USER,
     TYPE_XRPL_WALLET,
     Account,
@@ -24,14 +29,14 @@ from remitx_api.models.orm.account import (
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.transaction import (
-    STATUS_CONFIRMED,
     STATUS_PENDING,
-    TYPE_FEE,
-    TYPE_REMITTANCE,
+    STATUS_PROCESSING,
+    TYPE_TOKEN_BURN,
     Transaction,
 )
 from remitx_api.models.orm.user import User
 from remitx_worker import db as worker_db
+from remitx_worker import tasks
 from remitx_worker.tasks import settle_remittance
 from sqlalchemy.orm import sessionmaker
 
@@ -47,6 +52,17 @@ def session_factory(tmp_path):
     worker_db.configure(None)
 
 
+@pytest.fixture
+def enqueued_burn(monkeypatch):
+    """Capture `enqueue_burn_treasury_tokens` calls instead of publishing —
+    CI has no Redis."""
+    calls = []
+    monkeypatch.setattr(
+        tasks.queue_service, "enqueue_burn_treasury_tokens", calls.append
+    )
+    return calls
+
+
 def _user(session) -> uuid.UUID:
     user_id = uuid.uuid4()
     session.add(
@@ -60,7 +76,7 @@ def _user(session) -> uuid.UUID:
     return user_id
 
 
-def _account(session, *, type_, currency, balance="0", label=None) -> uuid.UUID:
+def _account(session, *, type_, currency, balance="0") -> uuid.UUID:
     account_id = uuid.uuid4()
     account = Account(
         account_id=account_id,
@@ -69,7 +85,7 @@ def _account(session, *, type_, currency, balance="0", label=None) -> uuid.UUID:
         reference=f"{account_id}-{currency}" if type_ == TYPE_USER else None,
         account_currency=currency,
         account_balance=Decimal(balance),
-        label=label or f"{type_} {currency}",
+        label=f"{type_} {currency}",
     )
     session.add(account)
     session.commit()
@@ -77,9 +93,6 @@ def _account(session, *, type_, currency, balance="0", label=None) -> uuid.UUID:
 
 
 def _quote(session, *, sender_account_id, beneficiary_account_id) -> uuid.UUID:
-    """A `Quote` row purely to satisfy `transactions.quote_id`'s FK —
-    `settle_remittance` never reads `Quote` itself, so the priced fields
-    here are arbitrary but valid."""
     now = datetime.now(UTC)
     rate = ExchangeRate(
         base_currency=CURRENCY_ZAR,
@@ -92,8 +105,8 @@ def _quote(session, *, sender_account_id, beneficiary_account_id) -> uuid.UUID:
     session.commit()
 
     quote = Quote(
-        sender_account_id=sender_account_id,
-        beneficiary_account_id=beneficiary_account_id,
+        sender_user_id=session.get(Account, sender_account_id).user_id,
+        beneficiary_user_id=session.get(Account, beneficiary_account_id).user_id,
         sender_amount=Decimal("1000"),
         sender_currency=CURRENCY_ZAR,
         sender_transaction_fee=Decimal("20"),
@@ -114,156 +127,73 @@ def _quote(session, *, sender_account_id, beneficiary_account_id) -> uuid.UUID:
     return quote.quote_id
 
 
-def _pending_leg(
-    session, *, quote_id, credit_account_id, debit_account_id, amount, currency, type_
-) -> uuid.UUID:
-    tx = Transaction(
-        tx_id=uuid.uuid4(),
-        type=type_,
-        credit_account_id=credit_account_id,
-        debit_account_id=debit_account_id,
-        amount=Decimal(amount),
-        currency=currency,
-        status=STATUS_PENDING,
-        quote_id=quote_id,
+def _burn_leg(session, *, quote_id, treasury, issuer, status=STATUS_PENDING) -> None:
+    session.add(
+        Transaction(
+            tx_id=uuid.uuid4(),
+            type=TYPE_TOKEN_BURN,
+            credit_account_id=treasury,
+            debit_account_id=issuer,
+            amount=Decimal("52.432432"),
+            currency=CURRENCY_TOKEN,
+            status=status,
+            quote_id=quote_id,
+        )
     )
-    session.add(tx)
     session.commit()
-    return tx.tx_id
 
 
 @pytest.fixture
-def pending_remittance(session_factory):
-    """A quote's four pending legs (Transaction_Flow_Context.md §2 Phase
-    B2's worked example: 1000 sent, 30 fee, 970 net, 52.432432 tokens),
-    seeded directly against the scratch DB. Returns
-    (quote_id, sender_zar, sender_token, fee_revenue, bank, treasury,
-    beneficiary_token).
-    """
+def quote_with_pending_burn_leg(session_factory):
     with session_factory() as session:
-        sender_zar = _account(session, type_=TYPE_USER, currency=CURRENCY_ZAR)
         sender_token = _account(session, type_=TYPE_USER, currency=CURRENCY_TOKEN)
         beneficiary_token = _account(session, type_=TYPE_USER, currency=CURRENCY_TOKEN)
-        fee_revenue = _account(
-            session, type_=TYPE_PLATFORM_REVENUE, currency=CURRENCY_ZAR
-        )
-        bank = _account(session, type_=TYPE_PLATFORM_FIAT, currency=CURRENCY_ZAR)
         treasury = _account(
-            session,
-            type_=TYPE_XRPL_WALLET,
-            currency=CURRENCY_TOKEN,
-            balance="1000",
+            session, type_=TYPE_XRPL_WALLET, currency=CURRENCY_TOKEN, balance="1000"
         )
+        issuer = _account(session, type_=TYPE_EXTERNAL, currency=CURRENCY_TOKEN)
         quote_id = _quote(
             session,
-            sender_account_id=sender_zar,
+            sender_account_id=sender_token,
             beneficiary_account_id=beneficiary_token,
         )
+        _burn_leg(session, quote_id=quote_id, treasury=treasury, issuer=issuer)
 
-        _pending_leg(
-            session,
-            quote_id=quote_id,
-            credit_account_id=sender_zar,
-            debit_account_id=fee_revenue,
-            amount="30",
-            currency=CURRENCY_ZAR,
-            type_=TYPE_FEE,
-        )
-        _pending_leg(
-            session,
-            quote_id=quote_id,
-            credit_account_id=sender_zar,
-            debit_account_id=bank,
-            amount="970",
-            currency=CURRENCY_ZAR,
-            type_=TYPE_REMITTANCE,
-        )
-        _pending_leg(
-            session,
-            quote_id=quote_id,
-            credit_account_id=treasury,
-            debit_account_id=sender_token,
-            amount="52.432432",
-            currency=CURRENCY_TOKEN,
-            type_=TYPE_REMITTANCE,
-        )
-        _pending_leg(
-            session,
-            quote_id=quote_id,
-            credit_account_id=sender_token,
-            debit_account_id=beneficiary_token,
-            amount="52.432432",
-            currency=CURRENCY_TOKEN,
-            type_=TYPE_REMITTANCE,
-        )
-
-    return {
-        "quote_id": quote_id,
-        "sender_zar": sender_zar,
-        "sender_token": sender_token,
-        "fee_revenue": fee_revenue,
-        "bank": bank,
-        "treasury": treasury,
-        "beneficiary_token": beneficiary_token,
-    }
+    return quote_id
 
 
-def _balance(session_factory, account_id) -> Decimal:
+def test_settle_remittance_enqueues_burn_when_burn_leg_pending(
+    session_factory, quote_with_pending_burn_leg, enqueued_burn
+):
+    result = settle_remittance(str(quote_with_pending_burn_leg))
+
+    assert result == "queued"
+    assert enqueued_burn == [str(quote_with_pending_burn_leg)]
+
+
+def test_settle_remittance_is_skipped_once_burn_leg_is_no_longer_pending(
+    session_factory, quote_with_pending_burn_leg, enqueued_burn
+):
+    """Once `burn_treasury_tokens` has claimed the burn leg (or it has
+    resolved), a redelivered `settle_remittance` message has nothing left to
+    kick off."""
     with session_factory() as session:
-        return session.get(Account, account_id).account_balance
+        session.execute(
+            Transaction.__table__.update()
+            .where(Transaction.quote_id == quote_with_pending_burn_leg)
+            .values(status=STATUS_PROCESSING)
+        )
+        session.commit()
+
+    result = settle_remittance(str(quote_with_pending_burn_leg))
+
+    assert result == "skipped"
+    assert enqueued_burn == []
 
 
-def _legs(session_factory, quote_id) -> list[Transaction]:
-    with session_factory() as session:
-        return session.query(Transaction).filter(Transaction.quote_id == quote_id).all()
-
-
-def test_settling_confirms_all_four_legs(session_factory, pending_remittance):
-    result = settle_remittance(str(pending_remittance["quote_id"]))
-
-    assert result == "settled"
-    legs = _legs(session_factory, pending_remittance["quote_id"])
-    assert len(legs) == 4
-    assert all(leg.status == STATUS_CONFIRMED for leg in legs)
-    assert all(leg.confirmed_at is not None for leg in legs)
-
-
-def test_settling_credits_the_right_four_accounts(session_factory, pending_remittance):
-    settle_remittance(str(pending_remittance["quote_id"]))
-
-    assert _balance(session_factory, pending_remittance["fee_revenue"]) == Decimal("30")
-    assert _balance(session_factory, pending_remittance["bank"]) == Decimal("970")
-    # Treasury started at 1000, paid out 52.432432 to the sender's token
-    # account as the pass-through leg's destination.
-    assert _balance(session_factory, pending_remittance["sender_token"]) == Decimal(
-        "52.432432"
-    )
-    assert _balance(
-        session_factory, pending_remittance["beneficiary_token"]
-    ) == Decimal("52.432432")
-
-
-def test_settling_twice_does_not_double_credit(session_factory, pending_remittance):
-    """The graded requirement: a redelivered settlement message must not
-    credit the recipient more than once."""
-    first = settle_remittance(str(pending_remittance["quote_id"]))
-    assert first == "settled"
-    balance_after_first = _balance(
-        session_factory, pending_remittance["beneficiary_token"]
-    )
-
-    second = settle_remittance(str(pending_remittance["quote_id"]))
-
-    assert second == "skipped"
-    assert (
-        _balance(session_factory, pending_remittance["beneficiary_token"])
-        == balance_after_first
-    )
-    assert _balance(session_factory, pending_remittance["fee_revenue"]) == Decimal("30")
-
-
-def test_unknown_quote_is_skipped(session_factory):
+def test_unknown_quote_is_skipped(session_factory, enqueued_burn):
     assert settle_remittance(str(uuid.uuid4())) == "skipped"
+    assert enqueued_burn == []
 
 
 @pytest.mark.parametrize(

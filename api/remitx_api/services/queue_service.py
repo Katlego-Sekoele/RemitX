@@ -22,6 +22,8 @@ from remitx_api.config import Config
 
 PROCESS_INTEGRATION_MESSAGE = "remitx_worker.tasks.process_integration_message"
 SETTLE_REMITTANCE = "remitx_worker.tasks.settle_remittance"
+BURN_TREASURY_TOKENS = "remitx_worker.tasks.burn_treasury_tokens"
+CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -116,6 +118,33 @@ def enqueue_settle_remittance(quote_id: str) -> None:
     producer.send_task(
         SETTLE_REMITTANCE,
         args=[quote_id],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_burn_treasury_tokens(quote_id: str) -> None:
+    """Enqueued by `settle_remittance` once its own five bookkeeping legs
+    confirm — submits the quote's `burn` leg's XRPL `Payment` and hands the
+    result to `confirm_treasury_burn`.
+    """
+    producer.send_task(
+        BURN_TREASURY_TOKENS,
+        args=[quote_id],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_confirm_treasury_burn(quote_id: str, tx_hash: str | None) -> None:
+    """Enqueued by `burn_treasury_tokens` once the XRPL call has resolved
+    (success or failure) — a separate, network-free task so the DB confirm
+    + credit step can be retried on its own without resubmitting the burn.
+    `tx_hash` is `None` for a failed burn.
+    """
+    producer.send_task(
+        CONFIRM_TREASURY_BURN,
+        args=[quote_id, tx_hash],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()

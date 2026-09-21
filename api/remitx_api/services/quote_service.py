@@ -53,6 +53,13 @@ class UnknownBeneficiaryError(Exception):
     """`beneficiary_id` doesn't exist, or doesn't belong to this sender."""
 
 
+class UnknownSenderAccountError(Exception):
+    """Sender has no account in the requested `sender_currency`. Only ZAR
+    and uctusd are created eagerly at signup (Transaction_Flow_Context.md
+    §7), so any other sender_currency legitimately has no account yet —
+    this is a real, reachable outcome, not a defensive check."""
+
+
 class InsufficientBalanceError(Exception):
     """Sender's *available* balance (raw minus their own pending outgoing
     legs — Open Question #5) can't cover `sender_amount`."""
@@ -201,7 +208,11 @@ def price_remittance(
 
 
 def create_quote(
-    sender_user_id: uuid.UUID, beneficiary_id: uuid.UUID, sender_amount: Decimal
+    sender_user_id: uuid.UUID,
+    beneficiary_id: uuid.UUID,
+    sender_amount: Decimal,
+    sender_currency: str,
+    receiver_payout_currency: str,
 ) -> Quote:
     users = UserRepository()
     accounts = AccountRepository()
@@ -218,33 +229,42 @@ def create_quote(
         raise LimitExceededError(
             f"{sender_amount} exceeds the daily limit of {Config.DAILY_LIMIT_ZAR}"
         )
-
+    # Get the beneficiary and check that it belongs to this sender. The
+    # beneficiary's linked_user_id is the one who will receive the remittance.
     beneficiary = beneficiaries.get_by_id(beneficiary_id)
     if beneficiary is None or beneficiary.sender_user_id != sender_user_id:
         raise UnknownBeneficiaryError(str(beneficiary_id))
 
-    sender_account = accounts.get_user_account(sender_user_id, CURRENCY_ZAR)
-    beneficiary_account = accounts.get_user_account(
+    sender_account = accounts.get_user_account(sender_user_id, sender_currency)
+    if sender_account is None:
+        raise UnknownSenderAccountError(
+            f"sender {sender_user_id} has no account in {sender_currency}"
+        )
+    # Get the beneficiary's token account — the remittance is settled in
+    # the USD-pegged token, not the payout currency, so we need to check
+    # that the beneficiary has a token account to receive it.
+    beneficiary_token_account = accounts.get_user_account(
         beneficiary.linked_user_id, CURRENCY_TOKEN
     )
-    if sender_account is None or beneficiary_account is None:
-        # Should never happen post-eager-creation — defensive, not a normal path.
-        raise ValueError("sender or beneficiary is missing an expected account")
+    if beneficiary_token_account is None:
+        # Should never happen post-eager-creation — defensive, not a normal
+        # path. Unlike sender_account above, every user gets a uctusd
+        # account at signup regardless of sender_currency.
+        raise ValueError("beneficiary is missing their uctusd account")
 
+    # Check the sender's available balance
     available = accounts.get_available_balance(sender_account.account_id)
     if available < sender_amount:
         raise InsufficientBalanceError(
             f"available balance {available} is less than {sender_amount}"
         )
-
-    pricing = price_remittance(
-        sender_amount, sender_account.account_currency, beneficiary.payout_currency
-    )
+    # Price the remittance
+    pricing = price_remittance(sender_amount, sender_currency, receiver_payout_currency)
 
     now = datetime.now(UTC)
     quote = Quote(
-        sender_account_id=sender_account.account_id,
-        beneficiary_account_id=beneficiary_account.account_id,
+        sender_user_id=sender_user_id,
+        beneficiary_user_id=beneficiary.linked_user_id,
         sender_amount=sender_amount,
         sender_currency=pricing.sender_currency,
         sender_transaction_fee=pricing.sender_transaction_fee,

@@ -75,6 +75,22 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             )
         ).all()
 
+    def get_or_create_user_account(
+        self, user_id: uuid.UUID, base_reference: str, currency: str
+    ) -> Account:
+        """Like `get_user_account`, but provisions the account on the spot if
+        this is the first time this person has ever needed one in this
+        currency — e.g. a beneficiary receiving their first remittance in a
+        payout currency nobody creates an account for at signup (only ZAR +
+        uctusd are eager)."""
+        account = self.get_user_account(user_id, currency)
+        if account is not None:
+            return account
+        account = self._build_account(user_id, base_reference, currency)
+        db.session.add(account)
+        db.session.flush()
+        return account
+
     def create_user_accounts(
         self, user_id: uuid.UUID, base_reference: str
     ) -> tuple[Account, Account]:
@@ -103,18 +119,27 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         )
 
     def increase_balance(self, account_id: uuid.UUID, amount) -> None:
-        """Atomically add `amount` to an account's balance."""
+        """Atomically add `amount` to an account's balance if it is
+        on the debit_account_id (destination) side of a transaction."""
         db.session.execute(
             update(Account)
             .where(Account.account_id == account_id)
             .values(account_balance=Account.account_balance + amount)
         )
 
+    def decrease_balance(self, account_id: uuid.UUID, amount) -> None:
+        """Atomically subtract `amount` from an account's balance — the
+        credit_account_id (source) side of a transaction."""
+        db.session.execute(
+            update(Account)
+            .where(Account.account_id == account_id)
+            .values(account_balance=Account.account_balance - amount)
+        )
+
     def get_available_balance(self, account_id: uuid.UUID) -> Decimal:
-        """Raw balance minus this account's own still-pending outgoing legs
-        (Transaction_Flow_Context.md §8, Open Question #5) — what a quote
-        must check instead of the raw column, so two quotes can't both pass
-        against the same, not-yet-debited funds.
+        """Raw balance minus this account's own still-pending outgoing transactions.
+        A quote is only valid if the user has sufficient available balance
+        to cover the entire quote amount.
         """
         account = self.get_by_id(account_id)
         pending_outgoing = db.session.scalar(

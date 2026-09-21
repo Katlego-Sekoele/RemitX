@@ -80,6 +80,8 @@ Two XRPL Testnet accounts sit behind two `accounts` rows:
 
 **Settled, per the course's clarifications (10 Sep):** the withdrawal burn — a `Payment(OPERATIONAL → ISSUER)` — is the *only* leg in the whole system that touches the XRPL chain. Remittance settlement (crediting a beneficiary, §2 Phase C) is pure database bookkeeping: the Treasury Wallet is pre-funded already, so crediting someone from it never needs a chain call. There's no "buying" or minting step to simulate either — the Treasury Wallet's starting `uctusd` balance is recorded once, as a real `treasury_funding` transaction crediting it from `ISSUER`, reflecting the actual on-chain balance the lecturer funded (`scripts/seed_platform_accounts.py` queries it directly from the testnet) — not a per-remittance event.
 
+**Superseded below.** As of the change in Phase C, the treasury's `uctusd` is now burned on *every* remittance, at the moment the beneficiary pass-through leg lands it back in `OPERATIONAL`, rather than letting it sit there until an eventual withdrawal (Phase E) burns it. See Phase C below and Open Question #1 — remittance settlement is now genuinely on-chain, same category of call as the withdrawal burn.
+
 ---
 
 ## 2. The Flow
@@ -105,34 +107,48 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 
 **B1. Request a quote** — `quotes`: sender's ZAR account, beneficiary's `uctusd` account (exists from signup — see §2, Phase A), mid rate 18.50, fee 20.00, margin 10.00, net 970.00, settlement **52.432432 uctusd**, `ACTIVE`, expires in 15 min.
 
-**B2. Sender confirms** (`services/remittance_service.py::confirm_remittance`) — first, a guarded `quotes` transition (`WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?`) flips the quote to **USED**; only once that succeeds does one commit insert a `remittances` row and every leg it needs — **all four inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet:
+**B2. Sender confirms** (`services/remittance_service.py::confirm_remittance`) — first, a guarded `quotes` transition (`WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?`) flips the quote to **USED**; only once that succeeds does one commit insert a `remittances` row and every leg it needs — **all seven inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet (nor, per Phase C below, until the burn leg's on-chain call actually resolves):
 
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Fee Revenue`, amount 30.00, type `fee`, **pending**
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Bank Account`, amount 970.00, type `remittance`, **pending**
 - `transactions` → credit `RemitX XRPL Treasury Wallet`, debit **Sipho's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
-- `transactions` → credit **Sipho's `uctusd` account**, debit **Tendai's `uctusd` account**, amount 52.432432, type `remittance`, **pending** — this is the row `remittances.tx_id` (`NOT NULL`) points at
+- `transactions` → credit **Sipho's `uctusd` account**, debit **Tendai's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
+- `transactions` → credit **Tendai's `uctusd` account**, debit `RemitX XRPL Treasury Wallet`, amount 52.432432, type `remittance`, **pending** — completes Tendai's own pass-through, mirroring Sipho's
+- `transactions` → credit `RemitX XRPL Treasury Wallet`, debit `UCTUSD Issuer (Exchange)`, amount 52.432432, type `token_burn`, **pending** — the on-chain leg (§2, Phase C) that actually destroys the tokens the line above just landed back in the treasury
+- `transactions` → credit `RemitX ZIM Bank Account`, debit **Tendai's ZWL account**, amount (the quote's `receiver_amount`, converted directly via `fiat_exchange_rate` — not routed through the token leg), type `beneficiary_payout`, **pending** — this is the row `remittances.tx_id` (`NOT NULL`) points at, since it's the leg that actually represents "has this remittance reached the beneficiary"
 
-`remittances` is deliberately lean (`remittance_id`, `quote_id` — FK, UNIQUE — `tx_id`, `confirmed_by`, `created_at`; see §3): every priced field (`fx_rate`, `fee_amount`, token amounts, currencies) is already frozen on the `quotes` row it confirms, so nothing here duplicates it. A remittance's receipt is the controller joining `remittances` + `quotes`, not extra storage.
+`remittances` is deliberately lean (`remittance_id`, `quote_id` — FK, UNIQUE — `tx_id`, `created_at`; see §3): every priced field (`fx_rate`, `fee_amount`, token amounts, currencies) is already frozen on the `quotes` row it confirms, so nothing here duplicates it, and "who confirmed it" is already `quotes.sender_user_id` — `confirm_remittance` only ever confirms a quote against its own sender, so a separate `confirmed_by` column would just be the same value stored twice. A remittance's receipt is the controller joining `remittances` + `quotes`, not extra storage.
 
-Sipho's `uctusd` account nets to exactly zero across the two token legs, once they confirm — it's a momentary pass-through that exists so the sender's own activity history shows the tokens they sent, not a balance they ever actually held.
+**The beneficiary never holds a resting `uctusd` balance** — a deliberate deviation from the brief's literal "recipient holds and views RLUSD, then chooses when to cash out" wording (§4.7). Tendai's `uctusd` account is a momentary pass-through exactly like Sipho's own: legs 4-5 credit it then debit the same amount straight back to the treasury, nets to zero once both confirm. The payout leg (7) auto-converts the settled amount into Tendai's own ZWL account instead — no separate withdrawal action needed to reach fiat — but only once the burn leg (6) has actually destroyed the equivalent tokens on-chain (§2, Phase C). `Tendai's ZWL account` is provisioned lazily, inside `confirm_remittance`, the first time he receives money in that currency (not at signup — only ZAR + `uctusd` are eager). The cash-out fee (`Config.CASH_OUT_FEE_RATE`, already computed on every quote as `receiver_payout_fee`) is **not** deducted here — deferred to a real withdrawal-from-the-platform flow that doesn't exist yet (needs XRPL signing infrastructure this codebase doesn't have).
 
-**Nothing about this remittance is final yet — not even the fee.** No account's `account_balance` moves at B2; every one of these four rows is still waiting on Phase C. The balance-check consequence this has (Sipho's ZAR balance hasn't actually dropped yet) is fully closed as of this confirmation step — see §8 Open Question #5.
+Sipho's `uctusd` account nets to exactly zero across its two token legs, once they confirm — it's a momentary pass-through that exists so the sender's own activity history shows the tokens they sent, not a balance they ever actually held.
+
+**Nothing about this remittance is final yet — not even the fee.** No account's `account_balance` moves at B2; every one of these six rows is still waiting on Phase C. The balance-check consequence this has (Sipho's ZAR balance hasn't actually dropped yet) is fully closed as of this confirmation step — see §8 Open Question #5.
 
 Then, only after that commit returns, `queue_service.enqueue_settle_remittance(quote_id)` enqueues the Celery task `remitx_worker.tasks.settle_remittance` onto the Redis-backed `settlement` queue — keyed on `quote_id`, not `remittance_id`, since that's the only thing the group-confirm guard in C3 actually needs.
 
 ### Phase C — Settlement
 
-**C1. Worker consumes.** Guarded-batch-confirms every `pending` `transactions` row sharing this `quote_id` directly — it never loads the `remittances` row itself (nothing in settlement reads any of its columns).
+B2 now inserts **seven** pending legs, not six: a `token_burn` leg (credit `RemitX XRPL Treasury Wallet`, debit `UCTUSD Issuer (Exchange)`, same `token_amount` as the beneficiary pass-through leg) sits between the beneficiary pass-through and the payout, and the old 6th leg's `type` is `beneficiary_payout`, not `remittance`, so it's addressable on its own. **Nothing confirms and no balance moves for any of the seven until the on-chain burn resolves** — settlement is now three Celery tasks, but only the last one ever writes a `confirmed` or `failed` status. Gating the whole group on the burn, not just the payout, means a failed burn needs no reversal: since nothing was ever credited, failing the group is a pure status flip.
 
-**C2. Resolve.** Nothing to submit anywhere — crediting a beneficiary only ever moves value the Treasury Wallet already holds (§1), so this step is a guaranteed-success guarded batch-confirm, not an XRPL call. (Contrast Phase E, the only phase that actually submits anything to the chain.)
+**C1. `remitx_worker.tasks.settle_remittance` just hands off.** It confirms nothing itself — it checks whether the quote's `token_burn` leg is still `pending` (a plain read, not a guarded UPDATE, since this task doesn't transition anything itself) and, if so, enqueues `burn_treasury_tokens(quote_id)`. If the burn leg is no longer `pending` (already claimed, or the whole group already resolved), it's a no-op. The real idempotency guard for the pipeline lives one step further in, on the burn leg's own claim.
 
-**C3. Confirmed** — a single guarded update flips **all four** legs together, since they share one `quote_id`: `UPDATE transactions SET status='confirmed', confirmed_at=? WHERE quote_id=? AND status='pending'`, in the same commit as increasing `account_balance` on whichever account is each row's destination — `RemitX SA Fee Revenue` +30.00, `RemitX SA Bank Account` +970.00, Sipho's `uctusd` account +52.432432, Tendai's `uctusd` account +52.432432 (Sipho's nets back to zero once his own next line, the sender→beneficiary leg, applies). Still idempotent the same way as a single-row guard: a redelivered message finds nothing left `pending` for that `quote_id` and does nothing. Barring a DB-level fault, this step can't meaningfully fail — see §2 Phase E for where a real failure can actually occur.
+**C2. `remitx_worker.tasks.burn_treasury_tokens` claims the burn leg and submits it to the chain.** Guarded transition `pending -> processing` (a new status, not the usual `pending -> confirmed`) is that claim — `processing` exists specifically because, unlike every other leg in this file, there's now a real network call sitting between "claimed" and "done," so the usual single-guard-and-go isn't enough to stop a redelivered task submitting the same burn twice while the first is still in flight. Once claimed, it submits `Payment(RemitX XRPL Treasury Wallet → UCTUSD Issuer (Exchange))` to the XRPL testnet — the exact mechanism Phase E's `redeem_tokens` below already documents, just triggered by settlement instead of a withdrawal (`remitx_worker/xrpl_service.py::burn_tokens`). It does nothing else with the result: recording it is handed to a third, purely-DB task, so that step never shares a task invocation with a slow external call and can be retried entirely on its own. Enqueues `confirm_treasury_burn(quote_id, tx_hash)` on success, `confirm_treasury_burn(quote_id, None)` if the XRPL call raised.
+
+**C3. `remitx_worker.tasks.confirm_treasury_burn` settles — or fails — every leg together.** No network call, so trivially safe to retry. Guarded on `status IN ('pending', 'processing')` across the whole `quote_id` group — the burn leg sits in `processing` (claimed by C2), the other six are still `pending` (nothing confirms before this task runs) — so one guarded UPDATE catches all seven, and a redelivered message matches nothing once the first delivery committed:
+
+- `tx_hash` present → one commit: all seven legs `-> confirmed`, the burn leg's `xrpl_tx_hash` set, and every leg's destination account credited in the same follow-up loop `settle_remittance` used to run alone — `RemitX SA Fee Revenue` +30.00, `RemitX SA Bank Account` +970.00, Sipho's `uctusd` account +52.432432 then back to 0, Tendai's `uctusd` account +52.432432 then back to 0, `RemitX XRPL Treasury Wallet` +52.432432 (no longer nets back to zero — it now holds the tokens the burn just destroyed), `UCTUSD Issuer (Exchange)` +52.432432, Tendai's ZWL account +`receiver_amount`. This is the literal implementation of "nothing settles until the burn is confirmed, and we have its hash."
+- `tx_hash` is `None` (the burn failed) → all seven legs `-> failed`, in one commit, with **no balance changes at all** — every leg was still `pending`/`processing`, so there was nothing to undo. The failed group sits there for manual investigation; there's no automatic retry/reclaim for a stuck `transactions` row yet — only `IntegrationMessage` has one, via `remitx_worker/reclaim.py`. Known gap, not an oversight.
+
+See Open Question #1.
 
 ### Phase D — Beneficiary sees funds
 
-`GET /accounts` lists every currency account Tendai holds (ZAR and `uctusd`, both from signup), each with its available balance (raw `accounts.account_balance` minus that account's own still-pending outgoing legs, same check quotes/remittances use — §8 Open Question #5) — his `uctusd` entry reads 52.432432. `GET /accounts-history?account_id=...` then lists one account's legs (incoming/outgoing, status, date) for a given `account_id` from that list. There's no separate "wallet" table or concept — this is a read view over the same `accounts`/`transactions` rows described in §1.
+`GET /accounts` lists every currency account Tendai holds — ZAR and `uctusd` from signup, plus his now-provisioned ZWL account — each with its available balance (raw `accounts.account_balance` minus that account's own still-pending outgoing legs, same check quotes/remittances use — §8 Open Question #5). His ZWL entry reads the settled `receiver_amount`; his `uctusd` entry reads 0 once settlement confirms, since Phase C already swept it back to the treasury. `GET /accounts-history?account_id=...` then lists one account's legs (incoming/outgoing, status, date) for a given `account_id` from that list. There's no separate "wallet" table or concept — this is a read view over the same `accounts`/`transactions` rows described in §1.
 
 ### Phase E — Beneficiary withdraws ZWL
+
+**Stale as of the Phase B2/C/D auto-conversion change above — not yet redesigned.** This section still assumes Tendai withdraws *from* a resting `uctusd` balance he holds, but Phase C now sweeps that balance back to the treasury automatically at settlement, crediting his ZWL account directly instead — there's no `uctusd` left on his account by the time he'd ever reach this flow. The real remaining shape is: Tendai withdraws ZWL *out of the platform* (to a real external bank account), and that action — not receipt of the remittance — is what should trigger burning the corresponding `uctusd` amount (treasury → issuer). Deferred along with the auto-conversion work, since it also needs real XRPL signing/submission infrastructure this codebase doesn't have yet (§8).
 
 No manual admin-approval gate — holding a customer's own money hostage behind a human clicking a button isn't something this design does. A withdrawal is persisted the moment it's requested; an admin-triggered batch action settles every pending one, mirroring how Phase A's reconciliation already simulates a daily cron via a button.
 
@@ -159,10 +175,10 @@ erDiagram
     USERS ||--o| DEPOSITS : "user_id (nullable, until matched)"
     USERS ||--o{ BENEFICIARIES : "sender_user_id"
     USERS ||--o{ BENEFICIARIES : "linked_user_id"
+    USERS ||--o{ QUOTES : "sender_user_id"
+    USERS ||--o{ QUOTES : "beneficiary_user_id"
     ACCOUNTS ||--o{ TRANSACTIONS : "debit_account_id"
     ACCOUNTS ||--o{ TRANSACTIONS : "credit_account_id"
-    ACCOUNTS ||--o{ QUOTES : "sender_account_id"
-    ACCOUNTS ||--o{ QUOTES : "beneficiary_account_id"
     TRANSACTIONS ||--o| DEPOSITS : "tx_id"
     TRANSACTIONS ||--o| REMITTANCES : "tx_id"
     TRANSACTIONS ||--o| WITHDRAWS : "tx_id"
@@ -223,7 +239,6 @@ erDiagram
         uuid remittance_id PK
         uuid quote_id FK "unique — one remittance per quote"
         uuid tx_id FK
-        uuid confirmed_by FK
         datetime created_at
     }
     WITHDRAWS {
@@ -237,8 +252,8 @@ erDiagram
     }
     QUOTES {
         uuid quote_id PK
-        uuid sender_account_id FK
-        uuid beneficiary_account_id FK
+        uuid sender_user_id FK
+        uuid beneficiary_user_id FK
         decimal sender_amount
         string sender_currency
         decimal sender_transaction_fee
@@ -273,7 +288,6 @@ CREATE TABLE remittances (
     remittance_id UUID PRIMARY KEY,
     quote_id      UUID NOT NULL UNIQUE REFERENCES quotes(quote_id),
     tx_id         UUID NOT NULL REFERENCES transactions(tx_id),
-    confirmed_by  UUID NOT NULL REFERENCES users(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -303,8 +317,10 @@ CREATE TABLE beneficiaries (
 
 CREATE TABLE quotes (
     quote_id               UUID PRIMARY KEY,
-    sender_account_id      UUID NOT NULL REFERENCES accounts(account_id),
-    beneficiary_account_id UUID NOT NULL REFERENCES accounts(account_id),
+    -- References the people, not a frozen ledger row — the actual
+    -- currency-scoped account is resolved on demand wherever it's needed.
+    sender_user_id         UUID NOT NULL REFERENCES users(id),
+    beneficiary_user_id    UUID NOT NULL REFERENCES users(id),
     sender_amount          NUMERIC(20,8) NOT NULL,
     sender_currency        VARCHAR(8) NOT NULL,
     sender_transaction_fee NUMERIC(20,8) NOT NULL,
@@ -433,7 +449,7 @@ MONTHLY_LIMIT_ZAR = 25000
 
 Deliberately unresolved for now — flagging rather than guessing:
 
-1. ~~Which leg actually touches the XRPL chain, and when.~~ **Resolved, per the course's clarifications (10 Sep).** The withdrawal burn — `Payment(RemitX XRPL Treasury Wallet → UCTUSD Issuer (Exchange))` — is the only on-chain leg in the system (§1, §2 Phase E). Remittance settlement (§2 Phase C) never touches chain: crediting a beneficiary only moves value the Treasury Wallet already holds, and that starting stock is itself a one-time `treasury_funding` transaction recorded from the real, lecturer-funded on-chain balance — not a per-remittance purchase or mint. The message-queue requirement is satisfied regardless: `settle_remittance` stays queued because it's what the brief specifically grades, `redeem_tokens` because it's the one task actually making a network call.
+1. ~~Which leg actually touches the XRPL chain, and when.~~ **Resolved, per the course's clarifications (10 Sep) — since superseded.** The withdrawal burn — `Payment(RemitX XRPL Treasury Wallet → UCTUSD Issuer (Exchange))` — was originally the only on-chain leg in the system (§1, §2 Phase E), with remittance settlement (§2 Phase C) never touching chain: crediting a beneficiary only moved value the Treasury Wallet already held, and that starting stock was itself a one-time `treasury_funding` transaction recorded from the real, lecturer-funded on-chain balance — not a per-remittance purchase or mint. **Now superseded by §2 Phase C**: remittance settlement has its own burn (`burn_treasury_tokens`/`confirm_treasury_burn`, the same `Payment(OPERATIONAL → ISSUER)` mechanism as the withdrawal), so the chain call is no longer withdrawal-only — it happens on every remittance, gating that remittance's own payout leg rather than a later, separate withdrawal. The message-queue requirement is satisfied either way: `settle_remittance` stays queued because it's what the brief specifically grades, and `burn_treasury_tokens`/`confirm_treasury_burn` now join `redeem_tokens` as tasks that make (or record) a real network call.
 2. ~~A quote can reference a beneficiary or sender account that doesn't exist yet.~~ **Resolved.** Both of a user's accounts are created eagerly at signup (§2, Phase A) — every user already has a `uctusd` account before anyone could ever quote a remittance to them.
 3. **Nothing stops a platform/external account being seeded twice.** `scripts/seed_platform_accounts.py` checks `get_platform_account_by_label(label)` before inserting, so re-running the script is safe — but nothing at the schema level stops a second, differently-run script or a manual insert from creating a duplicate. Worth a `UNIQUE (type, label, account_currency) WHERE type <> 'USER'` if that's ever a real risk.
 4. ~~Withdrawal request vs. approval.~~ **Resolved.** No approval gate — the customer's request itself creates the `withdraws` row and its pending redeem-leg transaction (§2, Phase E). An admin-triggered batch action settles every pending one, mirroring Phase A's reconciliation-button pattern.
@@ -445,6 +461,7 @@ Deliberately unresolved for now — flagging rather than guessing:
 10. **Every monetary amount should end up at 2 decimal places, including uctusd — decided, not yet implemented.** Auditing `quote_service.price_remittance` found `fee`/`margin` aren't `.quantize()`d the way `token_amount` already is, so SQLite (tests) and Postgres (prod) could silently disagree on the stored value for the same computation. Chasing that further: the intended fix is 2 decimals everywhere, fiat *and* token — uctusd's current 8-decimal convention isn't an XRPL requirement (IOU amounts on XRPL use up to 15 significant digits with a floating exponent, not a fixed decimal-place cap), it looks borrowed from Bitcoin's satoshi convention, so nothing blocks moving it to 2. Two real obstacles once this is actually done: (a) `accounts.account_balance` and `transactions.amount` are single columns shared by both fiat and token rows (distinguished only by a `currency` string), and their migrations are already applied elsewhere (merged well before this one), so narrowing them from `Numeric(20,8)` needs a real new migration — per this repo's own migration-safety rule, a narrowing change on a live table should go through expand/contract across two releases, not one; (b) `token_amount = net * fiat_to_token_exchange_rate` is a multiplication that rarely lands on a round number, so rounding to 2 decimals sheds more of the fractional remainder than 8 decimals does today — worth being deliberate about when implementing, not just mechanical. A full sweep (every `Numeric(20,8)` column, every `.quantize(...)` call, every 8-decimal-formatted test assertion) hasn't been done yet.
 11. ~~No function yet marks a `Quote` `USED`.~~ **Resolved.** `models/orm/remittance.py` (`Remittance`), `services/remittance_service.py::confirm_remittance`, and `remitx_worker/tasks.py::settle_remittance` now exist — `QuoteRepository.mark_used` is the guarded `UPDATE ... WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?` transition, following the same pattern as `transaction_repository.confirm_pending_deposit_transaction`/`process_integration_message`.
 12. ~~No quote-receipt lookup exists yet.~~ **Partially resolved.** `POST /remittances`'s response is a receipt joining the new `Remittance` row with its `Quote` (`RemittanceController`'s view), and `GET /accounts`/`GET /accounts-history?account_id=...` now cover transaction-history browsing (renamed from the doc's original `GET /wallet` — there's no separate "wallet" concept, it's a read view over `accounts`/`transactions`, so it covers any currency account, not just `uctusd`). Still missing: a standalone `GET /remittances/{id}`-style lookup for revisiting one past remittance's receipt outside the moment it was just confirmed.
+13. **The cash-out fee (`Config.CASH_OUT_FEE_RATE`, `receiver_payout_fee`/`receiver_payout_estimate` on `quotes`) is currently never actually charged.** Since §2 Phase C now auto-converts straight to the beneficiary's fiat account, the natural place to deduct it — a real withdrawal-from-the-platform action — doesn't exist yet (§2 Phase E, itself flagged stale above). Until that flow is built, every beneficiary gets the full gross `receiver_amount` with no cash-out fee ever collected — a real, if currently unexploitable, revenue gap rather than just a display quirk.
 
 ---
 

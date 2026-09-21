@@ -10,14 +10,16 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 class QuoteCreateRequest(BaseModel):
     beneficiary_id: uuid.UUID
     sender_amount: Decimal
+    sender_currency: str
+    receiver_payout_currency: str
 
 
 class QuoteRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     quote_id: uuid.UUID
-    sender_account_id: uuid.UUID
-    beneficiary_account_id: uuid.UUID
+    sender_user_id: uuid.UUID
+    beneficiary_user_id: uuid.UUID
     sender_amount: Decimal
     sender_currency: str
     token_amount: Decimal

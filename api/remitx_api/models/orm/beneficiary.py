@@ -77,8 +77,7 @@ class Beneficiary(Base):
     linked_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False
     )
-    # One of PAYOUT_CURRENCIES (models/orm/account.py) — the fiat currency
-    # this beneficiary prefers to eventually cash out to.
+    # The fiat currency this beneficiary prefers to eventually cash out to.
     payout_currency: Mapped[str] = mapped_column(Text, nullable=False)
     relationship: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

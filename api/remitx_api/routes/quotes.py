@@ -20,6 +20,7 @@ from remitx_api.services.quote_service import (
     KycNotApprovedError,
     LimitExceededError,
     UnknownBeneficiaryError,
+    UnknownSenderAccountError,
 )
 
 router = create_customer_router(prefix="/quotes", tags=[Tag.QUOTES])
@@ -36,6 +37,8 @@ def create_quote(
             sender_user_id=user.id,
             beneficiary_id=payload.beneficiary_id,
             sender_amount=payload.sender_amount,
+            sender_currency=payload.sender_currency,
+            receiver_payout_currency=payload.receiver_payout_currency,
         )
     except KycNotApprovedError as exc:
         raise HTTPException(
@@ -46,6 +49,11 @@ def create_quote(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Beneficiary not found",
+        ) from exc
+    except UnknownSenderAccountError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have no account in sender_currency",
         ) from exc
     except (
         LimitExceededError,

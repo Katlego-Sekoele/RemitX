@@ -48,7 +48,7 @@ def confirm_remittance(
     payload: RemittanceConfirmRequest,
     user: User = Depends(get_current_user),
 ):
-    """Turns an active quote into a send: inserts its pending ledger legs and
+    """Turns an active quote into a remittance send: inserts its pending ledger legs and
     queues the settlement worker task. The RLUSD/uctusd transfer does not
     start until this call has committed — see Transaction_Flow_Context.md
     §2 Phase B2/C.

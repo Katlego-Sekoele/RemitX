@@ -12,8 +12,16 @@ class QuoteController:
         sender_user_id: uuid.UUID,
         beneficiary_id: uuid.UUID,
         sender_amount: Decimal,
+        sender_currency: str,
+        receiver_payout_currency: str,
     ) -> Quote:
-        return quote_service.create_quote(sender_user_id, beneficiary_id, sender_amount)
+        return quote_service.create_quote(
+            sender_user_id,
+            beneficiary_id,
+            sender_amount,
+            sender_currency,
+            receiver_payout_currency,
+        )
 
     def preview_quote(
         self,

@@ -124,6 +124,7 @@ def _create_deposit(
             confirmed_at=processed_at,
         )
     )
+    account_repo.decrease_balance(RemitX_bank_account.account_id, amount)
     account_repo.increase_balance(account.account_id, amount)
     return deposit_repo.add(
         Deposit(
@@ -231,6 +232,7 @@ def approve_pending_deposit(
     ):
         raise ValueError(f"Deposit {deposit_id} is not pending or does not exist")
 
+    account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
     account_repo.increase_balance(user_account.account_id, transaction.amount)
     deposit_repo.link_deposit_to_user(deposit_id, user_id, str(admin_id))
 

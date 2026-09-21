@@ -13,8 +13,10 @@ class RemittanceConfirmRequest(Schema):
 
     """A request to confirm a remittance."""
 
+
 class RemittanceRead(Schema):
     """A read-only representation of a remittance."""
+
     model_config = ConfigDict(from_attributes=True)
 
     remittance_id: uuid.UUID

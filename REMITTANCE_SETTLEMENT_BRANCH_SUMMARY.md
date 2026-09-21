@@ -17,7 +17,7 @@ Branch was reset to start from `remittance-quotes`'s tip (which already has bene
 ## 3. Remittance confirmation (Phase B2)
 
 **New files:**
-- `api/remitx_api/models/orm/remittance.py` — `Remittance` ORM. Deliberately lean: `remittance_id`, `quote_id` (FK `quotes.quote_id`, UNIQUE), `tx_id` (FK `transactions.tx_id` — the sender→beneficiary settlement leg), `confirmed_by` (FK `users.id`), `created_at`. Doesn't duplicate any priced field `Quote` already freezes.
+- `api/remitx_api/models/orm/remittance.py` — `Remittance` ORM. Deliberately lean: `remittance_id`, `quote_id` (FK `quotes.quote_id`, UNIQUE), `tx_id` (FK `transactions.tx_id` — the sender→beneficiary settlement leg), `created_at`. Doesn't duplicate any priced field `Quote` already freezes — including who confirmed it: that's `quotes.sender_user_id`, so a `confirmed_by` column here (originally included) was dropped as pure duplication.
 - `api/alembic/versions/V20260920_1210__create_remittances.py` — creates `remittances`; also adds the FK `transactions.quote_id → quotes.quote_id` (that column had no FK before since `quotes` didn't exist yet when `transactions` was created).
 - `api/remitx_api/repositories/remittance_repository.py` — `RemittanceRepository` + `get_by_quote_id(quote_id)`.
 - `api/remitx_api/services/remittance_service.py` — `confirm_remittance(sender_user_id, quote_id)`:
@@ -78,8 +78,29 @@ Returns **every currency account the caller holds** (ZAR + uctusd today), not ju
 
 561 passed, 2 skipped, 1 pre-existing-fixed (`test_openapi.py`'s staleness check, resolved by the regeneration above) as of the last full run.
 
+## 8. Redesign: `Quote` references people, and settlement auto-converts to the beneficiary's fiat
+
+Two more changes, layered on top of sections 3-4 above (supersedes their "4 legs" description — it's 6 now):
+
+**A. `Quote.sender_account_id`/`beneficiary_account_id` → `sender_user_id`/`beneficiary_user_id`.** A quote is "from this sender, to this beneficiary," not "from this specific ledger row" — the actual currency-scoped `Account` is now resolved on demand via `AccountRepository.get_user_account(user_id, currency)` wherever it's needed, rather than frozen at quote-creation time.
+- `api/remitx_api/models/orm/quote.py` — field swap (FK `users.id` instead of `accounts.account_id`).
+- `api/alembic/versions/V20260921_0900__quotes_reference_users.py` (new) — drops the old columns/FKs/index, adds the new ones. Layered on top rather than editing the original `V20260912_1746__create_quotes.py`, matching this repo's convention.
+- `api/remitx_api/services/quote_service.py` — `create_quote` stores `sender_user_id`/`beneficiary.linked_user_id` directly instead of resolving and storing an account id.
+- `api/remitx_api/repositories/quote_repository.py::get_for_sender` — drops its join to `Account` entirely; filters `Quote.sender_user_id` directly.
+- `api/remitx_api/models/schemas/quote.py` — `QuoteRead` exposes `sender_user_id`/`beneficiary_user_id` instead of the account ids.
+
+**B. Remittance settlement auto-converts to the beneficiary's local fiat — the beneficiary never holds a resting `uctusd` balance.** A deliberate deviation from the brief's literal "recipient holds and views RLUSD, chooses when to cash out" wording (§4.7), confirmed explicitly by the user after the conflict was flagged. Two more legs appended to `confirm_remittance`'s existing four, sharing the same `quote_id`:
+- Leg 5: beneficiary's token account → `RemitX XRPL Treasury Wallet` (completes their pass-through — mirrors the sender's own).
+- Leg 6: platform bank account in the beneficiary's country (`AccountRepository.get_platform_account(TYPE_PLATFORM_FIAT, quote.receiver_currency)`) → the beneficiary's own fiat account, amount `quote.receiver_amount` (gross — the cash-out fee is **not** deducted here, deferred to a real withdrawal flow that doesn't exist yet). `Remittance.tx_id` now points at this leg, not leg 4.
+- `api/remitx_api/repositories/account_repository.py` — added `get_or_create_user_account(user_id, base_reference, currency)`, provisioning the beneficiary's fiat account lazily, the first time they receive money in that currency (only ZAR + `uctusd` are eager, at signup).
+- **No change needed in `remitx_worker/tasks.py::settle_remittance`** — its guarded batch UPDATE + follow-up SELECT-and-credit loop already operates generically on "every pending leg sharing this `quote_id`"; six legs confirm exactly like four did.
+- Explicitly out of scope: the later "beneficiary withdraws fiat out of the platform, triggering a real token burn to the issuer" step. It needs real XRPL signing/submission infrastructure nothing in this codebase has yet, and the existing Phase E write-up is now stale against this change (flagged directly in `Transaction_Flow_Context.md` rather than rewritten, since redesigning it is future work).
+
+**Tests updated:** `test_quote_service.py`, `test_quotes_route.py`, `test_worker_settle_remittance.py`'s `_quote` helper (Part A); `test_remittance_service.py` (now asserts 6 legs, `test_confirming_a_quote_creates_six_pending_legs`), `test_remittances_route.py`, `test_accounts_route.py` (Part B — all three now also seed a `RemitX ZIM Bank Account`, ZWL, since the payout leg needs a bank account in the beneficiary's country too). `frontend/openapi.json` regenerated again for the `QuoteRead` field swap. Full suite still 561 passed, 2 skipped.
+
 ## Known follow-ups not done here
 
 - Frontend pages for confirming a remittance and viewing account balances/history.
-- Withdrawals/cash-out (Phase E) — the only phase that actually touches XRPL (the withdrawal burn), plus the real signing/submission wiring.
+- The beneficiary-fiat-withdrawal + token-burn flow (redesigned shape of the old Phase E) — needs real XRPL signing/submission infrastructure, which doesn't exist anywhere in this codebase yet.
+- The cash-out fee (`Config.CASH_OUT_FEE_RATE`) is currently never actually charged, since the withdrawal flow that would deduct it doesn't exist (Transaction_Flow_Context.md §8, Open Question #13).
 - Porting the migration-conflict fix (section 2) back to `remittance-quotes`/`main`.

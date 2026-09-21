@@ -118,6 +118,24 @@ class Config:
     def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
         return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
 
+    # XRPL testnet + UCTUSD issued-currency settings, shared with
+    # platform_wallet/scripts/create_xprl_platform_wallet.py (same env vars,
+    # same defaults) — read here too so remitx_worker/xrpl_service.py doesn't
+    # duplicate the os.getenv parsing.
+    @property
+    def XRPL_TESTNET_URL(self) -> str:
+        return os.getenv("XRPL_TESTNET_URL", "https://s.altnet.rippletest.net:51234/")
+
+    @property
+    def UCTUSD_ISSUER(self) -> str:
+        return os.getenv("UCTUSD_ISSUER", "rELez4x4Zqv3KYqboYVfrYPF8521Ycbxa5")
+
+    @property
+    def UCTUSD_CURRENCY_CODE_HEX(self) -> str:
+        return os.getenv(
+            "UCTUSD_CURRENCY_CODE_HEX", "5543545553440000000000000000000000000000"
+        )
+
     # exchangerate-api.com key, used by services/exchange_rate_provider.py.
     @property
     def EXCHANGE_RATE_API_KEY(self) -> str:

@@ -31,7 +31,6 @@ def upgrade() -> None:
         sa.Column("remittance_id", sa.Uuid(), nullable=False),
         sa.Column("quote_id", sa.Uuid(), nullable=False),
         sa.Column("tx_id", sa.Uuid(), nullable=False),
-        sa.Column("confirmed_by", sa.Uuid(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -53,7 +52,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("remittance_id"),
         sa.ForeignKeyConstraint(["quote_id"], ["quotes.quote_id"]),
         sa.ForeignKeyConstraint(["tx_id"], ["transactions.tx_id"]),
-        sa.ForeignKeyConstraint(["confirmed_by"], ["users.id"]),
         sa.UniqueConstraint("quote_id", name="remittances_quote_id_unique"),
     )
     op.create_foreign_key(

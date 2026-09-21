@@ -1,9 +1,21 @@
 """Remittance confirmation (Transaction_Flow_Context.md §2 Phase B2).
 
-Turns an ACTIVE `Quote` into an actual send: four `pending` ledger legs
+Turns an ACTIVE `Quote` into an actual send: seven `pending` ledger legs
 sharing one `quote_id`, the quote flipped to USED, then settlement enqueued
-— never touches an account's `account_balance` itself (that only happens
-once `remitx_worker.tasks.settle_remittance` confirms the group).
+— never touches an account's `account_balance` itself. Nothing does, for any
+of the seven, until `remitx_worker.tasks.confirm_treasury_burn` confirms and
+credits them all together, once the treasury's on-chain burn (leg 6) has
+resolved; `settle_remittance` and `burn_treasury_tokens` only hand off along
+the way.
+
+The beneficiary never holds a resting uctusd balance: their token account is
+a momentary pass-through (legs 3-4 credit it then debit it straight back to
+the treasury via leg 5), and the platform auto-converts straight to their
+own local fiat currency (leg 7, the payout) — a deliberate deviation from
+the brief's literal "recipient holds and views RLUSD, chooses when to cash
+out" wording. Leg 6, the burn, returns that same amount from the treasury to
+the UCTUSD issuer on-chain; nothing in this group confirms until it has (see
+`remitx_worker.tasks.confirm_treasury_burn`).
 """
 
 import uuid
@@ -18,14 +30,17 @@ from remitx_api.models.orm.account import (
 from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
+    TYPE_BENEFICIARY_PAYOUT,
     TYPE_FEE,
     TYPE_REMITTANCE,
+    TYPE_TOKEN_BURN,
     Transaction,
 )
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
+from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
 
 # The treasury leg is uctusd-only by construction — it's always the
@@ -36,6 +51,7 @@ from remitx_api.services import queue_service
 # pair per currency, so a non-ZAR sender, if that ever becomes reachable via
 # `quote_service.create_quote`, still lands in the right pair rather than ZAR's.
 REMITX_TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
+UCTUSD_ISSUER_LABEL = "UCTUSD Issuer (Exchange)"
 
 
 class QuoteNotFoundError(Exception):
@@ -71,8 +87,12 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     if not quotes.mark_used(quote.quote_id, now):
         raise QuoteNotActiveError(str(quote_id))
 
+    sender_account = accounts.get_user_account(
+        quote.sender_user_id, quote.sender_currency
+    )
+
     # Check the sender's available balance covers the quote's sender amount
-    available = accounts.get_available_balance(quote.sender_account_id)
+    available = accounts.get_available_balance(sender_account.account_id)
     if available < quote.sender_amount:
         # Revert the quote status back to ACTIVE if the balance is insufficient
         db.session.rollback()
@@ -81,21 +101,33 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
         )
 
     sender_token_account = accounts.get_user_account(sender_user_id, CURRENCY_TOKEN)
+    beneficiary_token_account = accounts.get_user_account(
+        quote.beneficiary_user_id, CURRENCY_TOKEN
+    )
+    beneficiary_user = UserRepository().require_by_id(quote.beneficiary_user_id)
+    beneficiary_fiat_account = accounts.get_or_create_user_account(
+        beneficiary_user.id, beneficiary_user.base_reference, quote.receiver_currency
+    )
     fee_revenue_account = accounts.get_platform_account(
         TYPE_PLATFORM_REVENUE, quote.sender_currency
     )
     bank_account = accounts.get_platform_account(
         TYPE_PLATFORM_FIAT, quote.sender_currency
     )
+    beneficiary_bank_account = accounts.get_platform_account(
+        TYPE_PLATFORM_FIAT, quote.receiver_currency
+    )
     treasury_account = accounts.get_platform_account_by_label(
         REMITX_TREASURY_WALLET_LABEL
     )
+    uctusd_issuer_account = accounts.get_platform_account_by_label(UCTUSD_ISSUER_LABEL)
 
-    # Fee (+ margin) leg: sender's fiat currency account -> RemitX fee revenue.
+    ### TRANSACTION LEGS ###
+    # Fee (+ margin) leg: sender's fiat currency account -> RemitX fiat fee revenue.
     transactions.add(
         Transaction(
             type=TYPE_FEE,
-            credit_account_id=quote.sender_account_id,
+            credit_account_id=sender_account.account_id,
             debit_account_id=fee_revenue_account.account_id,
             amount=quote.sender_transaction_fee + quote.exchange_rate_margin,
             currency=quote.sender_currency,
@@ -103,11 +135,11 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
             quote_id=quote.quote_id,
         )
     )
-    # Net remittance leg: sender's fiat currency account -> RemitX bank account.
+    # Net remittance leg: sender's fiat currency account -> RemitX fiat bank account.
     transactions.add(
         Transaction(
             type=TYPE_REMITTANCE,
-            credit_account_id=quote.sender_account_id,
+            credit_account_id=sender_account.account_id,
             debit_account_id=bank_account.account_id,
             amount=quote.sender_amount
             - quote.sender_transaction_fee
@@ -117,7 +149,7 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
             quote_id=quote.quote_id,
         )
     )
-    # Pass-through leg: platform treasury -> sender's token account.
+    # Pass-through leg: platform treasury token account -> sender's token account.
     transactions.add(
         Transaction(
             type=TYPE_REMITTANCE,
@@ -130,24 +162,68 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
         )
     )
     # Settlement leg: sender's token account -> beneficiary's token account.
-    settlement_leg = transactions.add(
+    transactions.add(
         Transaction(
             type=TYPE_REMITTANCE,
             credit_account_id=sender_token_account.account_id,
-            debit_account_id=quote.beneficiary_account_id,
+            debit_account_id=beneficiary_token_account.account_id,
             amount=quote.token_amount,
             currency=CURRENCY_TOKEN,
             status=STATUS_PENDING,
             quote_id=quote.quote_id,
         )
     )
-    # TODO: figure out if the fiat amount should be shown on the
-    # beneficiary's account as well as the token amount.
+    # Pass-through leg: beneficiary's token account -> platform treasury token account.
+    # Completes the beneficiary's own pass-through (mirrors the sender's) —
+    # they never hold a resting uctusd balance.
+    transactions.add(
+        Transaction(
+            type=TYPE_REMITTANCE,
+            credit_account_id=beneficiary_token_account.account_id,
+            debit_account_id=treasury_account.account_id,
+            amount=quote.token_amount,
+            currency=CURRENCY_TOKEN,
+            status=STATUS_PENDING,
+            quote_id=quote.quote_id,
+        )
+    )
+    # Burn leg: platform treasury token account -> UCTUSD issuer. Records the
+    # on-chain burn (remitx_worker.tasks.burn_treasury_tokens) that returns
+    # the beneficiary pass-through's tokens to the issuer, destroying them.
+    # The payout leg below may not confirm until this one has, with an
+    # xrpl_tx_hash recorded.
+    transactions.add(
+        Transaction(
+            type=TYPE_TOKEN_BURN,
+            credit_account_id=treasury_account.account_id,
+            debit_account_id=uctusd_issuer_account.account_id,
+            amount=quote.token_amount,
+            currency=CURRENCY_TOKEN,
+            status=STATUS_PENDING,
+            quote_id=quote.quote_id,
+        )
+    )
+    # Payout leg: RemitX fiat bank account in the beneficiary's country -> the
+    # beneficiary's own fiat account. The final leg that represents whether
+    # this remittance has actually reached the beneficiary. Its own type
+    # (rather than TYPE_REMITTANCE) is what lets the worker confirm it on its
+    # own, gated on the burn leg above.
+    payout_leg = transactions.add(
+        Transaction(
+            type=TYPE_BENEFICIARY_PAYOUT,
+            credit_account_id=beneficiary_bank_account.account_id,
+            debit_account_id=beneficiary_fiat_account.account_id,
+            amount=quote.receiver_amount,
+            currency=quote.receiver_currency,
+            status=STATUS_PENDING,
+            quote_id=quote.quote_id,
+        )
+    )
+
     remittance = remittances.add(
         Remittance(
             quote_id=quote.quote_id,
-            tx_id=settlement_leg.tx_id,
-            confirmed_by=sender_user_id,
+            tx_id=payout_leg.tx_id,
         )
     )
 

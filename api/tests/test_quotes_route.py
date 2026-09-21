@@ -82,7 +82,12 @@ def test_create_quote_end_to_end(verified_client):
 
     response = client.post(
         f"{ENDPOINT}/create-quote",
-        json={"beneficiary_id": beneficiary_id, "sender_amount": "1000"},
+        json={
+            "beneficiary_id": beneficiary_id,
+            "sender_amount": "1000",
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": "ZWL",
+        },
     )
 
     assert response.status_code == 200
@@ -109,7 +114,12 @@ def test_insufficient_balance_is_a_400(verified_client):
     # No balance was ever added to the sender's ZAR account.
     response = client.post(
         f"{ENDPOINT}/create-quote",
-        json={"beneficiary_id": beneficiary_id, "sender_amount": "100"},
+        json={
+            "beneficiary_id": beneficiary_id,
+            "sender_amount": "100",
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": "ZWL",
+        },
     )
 
     assert response.status_code == 400
@@ -124,7 +134,12 @@ def test_caller_not_in_the_database_is_a_400(client):
     """
     response = client.post(
         f"{ENDPOINT}/create-quote",
-        json={"beneficiary_id": str(uuid.uuid4()), "sender_amount": "100"},
+        json={
+            "beneficiary_id": str(uuid.uuid4()),
+            "sender_amount": "100",
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": "ZWL",
+        },
     )
 
     assert response.status_code == 400

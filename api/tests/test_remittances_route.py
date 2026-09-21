@@ -8,6 +8,8 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    CURRENCY_ZWL,
+    TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
     TYPE_XRPL_WALLET,
@@ -16,7 +18,10 @@ from remitx_api.models.orm.account import (
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import remittance_service
-from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
+from remitx_api.services.remittance_service import (
+    REMITX_TREASURY_WALLET_LABEL,
+    UCTUSD_ISSUER_LABEL,
+)
 
 ENDPOINT = "/remittances"
 
@@ -75,9 +80,21 @@ def _seed(client, sender_id):
                 ),
                 Account(
                     user_id=admin.id,
+                    type=TYPE_PLATFORM_FIAT,
+                    account_currency=CURRENCY_ZWL,
+                    label="RemitX ZIM Bank Account",
+                ),
+                Account(
+                    user_id=admin.id,
                     type=TYPE_XRPL_WALLET,
                     account_currency=CURRENCY_TOKEN,
                     label=REMITX_TREASURY_WALLET_LABEL,
+                ),
+                Account(
+                    user_id=None,
+                    type=TYPE_EXTERNAL,
+                    account_currency=CURRENCY_TOKEN,
+                    label=UCTUSD_ISSUER_LABEL,
                 ),
             ]
         )
@@ -112,7 +129,12 @@ def _create_quote(client, recipient_id, amount="1000"):
 
     quote_response = client.post(
         "/quotes/create-quote",
-        json={"beneficiary_id": beneficiary_id, "sender_amount": amount},
+        json={
+            "beneficiary_id": beneficiary_id,
+            "sender_amount": amount,
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": "ZWL",
+        },
     )
     assert quote_response.status_code == 200
     return quote_response.json()["quote_id"]

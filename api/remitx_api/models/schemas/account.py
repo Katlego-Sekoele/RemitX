@@ -7,7 +7,9 @@ from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
 class AccountRead(Schema):
-    """A read-only representation of a customer currency account."""
+    """A read-only representation of a customer currency account.
+    Can be used to display the account's current balance and currency."""
+
     account_id: uuid.UUID
     currency: str
     available_balance: Decimal
@@ -15,6 +17,7 @@ class AccountRead(Schema):
 
 class AccountTransactionRead(Schema):
     """A read-only representation of a transaction on a customer currency account."""
+
     tx_id: uuid.UUID
     type: str
     direction: str

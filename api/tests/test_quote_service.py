@@ -73,7 +73,11 @@ def test_create_quote_computes_every_field(app_context):
     account_repo.increase_balance(sender_zar.account_id, Decimal("1000"))
 
     quote = quote_service.create_quote(
-        sender.id, beneficiary.beneficiary_id, Decimal("1000")
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("1000"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
     )
 
     # ZAR sender leg — FIXED_FEE_ZAR applies directly, no conversion needed.
@@ -108,10 +112,8 @@ def test_create_quote_computes_every_field(app_context):
     assert quote.receiver_amount == expected_receiver_amount
     assert quote.receiver_payout_fee == expected_payout_fee
     assert quote.receiver_payout_estimate == expected_payout_estimate
-    assert (
-        quote.beneficiary_account_id
-        == account_repo.get_user_account(recipient.id, CURRENCY_TOKEN).account_id
-    )
+    assert quote.sender_user_id == sender.id
+    assert quote.beneficiary_user_id == recipient.id
 
 
 def test_direct_rate_unavailable_blocks_quote_creation(app_context, monkeypatch):
@@ -137,7 +139,11 @@ def test_direct_rate_unavailable_blocks_quote_creation(app_context, monkeypatch)
 
     with pytest.raises(exchange_rate_service.RateUnavailableError):
         quote_service.create_quote(
-            sender.id, beneficiary.beneficiary_id, Decimal("1000")
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("1000"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
         )
 
 
@@ -198,7 +204,11 @@ def test_insufficient_available_balance_is_rejected_even_with_raw_balance_to_spa
     # Raw balance (1000) covers this, available balance (100) does not.
     with pytest.raises(quote_service.InsufficientBalanceError):
         quote_service.create_quote(
-            sender.id, beneficiary.beneficiary_id, Decimal("500")
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("500"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
         )
 
 
@@ -223,7 +233,11 @@ def test_unverified_sender_is_rejected(app_context):
 
     with pytest.raises(quote_service.KycNotApprovedError):
         quote_service.create_quote(
-            sender.id, beneficiary.beneficiary_id, Decimal("100")
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("100"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
         )
 
 
@@ -239,6 +253,8 @@ def test_amount_over_the_daily_ceiling_is_rejected(app_context):
             sender.id,
             beneficiary.beneficiary_id,
             Config.DAILY_LIMIT_ZAR + Decimal("1"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
         )
 
 
@@ -253,7 +269,11 @@ def test_beneficiary_not_owned_by_caller_is_rejected(app_context):
 
     with pytest.raises(quote_service.UnknownBeneficiaryError):
         quote_service.create_quote(
-            other_sender.id, beneficiary.beneficiary_id, Decimal("100")
+            other_sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("100"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
         )
 
 
@@ -266,7 +286,11 @@ def test_quote_expires_fifteen_minutes_from_now(app_context):
 
     before = datetime.now(UTC)
     quote = quote_service.create_quote(
-        sender.id, beneficiary.beneficiary_id, Decimal("100")
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("100"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
     )
     after = datetime.now(UTC)
 
