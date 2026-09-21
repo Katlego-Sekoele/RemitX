@@ -105,23 +105,24 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 
 **B1. Request a quote** — `quotes`: sender's ZAR account, beneficiary's `uctusd` account (exists from signup — see §2, Phase A), mid rate 18.50, fee 20.00, margin 10.00, net 970.00, settlement **52.432432 uctusd**, `ACTIVE`, expires in 15 min.
 
-**B2. Sender confirms** — one commit, inserting a `remittances` row (`remittance_id`, `sender_country`, `beneficiary_country`, `beneficiary_currency`, `fx_rate`, `fee_amount`, `sender_token_amount`, `receiver_token_amount`, `confirmed_by`) and every leg it needs — **all four inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet:
+**B2. Sender confirms** (`services/remittance_service.py::confirm_remittance`) — first, a guarded `quotes` transition (`WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?`) flips the quote to **USED**; only once that succeeds does one commit insert a `remittances` row and every leg it needs — **all four inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet:
 
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Fee Revenue`, amount 30.00, type `fee`, **pending**
 - `transactions` → credit Sipho's ZAR account, debit `RemitX SA Bank Account`, amount 970.00, type `remittance`, **pending**
 - `transactions` → credit `RemitX XRPL Treasury Wallet`, debit **Sipho's `uctusd` account**, amount 52.432432, type `remittance`, **pending**
 - `transactions` → credit **Sipho's `uctusd` account**, debit **Tendai's `uctusd` account**, amount 52.432432, type `remittance`, **pending** — this is the row `remittances.tx_id` (`NOT NULL`) points at
-- `quotes` → **USED** (not yet implemented — see §8 #11)
+
+`remittances` is deliberately lean (`remittance_id`, `quote_id` — FK, UNIQUE — `tx_id`, `confirmed_by`, `created_at`; see §3): every priced field (`fx_rate`, `fee_amount`, token amounts, currencies) is already frozen on the `quotes` row it confirms, so nothing here duplicates it. A remittance's receipt is the controller joining `remittances` + `quotes`, not extra storage.
 
 Sipho's `uctusd` account nets to exactly zero across the two token legs, once they confirm — it's a momentary pass-through that exists so the sender's own activity history shows the tokens they sent, not a balance they ever actually held.
 
-**Nothing about this remittance is final yet — not even the fee.** No account's `account_balance` moves at B2; every one of these four rows is still waiting on Phase C. See §8 for the balance-check consequence this has (Sipho's ZAR balance hasn't actually dropped yet, so what stops a second remittance from being confirmed against the same, still-intact funds while this one is in flight).
+**Nothing about this remittance is final yet — not even the fee.** No account's `account_balance` moves at B2; every one of these four rows is still waiting on Phase C. The balance-check consequence this has (Sipho's ZAR balance hasn't actually dropped yet) is fully closed as of this confirmation step — see §8 Open Question #5.
 
-Then, only after that commit returns, `queue_service.enqueue_settle_remittance(remittance_id)` enqueues the Celery task `remitx_worker.tasks.settle_remittance` onto the Redis-backed `settlement` queue.
+Then, only after that commit returns, `queue_service.enqueue_settle_remittance(quote_id)` enqueues the Celery task `remitx_worker.tasks.settle_remittance` onto the Redis-backed `settlement` queue — keyed on `quote_id`, not `remittance_id`, since that's the only thing the group-confirm guard in C3 actually needs.
 
 ### Phase C — Settlement
 
-**C1. Worker consumes.** Loads the `remittances` row, and the `transactions` row its `tx_id` points at (still `pending`).
+**C1. Worker consumes.** Guarded-batch-confirms every `pending` `transactions` row sharing this `quote_id` directly — it never loads the `remittances` row itself (nothing in settlement reads any of its columns).
 
 **C2. Resolve.** Nothing to submit anywhere — crediting a beneficiary only ever moves value the Treasury Wallet already holds (§1), so this step is a guaranteed-success guarded batch-confirm, not an XRPL call. (Contrast Phase E, the only phase that actually submits anything to the chain.)
 
@@ -129,7 +130,7 @@ Then, only after that commit returns, `queue_service.enqueue_settle_remittance(r
 
 ### Phase D — Beneficiary sees funds
 
-`GET /wallet` reads Tendai's `uctusd` `accounts.account_balance` directly → 52.432432 `uctusd`.
+`GET /accounts` lists every currency account Tendai holds (ZAR and `uctusd`, both from signup), each with its available balance (raw `accounts.account_balance` minus that account's own still-pending outgoing legs, same check quotes/remittances use — §8 Open Question #5) — his `uctusd` entry reads 52.432432. `GET /accounts-history?account_id=...` then lists one account's legs (incoming/outgoing, status, date) for a given `account_id` from that list. There's no separate "wallet" table or concept — this is a read view over the same `accounts`/`transactions` rows described in §1.
 
 ### Phase E — Beneficiary withdraws ZWL
 
@@ -165,7 +166,8 @@ erDiagram
     TRANSACTIONS ||--o| DEPOSITS : "tx_id"
     TRANSACTIONS ||--o| REMITTANCES : "tx_id"
     TRANSACTIONS ||--o| WITHDRAWS : "tx_id"
-    QUOTES ||--o{ TRANSACTIONS : "quote_id (nullable)"
+    QUOTES ||--o{ TRANSACTIONS : "quote_id (nullable, FK)"
+    QUOTES ||--o| REMITTANCES : "quote_id (unique)"
 
     USERS {
         uuid id PK
@@ -219,15 +221,10 @@ erDiagram
     }
     REMITTANCES {
         uuid remittance_id PK
+        uuid quote_id FK "unique — one remittance per quote"
         uuid tx_id FK
-        string sender_country
-        string beneficiary_country
-        string beneficiary_currency
-        decimal fx_rate
-        decimal fee_amount
-        decimal sender_token_amount
-        decimal receiver_token_amount
-        string confirmed_by
+        uuid confirmed_by FK
+        datetime created_at
     }
     WITHDRAWS {
         uuid withdraw_id PK
@@ -273,16 +270,11 @@ CREATE TABLE deposits (
 );
 
 CREATE TABLE remittances (
-    remittance_id         UUID PRIMARY KEY,
-    tx_id                 UUID NOT NULL REFERENCES transactions(tx_id),
-    sender_country        TEXT NOT NULL,
-    beneficiary_country   TEXT NOT NULL,
-    beneficiary_currency  VARCHAR(8) NOT NULL,
-    fx_rate               NUMERIC(20,8) NOT NULL,
-    fee_amount            NUMERIC(20,8) NOT NULL,
-    sender_token_amount   NUMERIC(20,8) NOT NULL,
-    receiver_token_amount NUMERIC(20,8) NOT NULL,
-    confirmed_by          TEXT
+    remittance_id UUID PRIMARY KEY,
+    quote_id      UUID NOT NULL UNIQUE REFERENCES quotes(quote_id),
+    tx_id         UUID NOT NULL REFERENCES transactions(tx_id),
+    confirmed_by  UUID NOT NULL REFERENCES users(id),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE withdraws (
@@ -445,14 +437,14 @@ Deliberately unresolved for now — flagging rather than guessing:
 2. ~~A quote can reference a beneficiary or sender account that doesn't exist yet.~~ **Resolved.** Both of a user's accounts are created eagerly at signup (§2, Phase A) — every user already has a `uctusd` account before anyone could ever quote a remittance to them.
 3. **Nothing stops a platform/external account being seeded twice.** `scripts/seed_platform_accounts.py` checks `get_platform_account_by_label(label)` before inserting, so re-running the script is safe — but nothing at the schema level stops a second, differently-run script or a manual insert from creating a duplicate. Worth a `UNIQUE (type, label, account_currency) WHERE type <> 'USER'` if that's ever a real risk.
 4. ~~Withdrawal request vs. approval.~~ **Resolved.** No approval gate — the customer's request itself creates the `withdraws` row and its pending redeem-leg transaction (§2, Phase E). An admin-triggered batch action settles every pending one, mirroring Phase A's reconciliation-button pattern.
-5. ~~A sender's ZAR balance doesn't actually drop until settlement confirms.~~ **Resolved, at quote time.** Since all four of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window. `quote_service.create_quote` no longer checks the raw stored balance for this reason — it calls `AccountRepository.get_available_balance`, which nets the sender's raw balance against their own still-`pending` outgoing legs, so a second quote against the same, still-intact raw balance is rejected (`InsufficientBalanceError`). Not fully closed: this check runs at quote creation, not at the (not-yet-built) remittance-confirmation step B2 — a quote issued against an available balance that later gets spent by something else before B2 confirms is still a gap, but the specific double-spend this question named (two quotes/remittances both passing against the same raw balance) is fixed.
+5. ~~A sender's ZAR balance doesn't actually drop until settlement confirms.~~ **Resolved.** Since all four of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window. `AccountRepository.get_available_balance` (raw balance minus the sender's own still-`pending` outgoing legs) is now checked at **both** points that matter: `quote_service.create_quote` at issue time, and `remittance_service.confirm_remittance` again at confirmation (B2) — the second check is what actually closes the gap, since B2 is what creates the pending legs a *different* quote's own check would need to see. Confirming one quote against a balance now makes a second, still-`ACTIVE` quote against the same balance fail with `InsufficientBalanceError` at confirmation, even though nothing stopped both being *issued*.
 6. `currencies`, `fee_config`, `xrpl_accounts`, `xrpl_settlements` haven't been reconciled with this new ledger shape yet — carried over from the earlier design, unchanged, to revisit later. (`exchange_rates` is now built — see §4 — and `audit_log` exists, tracking RBAC/KYC actions rather than the money-flow tables above; neither belongs on this list anymore.)
 7. **`process_deposits` has no protection against reprocessing the same bank statement.** Nothing keys on the statement line — no unique constraint, no dedup check — so uploading the same CSV twice (or an overlapping date range), a plausible mistake given it's a manual admin file-picker action, gives every matched line a brand-new `transactions` + `deposits` row and increases the account balance again. No test covers re-running it. Same failure category the brief calls out for the queue ("prevent duplicate messages from crediting more than once"), just hitting the reconciliation step instead — worth fixing (e.g. a unique constraint on the statement line, or hashing it) before calling Phase A done.
 8. ~~The fixed remittance fee's amount and currency-generality.~~ **Resolved.** Fee amounts are decided (§5): R15 fixed, 0.5% percentage, 1.0% FX margin, 0.75% cash-out. The fixed fee's currency-generality gap is also closed: it's denominated in ZAR and converted into `sender_currency` via each currency's USD peg at quote time (§5), so the beneficiary-free preview quote (§2 Phase B1) gets a real fixed fee for any supported sender currency, not just ZAR. The FX margin remains a rate *spread* (percentage), which is already currency-general by construction — nothing to convert.
 9. **Whether uctusd issuance/burning itself carries a separate token fee.** Today's fee model (§5) only has a remittance-side fee (percentage + FX margin, since #8) and a withdrawal/cash-out fee. Not decided: whether allocating (minting) tokens to a beneficiary at settlement, or burning them at withdrawal, itself carries an additional platform fee distinct from those two. Flagging as a possibility, not deciding either way — would need its own `§5` line and its own field on the relevant transaction/quote model if it's ever added.
 10. **Every monetary amount should end up at 2 decimal places, including uctusd — decided, not yet implemented.** Auditing `quote_service.price_remittance` found `fee`/`margin` aren't `.quantize()`d the way `token_amount` already is, so SQLite (tests) and Postgres (prod) could silently disagree on the stored value for the same computation. Chasing that further: the intended fix is 2 decimals everywhere, fiat *and* token — uctusd's current 8-decimal convention isn't an XRPL requirement (IOU amounts on XRPL use up to 15 significant digits with a floating exponent, not a fixed decimal-place cap), it looks borrowed from Bitcoin's satoshi convention, so nothing blocks moving it to 2. Two real obstacles once this is actually done: (a) `accounts.account_balance` and `transactions.amount` are single columns shared by both fiat and token rows (distinguished only by a `currency` string), and their migrations are already applied elsewhere (merged well before this one), so narrowing them from `Numeric(20,8)` needs a real new migration — per this repo's own migration-safety rule, a narrowing change on a live table should go through expand/contract across two releases, not one; (b) `token_amount = net * fiat_to_token_exchange_rate` is a multiplication that rarely lands on a round number, so rounding to 2 decimals sheds more of the fractional remainder than 8 decimals does today — worth being deliberate about when implementing, not just mechanical. A full sweep (every `Numeric(20,8)` column, every `.quantize(...)` call, every 8-decimal-formatted test assertion) hasn't been done yet.
-11. **No function yet marks a `Quote` `USED`.** Phase B2/C describe a remittance confirmation flipping the quote's status once its legs are confirmed, but no `remittances` table, confirmation controller, or settlement task exists in code yet (`models/orm/quote.py` only defines `STATUS_ACTIVE`/`STATUS_USED`/`STATUS_EXPIRED`; nothing transitions a row out of `ACTIVE`). Needed: a function that sets a `Quote`'s `status` to `USED` when the remittance referencing its `quote_id` is confirmed/completed — following the same guarded-update pattern already used elsewhere in this codebase (`transaction_repository.confirm_pending_deposit_transaction`, `remitx_worker/tasks.py::process_integration_message`: `UPDATE ... WHERE id=? AND status=<prior>`, idempotent against redelivery).
-12. **No quote-receipt lookup exists yet.** There's no endpoint or function that fetches a `Quote` (and the remittance it produced) for a user browsing their transaction history and looking up details on a specific transaction — needed once transaction history itself exists (no `GET /wallet`/transactions listing exists yet either, despite §2 Phase D describing one).
+11. ~~No function yet marks a `Quote` `USED`.~~ **Resolved.** `models/orm/remittance.py` (`Remittance`), `services/remittance_service.py::confirm_remittance`, and `remitx_worker/tasks.py::settle_remittance` now exist — `QuoteRepository.mark_used` is the guarded `UPDATE ... WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?` transition, following the same pattern as `transaction_repository.confirm_pending_deposit_transaction`/`process_integration_message`.
+12. ~~No quote-receipt lookup exists yet.~~ **Partially resolved.** `POST /remittances`'s response is a receipt joining the new `Remittance` row with its `Quote` (`RemittanceController`'s view), and `GET /accounts`/`GET /accounts-history?account_id=...` now cover transaction-history browsing (renamed from the doc's original `GET /wallet` — there's no separate "wallet" concept, it's a read view over `accounts`/`transactions`, so it covers any currency account, not just `uctusd`). Still missing: a standalone `GET /remittances/{id}`-style lookup for revisiting one past remittance's receipt outside the moment it was just confirmed.
 
 ---
 

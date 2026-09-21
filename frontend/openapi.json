@@ -1,6 +1,90 @@
 {
   "components": {
     "schemas": {
+      "AccountRead": {
+        "description": "A read-only representation of a customer currency account.",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "available_balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available Balance",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "currency",
+          "available_balance"
+        ],
+        "title": "AccountRead",
+        "type": "object"
+      },
+      "AccountTransactionRead": {
+        "description": "A read-only representation of a transaction on a customer currency account.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tx_id": {
+            "format": "uuid",
+            "title": "Tx Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx_id",
+          "type",
+          "direction",
+          "amount",
+          "currency",
+          "status",
+          "created_at",
+          "confirmed_at"
+        ],
+        "title": "AccountTransactionRead",
+        "type": "object"
+      },
       "AdminMemberRead": {
         "description": "One row of the admin list: a person and the roles they hold now.",
         "properties": {
@@ -3663,6 +3747,90 @@
         "title": "QuoteRead",
         "type": "object"
       },
+      "RemittanceConfirmRequest": {
+        "properties": {
+          "quote_id": {
+            "format": "uuid",
+            "title": "Quote Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote_id"
+        ],
+        "title": "RemittanceConfirmRequest",
+        "type": "object"
+      },
+      "RemittanceRead": {
+        "description": "A read-only representation of a remittance.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "quote_id": {
+            "format": "uuid",
+            "title": "Quote Id",
+            "type": "string"
+          },
+          "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Receiver Amount",
+            "type": "string"
+          },
+          "receiver_currency": {
+            "title": "Receiver Currency",
+            "type": "string"
+          },
+          "remittance_id": {
+            "format": "uuid",
+            "title": "Remittance Id",
+            "type": "string"
+          },
+          "sender_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Sender Amount",
+            "type": "string"
+          },
+          "sender_currency": {
+            "title": "Sender Currency",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Token Amount",
+            "type": "string"
+          },
+          "token_name": {
+            "title": "Token Name",
+            "type": "string"
+          },
+          "tx_id": {
+            "format": "uuid",
+            "title": "Tx Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "remittance_id",
+          "quote_id",
+          "tx_id",
+          "status",
+          "sender_amount",
+          "sender_currency",
+          "token_amount",
+          "token_name",
+          "receiver_amount",
+          "receiver_currency",
+          "created_at"
+        ],
+        "title": "RemittanceRead",
+        "type": "object"
+      },
       "RoleGrantRequest": {
         "properties": {
           "reason": {
@@ -4046,6 +4214,120 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/accounts": {
+      "get": {
+        "description": "Every currency account the caller holds (ZAR and uctusd, today, from\nsignup), each with its own available balance.",
+        "operationId": "get_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountRead"
+                  },
+                  "title": "Response Get Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's currency accounts",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/accounts-history": {
+      "get": {
+        "description": "Incoming and outgoing legs for one of the caller's own accounts,\nnewest first \u2014 status and date included.",
+        "operationId": "get_accounts_history",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountTransactionRead"
+                  },
+                  "title": "Response Get Accounts History",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List one account's transaction history",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/admin/deposits/pending": {
       "get": {
         "description": "Deposits whose reference matched no user.",
@@ -7478,6 +7760,83 @@
           "quotes"
         ]
       }
+    },
+    "/remittances": {
+      "post": {
+        "description": "Turns an active quote into a send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
+        "operationId": "confirm_remittance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemittanceConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemittanceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Confirm a quote and start settlement",
+        "tags": [
+          "remittances"
+        ]
+      }
     }
   },
   "tags": [
@@ -7500,6 +7859,14 @@
     {
       "description": "Priced, time-boxed remittance offers.",
       "name": "quotes"
+    },
+    {
+      "description": "Confirming a quote and starting settlement.",
+      "name": "remittances"
+    },
+    {
+      "description": "A caller's own currency account balances and history.",
+      "name": "accounts"
     },
     {
       "description": "The applicant's resumable KYC application.",

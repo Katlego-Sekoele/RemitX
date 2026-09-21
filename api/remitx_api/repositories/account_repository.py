@@ -23,6 +23,22 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         """Look up a hand-seeded platform/external account by its label."""
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
+    def get_platform_account(self, type_: str, currency: str) -> Account | None:
+        """A hand-seeded platform account by `type` and currency — e.g. the
+        `REMITX_REVENUE` account for whatever currency a leg is actually in,
+        rather than a fixed label. `scripts/seed_platform_accounts.py` seeds
+        exactly one per (type, currency) pair (Transaction_Flow_Context.md
+        §1: "a fee earned on a ZAR transaction can no more land in a USD
+        revenue account than a ZAR deposit could land in the USD bank
+        account"), so this is always unique.
+        """
+        return db.session.scalars(
+            select(Account).where(
+                Account.type == type_,
+                Account.account_currency == currency,
+            )
+        ).first()
+
     def get_user_account_by_reference(self, reference: str) -> Account | None:
         """USER-account lookup by permanent reference.
 
@@ -47,6 +63,17 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_USER,
             )
         ).first()
+
+    def list_user_accounts(self, user_id: uuid.UUID) -> list[Account]:
+        """Every currency account this person owns — always ZAR + uctusd
+        today (both created eagerly at signup), but not assumed to stay
+        exactly two."""
+        return db.session.scalars(
+            select(Account).where(
+                Account.user_id == user_id,
+                Account.type == TYPE_USER,
+            )
+        ).all()
 
     def create_user_accounts(
         self, user_id: uuid.UUID, base_reference: str

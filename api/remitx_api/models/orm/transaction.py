@@ -75,9 +75,12 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default=STATUS_PENDING)
-    # No FK yet — the `quotes` table doesn't exist. Groups a remittance's or
-    # withdrawal's several legs once it does.
-    quote_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # Groups a remittance's (or, later, a withdrawal's) several legs so they
+    # confirm together in one guarded batch update — see
+    # services/remittance_service.py and remitx_worker/tasks.py::settle_remittance.
+    quote_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("quotes.quote_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

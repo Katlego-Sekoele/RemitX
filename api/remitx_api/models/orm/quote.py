@@ -62,9 +62,12 @@ class Quote(Base):
     quote_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
+    # Fiat currency account from which the sender's funds will be drawn.
     sender_account_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("accounts.account_id"), nullable=False
     )
+    # The beneficiary's uctusd/token account — settlement (§2 Phase C) credits
+    # this, per the custodial-wallet flow (brief §4.7); not a fiat account.
     beneficiary_account_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("accounts.account_id"), nullable=False
     )

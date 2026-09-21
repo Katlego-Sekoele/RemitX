@@ -21,6 +21,7 @@ from celery import Celery
 from remitx_api.config import Config
 
 PROCESS_INTEGRATION_MESSAGE = "remitx_worker.tasks.process_integration_message"
+SETTLE_REMITTANCE = "remitx_worker.tasks.settle_remittance"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -102,6 +103,19 @@ def enqueue_integration_message(message_id: str) -> None:
     producer.send_task(
         PROCESS_INTEGRATION_MESSAGE,
         args=[message_id],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_settle_remittance(quote_id: str) -> None:
+    """Settlement only ever needs `quote_id` (the group-update key everything
+    else is guarded on) — not a remittance id, which would just cost the
+    worker an extra lookup back to this same value.
+    """
+    producer.send_task(
+        SETTLE_REMITTANCE,
+        args=[quote_id],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()

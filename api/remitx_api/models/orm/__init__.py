@@ -34,6 +34,7 @@ from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusPro
 from remitx_api.models.orm.kyc_tier import KycTier
 from remitx_api.models.orm.permission import Permission, PermissionCode
 from remitx_api.models.orm.quote import Quote
+from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
 from remitx_api.models.orm.toxic_combination import ToxicCombination
@@ -74,6 +75,7 @@ __all__ = [
     "Permission",
     "PermissionCode",
     "Quote",
+    "Remittance",
     "Role",
     "RolePermission",
     "ToxicCombination",
