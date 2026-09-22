@@ -62,11 +62,15 @@ def _make_sender_and_beneficiary():
     recipient = UserController().ensure_provisioned(
         "user_quote_recipient", lambda: "recipient@example.com", lambda: "Recipient"
     )
-    beneficiary, _linked_user = BeneficiaryController().create(
-        sender_user_id=sender.id,
-        linked_user_id=recipient.id,
-        payout_currency="ZWL",
-        relationship="sibling",
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZWL",
+            relationship="sibling",
+        )
+        .beneficiary
     )
     return sender, recipient, beneficiary
 
@@ -275,11 +279,15 @@ def test_unverified_sender_is_rejected(app_context):
     recipient = UserController().ensure_provisioned(
         "user_quote_unverified_target", lambda: "target@example.com", lambda: "Target"
     )
-    beneficiary, _linked_user = BeneficiaryController().create(
-        sender_user_id=sender.id,
-        linked_user_id=recipient.id,
-        payout_currency="ZWL",
-        relationship="friend",
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZWL",
+            relationship="friend",
+        )
+        .beneficiary
     )
 
     with pytest.raises(quote_service.KycNotApprovedError):

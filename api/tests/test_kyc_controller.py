@@ -25,6 +25,7 @@ from remitx_api.models.orm.kyc_lifecycle import (
     KycReasonCode,
     KycStatus,
 )
+from remitx_api.models.orm.user import User
 from remitx_api.repositories import kyc_application_repository as kyc_repo_module
 from remitx_api.repositories.kyc_application_repository import (
     KycApplicationRepository,
@@ -452,3 +453,52 @@ def test_a_refresh_in_flight_keeps_the_earned_tier(app_context):
 
     assert standing.status is KycStatus.IN_PROGRESS
     assert standing.tier == KYC_TIER_VERIFIED
+
+
+def test_approval_copies_the_verified_name_and_country_onto_the_user(app_context):
+    """A sender's beneficiary list reads these from `users`, since RLS keeps a
+    customer route out of anyone else's application."""
+    reviewer = make_user()
+    user = make_user()
+    application = insert_application(
+        user.id,
+        KycStatus.UNDER_REVIEW,
+        full_name="  Tendai Moyo ",
+        residential_country="ZW",
+    )
+
+    KycController().transition(
+        application.application_id,
+        KycStatus.APPROVED,
+        expected_version=1,
+        actor_user_id=reviewer.id,
+    )
+
+    db.session.expire_all()
+    stored = db.session.get(User, user.id)
+    assert stored.full_name == "Tendai Moyo"
+    assert stored.country == "ZW"
+
+
+def test_only_an_approval_copies_the_name_onto_the_user(app_context):
+    reviewer = make_user()
+    user = make_user()
+    application = insert_application(
+        user.id,
+        KycStatus.UNDER_REVIEW,
+        full_name="Tendai Moyo",
+        residential_country="ZW",
+    )
+
+    KycController().transition(
+        application.application_id,
+        KycStatus.REJECTED,
+        expected_version=1,
+        actor_user_id=reviewer.id,
+        reason_code=KycReasonCode.DOCUMENT_ILLEGIBLE,
+    )
+
+    db.session.expire_all()
+    stored = db.session.get(User, user.id)
+    assert stored.full_name is None
+    assert stored.country is None
