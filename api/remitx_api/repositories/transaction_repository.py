@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlalchemy import or_, select, update
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.account import TYPE_USER, Account
+from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_PENDING,
@@ -51,6 +53,7 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         account_id: uuid.UUID,
         limit: int | None = None,
         before: datetime | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> list[Transaction]:
         """Legs touching this account, either side, newest first — an
         account's transaction history. `credit`=source, `debit`=destination
@@ -60,35 +63,59 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         `limit` caps the page; `before` is a cursor that keeps only legs
         created strictly earlier, so the next page starts from the last
         row's `created_at`.
+
+        A customer read passes `user_id`. The account must be that person's
+        own `USER` account, or the page is empty. Settlement code omits it
+        and reads platform accounts; on Postgres a customer session is also
+        limited by the `transactions` row-level security policy.
         """
-        query = (
-            select(Transaction)
-            .where(
-                or_(
-                    Transaction.credit_account_id == account_id,
-                    Transaction.debit_account_id == account_id,
-                )
+        query = select(Transaction).where(
+            or_(
+                Transaction.credit_account_id == account_id,
+                Transaction.debit_account_id == account_id,
             )
-            .order_by(Transaction.created_at.desc(), Transaction.tx_id.desc())
         )
+        if user_id is not None:
+            query = query.where(
+                select(Account.account_id)
+                .where(
+                    Account.account_id == account_id,
+                    Account.type == TYPE_USER,
+                    Account.user_id == user_id,
+                )
+                .exists()
+            )
+        query = query.order_by(Transaction.created_at.desc(), Transaction.tx_id.desc())
         if before is not None:
             query = query.where(Transaction.created_at < before)
         if limit is not None:
             query = query.limit(limit)
         return db.session.scalars(query).all()
 
-    def get_burn_hashes(self, quote_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
-        """Each quote's confirmed on-chain burn hash, for the quotes that have
-        one. The hash lives only on the `token_burn` leg
-        (remitx_worker.tasks.confirm_treasury_burn)."""
+    def get_burn_hashes(
+        self, quote_ids: set[uuid.UUID], user_id: uuid.UUID
+    ) -> dict[uuid.UUID, str]:
+        """Confirmed burn hashes for quotes this customer sent or received.
+
+        The hash lives only on the `token_burn` leg, which moves money
+        between platform accounts, so account ownership does not cover it.
+        The quote's parties do. Postgres row-level security on
+        `transactions` applies the same rule.
+        """
         if not quote_ids:
             return {}
         rows = db.session.execute(
-            select(Transaction.quote_id, Transaction.xrpl_tx_hash).where(
+            select(Transaction.quote_id, Transaction.xrpl_tx_hash)
+            .join(Quote, Quote.quote_id == Transaction.quote_id)
+            .where(
                 Transaction.quote_id.in_(quote_ids),
                 Transaction.type == TYPE_TOKEN_BURN,
                 Transaction.status == STATUS_CONFIRMED,
                 Transaction.xrpl_tx_hash.is_not(None),
+                or_(
+                    Quote.sender_user_id == user_id,
+                    Quote.beneficiary_user_id == user_id,
+                ),
             )
         ).all()
         return {quote_id: tx_hash for quote_id, tx_hash in rows}

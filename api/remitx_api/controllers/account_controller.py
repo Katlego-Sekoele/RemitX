@@ -207,7 +207,7 @@ class AccountController:
                 before.astimezone(UTC) if before.tzinfo else before.replace(tzinfo=UTC)
             )
         legs = self._transactions.list_account_transactions(
-            account_id, limit=limit, before=before
+            account_id, limit=limit, before=before, user_id=user_id
         )
         transfers = self._transfers(user_id, legs)
         kind = account_kind(account.account_currency)
@@ -222,9 +222,9 @@ class AccountController:
         """The transfer behind each leg that belongs to one, keyed by
         `quote_id`, in a fixed handful of queries however long the page."""
         quote_ids = {leg.quote_id for leg in legs if leg.quote_id is not None}
-        quotes = self._quotes.get_many(quote_ids)
-        remittance_ids = self._remittances.get_ids_by_quote_ids(quote_ids)
-        burn_hashes = self._transactions.get_burn_hashes(quote_ids)
+        quotes = self._quotes.get_many(quote_ids, user_id)
+        remittance_ids = self._remittances.get_ids_by_quote_ids(quote_ids, user_id)
+        burn_hashes = self._transactions.get_burn_hashes(quote_ids, user_id)
         users = self._users.get_many(
             {q.sender_user_id for q in quotes.values()}
             | {q.beneficiary_user_id for q in quotes.values()}
