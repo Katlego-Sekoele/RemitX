@@ -87,3 +87,19 @@ class UserRepository(Repository[User, uuid.UUID]):
         while next_number in used_numbers:
             next_number += 1
         return f"{base}{next_number}"
+
+    def record_verified_identity(
+        self, user_id: uuid.UUID, full_name: str | None, country: str | None
+    ) -> None:
+        """Copy an approved KYC application's name and residence onto the
+        user. Flushes only — the approval's transaction commits it.
+
+        A value the application left empty keeps what is already stored
+        rather than blanking it.
+        """
+        user = self.require_by_id(user_id)
+        if full_name:
+            user.full_name = full_name.strip()
+        if country:
+            user.country = country
+        db.session.flush()

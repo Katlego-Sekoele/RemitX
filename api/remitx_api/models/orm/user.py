@@ -77,6 +77,14 @@ class User(Base):
     # `last_name`: BeneficiaryController joins these instead of storing a
     # second, driftable copy on `Beneficiary` (see models/orm/beneficiary.py).
     mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The verified name and residence (ISO 3166-1 alpha-2) from the user's
+    # latest approved KYC application, written in the same transaction as the
+    # approval (`KycApplicationRepository.apply_transition`). A copy, but of
+    # identity rather than KYC standing: row-level security keeps a customer
+    # route from reading anyone else's application, and a sender's
+    # beneficiary list has to show the verified name. NULL until approved;
+    # display falls back to `first_name`.
+    full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     country: Mapped[str | None] = mapped_column(Text, nullable=True)
     # `reference_base(first_name)` plus a disambiguating number, e.g.
     # "sian1". Assigned once at signup by

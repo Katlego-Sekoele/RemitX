@@ -7,6 +7,7 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    PAYOUT_CURRENCIES,
     TYPE_USER,
     Account,
     create_account_reference,
@@ -67,6 +68,32 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_USER,
             )
         ).first()
+
+    def payout_currencies_by_user(
+        self, user_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[str, ...]]:
+        """Payout currencies each person already holds an account for, in
+        USD, ZWL, NAD order. ZAR and the token account are not payout
+        accounts: signup creates only those two, and a payout lands in the
+        currency account the person already has."""
+        if not user_ids:
+            return {}
+        rows = db.session.execute(
+            select(Account.user_id, Account.account_currency).where(
+                Account.user_id.in_(user_ids),
+                Account.type == TYPE_USER,
+                Account.account_currency.in_(PAYOUT_CURRENCIES),
+            )
+        ).all()
+        held = {user_id: set() for user_id in user_ids}
+        for user_id, currency in rows:
+            held[user_id].add(currency)
+        return {
+            user_id: tuple(
+                currency for currency in PAYOUT_CURRENCIES if currency in currencies
+            )
+            for user_id, currencies in held.items()
+        }
 
     def list_user_accounts(self, user_id: uuid.UUID) -> list[Account]:
         """Every currency account this person owns — always ZAR + uctusd

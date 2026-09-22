@@ -153,6 +153,9 @@ def test_a_remittance_shows_up_correctly_on_both_sides(verified_client, monkeypa
             lambda: "accounts-route-recipient@example.com",
             lambda: "Recip",
         )
+        AccountRepository().get_or_create_user_account(
+            recipient.id, recipient.base_reference, CURRENCY_ZWL
+        )
 
         sender_zar = AccountRepository().get_user_account(sender.id, CURRENCY_ZAR)
         AccountRepository().increase_balance(sender_zar.account_id, Decimal("1000"))

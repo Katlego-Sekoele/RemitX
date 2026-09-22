@@ -105,6 +105,9 @@ def _seed(client, sender_id):
             lambda: "remit-route-recipient@example.com",
             lambda: "Recip",
         )
+        AccountRepository().get_or_create_user_account(
+            recipient.id, recipient.base_reference, CURRENCY_ZWL
+        )
 
         sender_zar = AccountRepository().get_user_account(sender_id, CURRENCY_ZAR)
         AccountRepository().increase_balance(sender_zar.account_id, Decimal("1000"))

@@ -17,6 +17,7 @@ on `AccountRepository`.
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import (
     CheckConstraint,
@@ -54,8 +55,17 @@ CURRENCY_USD = "USD"
 CURRENCY_ZWL = "ZWL"
 CURRENCY_NAD = "NAD"
 
-# What a beneficiary may be paid out in.
-PAYOUT_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
+
+class PayoutCurrency(StrEnum):
+    """What a beneficiary may be paid out in. An enum so the OpenAPI spec,
+    and therefore the frontend client, carries the option list."""
+
+    USD = CURRENCY_USD
+    ZWL = CURRENCY_ZWL
+    NAD = CURRENCY_NAD
+
+
+PAYOUT_CURRENCIES = tuple(currency.value for currency in PayoutCurrency)
 
 # Reference suffix per currency, e.g. "sian1-zar", "sian1-tok".
 CURRENCY_REFERENCE_SUFFIX = {
