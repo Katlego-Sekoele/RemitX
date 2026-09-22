@@ -2,12 +2,12 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
-from remitx_api.config import Config
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
+from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
@@ -17,6 +17,7 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import exchange_rate_service, quote_service
 from remitx_api.services.exchange_rate_provider import RateFetchError
+from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
 
@@ -51,6 +52,27 @@ def _store_rate(
     db.session.add(row)
     db.session.commit()
     return row
+
+
+def _set_standing(
+    user, *, tier_granted: int | None = None, risk_rating: str | None = None
+):
+    """The allowance a quote is checked against: tier limits times the
+    rating's limit_percent. No rating leaves the tier unscaled."""
+    application = db.session.scalars(
+        select(KycApplication).where(KycApplication.user_id == user.id)
+    ).one()
+    if tier_granted is not None:
+        application.tier_granted = tier_granted
+    if risk_rating is not None:
+        application.risk_rating = risk_rating
+    db.session.commit()
+
+
+def _fund(user, amount: str) -> None:
+    account_repo = AccountRepository()
+    sender_zar = account_repo.get_user_account(user.id, CURRENCY_ZAR)
+    account_repo.increase_balance(sender_zar.account_id, Decimal(amount))
 
 
 def _make_sender_and_beneficiary():
@@ -307,20 +329,70 @@ def test_unverified_sender_is_rejected(app_context):
 
 
 def test_amount_over_the_daily_ceiling_is_rejected(app_context):
+    # No rating: the allowance is the whole of tier 1 (R3,000 / R25,000).
     _store_rate()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
-    account_repo = AccountRepository()
-    sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
-    account_repo.increase_balance(sender_zar.account_id, Config.DAILY_LIMIT_ZAR * 2)
+    _fund(sender, "6000")
 
-    with pytest.raises(quote_service.LimitExceededError):
+    with pytest.raises(
+        quote_service.LimitExceededError, match="daily limit of 3000.00"
+    ):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
-            Config.DAILY_LIMIT_ZAR + Decimal("1"),
+            Decimal("3000.01"),
             sender_currency=CURRENCY_ZAR,
             receiver_payout_currency="ZWL",
         )
+
+
+def test_high_risk_rating_scales_the_daily_ceiling(app_context):
+    # High is 50% of the tier. R1,500.01 is under the old flat R3,000 ceiling
+    # and still over this sender's allowance.
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    _set_standing(sender, risk_rating="high")
+    _fund(sender, "3000")
+
+    quote = quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("1500"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+    assert quote.sender_amount == Decimal("1500.00")
+
+    with pytest.raises(
+        quote_service.LimitExceededError, match="daily limit of 1500.00"
+    ):
+        quote_service.create_quote(
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("1500.01"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
+        )
+
+
+def test_low_risk_enhanced_tier_allows_above_the_standard_ceiling(app_context):
+    # Tier 2 at low risk is 100% of R10,000 a day, so R5,000 is inside the
+    # allowance even though it is above tier 1's R3,000.
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    _set_standing(sender, tier_granted=2, risk_rating="low")
+    _fund(sender, "10000")
+
+    quote = quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("5000"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+    assert quote.sender_amount == Decimal("5000.00")
 
 
 def test_beneficiary_not_owned_by_caller_is_rejected(app_context):

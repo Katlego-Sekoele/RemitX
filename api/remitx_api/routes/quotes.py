@@ -42,9 +42,10 @@ def create_quote(
     the quote is confirmed with `POST /remittances`.
 
     Refusals: 403 if the caller isn't KYC-verified; 400 for an unknown
-    beneficiary, no account in `sender_currency`, an amount over the limit
-    or the available balance, or one too small to cover the fees; 503 when
-    no exchange rate is available.
+    beneficiary, no account in `sender_currency`, an amount over the KYC
+    allowance (tier limits scaled by the risk rating), the available
+    balance, or one too small to cover the fees; 503 when no exchange rate
+    is available.
     """
     try:
         return controller.create_quote(

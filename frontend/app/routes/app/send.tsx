@@ -55,8 +55,9 @@ function asAmount(value: string | undefined): string | undefined {
 }
 
 /**
- * What's left to send. Until KYC-3 (#25) reports usage, that's the whole of
- * the tier's limits; the API still refuses a quote over its own ceiling.
+ * What's left to send. These figures are the standing allowance: the tier's
+ * daily and monthly limits scaled by the risk rating. Until KYC-3 (#25)
+ * reports usage, the whole allowance is still available.
  */
 function limitsFrom(
   standing: KycStanding | undefined,
