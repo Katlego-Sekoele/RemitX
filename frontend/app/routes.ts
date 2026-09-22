@@ -18,6 +18,10 @@ export default [
     layout("routes/app/layout.tsx", [
       ...getFlattenedAppRoutes([
         { path: "app/profile/*", module: "routes/app/profile.tsx" },
+        {
+          path: "app/accounts/:accountId",
+          module: "routes/app/account-history.tsx",
+        },
       ]).map(({ path, module }) => route(path, module)),
       layout("routes/app/verification/layout.tsx", [
         route(

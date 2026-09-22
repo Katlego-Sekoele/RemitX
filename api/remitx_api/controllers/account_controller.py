@@ -1,12 +1,30 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR, Account
-from remitx_api.models.orm.transaction import Transaction
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_USER,
+    Account,
+)
+from remitx_api.models.orm.quote import Quote
+from remitx_api.models.orm.transaction import (
+    STATUS_CONFIRMED,
+    TYPE_BENEFICIARY_PAYOUT,
+    TYPE_DEPOSIT,
+    TYPE_FEE,
+    TYPE_REMITTANCE,
+    TYPE_WITHDRAWAL,
+    Transaction,
+)
+from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.quote_repository import QuoteRepository
+from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
+from remitx_api.repositories.user_repository import UserRepository
 
 DIRECTION_IN = "in"
 DIRECTION_OUT = "out"
@@ -15,6 +33,9 @@ DIRECTION_OUT = "out"
 # apart from a spendable currency account without hard-coding the token name.
 KIND_FIAT = "fiat"
 KIND_SETTLEMENT = "settlement"
+
+DEFAULT_HISTORY_LIMIT = 50
+MAX_HISTORY_LIMIT = 200
 
 # Amounts leave the API at 2 dp, the same quantum quote_service stores them at.
 AMOUNT_QUANTUM = Decimal("0.01")
@@ -66,12 +87,79 @@ class AccountTransactionView:
     status: str
     created_at: datetime
     confirmed_at: datetime | None
+    # What the leg was, from this account's owner's point of view.
+    description: str
+    # The other customer in a transfer; None off a transfer, or when that
+    # person has no name on file.
+    counterparty_name: str | None
+    remittance_id: uuid.UUID | None
+    # The transfer's burn hash on the XRPL Testnet, on every leg of a
+    # confirmed transfer.
+    xrpl_tx_hash: str | None
+
+
+@dataclass(frozen=True)
+class _Transfer:
+    """What every leg of one transfer shares, looked up once per page."""
+
+    quote: Quote
+    # True when this account's owner sent the transfer, False when they
+    # received it.
+    sent: bool
+    counterparty_name: str | None
+    remittance_id: uuid.UUID | None
+    xrpl_tx_hash: str | None
+
+
+def describe_leg(
+    leg_type: str,
+    direction: str,
+    kind: str,
+    transfer: _Transfer | None,
+) -> str:
+    """A plain-language label for one leg, as its account's owner sees it.
+
+    A transfer puts two legs (fee and net) on the sender's fiat account, an
+    in-and-out pair on each party's settlement wallet, and a payout on the
+    recipient's fiat account; each reads as what it did for that person.
+    """
+    if leg_type == TYPE_DEPOSIT:
+        return "Deposit"
+    if leg_type == TYPE_WITHDRAWAL:
+        return "Withdrawal"
+    if leg_type == TYPE_FEE:
+        return "Transfer fee"
+    if transfer is None:
+        return leg_type.replace("_", " ").capitalize()
+
+    name = transfer.counterparty_name
+    sent_to = f"Sent to {name}" if name else "Sent to a recipient"
+    received_from = f"Received from {name}" if name else "Received from a sender"
+
+    if leg_type == TYPE_BENEFICIARY_PAYOUT:
+        return received_from if name else "Payout"
+    if leg_type != TYPE_REMITTANCE:
+        return leg_type.replace("_", " ").capitalize()
+    if kind == KIND_FIAT:
+        return sent_to
+    # The settlement wallet: the sender's is funded from their fiat and pays
+    # the recipient's, which is converted straight into their payout currency.
+    if transfer.sent:
+        if direction == DIRECTION_IN:
+            return f"Converted from {transfer.quote.sender_currency}"
+        return sent_to
+    if direction == DIRECTION_IN:
+        return received_from
+    return f"Converted to {transfer.quote.receiver_currency}"
 
 
 class AccountController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
         self._transactions = TransactionRepository()
+        self._quotes = QuoteRepository()
+        self._remittances = RemittanceRepository()
+        self._users = UserRepository()
 
     def get_accounts(self, user_id: uuid.UUID) -> list[AccountView]:
         """Every currency account the caller holds: ZAR and uctusd from
@@ -96,19 +184,77 @@ class AccountController:
         ]
 
     def get_account_history(
-        self, user_id: uuid.UUID, account_id: uuid.UUID
+        self,
+        user_id: uuid.UUID,
+        account_id: uuid.UUID,
+        limit: int = DEFAULT_HISTORY_LIMIT,
+        before: datetime | None = None,
     ) -> list[AccountTransactionView]:
+        """One page of an account's legs, newest first, each described from
+        the owner's side. `before` is the previous page's last `created_at`.
+        """
         account = self._accounts.get_by_id(account_id)
-        if account is None or account.user_id != user_id:
+        # Platform accounts are owned by an admin's user id too, so ownership
+        # alone doesn't make an account a customer's.
+        if account is None or account.type != TYPE_USER or account.user_id != user_id:
             raise UnknownAccountError(str(account_id))
 
+        if before is not None:
+            # Rows are stored in UTC, and SQLite compares them as text with
+            # the offset dropped, so the cursor is normalised to UTC first. A
+            # naive cursor is taken to be UTC already.
+            before = (
+                before.astimezone(UTC) if before.tzinfo else before.replace(tzinfo=UTC)
+            )
+        legs = self._transactions.list_account_transactions(
+            account_id, limit=limit, before=before
+        )
+        transfers = self._transfers(user_id, legs)
+        kind = account_kind(account.account_currency)
         return [
-            self._leg_view(leg, account_id)
-            for leg in self._transactions.list_account_transactions(account_id)
+            self._leg_view(leg, account_id, kind, transfers.get(leg.quote_id))
+            for leg in legs
         ]
 
+    def _transfers(
+        self, user_id: uuid.UUID, legs: list[Transaction]
+    ) -> dict[uuid.UUID, _Transfer]:
+        """The transfer behind each leg that belongs to one, keyed by
+        `quote_id`, in a fixed handful of queries however long the page."""
+        quote_ids = {leg.quote_id for leg in legs if leg.quote_id is not None}
+        quotes = self._quotes.get_many(quote_ids)
+        remittance_ids = self._remittances.get_ids_by_quote_ids(quote_ids)
+        burn_hashes = self._transactions.get_burn_hashes(quote_ids)
+        users = self._users.get_many(
+            {q.sender_user_id for q in quotes.values()}
+            | {q.beneficiary_user_id for q in quotes.values()}
+        )
+
+        transfers = {}
+        for quote_id, quote in quotes.items():
+            sent = quote.sender_user_id == user_id
+            other = users.get(
+                quote.beneficiary_user_id if sent else quote.sender_user_id
+            )
+            transfers[quote_id] = _Transfer(
+                quote=quote,
+                sent=sent,
+                counterparty_name=(
+                    short_display_name(other.first_name, other.last_name)
+                    if other
+                    else None
+                ),
+                remittance_id=remittance_ids.get(quote_id),
+                xrpl_tx_hash=burn_hashes.get(quote_id),
+            )
+        return transfers
+
     def _leg_view(
-        self, leg: Transaction, account_id: uuid.UUID
+        self,
+        leg: Transaction,
+        account_id: uuid.UUID,
+        kind: str,
+        transfer: _Transfer | None,
     ) -> AccountTransactionView:
         # credit=source, debit=destination (models/orm/transaction.py) — this
         # account received the money iff it's the leg's debit side.
@@ -119,9 +265,19 @@ class AccountController:
             tx_id=leg.tx_id,
             type=leg.type,
             direction=direction,
-            amount=leg.amount,
+            amount=_money(leg.amount),
             currency=leg.currency,
             status=leg.status,
             created_at=leg.created_at,
             confirmed_at=leg.confirmed_at,
+            description=describe_leg(leg.type, direction, kind, transfer),
+            counterparty_name=transfer.counterparty_name if transfer else None,
+            remittance_id=transfer.remittance_id if transfer else None,
+            # Every leg of a transfer confirms in the same commit as the burn
+            # hash is recorded, so a confirmed leg's hash is the transfer's.
+            xrpl_tx_hash=(
+                transfer.xrpl_tx_hash
+                if transfer and leg.status == STATUS_CONFIRMED
+                else None
+            ),
         )

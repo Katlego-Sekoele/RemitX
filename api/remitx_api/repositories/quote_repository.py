@@ -26,6 +26,16 @@ class QuoteRepository(Repository[Quote, uuid.UUID]):
             )
         ).first()
 
+    def get_many(self, quote_ids: set[uuid.UUID]) -> dict[uuid.UUID, Quote]:
+        """Quotes by id, keyed by id. Unscoped: callers reach these ids only
+        through legs on an account they already own."""
+        if not quote_ids:
+            return {}
+        quotes = db.session.scalars(
+            select(Quote).where(Quote.quote_id.in_(quote_ids))
+        ).all()
+        return {quote.quote_id: quote for quote in quotes}
+
     def mark_used(self, quote_id: uuid.UUID, now: datetime) -> bool:
         """Guarded ACTIVE -> USED transition, confirming a remittance.
 

@@ -36,3 +36,14 @@ class AccountTransactionRead(Schema):
     status: str
     created_at: UtcDateTime
     confirmed_at: UtcDateTime | None
+    # Plain language, from the account owner's side: "Deposit",
+    # "Transfer fee", "Sent to Tendai M.", "Received from Sipho K.",
+    # "Converted to ZWL".
+    description: str
+    # The other customer, on the legs of a transfer.
+    counterparty_name: str | None
+    # The transfer this leg belongs to, if any.
+    remittance_id: uuid.UUID | None
+    # The transfer's XRPL Testnet burn hash, on every leg of a confirmed
+    # transfer.
+    xrpl_tx_hash: str | None
