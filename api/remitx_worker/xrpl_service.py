@@ -16,7 +16,6 @@ keeps the standalone setup script and the app packages uncoupled.
 """
 
 from decimal import Decimal
-from urllib import response
 
 from cryptography.fernet import Fernet
 from remitx_api.config import Config
@@ -47,22 +46,28 @@ def burn_tokens(amount: Decimal) -> str:
     ledger reports anything other than `tesSUCCESS`.
     """
     config = Config()
-    client = JsonRpcClient(config.XRPL_TESTNET_URL) # Initialize a JsonRpcClient with the XRPL testnet URL from the config
-    wallet = _load_treasury_wallet() # Call the _load_treasury_wallet function to get the treasury wallet object
+    # Initialize a JsonRpcClient with the XRPL testnet URL from the config
+    client = JsonRpcClient(config.XRPL_TESTNET_URL)
+    # Call the _load_treasury_wallet function to get the treasury wallet object
+    wallet = _load_treasury_wallet()
 
     payment = Payment(
         account=wallet.address,
-        destination=config.UCTUSD_ISSUER, # get the issuer address from the config
+        # get the issuer address from the config
+        destination=config.UCTUSD_ISSUER,
         amount=IssuedCurrencyAmount(
             currency=config.UCTUSD_CURRENCY_CODE_HEX,
             issuer=config.UCTUSD_ISSUER,
             value=str(amount),
         ),
-    ) # Create a Payment transaction to send the specified amount of the platform token from the treasury wallet to the issuer.
+        # Create a Payment transaction to send the specified amount of the
+        # platform token from the treasury wallet to the issuer.
+    )
     # Submit the payment transaction to the XRPL and wait for it to be validated.
     response = submit_and_wait(payment, client, wallet)
     result = response.result.get("meta", {}).get("TransactionResult")
-    
-    if result != "tesSUCCESS": 
+
+    if result != "tesSUCCESS":
         raise RuntimeError(f"burn Payment failed: {result}")
-    return response.result["hash"] # Return the hash of the validated transaction.
+    # Return the hash of the validated transaction.
+    return response.result["hash"]

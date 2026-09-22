@@ -1,16 +1,16 @@
 """Remittance confirmation.
 
-Uses an active ACTIVE `Quote` to initiate an actual remittance send: seven `pending` ledger legs
-sharing one `quote_id`, the quote is flipped to USED, then settlement is enqueued. 
-For each of the seven transactions, `remitx_worker.tasks.confirm_treasury_burn` confirms and
-credits them all together, once the treasury's on-chain burn (leg 6) has
-resolved; `settle_remittance` and `burn_treasury_tokens` only hand off along
-the way.
+Uses an active ACTIVE `Quote` to initiate an actual remittance send: seven
+`pending` ledger legs sharing one `quote_id`, the quote is flipped to USED,
+then settlement is enqueued. For each of the seven transactions,
+`remitx_worker.tasks.confirm_treasury_burn` confirms and credits them all
+together, once the treasury's on-chain burn (leg 6) has resolved;
+`settle_remittance` and `burn_treasury_tokens` only hand off along the way.
 
 The beneficiary never holds a resting uctusd balance: their token account is
 a momentary pass-through (legs 3-4 credit it then debit it straight back to
 the treasury via leg 5), and the platform auto-converts straight to their
-own local fiat currency (leg 7, the payout). Leg 6, the burn, returns 
+own local fiat currency (leg 7, the payout). Leg 6, the burn, returns
 that same amount from the treasury to the Token issuer on-chain.
 """
 
@@ -116,12 +116,16 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     # Fee (+ margin) leg: sender's fiat currency account -> RemitX fiat fee revenue.
     transactions.add(
         Transaction(
-            type=TYPE_FEE, # Transation type
-            credit_account_id=sender_account.account_id, # Money leaving the sender's account
-            debit_account_id=RemitX_fee_revenue_account.account_id, # Money going to RemitX's fee revenue account
-            amount=quote.sender_transaction_fee + quote.exchange_rate_margin, # fee + margin fee
+            type=TYPE_FEE,  # Transation type
+            # Money leaving the sender's account
+            credit_account_id=sender_account.account_id,
+            # Money going to RemitX's fee revenue account
+            debit_account_id=RemitX_fee_revenue_account.account_id,
+            # fee + margin fee
+            amount=quote.sender_transaction_fee + quote.exchange_rate_margin,
             currency=quote.sender_currency,
-            status=STATUS_PENDING, # Only confirmed once the beneficiary payout leg has confirmed
+            # Only confirmed once the beneficiary payout leg has confirmed
+            status=STATUS_PENDING,
             quote_id=quote.quote_id,
         )
     )
@@ -143,8 +147,10 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     transactions.add(
         Transaction(
             type=TYPE_REMITTANCE,
-            credit_account_id=RemitX_treasury_account.account_id, # tokens leaving the treasury
-            debit_account_id=sender_token_account.account_id, # tokens going to the sender's token account
+            # tokens leaving the treasury
+            credit_account_id=RemitX_treasury_account.account_id,
+            # tokens going to the sender's token account
+            debit_account_id=sender_token_account.account_id,
             amount=quote.token_amount,
             currency=CURRENCY_TOKEN,
             status=STATUS_PENDING,
@@ -200,9 +206,12 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     transactions.add(
         Transaction(
             type=TYPE_BENEFICIARY_PAYOUT,
-            credit_account_id=RemitX_credited_bank_account.account_id, # Fiat leaving RemitX's bank account in the beneficiary's country
-            debit_account_id=beneficiary_fiat_account.account_id, # Fiat going to the beneficiary's own fiat account
-            amount=quote.receiver_amount, # Gross amount the beneficiary receives in their own currency
+            # Fiat leaving RemitX's bank account in the beneficiary's country
+            credit_account_id=RemitX_credited_bank_account.account_id,
+            # Fiat going to the beneficiary's own fiat account
+            debit_account_id=beneficiary_fiat_account.account_id,
+            # Gross amount the beneficiary receives in their own currency
+            amount=quote.receiver_amount,
             currency=quote.receiver_currency,
             status=STATUS_PENDING,
             quote_id=quote.quote_id,
@@ -216,9 +225,10 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
         )
     )
 
-    db.session.commit() # commit the quote flip, the seven pending legs, and the remittance record
+    # commit the quote flip, the seven pending legs, and the remittance record
+    db.session.commit()
 
     # Enqueue only after the commit above
     queue_service.enqueue_settle_remittance(str(quote.quote_id))
 
-    return remittance # return the remittance record
+    return remittance  # return the remittance record
