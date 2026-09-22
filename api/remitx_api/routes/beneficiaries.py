@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import Depends, HTTPException, Query, status
 
 from remitx_api.auth.dependencies import get_current_user
@@ -67,13 +69,13 @@ def create_beneficiary(
     """Create a new beneficiary for the current user."""
     try:
         # Create using the controller
-        beneficiary, linked_user = controller.create(
+        row = controller.create(
             sender_user_id=user.id,
             linked_user_id=payload.linked_user_id,
             payout_currency=payload.payout_currency,
             relationship=payload.relationship,
         )
-        return BeneficiaryRead.from_beneficiary_and_user(beneficiary, linked_user)
+        return BeneficiaryRead.from_row(row)
     except UnknownLinkedUserError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -86,12 +88,21 @@ def create_beneficiary(
         ) from exc
 
 
-@router.get("/get-beneficiary-list", response_model=list[BeneficiaryRead])
+@router.get(
+    "/get-beneficiary-list",
+    response_model=list[BeneficiaryRead],
+    summary="List my beneficiaries",
+)
 def list_my_beneficiaries(
     user: User = Depends(get_current_user),  # Get the current authenticated user
-    sort: str = Query(SORT_NEWEST, description="Order the caller's beneficiaries by."),
+    sort: Literal["newest", "alphabetical"] = Query(
+        SORT_NEWEST,
+        description="Newest first, or A-Z by name.",
+    ),
 ):
-    """List the current user's beneficiaries, sorted by the specified criteria."""
+    """List the current user's beneficiaries. Each one's name and country
+    are their verified ones once their KYC is approved, and their email and
+    mobile are masked."""
     try:
         results = controller.list_beneficiaries(user.id, sort=sort)
     except InvalidSortOptionError as exc:
@@ -99,7 +110,4 @@ def list_my_beneficiaries(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="invalid sort option.",
         ) from exc
-    return [
-        BeneficiaryRead.from_beneficiary_and_user(beneficiary, linked_user)
-        for beneficiary, linked_user in results
-    ]
+    return [BeneficiaryRead.from_row(row) for row in results]

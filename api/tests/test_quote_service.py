@@ -62,11 +62,15 @@ def _make_sender_and_beneficiary():
     recipient = UserController().ensure_provisioned(
         "user_quote_recipient", lambda: "recipient@example.com", lambda: "Recipient"
     )
-    beneficiary, _linked_user = BeneficiaryController().create(
-        sender_user_id=sender.id,
-        linked_user_id=recipient.id,
-        payout_currency="ZWL",
-        relationship="sibling",
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZWL",
+            relationship="sibling",
+        )
+        .beneficiary
     )
     return sender, recipient, beneficiary
 
@@ -275,11 +279,15 @@ def test_unverified_sender_is_rejected(app_context):
     recipient = UserController().ensure_provisioned(
         "user_quote_unverified_target", lambda: "target@example.com", lambda: "Target"
     )
-    beneficiary, _linked_user = BeneficiaryController().create(
-        sender_user_id=sender.id,
-        linked_user_id=recipient.id,
-        payout_currency="ZWL",
-        relationship="friend",
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZWL",
+            relationship="friend",
+        )
+        .beneficiary
     )
 
     with pytest.raises(quote_service.KycNotApprovedError):
@@ -330,6 +338,7 @@ def test_beneficiary_not_owned_by_caller_is_rejected(app_context):
 
 def test_quote_expires_fifteen_minutes_from_now(app_context):
     _store_rate()
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
     sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     account_repo = AccountRepository()
     sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)

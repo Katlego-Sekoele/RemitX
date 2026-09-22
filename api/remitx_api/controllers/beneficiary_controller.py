@@ -11,7 +11,10 @@ from remitx_api.models.orm.account import CURRENCY_TOKEN
 from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
-from remitx_api.repositories.beneficiary_repository import BeneficiaryRepository
+from remitx_api.repositories.beneficiary_repository import (
+    BeneficiaryRepository,
+    BeneficiaryRow,
+)
 from remitx_api.repositories.user_repository import UserRepository
 
 SORT_NEWEST = "newest"
@@ -86,12 +89,12 @@ class BeneficiaryController:
         linked_user_id: uuid.UUID,
         payout_currency: str,
         relationship: str,
-    ) -> tuple[Beneficiary, User]:
+    ) -> BeneficiaryRow:
         """Create a new Beneficiary record in the database.
 
-        Returns the new row paired with its linked User, same shape as the
-        list methods — first_name/last_name/email/mobile_number/country all
-        come from there, not this table.
+        Returns the new row with its linked User, same shape as the list
+        methods — name, contact and country all come from there, not this
+        table.
         """
         # If the linked_user_id doesn't exist, raise an error.
         # This is a business rule for this project.
@@ -110,15 +113,17 @@ class BeneficiaryController:
                 relationship=relationship,
             )
         )
-        return beneficiary, linked_user
+        return self._beneficiaries.get_sender_beneficiary(
+            sender_user_id, beneficiary.beneficiary_id
+        )
 
     def list_beneficiaries(
         self, sender_user_id: uuid.UUID, sort: str = SORT_NEWEST
-    ) -> list[tuple[Beneficiary, User]]:
-        """Return a sender's beneficiaries, each paired with its linked User."""
+    ) -> list[BeneficiaryRow]:
+        """Return a sender's beneficiaries, each with its linked User."""
         if sort not in BENEFICIARY_SORT_OPTIONS:
             raise InvalidSortOptionError(sort)
-        if sort == SORT_ALPHABETICAL:  # Sort by first name, A-Z
+        if sort == SORT_ALPHABETICAL:  # Sort by display name, A-Z
             return self._beneficiaries.get_sender_beneficiary_list_alphabetical_order(
                 sender_user_id
             )

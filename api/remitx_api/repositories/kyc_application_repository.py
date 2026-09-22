@@ -50,6 +50,7 @@ from remitx_api.repositories.kyc_status_progression_repository import (
     KycApplicationStatusProgressionRepository,
 )
 from remitx_api.repositories.repository import Repository
+from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services.audit_service import record_audit
 from remitx_api.services.kyc_risk_rules import RiskAssessment, allowance_for
 
@@ -100,6 +101,7 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(KycApplication)
         self._progressions = KycApplicationStatusProgressionRepository()
+        self._users = UserRepository()
 
     def get_open_for_user(self, user_id: uuid.UUID) -> KycApplication | None:
         return db.session.scalars(
@@ -603,6 +605,14 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             )
 
         if to_status is KycStatus.APPROVED:
+            # Customer routes can't read another user's application (RLS), so
+            # the verified name and country a sender's beneficiary list shows
+            # are copied onto `users` as part of the approval itself.
+            self._users.record_verified_identity(
+                application.user_id,
+                full_name=application.full_name,
+                country=application.residential_country,
+            )
             self._record_assessment(
                 application_id,
                 computed_tier=tier_decision.computed_tier,

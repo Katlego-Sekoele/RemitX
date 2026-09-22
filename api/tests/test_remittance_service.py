@@ -128,11 +128,15 @@ def _make_sender_and_beneficiary():
     recipient = UserController().ensure_provisioned(
         "user_remit_recipient", lambda: "remit-recipient@example.com", lambda: "Recip"
     )
-    beneficiary, _linked_user = BeneficiaryController().create(
-        sender_user_id=sender.id,
-        linked_user_id=recipient.id,
-        payout_currency="ZWL",
-        relationship="sibling",
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZWL",
+            relationship="sibling",
+        )
+        .beneficiary
     )
     return sender, recipient, beneficiary
 

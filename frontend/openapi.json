@@ -245,7 +245,7 @@
         "type": "object"
       },
       "BeneficiaryRead": {
-        "description": "Schema for reading a beneficiary.\n\nCan't be built with plain `from_attributes=True` off a bare `Beneficiary`\n\u2014 first_name/last_name/email/mobile_number/country aren't columns on\nthat table (see models/orm/beneficiary.py). Always construct via\n`from_beneficiary_and_user`.",
+        "description": "A sender's beneficiary, with the linked person's details read live from\ntheir profile.\n\nBuild with `from_row`: the name, contact and country aren't columns on\n`beneficiaries` (see models/orm/beneficiary.py). Contact details are\nmasked here and never leave the API in full \u2014 account references are\nguessable, so the list must not become a way to read a stranger's email\nor mobile.",
         "properties": {
           "beneficiary_id": {
             "format": "uuid",
@@ -261,13 +261,26 @@
                 "type": "null"
               }
             ],
+            "description": "Verified country of residence, ISO 3166-1 alpha-2.",
             "title": "Country"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That country's name.",
+            "title": "Country Name"
           },
           "created_at": {
             "title": "Created At",
             "type": "string"
           },
-          "email": {
+          "full_name": {
             "anyOf": [
               {
                 "type": "string"
@@ -276,36 +289,15 @@
                 "type": "null"
               }
             ],
-            "title": "Email"
-          },
-          "first_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Name"
-          },
-          "last_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Name"
+            "description": "The verified name from their approved KYC application, or the first name they signed up with until they are verified.",
+            "title": "Full Name"
           },
           "linked_user_id": {
             "format": "uuid",
             "title": "Linked User Id",
             "type": "string"
           },
-          "mobile_number": {
+          "masked_email": {
             "anyOf": [
               {
                 "type": "string"
@@ -314,7 +306,24 @@
                 "type": "null"
               }
             ],
-            "title": "Mobile Number"
+            "examples": [
+              "t\u2022\u2022\u2022@gmail.com"
+            ],
+            "title": "Masked Email"
+          },
+          "masked_mobile_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              "+2637\u2022\u2022\u2022\u2022\u2022\u202223"
+            ],
+            "title": "Masked Mobile Number"
           },
           "payout_currency": {
             "title": "Payout Currency",
@@ -328,11 +337,11 @@
         "required": [
           "beneficiary_id",
           "linked_user_id",
-          "first_name",
-          "last_name",
-          "mobile_number",
-          "email",
+          "full_name",
           "country",
+          "country_name",
+          "masked_email",
+          "masked_mobile_number",
           "payout_currency",
           "relationship",
           "created_at"
@@ -6364,17 +6373,21 @@
     },
     "/beneficiaries/get-beneficiary-list": {
       "get": {
-        "description": "List the current user's beneficiaries, sorted by the specified criteria.",
+        "description": "List the current user's beneficiaries. Each one's name and country\nare their verified ones once their KYC is approved, and their email and\nmobile are masked.",
         "operationId": "list_my_beneficiaries",
         "parameters": [
           {
-            "description": "Order the caller's beneficiaries by.",
+            "description": "Newest first, or A-Z by name.",
             "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
               "default": "newest",
-              "description": "Order the caller's beneficiaries by.",
+              "description": "Newest first, or A-Z by name.",
+              "enum": [
+                "newest",
+                "alphabetical"
+              ],
               "title": "Sort",
               "type": "string"
             }
@@ -6421,7 +6434,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "List My Beneficiaries",
+        "summary": "List my beneficiaries",
         "tags": [
           "beneficiaries"
         ]
@@ -7773,7 +7786,7 @@
     },
     "/remittances": {
       "post": {
-        "description": "Turns an active quote into a send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {

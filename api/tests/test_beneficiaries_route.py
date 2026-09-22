@@ -1,11 +1,14 @@
 import uuid
 
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.kyc_lifecycle import KycStatus
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
+from tests.kyc_helpers import insert_application, make_user
 
 CREATE_ENDPOINT = "/beneficiaries/create-beneficiary"
 LIST_ENDPOINT = "/beneficiaries/get-beneficiary-list"
@@ -37,6 +40,54 @@ def _provisioned_user_id(
     clerk_id: str, email: str | None, first_name: str
 ) -> uuid.UUID:
     return _provisioned_user(clerk_id, email, first_name)[0]
+
+
+def _approved_user_id(
+    clerk_id: str,
+    first_name: str,
+    *,
+    full_name: str,
+    country: str,
+    email: str | None = None,
+    mobile_number: str | None = None,
+) -> uuid.UUID:
+    """A provisioned user whose KYC application a reviewer approved through
+    `KycController.transition`, the path that copies the verified name and
+    country onto `users`."""
+    user_id = _provisioned_user_id(clerk_id, email, first_name)
+    token = db.open_session()
+    try:
+        if mobile_number is not None:
+            db.session.get(User, user_id).mobile_number = mobile_number
+            db.session.commit()
+        application = insert_application(
+            user_id,
+            KycStatus.UNDER_REVIEW,
+            full_name=full_name,
+            residential_country=country,
+        )
+        KycController().transition(
+            application.application_id,
+            KycStatus.APPROVED,
+            expected_version=1,
+            actor_user_id=make_user().id,
+        )
+    finally:
+        db.close_session(token)
+    return user_id
+
+
+def _add(client, linked_id: uuid.UUID, payout_currency: str = "ZWL") -> dict:
+    response = client.post(
+        CREATE_ENDPOINT,
+        json={
+            "linked_user_id": str(linked_id),
+            "payout_currency": payout_currency,
+            "relationship": "sibling",
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def test_anonymous_caller_is_rejected(anonymous_client):
@@ -128,13 +179,13 @@ def test_create_and_list_my_beneficiary(verified_client):
     assert response.status_code == 200
     body = response.json()
     assert body["linked_user_id"] == str(linked_id)
-    assert body["first_name"] == "Target"
-    assert body["email"] == "target@example.com"
-    # None of these are resolvable/settable on User yet (see
-    # models/orm/user.py) — always None until a profile-editing flow exists.
-    assert body["last_name"] is None
-    assert body["mobile_number"] is None
+    # Not KYC-approved, so the Clerk first name stands in for the verified
+    # name, and there is no verified country yet.
+    assert body["full_name"] == "Target"
     assert body["country"] is None
+    assert body["country_name"] is None
+    assert body["masked_email"] == "t•••@example.com"
+    assert body["masked_mobile_number"] is None
 
     listed = client.get(LIST_ENDPOINT)
     assert listed.status_code == 200
@@ -238,3 +289,71 @@ def test_a_beneficiary_only_lists_for_its_owner(verified_client):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_an_approved_beneficiary_lists_with_their_verified_name_and_country(
+    verified_client,
+):
+    client, _sender = verified_client
+    linked_id = _approved_user_id(
+        "user_beneficiary_verified",
+        "Tendai",
+        full_name="Tendai Moyo",
+        country="ZW",
+        email="tendai@example.com",
+    )
+    _add(client, linked_id)
+
+    [row] = client.get(LIST_ENDPOINT).json()
+
+    assert row["full_name"] == "Tendai Moyo"
+    assert row["country"] == "ZW"
+    assert row["country_name"] == "Zimbabwe"
+
+
+def test_the_list_never_returns_a_beneficiarys_full_contact_details(
+    verified_client,
+):
+    client, _sender = verified_client
+    linked_id = _approved_user_id(
+        "user_beneficiary_contact",
+        "Tendai",
+        full_name="Tendai Moyo",
+        country="ZW",
+        email="tendai.moyo@gmail.com",
+        mobile_number="+263771234523",
+    )
+    _add(client, linked_id)
+
+    response = client.get(LIST_ENDPOINT)
+
+    assert "tendai.moyo@gmail.com" not in response.text
+    assert "+263771234523" not in response.text
+    [row] = response.json()
+    assert row["masked_email"] == "t•••@gmail.com"
+    assert row["masked_mobile_number"] == "+2637••••••23"
+    assert "email" not in row
+    assert "mobile_number" not in row
+
+
+def test_alphabetical_sort_uses_the_verified_name(verified_client):
+    client, _sender = verified_client
+    # Signed up as "Zola" but verified as "Amahle Dube": sorts under A.
+    verified_id = _approved_user_id(
+        "user_beneficiary_sort_verified",
+        "Zola",
+        full_name="Amahle Dube",
+        country="ZW",
+        email="amahle@example.com",
+    )
+    unverified_id = _provisioned_user_id(
+        "user_beneficiary_sort_unverified", "busi@example.com", "busi"
+    )
+    _add(client, verified_id)
+    _add(client, unverified_id)
+
+    newest = client.get(LIST_ENDPOINT, params={"sort": "newest"}).json()
+    alphabetical = client.get(LIST_ENDPOINT, params={"sort": "alphabetical"}).json()
+
+    assert [row["full_name"] for row in newest] == ["busi", "Amahle Dube"]
+    assert [row["full_name"] for row in alphabetical] == ["Amahle Dube", "busi"]

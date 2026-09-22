@@ -12,14 +12,15 @@ the resolved User's own profile, not anything in this request.
 """
 
 import uuid
-from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from remitx_api.models.orm.account import PAYOUT_CURRENCIES
-from remitx_api.models.orm.beneficiary import RELATIONSHIPS, Beneficiary
-from remitx_api.models.orm.user import User
+from remitx_api.models.orm.beneficiary import RELATIONSHIPS
+from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.repositories.beneficiary_repository import BeneficiaryRow
+from remitx_api.services.contact_masking import mask_email, mask_mobile
 
 
 class BeneficiaryCreateRequest(BaseModel):
@@ -47,49 +48,50 @@ class BeneficiaryCreateRequest(BaseModel):
         return self
 
 
-class BeneficiaryRead(BaseModel):
-    """Schema for reading a beneficiary.
+class BeneficiaryRead(Schema):
+    """A sender's beneficiary, with the linked person's details read live from
+    their profile.
 
-    Can't be built with plain `from_attributes=True` off a bare `Beneficiary`
-    — first_name/last_name/email/mobile_number/country aren't columns on
-    that table (see models/orm/beneficiary.py). Always construct via
-    `from_beneficiary_and_user`.
+    Build with `from_row`: the name, contact and country aren't columns on
+    `beneficiaries` (see models/orm/beneficiary.py). Contact details are
+    masked here and never leave the API in full — account references are
+    guessable, so the list must not become a way to read a stranger's email
+    or mobile.
     """
 
     beneficiary_id: uuid.UUID
     linked_user_id: uuid.UUID
-    first_name: str | None
-    last_name: str | None
-    mobile_number: str | None
-    email: str | None
-    country: str | None
+    full_name: str | None = Field(
+        description=(
+            "The verified name from their approved KYC application, or the "
+            "first name they signed up with until they are verified."
+        )
+    )
+    country: str | None = Field(
+        description="Verified country of residence, ISO 3166-1 alpha-2."
+    )
+    country_name: str | None = Field(description="That country's name.")
+    masked_email: str | None = Field(examples=["t•••@gmail.com"])
+    masked_mobile_number: str | None = Field(examples=["+2637••••••23"])
     payout_currency: str
     relationship: str
-    created_at: datetime
+    created_at: UtcDateTime
 
     @classmethod
-    def from_beneficiary_and_user(
-        cls, beneficiary: Beneficiary, user: User
-    ) -> "BeneficiaryRead":
+    def from_row(cls, row: BeneficiaryRow) -> "BeneficiaryRead":
+        beneficiary, user, country = row
         return cls(
             beneficiary_id=beneficiary.beneficiary_id,
             linked_user_id=beneficiary.linked_user_id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            mobile_number=user.mobile_number,
-            email=user.email,
+            full_name=user.full_name or user.first_name,
             country=user.country,
+            country_name=None if country is None else country.name,
+            masked_email=mask_email(user.email),
+            masked_mobile_number=mask_mobile(user.mobile_number),
             payout_currency=beneficiary.payout_currency,
             relationship=beneficiary.relationship,
             created_at=beneficiary.created_at,
         )
-
-    @field_serializer("created_at")
-    def _as_utc(self, value: datetime) -> str:
-        """Serialize the created_at field as an ISO 8601 string in UTC."""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
 
 
 class BeneficiaryLookupResponse(BaseModel):
