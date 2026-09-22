@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.transaction import (
@@ -43,6 +43,22 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
             select(Transaction)
             .where(Transaction.status == STATUS_PENDING)
             .order_by(Transaction.created_at)
+        ).all()
+
+    def list_account_transactions(self, account_id: uuid.UUID) -> list[Transaction]:
+        """Every leg touching this account, either side, newest first — an
+        account's transaction history. `credit`=source, `debit`=destination
+        (models/orm/transaction.py), so an account can appear on either side
+        depending on the leg."""
+        return db.session.scalars(
+            select(Transaction)
+            .where(
+                or_(
+                    Transaction.credit_account_id == account_id,
+                    Transaction.debit_account_id == account_id,
+                )
+            )
+            .order_by(Transaction.created_at.desc())
         ).all()
 
     def confirm_pending_deposit_transaction(

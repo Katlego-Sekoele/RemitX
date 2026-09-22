@@ -3,8 +3,10 @@
 from remitx_api.extensions import Base
 from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
+from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.country import Country
 from remitx_api.models.orm.deposit import Deposit
+from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.integration_message import IntegrationMessage
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_application_history import KycApplicationHistory
@@ -31,6 +33,8 @@ from remitx_api.models.orm.kyc_risk_signal import KycRiskSignalRecord
 from remitx_api.models.orm.kyc_status_progression import KycApplicationStatusProgression
 from remitx_api.models.orm.kyc_tier import KycTier
 from remitx_api.models.orm.permission import Permission, PermissionCode
+from remitx_api.models.orm.quote import Quote
+from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
 from remitx_api.models.orm.toxic_combination import ToxicCombination
@@ -44,8 +48,10 @@ __all__ = [
     "AuditLog",
     "AuditSubject",
     "Base",
+    "Beneficiary",
     "Country",
     "Deposit",
+    "ExchangeRate",
     "IntegrationMessage",
     "KycApplication",
     "KycApplicationHistory",
@@ -68,6 +74,8 @@ __all__ = [
     "KycTier",
     "Permission",
     "PermissionCode",
+    "Quote",
+    "Remittance",
     "Role",
     "RolePermission",
     "ToxicCombination",

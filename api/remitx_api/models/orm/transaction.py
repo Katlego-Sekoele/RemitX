@@ -28,6 +28,9 @@ TYPE_TREASURY_FUNDING = "treasury_funding"
 TYPE_REMITTANCE = "remittance"
 TYPE_FEE = "fee"
 TYPE_WITHDRAWAL = "withdrawal"
+TYPE_TOKEN_BURN = "token_burn"
+# The beneficiary's fiat payout from the platform's fiat account.
+TYPE_BENEFICIARY_PAYOUT = "beneficiary_payout"
 
 TRANSACTION_TYPES = (
     TYPE_DEPOSIT,
@@ -35,13 +38,16 @@ TRANSACTION_TYPES = (
     TYPE_REMITTANCE,
     TYPE_FEE,
     TYPE_WITHDRAWAL,
+    TYPE_TOKEN_BURN,
+    TYPE_BENEFICIARY_PAYOUT,
 )
 
 STATUS_PENDING = "pending"
+STATUS_PROCESSING = "processing"
 STATUS_CONFIRMED = "confirmed"
 STATUS_FAILED = "failed"
 
-STATUSES = (STATUS_PENDING, STATUS_CONFIRMED, STATUS_FAILED)
+STATUSES = (STATUS_PENDING, STATUS_PROCESSING, STATUS_CONFIRMED, STATUS_FAILED)
 
 
 class Transaction(Base):
@@ -49,12 +55,13 @@ class Transaction(Base):
     __table_args__ = (
         # Type must be in TRANSACTION_TYPES
         CheckConstraint(
-            "type IN ('deposit','treasury_funding','remittance','fee','withdrawal')",
+            "type IN ('deposit','treasury_funding','remittance','fee','withdrawal',"
+            "'token_burn','beneficiary_payout')",
             name="transactions_type_valid",
         ),
         # Status must be in STATUSES
         CheckConstraint(
-            "status IN ('pending','confirmed','failed')",
+            "status IN ('pending','processing','confirmed','failed')",
             name="transactions_status_valid",
         ),
         # Amount must be positive — negative amounts are represented by swapping
@@ -75,15 +82,18 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default=STATUS_PENDING)
-    # No FK yet — the `quotes` table doesn't exist. Groups a remittance's or
-    # withdrawal's several legs once it does.
-    quote_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    quote_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("quotes.quote_id"), nullable=True
+    ) # groups legs of a remittance together
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
-    )
+    )# Set to `utcnow()` on insert, never updated.
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set only on a `burn` leg once its Payment(treasury -> issuer) validates
+    # on the XRPL testnet
+    xrpl_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)

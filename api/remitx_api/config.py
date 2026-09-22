@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -116,6 +117,68 @@ class Config:
     @property
     def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
         return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
+
+    # XRPL testnet + UCTUSD issued-currency settings, shared with
+    # platform_wallet/scripts/create_xprl_platform_wallet.py (same env vars,
+    # same defaults) — read here too so remitx_worker/xrpl_service.py doesn't
+    # duplicate the os.getenv parsing.
+    @property
+    def XRPL_TESTNET_URL(self) -> str:
+        return os.getenv("XRPL_TESTNET_URL", "https://s.altnet.rippletest.net:51234/")
+
+    @property
+    def UCTUSD_ISSUER(self) -> str:
+        return os.getenv("UCTUSD_ISSUER", "rELez4x4Zqv3KYqboYVfrYPF8521Ycbxa5")
+
+    @property
+    def UCTUSD_CURRENCY_CODE_HEX(self) -> str:
+        return os.getenv(
+            "UCTUSD_CURRENCY_CODE_HEX", "5543545553440000000000000000000000000000"
+        )
+
+    # The on-chain currency code UCTUSD_CURRENCY_CODE_HEX encodes, plain text.
+    @property
+    def UCTUSD_CURRENCY_CODE(self) -> str:
+        return os.getenv("UCTUSD_CURRENCY_CODE", "UCTUSD")
+
+    # RemitX's own internal ledger currency code (models/orm/account.py's
+    # CURRENCY_TOKEN) — separate from UCTUSD_CURRENCY_CODE above, which
+    # describes the real on-chain code. Kept as its own setting so the two
+    # can vary independently.
+    @property
+    def UCTUSD_TOKEN_NAME(self) -> str:
+        return os.getenv("UCTUSD_TOKEN_NAME", "uctusd")
+
+    # Label of the platform account row representing the issuer (seeded by
+    # scripts/seed_platform_accounts.py, looked up by
+    # services/remittance_service.py) — both read this same env var so the
+    # seeded label and the lookup can't drift apart.
+    @property
+    def UCTUSD_ISSUER_LABEL(self) -> str:
+        return os.getenv("UCTUSD_ISSUER_LABEL", "UCTUSD Issuer (Exchange)")
+
+    # exchangerate-api.com key, used by services/exchange_rate_provider.py.
+    @property
+    def EXCHANGE_RATE_API_KEY(self) -> str:
+        return os.getenv("EXCHANGE_RATE_API_KEY", "")
+
+    # --- Quote generation (services/quote_service.py, exchange_rate_service.py) ---
+    # Decided fee model — Transaction_Flow_Context.md §5. FIXED_FEE_ZAR is
+    # denominated in ZAR and converted into the sender's own currency at
+    # quote time when it isn't ZAR (see services/quote_service.py).
+    RATE_FIXING_INTERVAL_HOURS = int(os.getenv("RATE_FIXING_INTERVAL_HOURS", "1"))
+    MAX_RATE_STALENESS_HOURS = int(os.getenv("MAX_RATE_STALENESS_HOURS", "26"))
+    QUOTE_TTL_MINUTES = int(os.getenv("QUOTE_TTL_MINUTES", "15"))
+    FIXED_FEE_ZAR = Decimal(os.getenv("FIXED_FEE_ZAR", "15"))
+    PERCENTAGE_FEE_RATE = Decimal(os.getenv("PERCENTAGE_FEE_RATE", "0.005"))
+    FX_MARGIN_RATE = Decimal(os.getenv("FX_MARGIN_RATE", "0.01"))
+    CASH_OUT_FEE_RATE = Decimal(os.getenv("CASH_OUT_FEE_RATE", "0.0075"))
+    DAILY_LIMIT_ZAR_UNVERIFIED = Decimal(os.getenv("DAILY_LIMIT_ZAR_UNVERIFIED", "0"))
+    MONTHLY_LIMIT_ZAR_UNVERIFIED = Decimal(
+        os.getenv("MONTHLY_LIMIT_ZAR_UNVERIFIED", "0")
+    )
+    DAILY_LIMIT_ZAR = Decimal(os.getenv("DAILY_LIMIT_ZAR", "3000"))
+    MONTHLY_LIMIT_ZAR = Decimal(os.getenv("MONTHLY_LIMIT_ZAR", "25000"))
 
 
 class TestConfig(Config):

@@ -28,8 +28,7 @@ from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import object_storage as object_storage_module
 from sqlalchemy import select
 from tests.fake_object_storage import FakeObjectStorage
-from tests.kyc_helpers import ID_NUMBER, insert_application
-from tests.kyc_helpers import make_user as make_kyc_user
+from tests.kyc_helpers import ID_NUMBER, insert_application, make_user as make_kyc_user
 from tests.rbac_helpers import grant_role, make_user, rbac_client
 
 PDF = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\ntrailer\n%%EOF\n"

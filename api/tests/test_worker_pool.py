@@ -12,8 +12,7 @@ import threading
 
 import pytest
 from remitx_api.config import Config
-from remitx_worker import __main__ as worker_main
-from remitx_worker import http
+from remitx_worker import __main__ as worker_main, http
 
 
 @pytest.fixture

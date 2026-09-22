@@ -1,6 +1,7 @@
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
@@ -9,6 +10,11 @@ from remitx_api.models.orm.account import (
     TYPE_USER,
     Account,
     create_account_reference,
+)
+from remitx_api.models.orm.transaction import (
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+    Transaction,
 )
 from remitx_api.repositories.repository import Repository
 
@@ -20,6 +26,22 @@ class AccountRepository(Repository[Account, uuid.UUID]):
     def get_platform_account_by_label(self, label: str) -> Account | None:
         """Look up a hand-seeded platform/external account by its label."""
         return db.session.scalars(select(Account).where(Account.label == label)).first()
+
+    def get_platform_account(self, type_: str, currency: str) -> Account | None:
+        """A hand-seeded platform account by `type` and currency — e.g. the
+        `REMITX_REVENUE` account for whatever currency a leg is actually in,
+        rather than a fixed label. `scripts/seed_platform_accounts.py` seeds
+        exactly one per (type, currency) pair (Transaction_Flow_Context.md
+        §1: "a fee earned on a ZAR transaction can no more land in a USD
+        revenue account than a ZAR deposit could land in the USD bank
+        account"), so this is always unique.
+        """
+        return db.session.scalars(
+            select(Account).where(
+                Account.type == type_,
+                Account.account_currency == currency,
+            )
+        ).first()
 
     def get_user_account_by_reference(self, reference: str) -> Account | None:
         """USER-account lookup by permanent reference.
@@ -45,6 +67,33 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_USER,
             )
         ).first()
+
+    def list_user_accounts(self, user_id: uuid.UUID) -> list[Account]:
+        """Every currency account this person owns — always ZAR + uctusd
+        today (both created eagerly at signup), but not assumed to stay
+        exactly two."""
+        return db.session.scalars(
+            select(Account).where(
+                Account.user_id == user_id,
+                Account.type == TYPE_USER,
+            )
+        ).all()
+
+    def get_or_create_user_account(
+        self, user_id: uuid.UUID, base_reference: str, currency: str
+    ) -> Account:
+        """Like `get_user_account`, but provisions the account on the spot if
+        this is the first time this person has ever needed one in this
+        currency — e.g. a beneficiary receiving their first remittance in a
+        payout currency nobody creates an account for at signup (only ZAR +
+        uctusd are eager)."""
+        account = self.get_user_account(user_id, currency)
+        if account is not None:
+            return account
+        account = self._build_account(user_id, base_reference, currency)
+        db.session.add(account)
+        db.session.flush()
+        return account
 
     def create_user_accounts(
         self, user_id: uuid.UUID, base_reference: str
@@ -74,9 +123,39 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         )
 
     def increase_balance(self, account_id: uuid.UUID, amount) -> None:
-        """Atomically add `amount` to an account's balance."""
+        """Atomically add `amount` to an account's balance if it is
+        on the debit_account_id (destination) side of a transaction."""
         db.session.execute(
             update(Account)
             .where(Account.account_id == account_id)
             .values(account_balance=Account.account_balance + amount)
         )
+
+    def decrease_balance(self, account_id: uuid.UUID, amount) -> None:
+        """Atomically subtract `amount` from an account's balance — the
+        credit_account_id (source) side of a transaction."""
+        db.session.execute(
+            update(Account)
+            .where(Account.account_id == account_id)
+            .values(account_balance=Account.account_balance - amount)
+        )
+
+    def get_available_balance(self, account_id: uuid.UUID) -> Decimal:
+        """Raw balance minus this account's own still-in-flight outgoing
+        transactions. A quote is only valid if the user has sufficient
+        available balance to cover the entire quote amount.
+
+        Includes `processing` alongside `pending`: `burn_treasury_tokens`
+        claims a quote's legs into `processing` before its XRPL call
+        resolves, so excluding only `pending` would let that committed
+        amount look spendable again during the burn/confirm window.
+        """
+        account = self.get_by_id(account_id)
+        # credit_account_id is the source of a leg (money leaving this account).
+        pending_outgoing = db.session.scalar(
+            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                Transaction.credit_account_id == account_id,
+                Transaction.status.in_((STATUS_PENDING, STATUS_PROCESSING)),
+            )
+        )
+        return account.account_balance - pending_outgoing

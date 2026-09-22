@@ -45,7 +45,7 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_USD,
     CURRENCY_ZAR,
-    CURRENCY_ZWG,
+    CURRENCY_ZWL,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
@@ -71,15 +71,17 @@ from sqlalchemy import select
 COUNTRY_BANK_ACCOUNTS = (
     ("RemitX SA", CURRENCY_ZAR),
     ("RemitX US", CURRENCY_USD),
-    ("RemitX ZIM", CURRENCY_ZWG),
+    ("RemitX ZIM", CURRENCY_ZWL),
     ("RemitX NAM", CURRENCY_NAD),
 )
 
 TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
 # The issuing address (ECO5040W clarifications) — the same account plays
 # both roles: source of the one-time pre-funding, destination of every
-# future withdrawal burn.
-ISSUER_LABEL = "UCTUSD Issuer (Exchange)"
+# future withdrawal burn. Sourced from Config.UCTUSD_ISSUER_LABEL so this
+# seeded label can't drift from the one services/remittance_service.py
+# looks up.
+ISSUER_LABEL = Config().UCTUSD_ISSUER_LABEL
 
 PLATFORM_ACCOUNTS = (
     *(
@@ -237,7 +239,9 @@ def _seed_treasury_funding(treasury_account: Account, issuer_account: Account) -
             confirmed_at=datetime.now(UTC),
         )
     )
-    AccountRepository().increase_balance(treasury_account.account_id, balance)
+    account_repo = AccountRepository()
+    account_repo.decrease_balance(issuer_account.account_id, balance)
+    account_repo.increase_balance(treasury_account.account_id, balance)
     db.session.commit()
     print(f"Recorded treasury funding: {balance} uctusd")
 

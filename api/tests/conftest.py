@@ -5,9 +5,12 @@ from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
+from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
+from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.user import User
 from remitx_api.services import queue_service
+from tests.kyc_helpers import insert_application
 
 
 @pytest.fixture
@@ -34,6 +37,45 @@ def client(current_user):
     app.dependency_overrides[get_current_user] = lambda: current_user
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def verified_client():
+    """Authenticated client backed by a real, DB-persisted, KYC-verified user
+    with real ZAR/uctusd accounts.
+
+    Unlike `client`, whose override object is never written to the database,
+    routes that read the caller back from the DB (quotes, beneficiaries) need
+    this — `current_user`'s own docstring already flags that gap. KYC
+    standing is derived from `kyc_applications`, not stored on `User` — see
+    models/orm/user.py — so verification is granted by inserting an approved
+    application row, not by setting an attribute. Yields `(test_client,
+    user)`.
+    """
+    app = create_app(TestConfig)
+    with TestClient(app) as test_client:
+        token = db.open_session()
+        try:
+            persisted = UserController().ensure_provisioned(
+                "user_verified_test",
+                lambda: "verified@example.com",
+                lambda: "Verified",
+            )
+            insert_application(
+                persisted.id,
+                status=KycStatus.APPROVED,
+                tier_granted=KYC_TIER_VERIFIED,
+            )
+            user_id, base_reference = persisted.id, persisted.base_reference
+        finally:
+            db.close_session(token)
+
+        # A transient stand-in, not the persisted-then-detached object above:
+        # accessing an attribute on that after its session closes raises
+        # DetachedInstanceError the moment a route reads e.g. `user.id`.
+        user = User(id=user_id, base_reference=base_reference)
+        app.dependency_overrides[get_current_user] = lambda: user
+        yield test_client, user
 
 
 @pytest.fixture

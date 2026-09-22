@@ -44,6 +44,10 @@ class Tag:
     SYSTEM = "system"
     ME = "me"
     INTEGRATION = "integration"
+    BENEFICIARIES = "beneficiaries"
+    QUOTES = "quotes"
+    REMITTANCES = "remittances"
+    ACCOUNTS = "accounts"
     KYC_ONBOARDING = "kyc.onboarding"
     KYC_DOCUMENTS = "kyc.documents"
     ADMIN_ROLES = "admin.roles"
@@ -59,6 +63,22 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.INTEGRATION,
         "description": "Round-trip test messages through the settlement queue.",
+    },
+    {
+        "name": Tag.BENEFICIARIES,
+        "description": "A sender's contacts they can quote or remit to.",
+    },
+    {
+        "name": Tag.QUOTES,
+        "description": "Priced, time-boxed remittance offers.",
+    },
+    {
+        "name": Tag.REMITTANCES,
+        "description": "Confirming a quote and starting settlement.",
+    },
+    {
+        "name": Tag.ACCOUNTS,
+        "description": "A caller's own currency account balances and history.",
     },
     {
         "name": Tag.KYC_ONBOARDING,
