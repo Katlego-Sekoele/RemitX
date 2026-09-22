@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.quote import STATUS_ACTIVE, STATUS_USED, Quote
@@ -26,13 +26,25 @@ class QuoteRepository(Repository[Quote, uuid.UUID]):
             )
         ).first()
 
-    def get_many(self, quote_ids: set[uuid.UUID]) -> dict[uuid.UUID, Quote]:
-        """Quotes by id, keyed by id. Unscoped: callers reach these ids only
-        through legs on an account they already own."""
+    def get_many(
+        self, quote_ids: set[uuid.UUID], user_id: uuid.UUID
+    ) -> dict[uuid.UUID, Quote]:
+        """Quotes this customer sent or received, keyed by id.
+
+        The same rule is enforced in Postgres by the `quotes` row-level
+        security policy. This predicate is what a customer request filters
+        on, including under SQLite where that policy does not run.
+        """
         if not quote_ids:
             return {}
         quotes = db.session.scalars(
-            select(Quote).where(Quote.quote_id.in_(quote_ids))
+            select(Quote).where(
+                Quote.quote_id.in_(quote_ids),
+                or_(
+                    Quote.sender_user_id == user_id,
+                    Quote.beneficiary_user_id == user_id,
+                ),
+            )
         ).all()
         return {quote.quote_id: quote for quote in quotes}
 
