@@ -4,6 +4,7 @@ import { useState } from "react"
 
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { AddBeneficiaryButton } from "~/components/beneficiaries/add-beneficiary-dialog"
 import {
   BeneficiaryList,
   BeneficiaryListSkeleton,
@@ -137,13 +138,5 @@ export default function BeneficiariesPage() {
         )}
       </div>
     </AppPageFrame>
-  )
-}
-
-function AddBeneficiaryButton() {
-  return (
-    <Button disabled aria-disabled="true">
-      Add beneficiary
-    </Button>
   )
 }

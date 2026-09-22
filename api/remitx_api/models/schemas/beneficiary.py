@@ -3,7 +3,7 @@ Request/response schemas for the customer beneficiary endpoints.
 Validates input before it ever reaches the database layer, and shapes the
 output for the API response.
 
-first_name/last_name/email/mobile_number/country are NOT request fields on
+Name, email, mobile number and country are NOT request fields on
 BeneficiaryCreateRequest — a beneficiary must already be a registered User
 (see models/orm/beneficiary.py), so all of those come from that User, not
 from the sender. "mobile_number or email required" (brief) is therefore
@@ -12,40 +12,37 @@ the resolved User's own profile, not anything in this request.
 """
 
 import uuid
-from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field
 
-from remitx_api.models.orm.account import PAYOUT_CURRENCIES
-from remitx_api.models.orm.beneficiary import RELATIONSHIPS
+from remitx_api.controllers.beneficiary_controller import ReferenceLookup
+from remitx_api.models.orm.account import PayoutCurrency
+from remitx_api.models.orm.beneficiary import BeneficiaryRelationship
+from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 from remitx_api.repositories.beneficiary_repository import BeneficiaryRow
 from remitx_api.services.contact_masking import mask_email, mask_mobile
 
 
-class BeneficiaryCreateRequest(BaseModel):
+def short_display_name(user: User) -> str | None:
+    """First name and last initial, e.g. "Tendai M.", from the verified name
+    when there is one; the Clerk first name alone until then."""
+    words = (user.full_name or "").split()
+    if len(words) >= 2:
+        return f"{words[0]} {words[-1][0].upper()}."
+    if words:
+        return words[0]
+    return user.first_name
+
+
+class BeneficiaryCreateRequest(Schema):
     """Schema for creating a new beneficiary."""
 
-    # Parameters the user provides in the request body
+    model_config = ConfigDict(extra="forbid")
+
     linked_user_id: uuid.UUID
-    payout_currency: Annotated[str, Field(examples=list(PAYOUT_CURRENCIES))]
-    relationship: Annotated[str, Field(examples=list(RELATIONSHIPS))]
-
-    @model_validator(mode="after")
-    def _payout_currency_is_valid(self) -> "BeneficiaryCreateRequest":
-        """Validate that the payout_currency is one of the allowed values.
-        If not, raise a ValueError which will be caught and returned as a 422."""
-        if self.payout_currency not in PAYOUT_CURRENCIES:
-            raise ValueError(f"payout_currency must be one of {PAYOUT_CURRENCIES}")
-        return self
-
-    @model_validator(mode="after")
-    def _relationship_is_valid(self) -> "BeneficiaryCreateRequest":
-        """Validate that the relationship is one of the allowed values.
-        If not, raise a ValueError which will be caught and returned as a 422."""
-        if self.relationship not in RELATIONSHIPS:
-            raise ValueError(f"relationship must be one of {RELATIONSHIPS}")
-        return self
+    payout_currency: PayoutCurrency
+    relationship: BeneficiaryRelationship
 
 
 class BeneficiaryRead(Schema):
@@ -73,8 +70,8 @@ class BeneficiaryRead(Schema):
     country_name: str | None = Field(description="That country's name.")
     masked_email: str | None = Field(examples=["t•••@gmail.com"])
     masked_mobile_number: str | None = Field(examples=["+2637••••••23"])
-    payout_currency: str
-    relationship: str
+    payout_currency: PayoutCurrency
+    relationship: BeneficiaryRelationship
     created_at: UtcDateTime
 
     @classmethod
@@ -94,13 +91,42 @@ class BeneficiaryRead(Schema):
         )
 
 
-class BeneficiaryLookupResponse(BaseModel):
-    """The preview shown after a sender pastes in a beneficiary's fiat
-    account reference (e.g. "sian1-zar"), before they confirm adding it as a
-    beneficiary. Deliberately minimal — no email, no kyc_status, nothing
-    private beyond a name to confirm "is this the right person"."""
+class BeneficiaryLookupResponse(Schema):
+    """The preview shown after a sender types in a beneficiary's fiat account
+    reference (e.g. "tendai1-zwl"), before they confirm adding them.
 
-    model_config = ConfigDict(from_attributes=True)
+    Deliberately never the email or mobile, masked or not: references are
+    guessable (`sipho1`, `sipho2`, ...), so the lookup must not become a
+    directory. A name and country are enough to confirm "is this the right
+    person".
+    """
 
-    linked_user_id: uuid.UUID = Field(validation_alias="id")
+    linked_user_id: uuid.UUID
     first_name: str | None
+    display_name: str | None = Field(
+        description="First name and last initial, e.g. Tendai M.",
+        examples=["Tendai M."],
+    )
+    country: str | None = Field(
+        description="Verified country of residence, ISO 3166-1 alpha-2."
+    )
+    country_name: str | None = Field(description="That country's name.")
+    account_currency: str = Field(
+        description=(
+            "The looked-up account's currency, to pre-fill the payout "
+            "currency when it is one."
+        ),
+        examples=["ZWL"],
+    )
+
+    @classmethod
+    def from_lookup(cls, lookup: ReferenceLookup) -> "BeneficiaryLookupResponse":
+        user = lookup.user
+        return cls(
+            linked_user_id=user.id,
+            first_name=user.first_name,
+            display_name=short_display_name(user),
+            country=user.country,
+            country_name=None if lookup.country is None else lookup.country.name,
+            account_currency=lookup.account_currency,
+        )

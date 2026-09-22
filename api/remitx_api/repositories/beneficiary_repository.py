@@ -66,6 +66,20 @@ class BeneficiaryRepository(Repository[Beneficiary, uuid.UUID]):
         )
         return rows[0] if rows else None
 
+    def exists_for_sender(
+        self, sender_user_id: uuid.UUID, linked_user_id: uuid.UUID
+    ) -> bool:
+        """Whether the sender already has this person as a beneficiary."""
+        return (
+            db.session.scalar(
+                select(Beneficiary.beneficiary_id).where(
+                    Beneficiary.sender_user_id == sender_user_id,
+                    Beneficiary.linked_user_id == linked_user_id,
+                )
+            )
+            is not None
+        )
+
     @staticmethod
     def _for_sender(sender_user_id: uuid.UUID) -> Select:
         return (

@@ -119,6 +119,50 @@ def test_lookup_by_fiat_account_reference_succeeds(verified_client):
     assert response.status_code == 200
     body = response.json()
     assert body["first_name"] == "Lookup"
+    assert body["display_name"] == "Lookup"
+    assert body["account_currency"] == "ZAR"
+
+
+def test_lookup_shows_a_short_verified_name_country_and_currency_only(
+    verified_client,
+):
+    client, _sender = verified_client
+    linked_id = _approved_user_id(
+        "user_lookup_verified",
+        "Tendai",
+        full_name="Tendai Moyo",
+        country="ZW",
+        email="tendai.moyo@gmail.com",
+        mobile_number="+263771234523",
+    )
+    token = db.open_session()
+    try:
+        user = db.session.get(User, linked_id)
+        zwl = AccountRepository().get_or_create_user_account(
+            user.id, user.base_reference, "ZWL"
+        )
+        db.session.commit()
+        zwl_reference = zwl.reference
+    finally:
+        db.close_session(token)
+
+    # Case and surrounding space in what the sender typed don't matter.
+    response = client.get(
+        LOOKUP_ENDPOINT, params={"account_reference": f" {zwl_reference.upper()} "}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "linked_user_id": str(linked_id),
+        "first_name": "Tendai",
+        "display_name": "Tendai M.",
+        "country": "ZW",
+        "country_name": "Zimbabwe",
+        "account_currency": "ZWL",
+    }
+    # A reference is guessable, so the lookup must not become a directory.
+    assert "tendai.moyo" not in response.text
+    assert "771234523" not in response.text
 
 
 def test_lookup_by_fiat_account_reference_unknown_reference_is_404(verified_client):
@@ -127,6 +171,7 @@ def test_lookup_by_fiat_account_reference_unknown_reference_is_404(verified_clie
     response = client.get(LOOKUP_ENDPOINT, params={"account_reference": "nobody-zar"})
 
     assert response.status_code == 404
+    assert response.json() == {"detail": "No RemitX account has that reference."}
 
 
 def test_lookup_by_fiat_account_reference_rejects_the_token_account(verified_client):
@@ -142,6 +187,7 @@ def test_lookup_by_fiat_account_reference_rejects_the_token_account(verified_cli
     )
 
     assert response.status_code == 400
+    assert response.json()["detail"].startswith("That's a settlement reference.")
 
 
 def test_lookup_by_fiat_account_reference_rejects_self(verified_client):
@@ -159,6 +205,7 @@ def test_lookup_by_fiat_account_reference_rejects_self(verified_client):
     response = client.get(LOOKUP_ENDPOINT, params={"account_reference": own_reference})
 
     assert response.status_code == 400
+    assert response.json() == {"detail": "That's your own account."}
 
 
 def test_create_and_list_my_beneficiary(verified_client):
@@ -208,7 +255,10 @@ def test_create_requires_mobile_or_email(verified_client):
         },
     )
 
-    assert response.status_code == 422
+    # Well formed, but the linked person's own profile refuses it: 409, not
+    # the 422 the client reads as a malformed request.
+    assert response.status_code == 409
+    assert "no email or mobile" in response.json()["detail"]
 
 
 def test_create_rejects_an_invalid_payout_currency(verified_client):
@@ -357,3 +407,51 @@ def test_alphabetical_sort_uses_the_verified_name(verified_client):
 
     assert [row["full_name"] for row in newest] == ["busi", "Amahle Dube"]
     assert [row["full_name"] for row in alphabetical] == ["Amahle Dube", "busi"]
+
+
+def test_adding_the_same_person_twice_is_a_409(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id(
+        "user_beneficiary_duplicate", "duplicate@example.com", "Duplicate"
+    )
+    _add(client, linked_id, payout_currency="USD")
+
+    response = client.post(
+        CREATE_ENDPOINT,
+        json={
+            "linked_user_id": str(linked_id),
+            "payout_currency": "NAD",
+            "relationship": "friend",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Already in your beneficiaries"}
+    [only] = client.get(LIST_ENDPOINT).json()
+    assert only["payout_currency"] == "USD"
+
+
+def test_two_senders_may_each_add_the_same_person(verified_client):
+    client, sender = verified_client
+    linked_id = _provisioned_user_id(
+        "user_beneficiary_shared", "shared@example.com", "Shared"
+    )
+    _add(client, linked_id)
+
+    other_id = _provisioned_user_id(
+        "user_beneficiary_second_sender", "second@example.com", "Second"
+    )
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=other_id)
+    try:
+        response = client.post(
+            CREATE_ENDPOINT,
+            json={
+                "linked_user_id": str(linked_id),
+                "payout_currency": "USD",
+                "relationship": "friend",
+            },
+        )
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: sender
+
+    assert response.status_code == 200

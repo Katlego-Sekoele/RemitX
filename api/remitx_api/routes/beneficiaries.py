@@ -6,12 +6,7 @@ from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.beneficiary_controller import (
     SORT_NEWEST,
     BeneficiaryController,
-    CannotAddSelfError,
     InvalidSortOptionError,
-    LookupByReferenceError,
-    MissingContactInfoError,
-    NotAFiatAccountError,
-    UnknownLinkedUserError,
 )
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.beneficiary import (
@@ -19,73 +14,66 @@ from remitx_api.models.schemas.beneficiary import (
     BeneficiaryLookupResponse,
     BeneficiaryRead,
 )
-from remitx_api.openapi import Tag
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
 
 router = create_customer_router(prefix="/beneficiaries", tags=[Tag.BENEFICIARIES])
 controller = BeneficiaryController()
 
 
-@router.get("/lookup-by-reference", response_model=BeneficiaryLookupResponse)
+@router.get(
+    "/lookup-by-reference",
+    response_model=BeneficiaryLookupResponse,
+    summary="Look up who an account reference belongs to",
+    responses=error_responses(400, 404),
+)
 def lookup_beneficiary_by_reference(
     account_reference: str = Query(
         ...,
         description=(
             "The beneficiary's fiat account reference "
-            '(e.g. "sian1-zar") they shared off-platform — the same one '
+            '(e.g. "tendai1-zwl") they shared off-platform — the same one '
             "they quote for EFT deposits."
         ),
     ),
     user: User = Depends(get_current_user),
 ):
     """Preview who an account reference resolves to, before adding them as a
-    beneficiary."""
-    try:
-        return controller.lookup_by_fiat_account_reference(user.id, account_reference)
-    except LookupByReferenceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found for that reference",
-        ) from exc
-    except NotAFiatAccountError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "That reference is the uctusd settlement account, not a fiat account"
-            ),
-        ) from exc
-    except CannotAddSelfError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You can't add yourself as a beneficiary",
-        ) from exc
+    beneficiary: their short name, country and the account's currency, never
+    their contact details.
+
+    Answers 404 for an unknown reference, and 400 for a settlement (`-tok`)
+    reference or one of the caller's own. Each `detail` is written for the
+    sender to read.
+    """
+    return BeneficiaryLookupResponse.from_lookup(
+        controller.lookup_by_fiat_account_reference(user.id, account_reference)
+    )
 
 
-@router.post("/create-beneficiary", response_model=BeneficiaryRead)
+@router.post(
+    "/create-beneficiary",
+    response_model=BeneficiaryRead,
+    summary="Add a beneficiary",
+    responses=error_responses(400, 409),
+)
 def create_beneficiary(
     payload: BeneficiaryCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """Create a new beneficiary for the current user."""
-    try:
-        # Create using the controller
-        row = controller.create(
-            sender_user_id=user.id,
-            linked_user_id=payload.linked_user_id,
-            payout_currency=payload.payout_currency,
-            relationship=payload.relationship,
-        )
-        return BeneficiaryRead.from_row(row)
-    except UnknownLinkedUserError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="linked_user_id does not exist",
-        ) from exc
-    except MissingContactInfoError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="The linked user has no mobile_number or email on file",
-        ) from exc
+    """Save a registered RemitX user as one of the caller's beneficiaries.
+
+    Answers 409 when that person is already one of the caller's
+    beneficiaries, or has no email or mobile on file; 400 when
+    `linked_user_id` is not a user.
+    """
+    row = controller.create(
+        sender_user_id=user.id,
+        linked_user_id=payload.linked_user_id,
+        payout_currency=payload.payout_currency,
+        relationship=payload.relationship,
+    )
+    return BeneficiaryRead.from_row(row)
 
 
 @router.get(

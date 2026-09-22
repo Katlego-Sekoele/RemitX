@@ -6,9 +6,22 @@ access for Beneficiary model.
 """
 
 import uuid
+from dataclasses import dataclass
 
+from sqlalchemy.exc import IntegrityError
+
+from remitx_api.errors.beneficiaries import (
+    DuplicateBeneficiaryError,
+    MissingContactInfoError,
+    OwnAccountReferenceError,
+    SettlementReferenceError,
+    UnknownAccountReferenceError,
+    UnknownLinkedUserError,
+)
+from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN
 from remitx_api.models.orm.beneficiary import Beneficiary
+from remitx_api.models.orm.country import Country
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.beneficiary_repository import (
@@ -22,39 +35,17 @@ SORT_ALPHABETICAL = "alphabetical"
 BENEFICIARY_SORT_OPTIONS = (SORT_NEWEST, SORT_ALPHABETICAL)
 
 
-class UnknownLinkedUserError(Exception):
-    """Raised when a beneficiary is created against a `linked_user_id` that
-    doesn't exist — project requires the beneficiary already be a
-    registered platform user."""
-
-
 class InvalidSortOptionError(Exception):
     """Raised when a sort option isn't one of BENEFICIARY_SORT_OPTIONS"""
 
 
-class LookupByReferenceError(Exception):
-    """Raised when `lookup_by_fiat_account_reference` is given an account
-    reference that doesn't resolve to any account."""
+@dataclass(frozen=True)
+class ReferenceLookup:
+    """Who an account reference belongs to, and that account's currency."""
 
-
-class NotAFiatAccountError(Exception):
-    """Raised when the resolved account is the target's `uctusd` account
-    instead of their fiat one.
-    """
-
-
-class CannotAddSelfError(Exception):
-    """Raised when a sender looks up their own account reference — a single
-    User account can't sensibly be its own beneficiary."""
-
-
-class MissingContactInfoError(Exception):
-    """Raised when the linked user has neither a mobile_number nor an email
-    on file — brief: "mobile number or email address" required. Both now
-    live on User (see models/orm/beneficiary.py), so this is purely a
-    precondition on that user's own profile, not anything the sender
-    provides — can't be a DB CHECK constraint since it's a single-field
-    "at least one of" check on User, evaluated at Beneficiary-creation time."""
+    user: User
+    country: Country | None
+    account_currency: str
 
 
 class BeneficiaryController:
@@ -65,23 +56,30 @@ class BeneficiaryController:
 
     def lookup_by_fiat_account_reference(
         self, sender_user_id: uuid.UUID, account_reference: str
-    ) -> User:
+    ) -> ReferenceLookup:
         """Resolve a beneficiary candidate from the fiat account reference
         (e.g. "sian1-zar") they shared with the sender off-platform — the
         preview step before `create`.
 
         Matches on the specific account, not just the person
-        (`base_reference` alone), so this is already the right shape for a
-        future where a user can hold more than one fiat account.
+        (`base_reference` alone), so the account's currency can pre-fill the
+        payout currency.
         """
-        account = self._accounts.get_user_account_by_reference(account_reference)
+        reference = account_reference.strip().lower()
+        account = self._accounts.get_user_account_by_reference(reference)
         if account is None:
-            raise LookupByReferenceError(account_reference)
+            raise UnknownAccountReferenceError(reference)
         if account.account_currency == CURRENCY_TOKEN:
-            raise NotAFiatAccountError(account_reference)
+            raise SettlementReferenceError(reference)
         if account.user_id == sender_user_id:
-            raise CannotAddSelfError(account_reference)
-        return self._users.get_by_id(account.user_id)
+            raise OwnAccountReferenceError(reference)
+        user = self._users.require_by_id(account.user_id)
+        country = (
+            None if user.country is None else db.session.get(Country, user.country)
+        )
+        return ReferenceLookup(
+            user=user, country=country, account_currency=account.account_currency
+        )
 
     def create(
         self,
@@ -100,19 +98,25 @@ class BeneficiaryController:
         # This is a business rule for this project.
         linked_user = self._users.get_by_id(linked_user_id)
         if linked_user is None:
-            raise UnknownLinkedUserError(str(linked_user_id))
+            raise UnknownLinkedUserError(linked_user_id)
 
         if not linked_user.mobile_number and not linked_user.email:
-            raise MissingContactInfoError(str(linked_user_id))
+            raise MissingContactInfoError(linked_user_id)
 
-        beneficiary = self._beneficiaries.save(
-            Beneficiary(
-                sender_user_id=sender_user_id,
-                linked_user_id=linked_user_id,
-                payout_currency=payout_currency,
-                relationship=relationship,
+        if self._beneficiaries.exists_for_sender(sender_user_id, linked_user_id):
+            raise DuplicateBeneficiaryError(linked_user_id)
+        try:
+            beneficiary = self._beneficiaries.save(
+                Beneficiary(
+                    sender_user_id=sender_user_id,
+                    linked_user_id=linked_user_id,
+                    payout_currency=payout_currency,
+                    relationship=relationship,
+                )
             )
-        )
+        except IntegrityError as exc:
+            # A concurrent add of the same person won the unique constraint.
+            raise DuplicateBeneficiaryError(linked_user_id) from exc
         return self._beneficiaries.get_sender_beneficiary(
             sender_user_id, beneficiary.beneficiary_id
         )

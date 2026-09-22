@@ -14,32 +14,38 @@ beneficiary.
 
 import uuid
 from datetime import UTC, datetime
+from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
 from remitx_api.models.orm.account import PAYOUT_CURRENCIES
 
-RELATIONSHIP_PARTNER = "partner"
-RELATIONSHIP_PARENT = "parent"
-RELATIONSHIP_CHILD = "child"
-RELATIONSHIP_SIBLING = "sibling"
-RELATIONSHIP_RELATIVE = "relative"
-RELATIONSHIP_FRIEND = "friend"
-RELATIONSHIP_EMPLOYEE = "employee"
-RELATIONSHIP_OTHER = "other"
 
-RELATIONSHIPS = (
-    RELATIONSHIP_PARTNER,
-    RELATIONSHIP_PARENT,
-    RELATIONSHIP_CHILD,
-    RELATIONSHIP_SIBLING,
-    RELATIONSHIP_RELATIVE,
-    RELATIONSHIP_FRIEND,
-    RELATIONSHIP_EMPLOYEE,
-    RELATIONSHIP_OTHER,
-)
+class BeneficiaryRelationship(StrEnum):
+    """How the sender knows the beneficiary. An enum so the OpenAPI spec, and
+    therefore the frontend client, carries the option list."""
+
+    PARTNER = "partner"
+    PARENT = "parent"
+    CHILD = "child"
+    SIBLING = "sibling"
+    RELATIVE = "relative"
+    FRIEND = "friend"
+    EMPLOYEE = "employee"
+    OTHER = "other"
+
+
+RELATIONSHIPS = tuple(relationship.value for relationship in BeneficiaryRelationship)
 
 _RELATIONSHIP_CHECK_VALUES = ", ".join(f"'{value}'" for value in RELATIONSHIPS)
 _PAYOUT_CURRENCY_CHECK_VALUES = ", ".join(f"'{value}'" for value in PAYOUT_CURRENCIES)
@@ -64,6 +70,13 @@ class Beneficiary(Base):
         CheckConstraint(
             f"payout_currency IN ({_PAYOUT_CURRENCY_CHECK_VALUES})",
             name="beneficiaries_payout_currency_valid",
+        ),
+        # One beneficiary per person per sender: a second add of the same
+        # person answers 409 rather than listing them twice.
+        UniqueConstraint(
+            "sender_user_id",
+            "linked_user_id",
+            name="uq_beneficiaries_sender_user_id_linked_user_id",
         ),
     )
     beneficiary_id: Mapped[uuid.UUID] = mapped_column(

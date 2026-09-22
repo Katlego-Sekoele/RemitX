@@ -178,6 +178,7 @@
         "type": "object"
       },
       "BeneficiaryCreateRequest": {
+        "additionalProperties": false,
         "description": "Schema for creating a new beneficiary.",
         "properties": {
           "linked_user_id": {
@@ -186,27 +187,10 @@
             "type": "string"
           },
           "payout_currency": {
-            "examples": [
-              "USD",
-              "ZWL",
-              "NAD"
-            ],
-            "title": "Payout Currency",
-            "type": "string"
+            "$ref": "#/components/schemas/PayoutCurrency"
           },
           "relationship": {
-            "examples": [
-              "partner",
-              "parent",
-              "child",
-              "sibling",
-              "relative",
-              "friend",
-              "employee",
-              "other"
-            ],
-            "title": "Relationship",
-            "type": "string"
+            "$ref": "#/components/schemas/BeneficiaryRelationship"
           }
         },
         "required": [
@@ -218,8 +202,55 @@
         "type": "object"
       },
       "BeneficiaryLookupResponse": {
-        "description": "The preview shown after a sender pastes in a beneficiary's fiat\naccount reference (e.g. \"sian1-zar\"), before they confirm adding it as a\nbeneficiary. Deliberately minimal \u2014 no email, no kyc_status, nothing\nprivate beyond a name to confirm \"is this the right person\".",
+        "description": "The preview shown after a sender types in a beneficiary's fiat account\nreference (e.g. \"tendai1-zwl\"), before they confirm adding them.\n\nDeliberately never the email or mobile, masked or not: references are\nguessable (`sipho1`, `sipho2`, ...), so the lookup must not become a\ndirectory. A name and country are enough to confirm \"is this the right\nperson\".",
         "properties": {
+          "account_currency": {
+            "description": "The looked-up account's currency, to pre-fill the payout currency when it is one.",
+            "examples": [
+              "ZWL"
+            ],
+            "title": "Account Currency",
+            "type": "string"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Verified country of residence, ISO 3166-1 alpha-2.",
+            "title": "Country"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That country's name.",
+            "title": "Country Name"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First name and last initial, e.g. Tendai M.",
+            "examples": [
+              "Tendai M."
+            ],
+            "title": "Display Name"
+          },
           "first_name": {
             "anyOf": [
               {
@@ -239,7 +270,11 @@
         },
         "required": [
           "linked_user_id",
-          "first_name"
+          "first_name",
+          "display_name",
+          "country",
+          "country_name",
+          "account_currency"
         ],
         "title": "BeneficiaryLookupResponse",
         "type": "object"
@@ -326,12 +361,10 @@
             "title": "Masked Mobile Number"
           },
           "payout_currency": {
-            "title": "Payout Currency",
-            "type": "string"
+            "$ref": "#/components/schemas/PayoutCurrency"
           },
           "relationship": {
-            "title": "Relationship",
-            "type": "string"
+            "$ref": "#/components/schemas/BeneficiaryRelationship"
           }
         },
         "required": [
@@ -348,6 +381,21 @@
         ],
         "title": "BeneficiaryRead",
         "type": "object"
+      },
+      "BeneficiaryRelationship": {
+        "description": "How the sender knows the beneficiary. An enum so the OpenAPI spec, and\ntherefore the frontend client, carries the option list.",
+        "enum": [
+          "partner",
+          "parent",
+          "child",
+          "sibling",
+          "relative",
+          "friend",
+          "employee",
+          "other"
+        ],
+        "title": "BeneficiaryRelationship",
+        "type": "string"
       },
       "DepositRow": {
         "description": "One bank-statement line, as parsed client-side from the uploaded CSV.",
@@ -3327,6 +3375,16 @@
         ],
         "title": "MyRoleResponse",
         "type": "object"
+      },
+      "PayoutCurrency": {
+        "description": "What a beneficiary may be paid out in. An enum so the OpenAPI spec,\nand therefore the frontend client, carries the option list.",
+        "enum": [
+          "USD",
+          "ZWL",
+          "NAD"
+        ],
+        "title": "PayoutCurrency",
+        "type": "string"
       },
       "PendingDepositRead": {
         "properties": {
@@ -6316,7 +6374,7 @@
     },
     "/beneficiaries/create-beneficiary": {
       "post": {
-        "description": "Create a new beneficiary for the current user.",
+        "description": "Save a registered RemitX user as one of the caller's beneficiaries.\n\nAnswers 409 when that person is already one of the caller's\nbeneficiaries, or has no email or mobile on file; 400 when\n`linked_user_id` is not a user.",
         "operationId": "create_beneficiary",
         "requestBody": {
           "content": {
@@ -6339,6 +6397,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
           "401": {
             "content": {
               "application/json": {
@@ -6348,6 +6416,16 @@
               }
             },
             "description": "No valid session."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
           },
           "422": {
             "content": {
@@ -6365,7 +6443,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Create Beneficiary",
+        "summary": "Add a beneficiary",
         "tags": [
           "beneficiaries"
         ]
@@ -6442,16 +6520,16 @@
     },
     "/beneficiaries/lookup-by-reference": {
       "get": {
-        "description": "Preview who an account reference resolves to, before adding them as a\nbeneficiary.",
+        "description": "Preview who an account reference resolves to, before adding them as a\nbeneficiary: their short name, country and the account's currency, never\ntheir contact details.\n\nAnswers 404 for an unknown reference, and 400 for a settlement (`-tok`)\nreference or one of the caller's own. Each `detail` is written for the\nsender to read.",
         "operationId": "lookup_beneficiary_by_reference",
         "parameters": [
           {
-            "description": "The beneficiary's fiat account reference (e.g. \"sian1-zar\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
+            "description": "The beneficiary's fiat account reference (e.g. \"tendai1-zwl\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
             "in": "query",
             "name": "account_reference",
             "required": true,
             "schema": {
-              "description": "The beneficiary's fiat account reference (e.g. \"sian1-zar\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
+              "description": "The beneficiary's fiat account reference (e.g. \"tendai1-zwl\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
               "title": "Account Reference",
               "type": "string"
             }
@@ -6468,6 +6546,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
           "401": {
             "content": {
               "application/json": {
@@ -6477,6 +6565,16 @@
               }
             },
             "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
           },
           "422": {
             "content": {
@@ -6494,7 +6592,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Lookup Beneficiary By Reference",
+        "summary": "Look up who an account reference belongs to",
         "tags": [
           "beneficiaries"
         ]
