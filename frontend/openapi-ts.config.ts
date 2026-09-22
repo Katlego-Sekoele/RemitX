@@ -19,7 +19,12 @@ export default defineConfig({
       // Base URL and the Clerk token, set before the first request.
       runtimeConfigPath: "./app/lib/api-client-config",
     },
-    "@hey-api/typescript",
+    {
+      name: "@hey-api/typescript",
+      // Enums also become JavaScript objects (`PayoutCurrency.USD`), so a
+      // select's options come from the spec instead of a hand-written list.
+      enums: "javascript",
+    },
     // Flat functions stay out of the entry file: app code reaches operations
     // through the `api` and `sdk` namespaces instead.
     { name: "@hey-api/sdk", includeInEntry: false },
