@@ -116,7 +116,7 @@ class BeneficiaryRead(Schema):
 
 class BeneficiaryLookupResponse(Schema):
     """The preview shown after a sender types in a beneficiary's fiat account
-    reference (e.g. "tendai1-zwl"), before they confirm adding them.
+    reference (e.g. "sian1-zar"), before they confirm adding them.
 
     Deliberately never the email or mobile, masked or not: references are
     guessable (`sipho1`, `sipho2`, ...), so the lookup must not become a
