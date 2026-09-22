@@ -21,6 +21,7 @@ from remitx_api.models.orm.account import (
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.user import User, short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service, remittance_service
 from remitx_api.services.remittance_service import (
     REMITX_TREASURY_WALLET_LABEL,
@@ -157,6 +158,34 @@ def test_history_for_someone_elses_account_is_a_400(verified_client):
     response = client.get(HISTORY, params={"account_id": str(other_zar_id)})
 
     assert response.status_code == 400
+
+
+def test_history_query_runs_inside_the_callers_row_security_context(
+    verified_client, monkeypatch
+):
+    """The history query sees the stamp ``rls.py`` puts on the request.
+
+    ``create_customer_router`` binds the caller before the handler runs.
+    On Postgres the cursor hook copies that onto ``app.current_user_id``
+    and ``app.is_admin_route``, which the ledger policies read. The query
+    predicates are the same rule for SQLite, where that hook does nothing.
+    """
+    client, sender = verified_client
+    seen = {}
+    real = TransactionRepository.list_account_transactions
+
+    def spy(self, account_id, limit=None, before=None, user_id=None):
+        seen["user_id"] = db.session.info.get("row_security_current_user_id")
+        seen["is_admin_route"] = db.session.info.get("row_security_is_admin_route")
+        return real(self, account_id, limit=limit, before=before, user_id=user_id)
+
+    monkeypatch.setattr(TransactionRepository, "list_account_transactions", spy)
+    account_id = client.get(ACCOUNTS).json()[0]["account_id"]
+
+    response = client.get(HISTORY, params={"account_id": account_id})
+
+    assert response.status_code == 200
+    assert seen == {"user_id": str(sender.id), "is_admin_route": False}
 
 
 def _send_remittance(client, sender, monkeypatch, funded="1000", amount="1000"):
