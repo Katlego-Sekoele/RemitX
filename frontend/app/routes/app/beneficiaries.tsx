@@ -4,7 +4,10 @@ import { useState } from "react"
 
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
-import { AddBeneficiaryButton } from "~/components/beneficiaries/add-beneficiary-dialog"
+import {
+  AddBeneficiaryButton,
+  AddBeneficiaryForm,
+} from "~/components/beneficiaries/add-beneficiary-form"
 import {
   BeneficiaryList,
   BeneficiaryListSkeleton,
@@ -58,6 +61,7 @@ export function meta(): Route.MetaDescriptors {
 
 export default function BeneficiariesPage() {
   const [sort, setSort] = useState<BeneficiarySort>("newest")
+  const [adding, setAdding] = useState(false)
   const beneficiaries = useQuery({
     ...api.beneficiaries.listMyBeneficiaries({ query: { sort } }),
     // A new sort is a new query: keep the current rows up while it loads
@@ -94,9 +98,19 @@ export default function BeneficiariesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <AddBeneficiaryButton />
+            <AddBeneficiaryButton
+              disabled={adding}
+              onClick={() => setAdding(true)}
+            />
           </div>
         </div>
+
+        {adding ? (
+          <AddBeneficiaryForm
+            onCancel={() => setAdding(false)}
+            onAdded={() => setAdding(false)}
+          />
+        ) : null}
 
         {beneficiaries.isPending ? (
           <BeneficiaryListSkeleton />
@@ -118,7 +132,9 @@ export default function BeneficiariesPage() {
               </Button>
             </AlertAction>
           </Alert>
-        ) : beneficiaries.data.length === 0 ? (
+        ) : beneficiaries.data.length > 0 ? (
+          <BeneficiaryList beneficiaries={beneficiaries.data} />
+        ) : adding ? null : (
           <Empty className="border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -130,11 +146,9 @@ export default function BeneficiariesPage() {
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <AddBeneficiaryButton />
+              <AddBeneficiaryButton onClick={() => setAdding(true)} />
             </EmptyContent>
           </Empty>
-        ) : (
-          <BeneficiaryList beneficiaries={beneficiaries.data} />
         )}
       </div>
     </AppPageFrame>

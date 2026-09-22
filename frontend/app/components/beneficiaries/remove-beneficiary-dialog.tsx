@@ -19,8 +19,9 @@ import {
   invalidateBeneficiaries,
 } from "~/lib/beneficiaries"
 
-/** Confirm, then remove a beneficiary for good. Transfers to them stay in
- * the sender's history: those point at the person, not this entry. */
+/** Confirm, then remove a beneficiary for good. Removal is final, so it
+ * is the one step that uses a modal. Transfers to them stay in the sender's
+ * history: those point at the person, not this entry. */
 export function RemoveBeneficiaryDialog({
   beneficiary,
   open,
