@@ -82,6 +82,49 @@ Two XRPL Testnet accounts sit behind two `accounts` rows:
 
 **Superseded below.** As of the change in Phase C, the treasury's `uctusd` is now burned on *every* remittance, at the moment the beneficiary pass-through leg lands it back in `OPERATIONAL`, rather than letting it sit there until an eventual withdrawal (Phase E) burns it. See Phase C below and Open Question #1 — remittance settlement is now genuinely on-chain, same category of call as the withdrawal burn.
 
+### Decimal precision
+
+Three different precisions are in play, not one uniform one — see Open Question #10:
+
+| Precision | What | Where it's set |
+|---|---|---|
+| **2dp** | Every *amount of money that actually moves* — `sender_amount`, `fee`, `margin`, `token_amount` (uctusd included), `receiver_amount`, `payout_fee`, `payout_estimate`, and every `transactions.amount` leg derived from them | `quote_service.AMOUNT_QUANTUM` (`Decimal("0.01")`) via `_round_amount()`, `ROUND_HALF_UP` |
+| **8dp** | `fiat_to_token_exchange_rate` — the inverted rate (token units per 1 unit of sender currency) `_token_rate()` computes itself | Explicit `.quantize(Decimal("0.00000001"))` in `quote_service._token_rate` |
+| **Unrounded (provider precision)** | `fiat_exchange_rate` (the direct sender→payout rate) and the raw `ExchangeRate.rate` row `_token_rate` inverts | `exchange_rate_provider.py` stores `Decimal(str(payload["conversion_rate"]))` straight through, no `.quantize()` |
+
+The columns underneath (`accounts.account_balance`, `transactions.amount`, `quotes.*`) all stay `Numeric(20,8)` — nothing narrows them. Application code simply never writes more than 2dp of an *amount* into them any more, which is what stops SQLite (tests) and Postgres (prod) disagreeing on a stored value. Rates are deliberately left out of this — rounding a rate to 2dp before multiplying it against a large sum would throw away real accuracy, and a rate is never itself a balance that has to reconcile.
+
+**Worked example — R100 ZAR sent, beneficiary payout in ZWL** (illustrative rates: USD/ZAR = 18.50, ZAR/ZWL = 16.22; current fee config: R15 fixed, 0.5% percentage, 1% FX margin, 0.75% cash-out):
+
+Quote fields (`quotes` row, §2 Phase B1):
+
+| Field | Calculation | Value | Precision |
+|---|---|---|---|
+| `sender_amount` | input, rounded on entry | 100.00 ZAR | 2dp |
+| `sender_transaction_fee` | 15 + 0.5%×100 → round | 15.50 ZAR | 2dp |
+| `exchange_rate_margin` | 1%×100 → round | 1.00 ZAR | 2dp |
+| net (intermediate, not stored) | 100.00 − 15.50 − 1.00 | 83.50 ZAR | 2dp |
+| `fiat_to_token_exchange_rate` | 1 ÷ 18.50 → quantize | 0.05405405 | 8dp |
+| `token_amount` | 83.50 × 0.05405405 → round | 4.51 uctusd | 2dp |
+| `fiat_exchange_rate` | direct ZAR/ZWL fetch, unrounded | 16.22 | provider precision |
+| `receiver_amount` | 83.50 × 16.22 → round | 1354.37 ZWL | 2dp |
+| `receiver_payout_fee` | 0.75%×1354.37 → round | 10.16 ZWL | 2dp (never actually charged — Open Question #13) |
+| `receiver_payout_estimate` | 1354.37 − 10.16 | 1344.21 ZWL | 2dp |
+
+The seven ledger legs it produces (`transactions` rows, §2 Phase B2/C) — all `Numeric(20,8)` columns, every one holding a 2dp value:
+
+| Leg | Credit → Debit | Amount | Currency |
+|---|---|---|---|
+| 1. Fee | Sender ZAR → RemitX SA Fee Revenue | 16.50 (fee + margin) | ZAR |
+| 2. Net remittance | Sender ZAR → RemitX SA Bank Account | 83.50 | ZAR |
+| 3. Treasury pass-through in | Treasury Wallet → Sender uctusd | 4.51 | uctusd |
+| 4. Settlement | Sender uctusd → Beneficiary uctusd | 4.51 | uctusd |
+| 5. Treasury pass-through out | Beneficiary uctusd → Treasury Wallet | 4.51 | uctusd |
+| 6. Burn (on-chain) | Treasury Wallet → UCTUSD Issuer | 4.51 | uctusd |
+| 7. Payout | RemitX ZIM Bank Account → Beneficiary ZWL | 1354.37 | ZWL |
+
+The only 8dp number anywhere in the flow is the internal rate (0.05405405) used once to compute the 4.51 uctusd leg — it's never itself moved as a balance.
+
 ---
 
 ## 2. The Flow
@@ -458,7 +501,7 @@ Deliberately unresolved for now — flagging rather than guessing:
 7. **`process_deposits` has no protection against reprocessing the same bank statement.** Nothing keys on the statement line — no unique constraint, no dedup check — so uploading the same CSV twice (or an overlapping date range), a plausible mistake given it's a manual admin file-picker action, gives every matched line a brand-new `transactions` + `deposits` row and increases the account balance again. No test covers re-running it. Same failure category the brief calls out for the queue ("prevent duplicate messages from crediting more than once"), just hitting the reconciliation step instead — worth fixing (e.g. a unique constraint on the statement line, or hashing it) before calling Phase A done.
 8. ~~The fixed remittance fee's amount and currency-generality.~~ **Resolved.** Fee amounts are decided (§5): R15 fixed, 0.5% percentage, 1.0% FX margin, 0.75% cash-out. The fixed fee's currency-generality gap is also closed: it's denominated in ZAR and converted into `sender_currency` via each currency's USD peg at quote time (§5), so the beneficiary-free preview quote (§2 Phase B1) gets a real fixed fee for any supported sender currency, not just ZAR. The FX margin remains a rate *spread* (percentage), which is already currency-general by construction — nothing to convert.
 9. **Whether uctusd issuance/burning itself carries a separate token fee.** Today's fee model (§5) only has a remittance-side fee (percentage + FX margin, since #8) and a withdrawal/cash-out fee. Not decided: whether allocating (minting) tokens to a beneficiary at settlement, or burning them at withdrawal, itself carries an additional platform fee distinct from those two. Flagging as a possibility, not deciding either way — would need its own `§5` line and its own field on the relevant transaction/quote model if it's ever added.
-10. **Every monetary amount should end up at 2 decimal places, including uctusd — decided, not yet implemented.** Auditing `quote_service.price_remittance` found `fee`/`margin` aren't `.quantize()`d the way `token_amount` already is, so SQLite (tests) and Postgres (prod) could silently disagree on the stored value for the same computation. Chasing that further: the intended fix is 2 decimals everywhere, fiat *and* token — uctusd's current 8-decimal convention isn't an XRPL requirement (IOU amounts on XRPL use up to 15 significant digits with a floating exponent, not a fixed decimal-place cap), it looks borrowed from Bitcoin's satoshi convention, so nothing blocks moving it to 2. Two real obstacles once this is actually done: (a) `accounts.account_balance` and `transactions.amount` are single columns shared by both fiat and token rows (distinguished only by a `currency` string), and their migrations are already applied elsewhere (merged well before this one), so narrowing them from `Numeric(20,8)` needs a real new migration — per this repo's own migration-safety rule, a narrowing change on a live table should go through expand/contract across two releases, not one; (b) `token_amount = net * fiat_to_token_exchange_rate` is a multiplication that rarely lands on a round number, so rounding to 2 decimals sheds more of the fractional remainder than 8 decimals does today — worth being deliberate about when implementing, not just mechanical. A full sweep (every `Numeric(20,8)` column, every `.quantize(...)` call, every 8-decimal-formatted test assertion) hasn't been done yet.
+10. ~~Every monetary amount should end up at 2 decimal places, including uctusd.~~ **Resolved, application-level only.** `quote_service.AMOUNT_QUANTUM` (`Decimal("0.01")`, applied via `_round_amount`) now quantizes every *amount* — `sender_amount` itself (rounded on entry to `create_quote`/`price_remittance`), `fee`, `margin`, `token_amount`, `receiver_amount`, `payout_fee` — with `ROUND_HALF_UP`, so every leg derived from a `Quote` (`remittance_service.confirm_remittance`) is already 2dp by construction. Conversion *rates* (`fiat_to_token_exchange_rate`, `fiat_exchange_rate`) deliberately stay at their existing precision — they're not amounts, and rounding a rate to 2dp before multiplying would throw away real accuracy on large sums. Deliberately **not** done: narrowing `accounts.account_balance`/`transactions.amount`/`quotes.*` from `Numeric(20,8)` to `Numeric(20,2)` — the column still accepts 8dp, it just never receives more than 2 from application code now. Revisit the column narrowing (a real expand/contract migration, per this repo's migration-safety rule) only if the extra unused precision ever becomes a real problem — for this prototype, app-level rounding is enough to stop SQLite/Postgres disagreeing on a stored value.
 11. ~~No function yet marks a `Quote` `USED`.~~ **Resolved.** `models/orm/remittance.py` (`Remittance`), `services/remittance_service.py::confirm_remittance`, and `remitx_worker/tasks.py::settle_remittance` now exist — `QuoteRepository.mark_used` is the guarded `UPDATE ... WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?` transition, following the same pattern as `transaction_repository.confirm_pending_deposit_transaction`/`process_integration_message`.
 12. ~~No quote-receipt lookup exists yet.~~ **Partially resolved.** `POST /remittances`'s response is a receipt joining the new `Remittance` row with its `Quote` (`RemittanceController`'s view), and `GET /accounts`/`GET /accounts-history?account_id=...` now cover transaction-history browsing (renamed from the doc's original `GET /wallet` — there's no separate "wallet" concept, it's a read view over `accounts`/`transactions`, so it covers any currency account, not just `uctusd`). Still missing: a standalone `GET /remittances/{id}`-style lookup for revisiting one past remittance's receipt outside the moment it was just confirmed.
 13. **The cash-out fee (`Config.CASH_OUT_FEE_RATE`, `receiver_payout_fee`/`receiver_payout_estimate` on `quotes`) is currently never actually charged.** Since §2 Phase C now auto-converts straight to the beneficiary's fiat account, the natural place to deduct it — a real withdrawal-from-the-platform action — doesn't exist yet (§2 Phase E, itself flagged stale above). Until that flow is built, every beneficiary gets the full gross `receiver_amount` with no cash-out fee ever collected — a real, if currently unexploitable, revenue gap rather than just a display quirk.

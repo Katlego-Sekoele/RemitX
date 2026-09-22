@@ -15,7 +15,7 @@ Two entry points share one pricing helper, `price_remittance`:
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from remitx_api.config import Config
 from remitx_api.extensions import db
@@ -28,6 +28,18 @@ from remitx_api.repositories.kyc_application_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
+
+# Every monetary *amount* is quantized to this before it's stored or returned,
+# so SQLite/Postgres can't disagree on the value and every leg agrees on
+# what "the amount" is. Conversion *rates* (fiat_to_token_exchange_rate,
+# fiat_exchange_rate) are deliberately not rounded this way — they still
+# need their extra precision so multiplying by a large sender_amount
+# doesn't itself introduce error.
+AMOUNT_QUANTUM = Decimal("0.01")
+
+
+def _round_amount(value: Decimal) -> Decimal:
+    return value.quantize(AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 # Custom exceptions for quote creation.
@@ -141,9 +153,7 @@ def _convert_zar_fee_to_sender_currency(
     if sender_currency == CURRENCY_ZAR:
         return fee_zar
     zar_rate, _ = _token_rate(CURRENCY_ZAR)
-    return (fee_zar * zar_rate / fiat_to_token_exchange_rate).quantize(
-        Decimal("0.00000001")
-    )
+    return _round_amount(fee_zar * zar_rate / fiat_to_token_exchange_rate)
 
 
 def price_remittance(
@@ -151,6 +161,10 @@ def price_remittance(
 ) -> RemittancePricing:
     if sender_amount <= 0:
         raise ValueError("sender_amount must be positive")
+    # Round the input itself, not just what's derived from it — a caller
+    # sending e.g. 1000.456 shouldn't leave that extra precision alive in
+    # net/fee/token_amount below.
+    sender_amount = _round_amount(sender_amount)
 
     # Required — the sender leg is what token_amount is actually computed
     # from, so RateUnavailableError/UnsupportedCurrencyError propagate.
@@ -161,15 +175,15 @@ def price_remittance(
     fixed_fee = _convert_zar_fee_to_sender_currency(
         Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
     )
-    fee = fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount
-    margin = Config.FX_MARGIN_RATE * sender_amount
+    fee = _round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
+    margin = _round_amount(Config.FX_MARGIN_RATE * sender_amount)
     net = sender_amount - fee - margin
     if net <= 0:
         raise ValueError("sender_amount is too small to cover fees")
     # Quantized explicitly rather than relying on the column's Numeric(20,8)
     # to truncate on storage — SQLite doesn't enforce that the way Postgres
     # does, so the two backends could otherwise disagree.
-    token_amount = (net * fiat_to_token_exchange_rate).quantize(Decimal("0.00000001"))
+    token_amount = _round_amount(net * fiat_to_token_exchange_rate)
 
     # Direct fiat conversion leg — sender currency straight to the
     # beneficiary's payout currency (e.g. ZAR -> ZWL), not derived from two
@@ -184,10 +198,8 @@ def price_remittance(
     # pre-token-conversion) converted directly via fiat_exchange_rate — not
     # routed through the token/USD leg — then Config.CASH_OUT_FEE_RATE applied. No
     # real redemption happens at quote time, so this is a display estimate.
-    receiver_amount = (net * fiat_exchange_rate).quantize(Decimal("0.00000001"))
-    payout_fee = (Config.CASH_OUT_FEE_RATE * receiver_amount).quantize(
-        Decimal("0.00000001")
-    )
+    receiver_amount = _round_amount(net * fiat_exchange_rate)
+    payout_fee = _round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
     payout_estimate = receiver_amount - payout_fee
 
     return RemittancePricing(
@@ -217,6 +229,11 @@ def create_quote(
     users = UserRepository()
     accounts = AccountRepository()
     beneficiaries = BeneficiaryRepository()
+
+    # Rounded up front so the limit/balance checks below, the stored
+    # Quote.sender_amount, and price_remittance's own internal rounding all
+    # agree on the same value — see AMOUNT_QUANTUM.
+    sender_amount = _round_amount(sender_amount)
 
     sender = users.get_by_id(sender_user_id)
     if sender is None:
