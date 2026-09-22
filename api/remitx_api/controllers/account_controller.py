@@ -1,14 +1,41 @@
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
+from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR, Account
 from remitx_api.models.orm.transaction import Transaction
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 
 DIRECTION_IN = "in"
 DIRECTION_OUT = "out"
+
+# What an account is for, so a client can tell the settlement token's wallet
+# apart from a spendable currency account without hard-coding the token name.
+KIND_FIAT = "fiat"
+KIND_SETTLEMENT = "settlement"
+
+# Amounts leave the API at 2 dp, the same quantum quote_service stores them at.
+AMOUNT_QUANTUM = Decimal("0.01")
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def account_kind(currency: str) -> str:
+    return KIND_SETTLEMENT if currency == CURRENCY_TOKEN else KIND_FIAT
+
+
+def _display_order(account: Account) -> tuple[int, str]:
+    """ZAR first, then the other fiat currencies alphabetically, then the
+    settlement token's wallet last."""
+    if account.account_currency == CURRENCY_ZAR:
+        return (0, "")
+    if account.account_currency == CURRENCY_TOKEN:
+        return (2, "")
+    return (1, account.account_currency)
 
 
 class UnknownAccountError(Exception):
@@ -21,6 +48,11 @@ class UnknownAccountError(Exception):
 class AccountView:
     account_id: uuid.UUID
     currency: str
+    reference: str
+    kind: str
+    # The ledger balance. `available_balance` nets out this account's own
+    # in-flight outgoing legs, so the difference is what's still pending.
+    balance: Decimal
     available_balance: Decimal
 
 
@@ -42,19 +74,25 @@ class AccountController:
         self._transactions = TransactionRepository()
 
     def get_accounts(self, user_id: uuid.UUID) -> list[AccountView]:
-        """Every currency account the caller holds — currently always ZAR +
-        uctusd, both created eagerly at signup, but this returns whatever
+        """Every currency account the caller holds: ZAR and uctusd from
+        signup, plus any payout currency received since. Returns whatever
         `AccountRepository.list_user_accounts` finds rather than assuming
-        exactly those two."""
+        exactly those, in display order (see `_display_order`)."""
+        accounts = sorted(
+            self._accounts.list_user_accounts(user_id), key=_display_order
+        )
         return [
             AccountView(
                 account_id=account.account_id,
                 currency=account.account_currency,
-                available_balance=self._accounts.get_available_balance(
-                    account.account_id
+                reference=account.reference,
+                kind=account_kind(account.account_currency),
+                balance=_money(account.account_balance),
+                available_balance=_money(
+                    self._accounts.get_available_balance(account.account_id)
                 ),
             )
-            for account in self._accounts.list_user_accounts(user_id)
+            for account in accounts
         ]
 
     def get_account_history(

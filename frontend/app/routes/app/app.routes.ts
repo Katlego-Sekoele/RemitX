@@ -58,6 +58,12 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     icon: "HouseIcon",
   },
   {
+    route: { path: "app/accounts", module: "routes/app/accounts.tsx" },
+    label: "Accounts",
+    order: 10,
+    icon: "WalletIcon",
+  },
+  {
     route: {
       path: "app/beneficiaries",
       module: "routes/app/beneficiaries.tsx",

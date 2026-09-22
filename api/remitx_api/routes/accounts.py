@@ -22,12 +22,16 @@ controller = AccountController()
     summary="List the caller's currency accounts",
 )
 def get_accounts(user: User = Depends(get_current_user)):
-    """Every currency account the caller holds (ZAR and uctusd, today, from
-    signup), each with its own available balance."""
+    """Every currency account the caller holds, each with its reference,
+    ledger balance and available balance. ZAR comes first, then any other
+    fiat currency alphabetically, then the settlement (uctusd) wallet."""
     return [
         AccountRead(
             account_id=view.account_id,
             currency=view.currency,
+            reference=view.reference,
+            kind=view.kind,
+            balance=view.balance,
             available_balance=view.available_balance,
         )
         for view in controller.get_accounts(user.id)

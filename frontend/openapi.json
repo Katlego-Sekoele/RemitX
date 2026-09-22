@@ -14,14 +14,34 @@
             "title": "Available Balance",
             "type": "string"
           },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fiat",
+              "settlement"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
             "type": "string"
           }
         },
         "required": [
           "account_id",
           "currency",
+          "reference",
+          "kind",
+          "balance",
           "available_balance"
         ],
         "title": "AccountRead",
@@ -4226,7 +4246,7 @@
   "paths": {
     "/accounts": {
       "get": {
-        "description": "Every currency account the caller holds (ZAR and uctusd, today, from\nsignup), each with its own available balance.",
+        "description": "Every currency account the caller holds, each with its reference,\nledger balance and available balance. ZAR comes first, then any other\nfiat currency alphabetically, then the settlement (uctusd) wallet.",
         "operationId": "get_accounts",
         "responses": {
           "200": {
@@ -7773,7 +7793,7 @@
     },
     "/remittances": {
       "post": {
-        "description": "Turns an active quote into a send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {
