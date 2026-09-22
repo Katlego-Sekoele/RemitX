@@ -29,9 +29,7 @@ from remitx_api.repositories.kyc_application_repository import (
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
 
-# Every monetary *amount* (fiat or uctusd — Transaction_Flow_Context.md
-# Open Question #10: uctusd's 8dp was a Bitcoin-style convention, not an
-# XRPL requirement) is quantized to this before it's stored or returned,
+# Every monetary *amount* is quantized to this before it's stored or returned,
 # so SQLite/Postgres can't disagree on the value and every leg agrees on
 # what "the amount" is. Conversion *rates* (fiat_to_token_exchange_rate,
 # fiat_exchange_rate) are deliberately not rounded this way — they still
