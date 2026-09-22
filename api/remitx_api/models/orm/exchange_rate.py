@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, Text, Uuid
+from sqlalchemy import DateTime, Numeric, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -32,8 +32,11 @@ class ExchangeRate(Base):
     rate: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # Time at which this exchange rate was fetched from the external API.
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=func.now(),
     )
     valid_until: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False, index=True
     )
