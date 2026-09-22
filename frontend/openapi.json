@@ -202,7 +202,7 @@
         "type": "object"
       },
       "BeneficiaryLookupResponse": {
-        "description": "The preview shown after a sender types in a beneficiary's fiat account\nreference (e.g. \"tendai1-zwl\"), before they confirm adding them.\n\nDeliberately never the email or mobile, masked or not: references are\nguessable (`sipho1`, `sipho2`, ...), so the lookup must not become a\ndirectory. A name and country are enough to confirm \"is this the right\nperson\".",
+        "description": "The preview shown after a sender types in a beneficiary's fiat account\nreference (e.g. \"sian1-zar\"), before they confirm adding them.\n\nDeliberately never the email or mobile, masked or not: references are\nguessable (`sipho1`, `sipho2`, ...), so the lookup must not become a\ndirectory. A name and country are enough to confirm \"is this the right\nperson\".",
         "properties": {
           "account_currency": {
             "description": "The looked-up account's currency. Pre-fills the payout currency when it is one they already hold.",
@@ -6570,12 +6570,12 @@
         "operationId": "lookup_beneficiary_by_reference",
         "parameters": [
           {
-            "description": "The beneficiary's fiat account reference (e.g. \"tendai1-zwl\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
+            "description": "The beneficiary's fiat account reference (e.g. \"sian1-zar\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
             "in": "query",
             "name": "account_reference",
             "required": true,
             "schema": {
-              "description": "The beneficiary's fiat account reference (e.g. \"tendai1-zwl\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
+              "description": "The beneficiary's fiat account reference (e.g. \"sian1-zar\") they shared off-platform \u2014 the same one they quote for EFT deposits.",
               "title": "Account Reference",
               "type": "string"
             }

@@ -34,7 +34,7 @@ def lookup_beneficiary_by_reference(
         ...,
         description=(
             "The beneficiary's fiat account reference "
-            '(e.g. "tendai1-zwl") they shared off-platform — the same one '
+            '(e.g. "sian1-zar") they shared off-platform — the same one '
             "they quote for EFT deposits."
         ),
     ),

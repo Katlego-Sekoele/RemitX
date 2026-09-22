@@ -13,8 +13,8 @@ Three currency concepts live on this row:
   `receiver_payout_estimate` — the beneficiary's payout currency and cash-out
   in it. `receiver_amount` (net sender amount converted via
   `fiat_exchange_rate`, not through the token leg) is what settlement
-  actually credits to the beneficiary's fiat account, with no cash-out fee deducted.
-  `receiver_payout_fee`/ `receiver_payout_estimate` apply `CASH_OUT_FEE_RATE`
+  actually credits to the beneficiary's fiat account, with no cash-out fee deducted. 
+  `receiver_payout_fee`/ `receiver_payout_estimate` apply `CASH_OUT_FEE_RATE` 
   on top but stay display-only until a real withdrawal flow exists.
 - `fiat_exchange_rate`/`fiat_exchange_rate_id` — the direct sender-currency
   to payout-currency rate (e.g. ZAR -> ZWL, its own fetched pair, not derived
@@ -59,13 +59,14 @@ class Quote(Base):
     )# Sender user id
     beneficiary_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False
-    )  # Beneficiary user id
+    )# Beneficiary user id
     sender_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    # Used with sender user id to get the sender's fiat account.
-    sender_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    sender_currency: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # used with sender user id to get the sender's fiat account
     sender_transaction_fee: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
-    )  # In the sender's currency.
+    ) # In the sender's currency.
     token_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # Name of the token used for settlement, e.g. "uctusd"
     token_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -75,8 +76,8 @@ class Quote(Base):
     fiat_to_token_exchange_rate_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("exchange_rates.id"), nullable=True
     )
-    # Same as the rate between the sender currency and USD, since the token
-    # is pegged to USD.
+    # same as the rate between the sender currency and USD, since the token
+    # is pegged to USD
     fiat_to_token_exchange_rate: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
     )
@@ -90,9 +91,10 @@ class Quote(Base):
     )
     # Gross estimated cash-out, in receiver_currency, before receiver_payout_fee.
     receiver_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    # The beneficiary's chosen payout currency (e.g. ZWL). Used with
-    # beneficiary user id to get the beneficiary's fiat account.
-    receiver_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    # The beneficiary's chosen payout currency (e.g. ZWL).
+    receiver_currency: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # used with beneficiary user id to get the beneficiary's fiat account
     receiver_payout_fee: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     receiver_payout_estimate: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
