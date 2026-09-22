@@ -52,12 +52,13 @@ class KycNotApprovedError(Exception):
 
 
 class LimitExceededError(Exception):
-    """`sender_amount` alone exceeds the sender's tier ceiling.
+    """`sender_amount` alone exceeds the sender's KYC standing allowance.
 
-    This is a SIMPLIFIED check: it compares the requested amount against
-    Config.DAILY_LIMIT_ZAR directly, not a true running daily/monthly total, because
-    no `remittances` table exists yet to sum actual confirmed sends against
-    (Transaction_Flow_Context.md §7/§8). Revisit once remittances exist.
+    The ceiling is the tier's daily or monthly limit scaled by the risk
+    rating's `limit_percent` (`allowance_for`, via `get_standing`). An
+    approved customer with no rating gets the tier unscaled. This still
+    compares one amount to that ceiling, not remaining usage after other
+    sends (KYC-3 / #25).
     """
 
 
@@ -238,13 +239,19 @@ def create_quote(
     sender = users.get_by_id(sender_user_id)
     if sender is None:
         raise ValueError(f"User {sender_user_id} does not exist")
-    if not KycApplicationRepository().get_standing(sender_user_id).is_verified:
+    standing = KycApplicationRepository().get_standing(sender_user_id)
+    if not standing.is_verified:
         raise KycNotApprovedError(str(sender_user_id))
 
-    # Simplified ceiling check — see LimitExceededError.
-    if sender_amount > Config.DAILY_LIMIT_ZAR:
+    # Score-scaled ceilings — see LimitExceededError. Daily is the tighter
+    # of the two while monthly stays at least the daily figure.
+    if sender_amount > standing.daily_limit_zar:
         raise LimitExceededError(
-            f"{sender_amount} exceeds the daily limit of {Config.DAILY_LIMIT_ZAR}"
+            f"{sender_amount} exceeds the daily limit of {standing.daily_limit_zar}"
+        )
+    if sender_amount > standing.monthly_limit_zar:
+        raise LimitExceededError(
+            f"{sender_amount} exceeds the monthly limit of {standing.monthly_limit_zar}"
         )
     # Get the beneficiary and check that it belongs to this sender. The
     # beneficiary's linked_user_id is the one who will receive the remittance.

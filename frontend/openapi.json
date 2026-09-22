@@ -8462,7 +8462,7 @@
     },
     "/quotes/create-quote": {
       "post": {
-        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, no account in `sender_currency`, an amount over the limit\nor the available balance, or one too small to cover the fees; 503 when\nno exchange rate is available.",
+        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, no account in `sender_currency`, an amount over the KYC\nallowance (tier limits scaled by the risk rating), the available\nbalance, or one too small to cover the fees; 503 when no exchange rate\nis available.",
         "operationId": "create_quote",
         "requestBody": {
           "content": {
