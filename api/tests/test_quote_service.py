@@ -62,6 +62,9 @@ def _make_sender_and_beneficiary():
     recipient = UserController().ensure_provisioned(
         "user_quote_recipient", lambda: "recipient@example.com", lambda: "Recipient"
     )
+    AccountRepository().get_or_create_user_account(
+        recipient.id, recipient.base_reference, "ZWL"
+    )
     beneficiary = (
         BeneficiaryController()
         .create(
@@ -278,6 +281,9 @@ def test_unverified_sender_is_rejected(app_context):
     )
     recipient = UserController().ensure_provisioned(
         "user_quote_unverified_target", lambda: "target@example.com", lambda: "Target"
+    )
+    AccountRepository().get_or_create_user_account(
+        recipient.id, recipient.base_reference, "ZWL"
     )
     beneficiary = (
         BeneficiaryController()
