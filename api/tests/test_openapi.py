@@ -57,7 +57,7 @@ def test_authenticated_operations_declare_the_bearer_scheme():
 
 
 def test_beneficiary_option_lists_are_named_enums():
-    # The add and edit dialogs build their selects from these, so they have to
+    # The add and edit forms build their selects from these, so they have to
     # reach the generated client as values, not as free-form strings.
     schemas = create_app(TestConfig).openapi()["components"]["schemas"]
     assert schemas["PayoutCurrency"]["enum"] == ["USD", "ZWL", "NAD"]

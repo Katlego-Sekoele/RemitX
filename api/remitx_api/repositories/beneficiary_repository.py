@@ -7,17 +7,20 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.country import Country
 from remitx_api.models.orm.user import User
+from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.repository import Repository
 
 
 class BeneficiaryRow(NamedTuple):
     """A beneficiary with the linked person it resolves to. Name, contact and
     country live on `User` (and the country's name on `Country`), not on
-    `Beneficiary` — see models/orm/beneficiary.py."""
+    `Beneficiary` — see models/orm/beneficiary.py. `payout_currencies` is the
+    payout accounts that person already holds."""
 
     beneficiary: Beneficiary
     user: User
     country: Country | None
+    payout_currencies: tuple[str, ...]
 
 
 # The name a beneficiary is listed and sorted by: the verified name once
@@ -91,4 +94,16 @@ class BeneficiaryRepository(Repository[Beneficiary, uuid.UUID]):
 
     @staticmethod
     def _rows(statement: Select) -> list[BeneficiaryRow]:
-        return [BeneficiaryRow(*row) for row in db.session.execute(statement).all()]
+        raw = db.session.execute(statement).all()
+        currencies = AccountRepository().payout_currencies_by_user(
+            [user.id for _, user, _ in raw]
+        )
+        return [
+            BeneficiaryRow(
+                beneficiary,
+                user,
+                country,
+                currencies.get(user.id, ()),
+            )
+            for beneficiary, user, country in raw
+        ]

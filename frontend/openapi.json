@@ -205,7 +205,7 @@
         "description": "The preview shown after a sender types in a beneficiary's fiat account\nreference (e.g. \"tendai1-zwl\"), before they confirm adding them.\n\nDeliberately never the email or mobile, masked or not: references are\nguessable (`sipho1`, `sipho2`, ...), so the lookup must not become a\ndirectory. A name and country are enough to confirm \"is this the right\nperson\".",
         "properties": {
           "account_currency": {
-            "description": "The looked-up account's currency, to pre-fill the payout currency when it is one.",
+            "description": "The looked-up account's currency. Pre-fills the payout currency when it is one they already hold.",
             "examples": [
               "ZWL"
             ],
@@ -266,6 +266,14 @@
             "format": "uuid",
             "title": "Linked User Id",
             "type": "string"
+          },
+          "payout_currencies": {
+            "description": "Payout currencies this person already holds an account for, in USD, ZWL, NAD order. The add form offers only these.",
+            "items": {
+              "$ref": "#/components/schemas/PayoutCurrency"
+            },
+            "title": "Payout Currencies",
+            "type": "array"
           }
         },
         "required": [
@@ -274,7 +282,8 @@
           "display_name",
           "country",
           "country_name",
-          "account_currency"
+          "account_currency",
+          "payout_currencies"
         ],
         "title": "BeneficiaryLookupResponse",
         "type": "object"
@@ -360,6 +369,14 @@
             ],
             "title": "Masked Mobile Number"
           },
+          "payout_currencies": {
+            "description": "Payout currencies this person already holds an account for, in USD, ZWL, NAD order. The edit form offers only these.",
+            "items": {
+              "$ref": "#/components/schemas/PayoutCurrency"
+            },
+            "title": "Payout Currencies",
+            "type": "array"
+          },
           "payout_currency": {
             "$ref": "#/components/schemas/PayoutCurrency"
           },
@@ -376,6 +393,7 @@
           "masked_email",
           "masked_mobile_number",
           "payout_currency",
+          "payout_currencies",
           "relationship",
           "created_at"
         ],
@@ -6402,7 +6420,7 @@
     },
     "/beneficiaries/create-beneficiary": {
       "post": {
-        "description": "Save a registered RemitX user as one of the caller's beneficiaries.\n\nAnswers 409 when that person is already one of the caller's\nbeneficiaries, or has no email or mobile on file; 400 when\n`linked_user_id` is not a user.",
+        "description": "Save a registered RemitX user as one of the caller's beneficiaries.\n\nAnswers 409 when that person is already one of the caller's\nbeneficiaries, or has no email or mobile on file; 400 when\n`linked_user_id` is not a user, or when they do not hold an account in\n`payout_currency`.",
         "operationId": "create_beneficiary",
         "requestBody": {
           "content": {
@@ -6548,7 +6566,7 @@
     },
     "/beneficiaries/lookup-by-reference": {
       "get": {
-        "description": "Preview who an account reference resolves to, before adding them as a\nbeneficiary: their short name, country and the account's currency, never\ntheir contact details.\n\nAnswers 404 for an unknown reference, and 400 for a settlement (`-tok`)\nreference or one of the caller's own. Each `detail` is written for the\nsender to read.",
+        "description": "Preview who an account reference resolves to, before adding them as a\nbeneficiary: their short name, country, the account's currency, and the\npayout accounts they already hold. Never their contact details.\n\nAnswers 404 for an unknown reference, and 400 for a settlement (`-tok`)\nreference or one of the caller's own. Each `detail` is written for the\nsender to read.",
         "operationId": "lookup_beneficiary_by_reference",
         "parameters": [
           {
@@ -6688,7 +6706,7 @@
         ]
       },
       "patch": {
-        "description": "Change one of the caller's beneficiaries' payout currency or\nrelationship, or both. The person can't be changed: a different person is\na different beneficiary (remove, then add).\n\nSomeone else's beneficiary answers 404, the same as an unknown id.",
+        "description": "Change one of the caller's beneficiaries' payout currency or\nrelationship, or both. The person can't be changed: a different person is\na different beneficiary (remove, then add).\n\nAnswers 400 when the new payout currency is not an account they hold.\nSomeone else's beneficiary answers 404, the same as an unknown id.",
         "operationId": "update_beneficiary",
         "parameters": [
           {
@@ -6722,6 +6740,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
           },
           "401": {
             "content": {

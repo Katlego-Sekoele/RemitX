@@ -41,8 +41,8 @@ def lookup_beneficiary_by_reference(
     user: User = Depends(get_current_user),
 ):
     """Preview who an account reference resolves to, before adding them as a
-    beneficiary: their short name, country and the account's currency, never
-    their contact details.
+    beneficiary: their short name, country, the account's currency, and the
+    payout accounts they already hold. Never their contact details.
 
     Answers 404 for an unknown reference, and 400 for a settlement (`-tok`)
     reference or one of the caller's own. Each `detail` is written for the
@@ -67,7 +67,8 @@ def create_beneficiary(
 
     Answers 409 when that person is already one of the caller's
     beneficiaries, or has no email or mobile on file; 400 when
-    `linked_user_id` is not a user.
+    `linked_user_id` is not a user, or when they do not hold an account in
+    `payout_currency`.
     """
     row = controller.create(
         sender_user_id=user.id,
@@ -107,7 +108,7 @@ def list_my_beneficiaries(
     "/{beneficiary_id}",
     response_model=BeneficiaryRead,
     summary="Edit a beneficiary",
-    responses=error_responses(404),
+    responses=error_responses(400, 404),
 )
 def update_beneficiary(
     beneficiary_id: uuid.UUID,
@@ -118,6 +119,7 @@ def update_beneficiary(
     relationship, or both. The person can't be changed: a different person is
     a different beneficiary (remove, then add).
 
+    Answers 400 when the new payout currency is not an account they hold.
     Someone else's beneficiary answers 404, the same as an unknown id.
     """
     row = controller.update(

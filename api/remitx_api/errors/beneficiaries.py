@@ -1,7 +1,7 @@
 """Errors raised by the beneficiary domain.
 
-Each ``detail`` is written for the sender to read as is: the add-beneficiary
-dialog shows it inline, next to the reference they typed.
+Each ``detail`` is written for the sender to read as is: the add form shows
+it inline, next to the field it belongs to.
 """
 
 from __future__ import annotations
@@ -65,6 +65,34 @@ class DuplicateBeneficiaryError(ConflictError):
     def __init__(self, linked_user_id: uuid.UUID | str) -> None:
         super().__init__("Already in your beneficiaries")
         self.linked_user_id = str(linked_user_id)
+
+
+class PayoutAccountMissingError(DomainError):
+    """The chosen payout currency is not an account this person holds.
+
+    Signup creates a ZAR account and a token account. A payout can only land
+    in a USD, ZWL or NAD account they already have."""
+
+    def __init__(self, currency: str, held: tuple[str, ...]) -> None:
+        if not held:
+            detail = (
+                "They don't have a payout account yet. Ask for a reference "
+                "ending in -usd, -zwl or -nad."
+            )
+        else:
+            detail = (
+                f"They don't have a {currency} account. They can be paid in "
+                f"{_or_list(held)}."
+            )
+        super().__init__(detail)
+        self.currency = currency
+        self.held = held
+
+
+def _or_list(values: tuple[str, ...]) -> str:
+    if len(values) == 1:
+        return values[0]
+    return f"{', '.join(values[:-1])} or {values[-1]}"
 
 
 class UnknownBeneficiaryError(NotFoundError):

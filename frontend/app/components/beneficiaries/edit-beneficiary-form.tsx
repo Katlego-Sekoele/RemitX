@@ -50,6 +50,11 @@ export function EditBeneficiaryForm({
   const [payoutCurrency, setPayoutCurrency] = useState<PayoutCurrency>(
     beneficiary.payout_currency
   )
+  const payoutOptions = beneficiary.payout_currencies.includes(
+    beneficiary.payout_currency
+  )
+    ? beneficiary.payout_currencies
+    : [beneficiary.payout_currency, ...beneficiary.payout_currencies]
   const [relationship, setRelationship] = useState<BeneficiaryRelationship>(
     beneficiary.relationship
   )
@@ -104,6 +109,7 @@ export function EditBeneficiaryForm({
             <PayoutCurrencyField
               id={`edit-${beneficiary.beneficiary_id}-payout-currency`}
               value={payoutCurrency}
+              options={payoutOptions}
               onChange={setPayoutCurrency}
             />
             <RelationshipField

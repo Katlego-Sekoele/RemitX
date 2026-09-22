@@ -178,6 +178,13 @@ function FindStep({
   )
 }
 
+function initialPayoutCurrency(found: Found): PayoutCurrency | null {
+  const held = found.payout_currencies
+  const lookedUp = asPayoutCurrency(found.account_currency)
+  if (lookedUp && held.includes(lookedUp)) return lookedUp
+  return held.length === 1 ? held[0] : null
+}
+
 function ConfirmStep({
   found,
   onBack,
@@ -191,7 +198,7 @@ function ConfirmStep({
 }) {
   const queryClient = useQueryClient()
   const [payoutCurrency, setPayoutCurrency] = useState<PayoutCurrency | null>(
-    asPayoutCurrency(found.account_currency)
+    () => initialPayoutCurrency(found)
   )
   const [relationship, setRelationship] =
     useState<BeneficiaryRelationship | null>(null)
@@ -242,6 +249,7 @@ function ConfirmStep({
             <PayoutCurrencyField
               id="beneficiary-payout-currency"
               value={payoutCurrency}
+              options={found.payout_currencies}
               onChange={setPayoutCurrency}
             />
             <RelationshipField

@@ -46,6 +46,10 @@ def _seed(client):
             lambda: "recipient@example.com",
             lambda: "Recip",
         )
+        AccountRepository().get_or_create_user_account(
+            recipient.id, recipient.base_reference, "ZWL"
+        )
+        db.session.commit()
         return recipient.id
     finally:
         db.close_session(token)

@@ -87,12 +87,18 @@ class BeneficiaryRead(Schema):
     masked_email: str | None = Field(examples=["t•••@gmail.com"])
     masked_mobile_number: str | None = Field(examples=["+2637••••••23"])
     payout_currency: PayoutCurrency
+    payout_currencies: list[PayoutCurrency] = Field(
+        description=(
+            "Payout currencies this person already holds an account for, "
+            "in USD, ZWL, NAD order. The edit form offers only these."
+        )
+    )
     relationship: BeneficiaryRelationship
     created_at: UtcDateTime
 
     @classmethod
     def from_row(cls, row: BeneficiaryRow) -> "BeneficiaryRead":
-        beneficiary, user, country = row
+        beneficiary, user, country = row.beneficiary, row.user, row.country
         return cls(
             beneficiary_id=beneficiary.beneficiary_id,
             linked_user_id=beneficiary.linked_user_id,
@@ -102,6 +108,7 @@ class BeneficiaryRead(Schema):
             masked_email=mask_email(user.email),
             masked_mobile_number=mask_mobile(user.mobile_number),
             payout_currency=beneficiary.payout_currency,
+            payout_currencies=list(row.payout_currencies),
             relationship=beneficiary.relationship,
             created_at=beneficiary.created_at,
         )
@@ -129,10 +136,16 @@ class BeneficiaryLookupResponse(Schema):
     country_name: str | None = Field(description="That country's name.")
     account_currency: str = Field(
         description=(
-            "The looked-up account's currency, to pre-fill the payout "
-            "currency when it is one."
+            "The looked-up account's currency. Pre-fills the payout "
+            "currency when it is one they already hold."
         ),
         examples=["ZWL"],
+    )
+    payout_currencies: list[PayoutCurrency] = Field(
+        description=(
+            "Payout currencies this person already holds an account for, "
+            "in USD, ZWL, NAD order. The add form offers only these."
+        )
     )
 
     @classmethod
@@ -145,4 +158,5 @@ class BeneficiaryLookupResponse(Schema):
             country=user.country,
             country_name=None if lookup.country is None else lookup.country.name,
             account_currency=lookup.account_currency,
+            payout_currencies=list(lookup.payout_currencies),
         )

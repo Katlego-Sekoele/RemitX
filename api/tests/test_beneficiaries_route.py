@@ -77,7 +77,22 @@ def _approved_user_id(
     return user_id
 
 
+def _hold(user_id: uuid.UUID, *currencies: str) -> None:
+    """Give a person payout accounts. Signup only creates ZAR and the token
+    account, and a beneficiary can only be paid in a currency they hold."""
+    token = db.open_session()
+    try:
+        user = db.session.get(User, user_id)
+        repo = AccountRepository()
+        for currency in currencies:
+            repo.get_or_create_user_account(user.id, user.base_reference, currency)
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+
 def _add(client, linked_id: uuid.UUID, payout_currency: str = "ZWL") -> dict:
+    _hold(linked_id, payout_currency)
     response = client.post(
         CREATE_ENDPOINT,
         json={
@@ -121,6 +136,8 @@ def test_lookup_by_fiat_account_reference_succeeds(verified_client):
     assert body["first_name"] == "Lookup"
     assert body["display_name"] == "Lookup"
     assert body["account_currency"] == "ZAR"
+    # A new user holds ZAR and a token account, neither of which is a payout.
+    assert body["payout_currencies"] == []
 
 
 def test_lookup_shows_a_short_verified_name_country_and_currency_only(
@@ -159,6 +176,7 @@ def test_lookup_shows_a_short_verified_name_country_and_currency_only(
         "country": "ZW",
         "country_name": "Zimbabwe",
         "account_currency": "ZWL",
+        "payout_currencies": ["ZWL"],
     }
     # A reference is guessable, so the lookup must not become a directory.
     assert "tendai.moyo" not in response.text
@@ -213,6 +231,7 @@ def test_create_and_list_my_beneficiary(verified_client):
     linked_id = _provisioned_user_id(
         "user_beneficiary_target", "target@example.com", "Target"
     )
+    _hold(linked_id, "ZWL")
 
     response = client.post(
         CREATE_ENDPOINT,
@@ -233,6 +252,7 @@ def test_create_and_list_my_beneficiary(verified_client):
     assert body["country_name"] is None
     assert body["masked_email"] == "t•••@example.com"
     assert body["masked_mobile_number"] is None
+    assert body["payout_currencies"] == ["ZWL"]
 
     listed = client.get(LIST_ENDPOINT)
     assert listed.status_code == 200
@@ -279,6 +299,43 @@ def test_create_rejects_an_invalid_payout_currency(verified_client):
     assert response.status_code == 422
 
 
+def test_create_rejects_a_payout_currency_they_do_not_hold(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id(
+        "user_beneficiary_no_payout", "nopayout@example.com", "NoPayout"
+    )
+
+    response = client.post(
+        CREATE_ENDPOINT,
+        json={
+            "linked_user_id": str(linked_id),
+            "payout_currency": "USD",
+            "relationship": "friend",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "They don't have a payout account yet. Ask for a reference ending in "
+        "-usd, -zwl or -nad."
+    )
+    assert client.get(LIST_ENDPOINT).json() == []
+
+    _hold(linked_id, "ZWL")
+    held = client.post(
+        CREATE_ENDPOINT,
+        json={
+            "linked_user_id": str(linked_id),
+            "payout_currency": "USD",
+            "relationship": "friend",
+        },
+    )
+    assert held.status_code == 400
+    assert held.json()["detail"] == (
+        "They don't have a USD account. They can be paid in ZWL."
+    )
+
+
 def test_create_rejects_an_invalid_relationship(verified_client):
     client, _sender = verified_client
     linked_id = _provisioned_user_id(
@@ -317,6 +374,7 @@ def test_a_beneficiary_only_lists_for_its_owner(verified_client):
     linked_id = _provisioned_user_id(
         "user_beneficiary_owned", "owned@example.com", "Owned"
     )
+    _hold(linked_id, "NAD")
     client.post(
         CREATE_ENDPOINT,
         json={
@@ -447,7 +505,7 @@ def test_two_senders_may_each_add_the_same_person(verified_client):
             CREATE_ENDPOINT,
             json={
                 "linked_user_id": str(linked_id),
-                "payout_currency": "USD",
+                "payout_currency": "ZWL",
                 "relationship": "friend",
             },
         )
@@ -475,6 +533,7 @@ def _as_other_sender(client, sender, clerk_id: str):
 def test_the_owner_can_change_payout_currency_and_relationship(verified_client):
     client, _sender = verified_client
     linked_id = _provisioned_user_id("user_edit_target", "edit@example.com", "Edit")
+    _hold(linked_id, "USD", "NAD")
     created = _add(client, linked_id, payout_currency="ZWL")
 
     response = client.patch(
@@ -512,6 +571,11 @@ def test_an_edit_must_change_something_and_only_what_it_may(verified_client):
     )
     assert client.patch(path, json={"payout_currency": "ZAR"}).status_code == 422
     assert client.patch(path, json={"relationship": "stranger"}).status_code == 422
+    # ZWL is the account they hold. USD is a payout currency they do not.
+    refused = client.patch(path, json={"payout_currency": "USD"})
+    assert refused.status_code == 400
+    assert "USD" in refused.json()["detail"]
+    assert client.get(LIST_ENDPOINT).json()[0]["payout_currency"] == "ZWL"
 
 
 def test_editing_someone_elses_or_an_unknown_beneficiary_is_404(verified_client):

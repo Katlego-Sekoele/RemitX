@@ -14,6 +14,7 @@ from remitx_api.errors.beneficiaries import (
     DuplicateBeneficiaryError,
     MissingContactInfoError,
     OwnAccountReferenceError,
+    PayoutAccountMissingError,
     SettlementReferenceError,
     UnknownAccountReferenceError,
     UnknownBeneficiaryError,
@@ -42,11 +43,13 @@ class InvalidSortOptionError(Exception):
 
 @dataclass(frozen=True)
 class ReferenceLookup:
-    """Who an account reference belongs to, and that account's currency."""
+    """Who an account reference belongs to, that account's currency, and the
+    payout currencies they already hold an account for."""
 
     user: User
     country: Country | None
     account_currency: str
+    payout_currencies: tuple[str, ...]
 
 
 class BeneficiaryController:
@@ -64,7 +67,7 @@ class BeneficiaryController:
 
         Matches on the specific account, not just the person
         (`base_reference` alone), so the account's currency can pre-fill the
-        payout currency.
+        payout currency when they already hold that account.
         """
         reference = account_reference.strip().lower()
         account = self._accounts.get_user_account_by_reference(reference)
@@ -79,7 +82,10 @@ class BeneficiaryController:
             None if user.country is None else db.session.get(Country, user.country)
         )
         return ReferenceLookup(
-            user=user, country=country, account_currency=account.account_currency
+            user=user,
+            country=country,
+            account_currency=account.account_currency,
+            payout_currencies=self._payout_currencies(user.id),
         )
 
     def create(
@@ -106,6 +112,7 @@ class BeneficiaryController:
 
         if self._beneficiaries.exists_for_sender(sender_user_id, linked_user_id):
             raise DuplicateBeneficiaryError(linked_user_id)
+        self._require_payout_account(linked_user_id, payout_currency)
         try:
             beneficiary = self._beneficiaries.save(
                 Beneficiary(
@@ -137,6 +144,7 @@ class BeneficiaryController:
         """
         beneficiary = self._require_own(sender_user_id, beneficiary_id)
         if payout_currency is not None:
+            self._require_payout_account(beneficiary.linked_user_id, payout_currency)
             beneficiary.payout_currency = payout_currency
         if relationship is not None:
             beneficiary.relationship = relationship
@@ -154,6 +162,17 @@ class BeneficiaryController:
         """
         beneficiary = self._require_own(sender_user_id, beneficiary_id)
         self._beneficiaries.delete(beneficiary.beneficiary_id)
+
+    def _payout_currencies(self, user_id: uuid.UUID) -> tuple[str, ...]:
+        return self._accounts.payout_currencies_by_user([user_id]).get(user_id, ())
+
+    def _require_payout_account(self, user_id: uuid.UUID, currency: str) -> None:
+        """A payout can only land in a USD, ZWL or NAD account they already
+        hold. Signup creates ZAR and the token account, neither of which
+        counts."""
+        held = self._payout_currencies(user_id)
+        if currency not in held:
+            raise PayoutAccountMissingError(currency, held)
 
     def _require_own(
         self, sender_user_id: uuid.UUID, beneficiary_id: uuid.UUID

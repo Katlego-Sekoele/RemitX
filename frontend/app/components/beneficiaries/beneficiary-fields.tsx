@@ -1,5 +1,5 @@
 import { BeneficiaryRelationship, PayoutCurrency } from "~/client"
-import { Field, FieldLabel } from "~/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "~/components/ui/field"
 import {
   Select,
   SelectContent,
@@ -8,13 +8,6 @@ import {
   SelectValue,
 } from "~/components/ui/select"
 import { relationshipLabel } from "~/lib/beneficiaries"
-
-// Both option lists come from the generated client, which takes them from
-// the API's enums — never a list written here.
-const PAYOUT_CURRENCY_ITEMS = Object.values(PayoutCurrency).map((value) => ({
-  value,
-  label: value,
-}))
 
 const RELATIONSHIP_ITEMS = Object.values(BeneficiaryRelationship).map(
   (value) => ({ value, label: relationshipLabel(value) })
@@ -30,20 +23,41 @@ export function asPayoutCurrency(
     : null
 }
 
+/** The currencies this person can be paid in: the payout accounts they
+ * already hold. An empty list means they have none yet. */
 export function PayoutCurrencyField({
   id,
   value,
+  options,
   onChange,
 }: {
   id: string
   value: PayoutCurrency | null
+  options: readonly PayoutCurrency[]
   onChange: (value: PayoutCurrency) => void
 }) {
+  if (options.length === 0) {
+    return (
+      <Field>
+        <FieldLabel>Payout currency</FieldLabel>
+        <FieldDescription>
+          They don&apos;t have a payout account yet. Ask for a reference ending
+          in -usd, -zwl or -nad.
+        </FieldDescription>
+      </Field>
+    )
+  }
+
+  const items = options.map((currency) => ({
+    value: currency,
+    label: currency,
+  }))
+
   return (
     <Field>
       <FieldLabel htmlFor={id}>Payout currency</FieldLabel>
       <Select
-        items={PAYOUT_CURRENCY_ITEMS}
+        items={items}
         value={value}
         onValueChange={(next) => {
           if (next) onChange(next as PayoutCurrency)
@@ -53,7 +67,7 @@ export function PayoutCurrencyField({
           <SelectValue placeholder="Choose a currency" />
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false}>
-          {PAYOUT_CURRENCY_ITEMS.map((item) => (
+          {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.label}
             </SelectItem>
