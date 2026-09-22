@@ -131,7 +131,8 @@ class Account(Base):
     )
     # Descriptive label, e.g. "Kraken" or "RemitX SA Bank Account".
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    account_currency: Mapped[str] = mapped_column(Text, nullable=False) # ZAR, USD, ZWL, NAD, uctusd
+    # ZAR, USD, ZWL, NAD, uctusd
+    account_currency: Mapped[str] = mapped_column(Text, nullable=False)
     account_balance: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False, default=Decimal("0")
     )
