@@ -20,7 +20,7 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import remittance_service
 from remitx_api.services.remittance_service import (
     REMITX_TREASURY_WALLET_LABEL,
-    UCTUSD_ISSUER_LABEL,
+    TOKEN_ISSUER_LABEL,
 )
 
 ENDPOINT = "/remittances"
@@ -94,7 +94,7 @@ def _seed(client, sender_id):
                     user_id=None,
                     type=TYPE_EXTERNAL,
                     account_currency=CURRENCY_TOKEN,
-                    label=UCTUSD_ISSUER_LABEL,
+                    label=TOKEN_ISSUER_LABEL,
                 ),
             ]
         )

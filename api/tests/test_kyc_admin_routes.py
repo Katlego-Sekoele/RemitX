@@ -14,8 +14,12 @@ from remitx_api.repositories.kyc_application_repository import (
     KycApplicationRepository,
 )
 from sqlalchemy import select, update
-from tests.kyc_helpers import ID_NUMBER, insert_application, seed_kyc_reference_data
-from tests.kyc_helpers import make_user as make_persisted_user
+from tests.kyc_helpers import (
+    ID_NUMBER,
+    insert_application,
+    make_user as make_persisted_user,
+    seed_kyc_reference_data,
+)
 from tests.rbac_helpers import make_user, rbac_client
 
 NOW = datetime.now(UTC)

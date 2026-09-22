@@ -11,7 +11,11 @@ from remitx_api.models.orm.account import (
     Account,
     create_account_reference,
 )
-from remitx_api.models.orm.transaction import STATUS_PENDING, Transaction
+from remitx_api.models.orm.transaction import (
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+    Transaction,
+)
 from remitx_api.repositories.repository import Repository
 
 
@@ -137,15 +141,21 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         )
 
     def get_available_balance(self, account_id: uuid.UUID) -> Decimal:
-        """Raw balance minus this account's own still-pending outgoing transactions.
-        A quote is only valid if the user has sufficient available balance
-        to cover the entire quote amount.
+        """Raw balance minus this account's own still-in-flight outgoing
+        transactions. A quote is only valid if the user has sufficient
+        available balance to cover the entire quote amount.
+
+        Includes `processing` alongside `pending`: `burn_treasury_tokens`
+        claims a quote's legs into `processing` before its XRPL call
+        resolves, so excluding only `pending` would let that committed
+        amount look spendable again during the burn/confirm window.
         """
         account = self.get_by_id(account_id)
+        # credit_account_id is the source of a leg (money leaving this account).
         pending_outgoing = db.session.scalar(
             select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 Transaction.credit_account_id == account_id,
-                Transaction.status == STATUS_PENDING,
+                Transaction.status.in_((STATUS_PENDING, STATUS_PROCESSING)),
             )
         )
         return account.account_balance - pending_outgoing

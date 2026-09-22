@@ -33,7 +33,7 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import queue_service, quote_service, remittance_service
 from remitx_api.services.remittance_service import (
     REMITX_TREASURY_WALLET_LABEL,
-    UCTUSD_ISSUER_LABEL,
+    TOKEN_ISSUER_LABEL,
 )
 from tests.kyc_helpers import insert_application
 
@@ -112,7 +112,7 @@ def _seed_platform_accounts() -> None:
                 user_id=None,
                 type=TYPE_EXTERNAL,
                 account_currency=CURRENCY_TOKEN,
-                label=UCTUSD_ISSUER_LABEL,
+                label=TOKEN_ISSUER_LABEL,
             ),
         ]
     )
@@ -167,7 +167,7 @@ def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
         recipient.id, CURRENCY_TOKEN
     )
     beneficiary_fiat_account = account_repo.get_user_account(recipient.id, "ZWL")
-    issuer_account = account_repo.get_platform_account_by_label(UCTUSD_ISSUER_LABEL)
+    issuer_account = account_repo.get_platform_account_by_label(TOKEN_ISSUER_LABEL)
     transaction_repo = TransactionRepository()
     touched = {
         leg.tx_id: leg
@@ -239,7 +239,7 @@ def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
     assert payout_leg.type == TYPE_BENEFICIARY_PAYOUT
     assert payout_leg.amount == quote.receiver_amount
     assert payout_leg.currency == quote.receiver_currency
-    assert payout_leg.tx_id == remittance.tx_id
+    assert settlement_leg.tx_id == remittance.tx_id
 
     # No balance moves yet — everything above is still pending.
     assert account_repo.get_by_id(sender_account.account_id).account_balance == (

@@ -136,6 +136,27 @@ class Config:
             "UCTUSD_CURRENCY_CODE_HEX", "5543545553440000000000000000000000000000"
         )
 
+    # The on-chain currency code UCTUSD_CURRENCY_CODE_HEX encodes, plain text.
+    @property
+    def UCTUSD_CURRENCY_CODE(self) -> str:
+        return os.getenv("UCTUSD_CURRENCY_CODE", "UCTUSD")
+
+    # RemitX's own internal ledger currency code (models/orm/account.py's
+    # CURRENCY_TOKEN) — separate from UCTUSD_CURRENCY_CODE above, which
+    # describes the real on-chain code. Kept as its own setting so the two
+    # can vary independently.
+    @property
+    def UCTUSD_TOKEN_NAME(self) -> str:
+        return os.getenv("UCTUSD_TOKEN_NAME", "uctusd")
+
+    # Label of the platform account row representing the issuer (seeded by
+    # scripts/seed_platform_accounts.py, looked up by
+    # services/remittance_service.py) — both read this same env var so the
+    # seeded label and the lookup can't drift apart.
+    @property
+    def UCTUSD_ISSUER_LABEL(self) -> str:
+        return os.getenv("UCTUSD_ISSUER_LABEL", "UCTUSD Issuer (Exchange)")
+
     # exchangerate-api.com key, used by services/exchange_rate_provider.py.
     @property
     def EXCHANGE_RATE_API_KEY(self) -> str:

@@ -8,8 +8,11 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.kyc_decision import KycDecision
 from remitx_api.models.orm.kyc_document import KycDocument
 from remitx_api.models.orm.kyc_lifecycle import KycDocumentStatus, KycStatus
-from tests.kyc_helpers import insert_application, seed_kyc_reference_data
-from tests.kyc_helpers import make_user as make_persisted_user
+from tests.kyc_helpers import (
+    insert_application,
+    make_user as make_persisted_user,
+    seed_kyc_reference_data,
+)
 from tests.rbac_helpers import make_user, rbac_client
 
 # Check digit and 1990-01-01 match — the with_pii helper's number is 13 digits

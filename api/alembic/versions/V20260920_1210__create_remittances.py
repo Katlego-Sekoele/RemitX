@@ -37,18 +37,6 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.Column(
-            "processed_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column(
-            "confirmed_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
         sa.PrimaryKeyConstraint("remittance_id"),
         sa.ForeignKeyConstraint(["quote_id"], ["quotes.quote_id"]),
         sa.ForeignKeyConstraint(["tx_id"], ["transactions.tx_id"]),

@@ -35,8 +35,7 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import User
-from remitx_worker import db as worker_db
-from remitx_worker import tasks
+from remitx_worker import db as worker_db, tasks
 from remitx_worker.tasks import settle_remittance
 from sqlalchemy.orm import sessionmaker
 

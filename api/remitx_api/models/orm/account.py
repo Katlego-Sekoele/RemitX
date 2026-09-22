@@ -31,6 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.clock import utcnow
+from remitx_api.config import Config
 from remitx_api.extensions import Base
 
 TYPE_USER = "USER"
@@ -48,14 +49,12 @@ ACCOUNT_TYPES = (
 )
 
 CURRENCY_ZAR = "ZAR"
-CURRENCY_TOKEN = "uctusd"
+CURRENCY_TOKEN = Config().UCTUSD_TOKEN_NAME
 CURRENCY_USD = "USD"
 CURRENCY_ZWL = "ZWL"
 CURRENCY_NAD = "NAD"
 
-# What a beneficiary may be paid out in (models/orm/beneficiary.py) — never
-# ZAR (the sender's side) or uctusd (the settlement token, not a payout
-# choice), so deliberately not "every currency" above.
+# What a beneficiary may be paid out in.
 PAYOUT_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
 
 # Reference suffix per currency, e.g. "sian1-zar", "sian1-tok".
@@ -132,7 +131,7 @@ class Account(Base):
     )
     # Descriptive label, e.g. "Kraken" or "RemitX SA Bank Account".
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    account_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    account_currency: Mapped[str] = mapped_column(Text, nullable=False) # ZAR, USD, ZWL, NAD, uctusd
     account_balance: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False, default=Decimal("0")
     )

@@ -46,8 +46,7 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import User
-from remitx_worker import db as worker_db
-from remitx_worker import tasks, xrpl_service
+from remitx_worker import db as worker_db, tasks, xrpl_service
 from remitx_worker.tasks import burn_treasury_tokens, confirm_treasury_burn
 from sqlalchemy.orm import sessionmaker
 
@@ -72,7 +71,7 @@ def enqueued_confirm(monkeypatch):
     monkeypatch.setattr(
         tasks.queue_service,
         "enqueue_confirm_treasury_burn",
-        lambda quote_id, tx_hash: calls.append((quote_id, tx_hash)),
+        lambda quote_id, tx_hash, error=None: calls.append((quote_id, tx_hash, error)),
     )
     return calls
 
@@ -318,7 +317,7 @@ def _claim_burn_leg(session_factory, burn_tx_id) -> None:
 # --- burn_treasury_tokens: claim + submit, hands off the rest ---
 
 
-def test_burn_claims_only_the_burn_leg_and_enqueues_confirm(
+def test_burn_claims_the_whole_group_and_enqueues_confirm(
     session_factory, pending_remittance, enqueued_confirm, monkeypatch
 ):
     monkeypatch.setattr(xrpl_service, "burn_tokens", lambda amount: "ABCDEF0123")
@@ -326,14 +325,20 @@ def test_burn_claims_only_the_burn_leg_and_enqueues_confirm(
     result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
 
     assert result == "burned"
-    assert enqueued_confirm == [(str(pending_remittance["quote_id"]), "ABCDEF0123")]
+    assert enqueued_confirm == [
+        (str(pending_remittance["quote_id"]), "ABCDEF0123", None)
+    ]
 
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.status == STATUS_PROCESSING
     assert burn_leg.xrpl_tx_hash is None
-    # Every other leg is untouched — confirm_treasury_burn's job, not this one's.
+    assert burn_leg.processed_at is not None
+    # Every leg in the group is claimed together, not just the burn leg —
+    # confirming and crediting is still confirm_treasury_burn's job, not
+    # this one's, but every leg's processed_at should now reflect that
+    # settlement started here.
     other_statuses = _leg_statuses(session_factory, pending_remittance["quote_id"])
-    assert other_statuses == {STATUS_PENDING, STATUS_PROCESSING}
+    assert other_statuses == {STATUS_PROCESSING}
     assert _balance(session_factory, pending_remittance["fee_revenue"]) == Decimal("0")
 
 
@@ -368,7 +373,13 @@ def test_burn_failure_enqueues_confirm_with_no_hash(
     result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
 
     assert result == "burn_failed"
-    assert enqueued_confirm == [(str(pending_remittance["quote_id"]), None)]
+    assert enqueued_confirm == [
+        (
+            str(pending_remittance["quote_id"]),
+            None,
+            "burn Payment failed: tecPATH_DRY",
+        )
+    ]
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.status == STATUS_PROCESSING
 

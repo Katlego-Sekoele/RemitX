@@ -78,8 +78,10 @@ COUNTRY_BANK_ACCOUNTS = (
 TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
 # The issuing address (ECO5040W clarifications) — the same account plays
 # both roles: source of the one-time pre-funding, destination of every
-# future withdrawal burn.
-ISSUER_LABEL = "UCTUSD Issuer (Exchange)"
+# future withdrawal burn. Sourced from Config.UCTUSD_ISSUER_LABEL so this
+# seeded label can't drift from the one services/remittance_service.py
+# looks up.
+ISSUER_LABEL = Config().UCTUSD_ISSUER_LABEL
 
 PLATFORM_ACCOUNTS = (
     *(

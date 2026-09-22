@@ -19,7 +19,7 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import remittance_service
 from remitx_api.services.remittance_service import (
     REMITX_TREASURY_WALLET_LABEL,
-    UCTUSD_ISSUER_LABEL,
+    TOKEN_ISSUER_LABEL,
 )
 
 ACCOUNTS = "/accounts"
@@ -142,7 +142,7 @@ def test_a_remittance_shows_up_correctly_on_both_sides(verified_client, monkeypa
                     user_id=None,
                     type=TYPE_EXTERNAL,
                     account_currency=CURRENCY_TOKEN,
-                    label=UCTUSD_ISSUER_LABEL,
+                    label=TOKEN_ISSUER_LABEL,
                 ),
             ]
         )

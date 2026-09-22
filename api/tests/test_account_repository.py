@@ -5,6 +5,7 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
+    STATUS_PROCESSING,
     TYPE_REMITTANCE,
     Transaction,
 )
@@ -95,3 +96,39 @@ def test_available_balance_excludes_own_pending_outgoing_legs(app_context):
     assert account_repo.get_by_id(sender_zar.account_id).account_balance == Decimal(
         "1000"
     )
+
+
+def test_available_balance_excludes_own_processing_outgoing_legs(app_context):
+    """`burn_treasury_tokens` claims a quote's legs into `processing` before
+    its XRPL call resolves (api/remitx_worker/tasks.py), before the group is
+    confirmed or failed. If `get_available_balance` stopped excluding a leg
+    the moment it left `pending`, that committed amount would look spendable
+    again for the whole burn/confirm window.
+    """
+    account_repo = AccountRepository()
+    sender = UserController().ensure_provisioned(
+        "user_avail_processing", lambda: "avail_processing@example.com", lambda: "Avail"
+    )
+    sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
+    account_repo.increase_balance(sender_zar.account_id, Decimal("1000"))
+
+    other = UserController().ensure_provisioned(
+        "user_avail_processing_other",
+        lambda: "other_processing@example.com",
+        lambda: "Other",
+    )
+    other_zar = account_repo.get_user_account(other.id, CURRENCY_ZAR)
+
+    db.session.add(
+        Transaction(
+            type=TYPE_REMITTANCE,
+            credit_account_id=sender_zar.account_id,
+            debit_account_id=other_zar.account_id,
+            amount=Decimal("300"),
+            currency=CURRENCY_ZAR,
+            status=STATUS_PROCESSING,
+        )
+    )
+    db.session.commit()
+
+    assert account_repo.get_available_balance(sender_zar.account_id) == Decimal("700")

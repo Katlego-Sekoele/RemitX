@@ -16,6 +16,7 @@ keeps the standalone setup script and the app packages uncoupled.
 """
 
 from decimal import Decimal
+from urllib import response
 
 from cryptography.fernet import Fernet
 from remitx_api.config import Config
@@ -27,6 +28,7 @@ from xrpl.wallet import Wallet
 
 
 def _load_treasury_wallet() -> Wallet:
+    """Decrypt the treasury wallet's seed and return a `Wallet` object."""
     config = Config()
     encrypted_seed = config.PLATFORM_WALLET_SEED_ENCRYPTED
     encryption_key = config.XRPL_ENCRYPTION_KEY
@@ -39,26 +41,28 @@ def _load_treasury_wallet() -> Wallet:
 
 
 def burn_tokens(amount: Decimal) -> str:
-    """Send `amount` uctusd from the treasury wallet back to the issuer.
+    """Send `amount` of the platform token from the treasury wallet back to the issuer.
 
     Returns the validated transaction's hash. Raises `RuntimeError` if the
     ledger reports anything other than `tesSUCCESS`.
     """
     config = Config()
-    client = JsonRpcClient(config.XRPL_TESTNET_URL)
-    wallet = _load_treasury_wallet()
+    client = JsonRpcClient(config.XRPL_TESTNET_URL) # Initialize a JsonRpcClient with the XRPL testnet URL from the config
+    wallet = _load_treasury_wallet() # Call the _load_treasury_wallet function to get the treasury wallet object
 
     payment = Payment(
         account=wallet.address,
-        destination=config.UCTUSD_ISSUER,
+        destination=config.UCTUSD_ISSUER, # get the issuer address from the config
         amount=IssuedCurrencyAmount(
             currency=config.UCTUSD_CURRENCY_CODE_HEX,
             issuer=config.UCTUSD_ISSUER,
             value=str(amount),
         ),
-    )
+    ) # Create a Payment transaction to send the specified amount of the platform token from the treasury wallet to the issuer.
+    # Submit the payment transaction to the XRPL and wait for it to be validated.
     response = submit_and_wait(payment, client, wallet)
     result = response.result.get("meta", {}).get("TransactionResult")
-    if result != "tesSUCCESS":
+    
+    if result != "tesSUCCESS": 
         raise RuntimeError(f"burn Payment failed: {result}")
-    return response.result["hash"]
+    return response.result["hash"] # Return the hash of the validated transaction.

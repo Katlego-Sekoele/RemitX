@@ -87,7 +87,7 @@ class Transaction(Base):
     ) # groups legs of a remittance together
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
-    )
+    )# Set to `utcnow()` on insert, never updated.
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

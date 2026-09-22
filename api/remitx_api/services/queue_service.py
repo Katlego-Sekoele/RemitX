@@ -112,8 +112,7 @@ def enqueue_integration_message(message_id: str) -> None:
 
 def enqueue_settle_remittance(quote_id: str) -> None:
     """Settlement only ever needs `quote_id` (the group-update key everything
-    else is guarded on) — not a remittance id, which would just cost the
-    worker an extra lookup back to this same value.
+    else is guarded on).
     """
     producer.send_task(
         SETTLE_REMITTANCE,
@@ -124,7 +123,7 @@ def enqueue_settle_remittance(quote_id: str) -> None:
 
 
 def enqueue_burn_treasury_tokens(quote_id: str) -> None:
-    """Enqueued by `settle_remittance` once its own five bookkeeping legs
+    """Enqueued by `settle_remittance` once its own bookkeeping legs
     confirm — submits the quote's `burn` leg's XRPL `Payment` and hands the
     result to `confirm_treasury_burn`.
     """
@@ -136,15 +135,18 @@ def enqueue_burn_treasury_tokens(quote_id: str) -> None:
     wake_worker()
 
 
-def enqueue_confirm_treasury_burn(quote_id: str, tx_hash: str | None) -> None:
+def enqueue_confirm_treasury_burn(
+    quote_id: str, tx_hash: str | None, error: str | None = None
+) -> None:
     """Enqueued by `burn_treasury_tokens` once the XRPL call has resolved
-    (success or failure) — a separate, network-free task so the DB confirm
-    + credit step can be retried on its own without resubmitting the burn.
-    `tx_hash` is `None` for a failed burn.
+    (success or failure).
+    
+    `tx_hash` is `None` for a failed burn, in which case `error` carries the
+    XRPL exception's message so `confirm_treasury_burn` can log it.
     """
     producer.send_task(
         CONFIRM_TREASURY_BURN,
-        args=[quote_id, tx_hash],
+        args=[quote_id, tx_hash, error],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()
