@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 from remitx_api.config import Config
@@ -18,6 +18,13 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import exchange_rate_service, quote_service
 from remitx_api.services.exchange_rate_provider import RateFetchError
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
+
+
+def _round_amount(value: Decimal) -> Decimal:
+    """Mirrors quote_service.AMOUNT_QUANTUM/_round_amount — every monetary
+    amount (not rate) is 2dp now, see Transaction_Flow_Context.md Open
+    Question #10."""
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _approve(user):
@@ -88,14 +95,12 @@ def test_create_quote_computes_every_field(app_context):
     # quote_service._token_rate), quantized before use so token_amount is
     # computed by multiplying, not dividing.
     expected_rate = (Decimal("1") / Decimal("18.50")).quantize(Decimal("0.00000001"))
-    expected_token_amount = (net * expected_rate).quantize(Decimal("0.00000001"))
+    expected_token_amount = _round_amount(net * expected_rate)
     # receiver_amount/payout_fee/estimate are in the beneficiary's payout
     # currency (ZWL), converted directly from `net` via fiat_exchange_rate —
     # not routed through the token/USD leg.
-    expected_receiver_amount = (net * Decimal("16.22")).quantize(Decimal("0.00000001"))
-    expected_payout_fee = (Decimal("0.0075") * expected_receiver_amount).quantize(
-        Decimal("0.00000001")
-    )
+    expected_receiver_amount = _round_amount(net * Decimal("16.22"))
+    expected_payout_fee = _round_amount(Decimal("0.0075") * expected_receiver_amount)
     expected_payout_estimate = expected_receiver_amount - expected_payout_fee
 
     assert quote.sender_amount == Decimal("1000")
@@ -161,18 +166,64 @@ def test_fixed_fee_converts_into_a_non_zar_sender_currency(app_context):
     # Token units per 1 ZAR (see quote_service._token_rate).
     zar_rate = (Decimal("1") / Decimal("18.50")).quantize(Decimal("0.00000001"))
     fiat_to_token_exchange_rate = Decimal("1")  # USD short-circuits to 1
-    expected_fixed_fee = (
+    expected_fixed_fee = _round_amount(
         Decimal("15") * zar_rate / fiat_to_token_exchange_rate
-    ).quantize(Decimal("0.00000001"))
-    expected_fee = expected_fixed_fee + Decimal("0.005") * Decimal("100")
-    margin = Decimal("0.01") * Decimal("100")
-    net = Decimal("100") - expected_fee - margin
-    expected_token_amount = (net * fiat_to_token_exchange_rate).quantize(
-        Decimal("0.00000001")
     )
+    expected_fee = _round_amount(expected_fixed_fee + Decimal("0.005") * Decimal("100"))
+    margin = _round_amount(Decimal("0.01") * Decimal("100"))
+    net = Decimal("100") - expected_fee - margin
+    expected_token_amount = _round_amount(net * fiat_to_token_exchange_rate)
 
     assert pricing.sender_transaction_fee == expected_fee
     assert pricing.token_amount == expected_token_amount
+
+
+def test_fee_and_margin_round_half_up_at_an_exact_cent_boundary(app_context):
+    """Regression for the original bug (Transaction_Flow_Context.md Open
+    Question #10): fee/margin weren't quantized at all before, so this
+    would have carried 4 decimal places. It also pins the rounding *mode* —
+    212.50 makes exchange_rate_margin land on exactly 2.125, where
+    ROUND_HALF_UP (2.13) and Python's Decimal default, ROUND_HALF_EVEN
+    (2.12), disagree — so this fails if `_round_amount` is ever changed to
+    a bare `.quantize()` with no explicit rounding mode.
+    """
+    _store_rate("18.50")  # USD -> ZAR, needed for token math
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")  # direct leg
+
+    pricing = quote_service.preview_quote(Decimal("212.50"), CURRENCY_ZAR, CURRENCY_ZAR)
+
+    # fee = 15 + 0.005*212.50 = 16.0625 -> 16.06 (not a tie, same either mode)
+    assert pricing.sender_transaction_fee == Decimal("16.06")
+    # margin = 0.01*212.50 = 2.125 -> 2.13 under ROUND_HALF_UP
+    assert pricing.exchange_rate_margin == Decimal("2.13")
+
+
+def test_sender_amount_is_rounded_to_two_decimals_on_entry(app_context):
+    """A caller-supplied sender_amount with more than 2 decimal places must
+    be rounded before it's stored or used for fee/margin math — otherwise
+    the stored Quote.sender_amount itself would still carry the extra
+    precision Open Question #10 was about, even with fee/margin fixed."""
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    account_repo = AccountRepository()
+    sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
+    account_repo.increase_balance(sender_zar.account_id, Decimal("1000"))
+
+    quote = quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("100.456"),  # rounds to 100.46
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+
+    assert quote.sender_amount == Decimal("100.46")
+    # fee/margin are computed off the *rounded* amount, not the raw input.
+    expected_fee = _round_amount(Decimal("15") + Decimal("0.005") * Decimal("100.46"))
+    expected_margin = _round_amount(Decimal("0.01") * Decimal("100.46"))
+    assert quote.sender_transaction_fee == expected_fee
+    assert quote.exchange_rate_margin == expected_margin
 
 
 def test_insufficient_available_balance_is_rejected_even_with_raw_balance_to_spare(
