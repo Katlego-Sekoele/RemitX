@@ -118,6 +118,8 @@ const { data } = await sdk.kyc.onboarding.getApplication({ throwOnError: true })
   and an API test fails if it is stale), then `npm run typecheck`.
 - Query keys match partially: `api.admin.kyc.applications.listApplications().queryKey`
   with no options invalidates every filter's cached queue.
+- An API enum is a value as well as a type: `Object.values(PayoutCurrency)`
+  lists its options, so a select never hand-writes them.
 - Every failure rejects with `ApiError` (`message`, `status`, `body`) from
   [app/lib/api.ts](app/lib/api.ts). The Clerk token and base URL are set in
   [app/lib/api-client-config.ts](app/lib/api-client-config.ts).
