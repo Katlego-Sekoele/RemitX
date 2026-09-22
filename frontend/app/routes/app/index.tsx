@@ -1,6 +1,8 @@
+import { PaperPlaneTiltIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router"
 
+import { BalanceSummary } from "~/components/accounts/balance-summary"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { Button } from "~/components/ui/button"
 import {
@@ -10,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
+import { SEND_HREF } from "~/lib/accounts"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import type { Route } from "./+types/index"
 import { PageHeader, PageHeaderTitle } from "~/components/ui/page-header"
@@ -28,9 +31,15 @@ export default function AppHome() {
   return (
     <AppPageFrame module={ROUTE_MODULE}>
       <div className="flex flex-col gap-6">
-        <PageHeader>
-          <PageHeaderTitle>Account</PageHeaderTitle>
-        </PageHeader>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <PageHeader>
+            <PageHeaderTitle>Overview</PageHeaderTitle>
+          </PageHeader>
+          <Button nativeButton={false} render={<Link to={SEND_HREF} />}>
+            <PaperPlaneTiltIcon data-icon="inline-start" />
+            Send money
+          </Button>
+        </div>
         {!verified && onboarding.data ? (
           <Card>
             <CardHeader>
@@ -49,6 +58,7 @@ export default function AppHome() {
             </CardContent>
           </Card>
         ) : null}
+        <BalanceSummary />
         {verified ? (
           <Card>
             <CardHeader>
