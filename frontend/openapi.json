@@ -14,14 +14,34 @@
             "title": "Available Balance",
             "type": "string"
           },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fiat",
+              "settlement"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
             "type": "string"
           }
         },
         "required": [
           "account_id",
           "currency",
+          "reference",
+          "kind",
+          "balance",
           "available_balance"
         ],
         "title": "AccountRead",
@@ -46,6 +66,17 @@
             ],
             "title": "Confirmed At"
           },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -54,9 +85,25 @@
             "title": "Currency",
             "type": "string"
           },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
           "direction": {
             "title": "Direction",
             "type": "string"
+          },
+          "remittance_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remittance Id"
           },
           "status": {
             "title": "Status",
@@ -70,6 +117,17 @@
           "type": {
             "title": "Type",
             "type": "string"
+          },
+          "xrpl_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xrpl Tx Hash"
           }
         },
         "required": [
@@ -80,7 +138,11 @@
           "currency",
           "status",
           "created_at",
-          "confirmed_at"
+          "confirmed_at",
+          "description",
+          "counterparty_name",
+          "remittance_id",
+          "xrpl_tx_hash"
         ],
         "title": "AccountTransactionRead",
         "type": "object"
@@ -4340,7 +4402,7 @@
   "paths": {
     "/accounts": {
       "get": {
-        "description": "Every currency account the caller holds (ZAR and uctusd, today, from\nsignup), each with its own available balance.",
+        "description": "Every currency account the caller holds, each with its reference,\nledger balance and available balance. ZAR comes first, then any other\nfiat currency alphabetically, then the settlement (uctusd) wallet.",
         "operationId": "get_accounts",
         "responses": {
           "200": {
@@ -4381,7 +4443,7 @@
     },
     "/accounts-history": {
       "get": {
-        "description": "Incoming and outgoing legs for one of the caller's own accounts,\nnewest first \u2014 status and date included.",
+        "description": "Incoming and outgoing legs for one of the caller's own accounts,\nnewest first, one page at a time. Each carries a plain-language\ndescription from the caller's side, and a transfer's legs also carry the\nother customer's name, the remittance id and, once confirmed, the XRPL\nTestnet burn hash. Another user's account answers 400, the same as an\nunknown one.",
         "operationId": "get_accounts_history",
         "parameters": [
           {
@@ -4392,6 +4454,39 @@
               "format": "uuid",
               "title": "Account Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Page size. A full page means there may be more.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Page size. A full page means there may be more.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only legs created before this. Pass the last row's `created_at` to get the next page.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only legs created before this. Pass the last row's `created_at` to get the next page.",
+              "title": "Before"
             }
           }
         ],

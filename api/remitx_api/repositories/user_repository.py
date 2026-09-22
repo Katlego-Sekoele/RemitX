@@ -24,6 +24,13 @@ class UserRepository(Repository[User, uuid.UUID]):
             raise UnknownUserError(user_id)
         return user
 
+    def get_many(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, User]:
+        """Users by id, keyed by id."""
+        if not user_ids:
+            return {}
+        users = db.session.scalars(select(User).where(User.id.in_(user_ids))).all()
+        return {user.id: user for user in users}
+
     def get_by_clerk_id(self, clerk_user_id: str) -> User | None:
         return db.session.scalars(
             select(User).where(User.clerk_user_id == clerk_user_id)
