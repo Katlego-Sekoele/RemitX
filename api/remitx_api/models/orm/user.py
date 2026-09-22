@@ -41,6 +41,18 @@ def reference_base(first_name: str | None) -> str:
     return (cleaned[:8] or "user").lower()
 
 
+def short_display_name(first_name: str | None, last_name: str | None) -> str | None:
+    """How one customer is named to another in history and receipts:
+    "Tendai M.", or just "Tendai" with no last name on file. None when there
+    is no first name either, so callers can fall back to neutral wording.
+    """
+    first = (first_name or "").strip()
+    if not first:
+        return None
+    last = (last_name or "").strip()
+    return f"{first} {last[0].upper()}." if last else first
+
+
 class User(Base):
     __tablename__ = "users"
 

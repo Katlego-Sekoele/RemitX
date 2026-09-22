@@ -7,6 +7,7 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_PENDING,
+    TYPE_TOKEN_BURN,
     Transaction,
 )
 from remitx_api.repositories.repository import Repository
@@ -45,12 +46,22 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
             .order_by(Transaction.created_at)
         ).all()
 
-    def list_account_transactions(self, account_id: uuid.UUID) -> list[Transaction]:
-        """Every leg touching this account, either side, newest first — an
+    def list_account_transactions(
+        self,
+        account_id: uuid.UUID,
+        limit: int | None = None,
+        before: datetime | None = None,
+    ) -> list[Transaction]:
+        """Legs touching this account, either side, newest first — an
         account's transaction history. `credit`=source, `debit`=destination
         (models/orm/transaction.py), so an account can appear on either side
-        depending on the leg."""
-        return db.session.scalars(
+        depending on the leg.
+
+        `limit` caps the page; `before` is a cursor that keeps only legs
+        created strictly earlier, so the next page starts from the last
+        row's `created_at`.
+        """
+        query = (
             select(Transaction)
             .where(
                 or_(
@@ -58,8 +69,29 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
                     Transaction.debit_account_id == account_id,
                 )
             )
-            .order_by(Transaction.created_at.desc())
+            .order_by(Transaction.created_at.desc(), Transaction.tx_id.desc())
+        )
+        if before is not None:
+            query = query.where(Transaction.created_at < before)
+        if limit is not None:
+            query = query.limit(limit)
+        return db.session.scalars(query).all()
+
+    def get_burn_hashes(self, quote_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Each quote's confirmed on-chain burn hash, for the quotes that have
+        one. The hash lives only on the `token_burn` leg
+        (remitx_worker.tasks.confirm_treasury_burn)."""
+        if not quote_ids:
+            return {}
+        rows = db.session.execute(
+            select(Transaction.quote_id, Transaction.xrpl_tx_hash).where(
+                Transaction.quote_id.in_(quote_ids),
+                Transaction.type == TYPE_TOKEN_BURN,
+                Transaction.status == STATUS_CONFIRMED,
+                Transaction.xrpl_tx_hash.is_not(None),
+            )
         ).all()
+        return {quote_id: tx_hash for quote_id, tx_hash in rows}
 
     def confirm_pending_deposit_transaction(
         self,
