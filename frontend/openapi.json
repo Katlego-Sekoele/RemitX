@@ -7773,7 +7773,7 @@
     },
     "/remittances": {
       "post": {
-        "description": "Turns an active quote into a send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {

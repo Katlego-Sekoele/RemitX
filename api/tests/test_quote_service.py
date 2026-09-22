@@ -330,6 +330,7 @@ def test_beneficiary_not_owned_by_caller_is_rejected(app_context):
 
 def test_quote_expires_fifteen_minutes_from_now(app_context):
     _store_rate()
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
     sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     account_repo = AccountRepository()
     sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)

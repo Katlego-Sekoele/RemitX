@@ -96,4 +96,6 @@ class Transaction(Base):
     )
     # Set only on a `burn` leg once its Payment(treasury -> issuer) validates
     # on the XRPL testnet
-    xrpl_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
+    xrpl_tx_hash: Mapped[str | None] = mapped_column(
+        Text, nullable=True, unique=True, index=True
+    )

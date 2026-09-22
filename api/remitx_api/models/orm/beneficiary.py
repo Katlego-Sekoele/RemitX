@@ -15,7 +15,7 @@ beneficiary.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -71,7 +71,7 @@ class Beneficiary(Base):
     )
     # The sender who added this contact.
     sender_user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=False
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
     )
     # The registered platform user this contact resolves to.
     linked_user_id: Mapped[uuid.UUID] = mapped_column(
@@ -81,5 +81,8 @@ class Beneficiary(Base):
     payout_currency: Mapped[str] = mapped_column(Text, nullable=False)
     relationship: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=text("now()"),
     )

@@ -42,6 +42,8 @@ class QuoteRepository(Repository[Quote, uuid.UUID]):
                 Quote.expires_at > now,
             )
             .values(status=STATUS_USED)
-            .execution_options(synchronize_session=False) # We don't have the Quote object in memory, so don't try to update it.
+            .execution_options(
+                synchronize_session=False
+            )  # We don't have the Quote object in memory, so don't try to update it.
         )
         return result.rowcount == 1  #  Returns True iff a row changed
