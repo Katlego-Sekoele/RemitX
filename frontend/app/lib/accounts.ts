@@ -22,6 +22,14 @@ export function accountTitle(account: AccountRead) {
     : currencyName(account.currency)
 }
 
+/** Sidebar label. Shorter than `accountTitle` so the settlement wallet fits
+ * on one line; the testnet qualifier stays on the page. */
+export function accountNavLabel(account: AccountRead) {
+  return account.kind === "settlement"
+    ? "RLUSD wallet"
+    : currencyName(account.currency)
+}
+
 /**
  * Demo bank details for Add money. Nothing is ever paid into these: deposits
  * reach a balance only when staff upload a statement on

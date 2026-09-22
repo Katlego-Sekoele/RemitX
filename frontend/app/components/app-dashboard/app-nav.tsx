@@ -2,7 +2,7 @@ import * as PhosphorIcons from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router"
 
-import { api } from "~/client"
+import { api, type AccountRead } from "~/client"
 import { Badge } from "~/components/ui/badge"
 import {
   SidebarGroup,
@@ -15,8 +15,14 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "~/components/ui/sidebar"
+import { accountNavLabel } from "~/lib/accounts"
 import { isKycVerified } from "~/lib/kyc-onboarding"
-import { type AppSubNavItem, APP_ROUTE_INDEX } from "~/routes/app/app.routes"
+import type { PhosphorIconName } from "~/lib/phosphor-icon-name"
+import {
+  type AppRouteIndex,
+  type AppSubNavItem,
+  APP_ROUTE_INDEX,
+} from "~/routes/app/app.routes"
 
 function matches(pathname: string, href: string): boolean {
   if (href === "/app") return pathname === "/app"
@@ -50,6 +56,7 @@ function AttentionBadge({ className }: { className?: string }) {
 export function AppNav() {
   const { pathname } = useLocation()
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
+  const accounts = useQuery(api.accounts.getAccounts())
   // Until the standing loads, assume nothing needs attention.
   const kycIncomplete =
     Boolean(onboarding.data) && !isKycVerified(onboarding.data?.standing.status)
@@ -62,6 +69,7 @@ export function AppNav() {
           const href = hrefForPath(item.route.path)
           const Icon = item.icon ? PhosphorIcons[item.icon] : undefined
           const showBadge = Boolean(item.kycAttention && kycIncomplete)
+          const children = navChildren(item, accounts.data)
 
           return (
             <SidebarMenuItem key={href}>
@@ -77,10 +85,10 @@ export function AppNav() {
                 {Icon ? <Icon /> : null}
                 <span>{item.label}</span>
               </SidebarMenuButton>
-              {showBadge && !item.children ? <AttentionBadge /> : null}
-              {item.children ? (
+              {showBadge && !children ? <AttentionBadge /> : null}
+              {children ? (
                 <SidebarMenuSub>
-                  {item.children.map((child) => {
+                  {children.map((child) => {
                     const ChildIcon = child.icon
                       ? PhosphorIcons[child.icon]
                       : undefined
@@ -107,4 +115,23 @@ export function AppNav() {
       </SidebarMenu>
     </SidebarGroup>
   )
+}
+
+function navChildren(
+  item: AppRouteIndex,
+  accounts: AccountRead[] | undefined
+): readonly AppSubNavItem[] | undefined {
+  if (item.children) return item.children
+  // Profile's children are fixed sections. Accounts lists each currency
+  // account this person holds, and each one opens that account's history.
+  if (item.route.path !== "app/accounts" || !accounts?.length) return undefined
+  return accounts.map((account) => ({
+    path: `app/accounts/${account.account_id}`,
+    label: accountNavLabel(account),
+    icon: navIcon(account),
+  }))
+}
+
+function navIcon(account: AccountRead): PhosphorIconName {
+  return account.kind === "settlement" ? "CoinsIcon" : "BankIcon"
 }
