@@ -16,6 +16,7 @@ from remitx_api.errors.beneficiaries import (
     OwnAccountReferenceError,
     SettlementReferenceError,
     UnknownAccountReferenceError,
+    UnknownBeneficiaryError,
     UnknownLinkedUserError,
 )
 from remitx_api.extensions import db
@@ -120,6 +121,47 @@ class BeneficiaryController:
         return self._beneficiaries.get_sender_beneficiary(
             sender_user_id, beneficiary.beneficiary_id
         )
+
+    def update(
+        self,
+        sender_user_id: uuid.UUID,
+        beneficiary_id: uuid.UUID,
+        *,
+        payout_currency: str | None = None,
+        relationship: str | None = None,
+    ) -> BeneficiaryRow:
+        """Change a beneficiary's payout currency or relationship.
+
+        The linked person can't change: a different person is a different
+        beneficiary (remove, then add).
+        """
+        beneficiary = self._require_own(sender_user_id, beneficiary_id)
+        if payout_currency is not None:
+            beneficiary.payout_currency = payout_currency
+        if relationship is not None:
+            beneficiary.relationship = relationship
+        self._beneficiaries.save(beneficiary)
+        return self._beneficiaries.get_sender_beneficiary(
+            sender_user_id, beneficiary_id
+        )
+
+    def delete(self, sender_user_id: uuid.UUID, beneficiary_id: uuid.UUID) -> None:
+        """Remove a beneficiary for good.
+
+        A hard delete is safe: quotes and remittances point at the
+        recipient's user id, never at this row, so past transfers keep their
+        recipient and a quote already issued still confirms.
+        """
+        beneficiary = self._require_own(sender_user_id, beneficiary_id)
+        self._beneficiaries.delete(beneficiary.beneficiary_id)
+
+    def _require_own(
+        self, sender_user_id: uuid.UUID, beneficiary_id: uuid.UUID
+    ) -> Beneficiary:
+        row = self._beneficiaries.get_sender_beneficiary(sender_user_id, beneficiary_id)
+        if row is None:
+            raise UnknownBeneficiaryError(beneficiary_id)
+        return row.beneficiary
 
     def list_beneficiaries(
         self, sender_user_id: uuid.UUID, sort: str = SORT_NEWEST

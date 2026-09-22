@@ -13,7 +13,7 @@ the resolved User's own profile, not anything in this request.
 
 import uuid
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from remitx_api.controllers.beneficiary_controller import ReferenceLookup
 from remitx_api.models.orm.account import PayoutCurrency
@@ -43,6 +43,22 @@ class BeneficiaryCreateRequest(Schema):
     linked_user_id: uuid.UUID
     payout_currency: PayoutCurrency
     relationship: BeneficiaryRelationship
+
+
+class BeneficiaryUpdateRequest(Schema):
+    """Change how a beneficiary is paid, or how the sender knows them. The
+    person can't change: a different person is a different beneficiary."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payout_currency: PayoutCurrency | None = None
+    relationship: BeneficiaryRelationship | None = None
+
+    @model_validator(mode="after")
+    def _changes_something(self) -> "BeneficiaryUpdateRequest":
+        if self.payout_currency is None and self.relationship is None:
+            raise ValueError("Give a payout_currency, a relationship, or both")
+        return self
 
 
 class BeneficiaryRead(Schema):

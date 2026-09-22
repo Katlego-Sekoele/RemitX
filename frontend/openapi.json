@@ -397,6 +397,34 @@
         "title": "BeneficiaryRelationship",
         "type": "string"
       },
+      "BeneficiaryUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Change how a beneficiary is paid, or how the sender knows them. The\nperson can't change: a different person is a different beneficiary.",
+        "properties": {
+          "payout_currency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoutCurrency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relationship": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BeneficiaryRelationship"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "BeneficiaryUpdateRequest",
+        "type": "object"
+      },
       "DepositRow": {
         "description": "One bank-statement line, as parsed client-side from the uploaded CSV.",
         "properties": {
@@ -6593,6 +6621,145 @@
           }
         ],
         "summary": "Look up who an account reference belongs to",
+        "tags": [
+          "beneficiaries"
+        ]
+      }
+    },
+    "/beneficiaries/{beneficiary_id}": {
+      "delete": {
+        "description": "Remove one of the caller's beneficiaries for good. Past transfers keep\ntheir recipient: they point at the person, not this entry.\n\nSomeone else's beneficiary answers 404, the same as an unknown id.",
+        "operationId": "delete_beneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "beneficiary_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Beneficiary Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Remove a beneficiary",
+        "tags": [
+          "beneficiaries"
+        ]
+      },
+      "patch": {
+        "description": "Change one of the caller's beneficiaries' payout currency or\nrelationship, or both. The person can't be changed: a different person is\na different beneficiary (remove, then add).\n\nSomeone else's beneficiary answers 404, the same as an unknown id.",
+        "operationId": "update_beneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "beneficiary_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Beneficiary Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeneficiaryUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Edit a beneficiary",
         "tags": [
           "beneficiaries"
         ]

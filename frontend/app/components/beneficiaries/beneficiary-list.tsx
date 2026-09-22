@@ -1,10 +1,15 @@
 import {
   DotsThreeVerticalIcon,
   PaperPlaneTiltIcon,
+  PencilSimpleIcon,
+  TrashIcon,
 } from "@phosphor-icons/react"
+import { useState } from "react"
 import { Link } from "react-router"
 
 import type { BeneficiaryRead } from "~/client"
+import { EditBeneficiaryDialog } from "~/components/beneficiaries/edit-beneficiary-dialog"
+import { RemoveBeneficiaryDialog } from "~/components/beneficiaries/remove-beneficiary-dialog"
 import { Avatar, AvatarFallback } from "~/components/ui/avatar"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
@@ -12,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu"
 import {
@@ -84,32 +90,60 @@ function BeneficiaryRowMenu({
   beneficiary: BeneficiaryRead
   name: string
 }) {
+  // The dialogs live outside the menu, so closing the menu on select doesn't
+  // unmount them.
+  const [dialog, setDialog] = useState<"edit" | "remove" | null>(null)
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Actions for ${name}`}
-          />
-        }
-      >
-        <DotsThreeVerticalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
           render={
-            <Link
-              to={`/app/send?beneficiary=${encodeURIComponent(beneficiary.beneficiary_id)}`}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Actions for ${name}`}
             />
           }
         >
-          <PaperPlaneTiltIcon />
-          Send money
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DotsThreeVerticalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            render={
+              <Link
+                to={`/app/send?beneficiary=${encodeURIComponent(beneficiary.beneficiary_id)}`}
+              />
+            }
+          >
+            <PaperPlaneTiltIcon />
+            Send money
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setDialog("edit")}>
+            <PencilSimpleIcon />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setDialog("remove")}
+          >
+            <TrashIcon />
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <EditBeneficiaryDialog
+        beneficiary={beneficiary}
+        open={dialog === "edit"}
+        onOpenChange={(open) => setDialog(open ? "edit" : null)}
+      />
+      <RemoveBeneficiaryDialog
+        beneficiary={beneficiary}
+        open={dialog === "remove"}
+        onOpenChange={(open) => setDialog(open ? "remove" : null)}
+      />
+    </>
   )
 }
 

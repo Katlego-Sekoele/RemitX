@@ -65,3 +65,12 @@ class DuplicateBeneficiaryError(ConflictError):
     def __init__(self, linked_user_id: uuid.UUID | str) -> None:
         super().__init__("Already in your beneficiaries")
         self.linked_user_id = str(linked_user_id)
+
+
+class UnknownBeneficiaryError(NotFoundError):
+    """No beneficiary with that id belongs to the caller. Someone else's id
+    reads the same as an unknown one, so ids can't be probed."""
+
+    def __init__(self, beneficiary_id: uuid.UUID | str) -> None:
+        super().__init__("Beneficiary not found")
+        self.beneficiary_id = str(beneficiary_id)

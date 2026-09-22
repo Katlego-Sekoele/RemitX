@@ -15,6 +15,15 @@ export function beneficiaryName(beneficiary: BeneficiaryRead): string {
   return beneficiary.full_name?.trim() || "Unnamed recipient"
 }
 
+/** First name and last initial, e.g. "Tendai M.", for confirmations. */
+export function beneficiaryShortName(beneficiary: BeneficiaryRead): string {
+  const words = (beneficiary.full_name ?? "").trim().split(/\s+/)
+  if (words.length >= 2) {
+    return `${words[0]} ${words[words.length - 1][0].toUpperCase()}.`
+  }
+  return words[0] || "this recipient"
+}
+
 /** Up to two initials, from the first and last words of the name. */
 export function beneficiaryInitials(beneficiary: BeneficiaryRead): string {
   const words = (beneficiary.full_name ?? "").trim().split(/\s+/)

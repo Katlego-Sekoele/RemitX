@@ -1,3 +1,4 @@
+import uuid
 from typing import Literal
 
 from fastapi import Depends, HTTPException, Query, status
@@ -13,6 +14,7 @@ from remitx_api.models.schemas.beneficiary import (
     BeneficiaryCreateRequest,
     BeneficiaryLookupResponse,
     BeneficiaryRead,
+    BeneficiaryUpdateRequest,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
@@ -99,3 +101,47 @@ def list_my_beneficiaries(
             detail="invalid sort option.",
         ) from exc
     return [BeneficiaryRead.from_row(row) for row in results]
+
+
+@router.patch(
+    "/{beneficiary_id}",
+    response_model=BeneficiaryRead,
+    summary="Edit a beneficiary",
+    responses=error_responses(404),
+)
+def update_beneficiary(
+    beneficiary_id: uuid.UUID,
+    payload: BeneficiaryUpdateRequest,
+    user: User = Depends(get_current_user),
+):
+    """Change one of the caller's beneficiaries' payout currency or
+    relationship, or both. The person can't be changed: a different person is
+    a different beneficiary (remove, then add).
+
+    Someone else's beneficiary answers 404, the same as an unknown id.
+    """
+    row = controller.update(
+        user.id,
+        beneficiary_id,
+        payout_currency=payload.payout_currency,
+        relationship=payload.relationship,
+    )
+    return BeneficiaryRead.from_row(row)
+
+
+@router.delete(
+    "/{beneficiary_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a beneficiary",
+    responses=error_responses(404),
+)
+def delete_beneficiary(
+    beneficiary_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+) -> None:
+    """Remove one of the caller's beneficiaries for good. Past transfers keep
+    their recipient: they point at the person, not this entry.
+
+    Someone else's beneficiary answers 404, the same as an unknown id.
+    """
+    controller.delete(user.id, beneficiary_id)

@@ -455,3 +455,111 @@ def test_two_senders_may_each_add_the_same_person(verified_client):
         client.app.dependency_overrides[get_current_user] = lambda: sender
 
     assert response.status_code == 200
+
+
+# --- edit and remove ---------------------------------------------------------
+
+
+def _as_other_sender(client, sender, clerk_id: str):
+    """Point the client at a second, persisted sender until the returned
+    callable restores the original."""
+    other_id = _provisioned_user_id(clerk_id, f"{clerk_id}@example.com", "Other")
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=other_id)
+
+    def restore():
+        client.app.dependency_overrides[get_current_user] = lambda: sender
+
+    return restore
+
+
+def test_the_owner_can_change_payout_currency_and_relationship(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id("user_edit_target", "edit@example.com", "Edit")
+    created = _add(client, linked_id, payout_currency="ZWL")
+
+    response = client.patch(
+        f"/beneficiaries/{created['beneficiary_id']}",
+        json={"payout_currency": "USD"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payout_currency"] == "USD"
+    assert body["relationship"] == "sibling"  # untouched
+    assert body["linked_user_id"] == str(linked_id)
+
+    response = client.patch(
+        f"/beneficiaries/{created['beneficiary_id']}",
+        json={"relationship": "friend", "payout_currency": "NAD"},
+    )
+    assert response.status_code == 200
+    [listed] = client.get(LIST_ENDPOINT).json()
+    assert (listed["payout_currency"], listed["relationship"]) == ("NAD", "friend")
+
+
+def test_an_edit_must_change_something_and_only_what_it_may(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id("user_edit_empty", "empty@example.com", "Empty")
+    path = f"/beneficiaries/{_add(client, linked_id)['beneficiary_id']}"
+
+    assert client.patch(path, json={}).status_code == 422
+    # The person can't be swapped for another.
+    assert (
+        client.patch(
+            path, json={"linked_user_id": str(uuid.uuid4()), "relationship": "friend"}
+        ).status_code
+        == 422
+    )
+    assert client.patch(path, json={"payout_currency": "ZAR"}).status_code == 422
+    assert client.patch(path, json={"relationship": "stranger"}).status_code == 422
+
+
+def test_editing_someone_elses_or_an_unknown_beneficiary_is_404(verified_client):
+    client, sender = verified_client
+    linked_id = _provisioned_user_id("user_edit_owned", "owned-edit@example.com", "O")
+    path = f"/beneficiaries/{_add(client, linked_id)['beneficiary_id']}"
+
+    restore = _as_other_sender(client, sender, "user_edit_intruder")
+    try:
+        response = client.patch(path, json={"payout_currency": "USD"})
+    finally:
+        restore()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Beneficiary not found"}
+    assert client.get(LIST_ENDPOINT).json()[0]["payout_currency"] == "ZWL"
+    unknown = client.patch(
+        f"/beneficiaries/{uuid.uuid4()}", json={"payout_currency": "USD"}
+    )
+    assert unknown.status_code == 404
+
+
+def test_the_owner_can_remove_a_beneficiary(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id("user_remove_target", "remove@example.com", "R")
+    path = f"/beneficiaries/{_add(client, linked_id)['beneficiary_id']}"
+
+    response = client.delete(path)
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.get(LIST_ENDPOINT).json() == []
+    # Gone: a second remove is a 404, and the person can be added again.
+    assert client.delete(path).status_code == 404
+    _add(client, linked_id)
+
+
+def test_removing_someone_elses_or_an_unknown_beneficiary_is_404(verified_client):
+    client, sender = verified_client
+    linked_id = _provisioned_user_id("user_remove_owned", "owned-rm@example.com", "O")
+    path = f"/beneficiaries/{_add(client, linked_id)['beneficiary_id']}"
+
+    restore = _as_other_sender(client, sender, "user_remove_intruder")
+    try:
+        response = client.delete(path)
+    finally:
+        restore()
+
+    assert response.status_code == 404
+    assert len(client.get(LIST_ENDPOINT).json()) == 1
+    assert client.delete(f"/beneficiaries/{uuid.uuid4()}").status_code == 404
