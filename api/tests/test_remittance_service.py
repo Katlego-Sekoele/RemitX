@@ -128,6 +128,9 @@ def _make_sender_and_beneficiary():
     recipient = UserController().ensure_provisioned(
         "user_remit_recipient", lambda: "remit-recipient@example.com", lambda: "Recip"
     )
+    AccountRepository().get_or_create_user_account(
+        recipient.id, recipient.base_reference, CURRENCY_ZWL
+    )
     beneficiary = (
         BeneficiaryController()
         .create(
