@@ -68,16 +68,16 @@ class DuplicateBeneficiaryError(ConflictError):
 
 
 class PayoutAccountMissingError(DomainError):
-    """The chosen payout currency is not an account this person holds.
+    """The chosen payout currency is not a fiat account this person holds.
 
-    Signup creates a ZAR account and a token account. A payout can only land
-    in a USD, ZWL or NAD account they already have."""
+    Signup creates a ZAR account, so that is already a payout account. The
+    token account is not."""
 
     def __init__(self, currency: str, held: tuple[str, ...]) -> None:
         if not held:
             detail = (
                 "They don't have a payout account yet. Ask for a reference "
-                "ending in -usd, -zwl or -nad."
+                "ending in -zar, -usd, -zwl or -nad."
             )
         else:
             detail = (
