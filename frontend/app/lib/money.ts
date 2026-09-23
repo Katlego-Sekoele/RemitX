@@ -12,6 +12,9 @@ export type AccountKind = AccountRead["kind"]
 /** What the UI calls the settlement token, whatever the API names it. */
 export const SETTLEMENT_TOKEN_LABEL = "RLUSD"
 
+/** The token's API name. Quote lines still carry this code. */
+export const TOKEN_CURRENCY = "uctusd"
+
 /** Said once, wherever the token first appears on a page. */
 export const SETTLEMENT_TOKEN_NOTE =
   "Test token on the XRP Ledger Testnet, the lecturer-approved stand-in for RLUSD."
@@ -29,12 +32,16 @@ const SYMBOLS: Record<string, string> = { ZAR: "R" }
 
 type Sign = "auto" | "always" | "exceptZero" | "never"
 
+function isSettlement(currency: string, kind: AccountKind) {
+  return kind === "settlement" || currency === TOKEN_CURRENCY
+}
+
 export function currencyLabel(currency: string, kind: AccountKind = "fiat") {
-  return kind === "settlement" ? SETTLEMENT_TOKEN_LABEL : currency
+  return isSettlement(currency, kind) ? SETTLEMENT_TOKEN_LABEL : currency
 }
 
 export function currencyName(currency: string, kind: AccountKind = "fiat") {
-  if (kind === "settlement") return SETTLEMENT_TOKEN_LABEL
+  if (isSettlement(currency, kind)) return SETTLEMENT_TOKEN_LABEL
   return CURRENCY_NAMES[currency] ?? currency
 }
 
@@ -47,7 +54,7 @@ export function formatMoney(
 ): string {
   const value = amount as Intl.StringNumericLiteral
 
-  if (kind === "settlement") {
+  if (isSettlement(currency, kind)) {
     const number = new Intl.NumberFormat("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -104,4 +111,14 @@ export function sumMoney(amounts: readonly string[]): string {
 
 export function isZeroMoney(amount: string): boolean {
   return toCents(amount) === 0n
+}
+
+const rateFormatter = new Intl.NumberFormat("en", {
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+})
+
+/** Rates display to 4 dp: "18.5000". */
+export function formatRate(rate: string): string {
+  return rateFormatter.format(rate as Intl.StringNumericLiteral)
 }

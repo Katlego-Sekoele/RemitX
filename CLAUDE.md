@@ -79,6 +79,7 @@ npm run dev          # vite dev server on 5173
 npm run lint         # typecheck + prettier --check
 npm run generate:api # Hey API client from openapi.json (dev/build/typecheck run it)
 npm run typecheck    # generate:api && react-router typegen && tsc
+npm test             # vitest: unit tests for app/lib (*.test.ts)
 npm run format       # prettier --write
 npx shadcn@latest add <component>
 ```
