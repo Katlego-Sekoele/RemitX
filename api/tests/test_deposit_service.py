@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from remitx_api.controllers.user_controller import UserController
@@ -104,6 +105,30 @@ def test_reprocessing_an_unmatched_line_does_not_queue_it_twice(app_context):
     deposit_service.process_deposits([line])
 
     assert len(deposit_service.get_pending_deposits()) == 1
+
+
+def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
+    """The reference identifies the customer. The money always lands in ZAR,
+    including when the admin quotes their uctusd reference.
+    """
+    _seed_bank_account()
+    user = UserController().ensure_provisioned(
+        "user_approve_tok", lambda: "approve-tok@example.com", lambda: "Tok"
+    )
+    deposit_service.process_deposits(
+        [{"reference": "not-a-person", "amount": "80.00", "date": "2026-09-11"}]
+    )
+    pending = deposit_service.get_pending_deposits()[0]
+
+    deposit_service.approve_pending_deposit(
+        pending.deposit_id, f"{user.base_reference}-TOK", uuid.uuid4()
+    )
+
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
+    assert zar_account.account_balance == Decimal("80.00")
+    assert token_account.account_balance == Decimal("0")
+    assert deposit_service.get_pending_deposits() == []
 
 
 def test_outgoing_lines_are_skipped_not_recorded_as_deposits(app_context):

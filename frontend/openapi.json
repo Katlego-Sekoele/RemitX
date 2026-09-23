@@ -226,15 +226,15 @@
         "type": "object"
       },
       "ApproveDepositRequest": {
+        "description": "The customer's account reference, for example ``sipho1-zar``.\n\nDeposits always credit that customer's ZAR account. A reference for one\nof their other currencies still identifies them.",
         "properties": {
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
+          "account_reference": {
+            "title": "Account Reference",
             "type": "string"
           }
         },
         "required": [
-          "user_id"
+          "account_reference"
         ],
         "title": "ApproveDepositRequest",
         "type": "object"
@@ -4671,7 +4671,7 @@
     },
     "/admin/deposits/{deposit_id}/approve": {
       "post": {
-        "description": "Confirms the deposit against ``user_id``. Needs ``cashin:confirm``.",
+        "description": "Confirms the deposit against the customer who holds\n``account_reference``. The credit lands on their ZAR account. Needs\n``cashin:confirm``.",
         "operationId": "approve_deposit",
         "parameters": [
           {

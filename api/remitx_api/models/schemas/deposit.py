@@ -37,4 +37,10 @@ class PendingDepositRead(Schema):
 
 
 class ApproveDepositRequest(Schema):
-    user_id: uuid.UUID
+    """The customer's account reference, for example ``sipho1-zar``.
+
+    Deposits always credit that customer's ZAR account. A reference for one
+    of their other currencies still identifies them.
+    """
+
+    account_reference: str

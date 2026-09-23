@@ -9,7 +9,7 @@ declares the read baseline and the two mutating routes escalate to
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.auth.permissions import RequirePermission
 from remitx_api.controllers.deposit_controller import DepositController
@@ -69,11 +69,7 @@ def approve_deposit(
     # because the resolved deposit records who confirmed it.
     operator: User = Depends(get_current_user),
 ):
-    """Confirms the deposit against ``user_id``. Needs ``cashin:confirm``."""
-    try:
-        return controller.approve(deposit_id, payload.user_id, operator.id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    """Confirms the deposit against the customer who holds
+    ``account_reference``. The credit lands on their ZAR account. Needs
+    ``cashin:confirm``."""
+    return controller.approve(deposit_id, payload.account_reference, operator.id)

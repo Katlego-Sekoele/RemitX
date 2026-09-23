@@ -30,6 +30,7 @@ import {
   DialogTrigger,
 } from "~/components/ui/dialog"
 import { Input } from "~/components/ui/input"
+import { Label } from "~/components/ui/label"
 import {
   Table,
   TableBody,
@@ -383,7 +384,7 @@ function ApproveDialog({
   onResolved: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [userId, setUserId] = useState("")
+  const [accountReference, setAccountReference] = useState("")
 
   const approve = useMutation({
     ...api.admin.deposits.approveDeposit(),
@@ -399,7 +400,7 @@ function ApproveDialog({
       onOpenChange={(next) => {
         setOpen(next)
         if (!next) {
-          setUserId("")
+          setAccountReference("")
           approve.reset()
         }
       }}
@@ -412,9 +413,10 @@ function ApproveDialog({
         <DialogHeader>
           <DialogTitle>Confirm deposit</DialogTitle>
           <DialogDescription>
-            {deposit.amount} {deposit.currency} — reference &quot;
-            {deposit.reference ?? "none"}&quot;. Only confirm once the sender
-            has proven, off platform, which account this belongs to.
+            {deposit.amount} {deposit.currency} — statement reference &quot;
+            {deposit.reference ?? "none"}&quot;. Credit lands on that
+            customer&apos;s ZAR account. Only confirm once they have proven, off
+            platform, that the payment is theirs.
           </DialogDescription>
         </DialogHeader>
 
@@ -422,21 +424,25 @@ function ApproveDialog({
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault()
-            if (userId.trim()) {
+            if (accountReference.trim()) {
               approve.mutate({
                 path: { deposit_id: deposit.deposit_id },
-                body: { user_id: userId.trim() },
+                body: { account_reference: accountReference.trim() },
               })
             }
           }}
         >
-          <Input
-            value={userId}
-            onChange={(event) => setUserId(event.target.value)}
-            placeholder="User ID"
-            aria-label="User ID"
-            disabled={approve.isPending}
-          />
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="deposit-account-reference">Account reference</Label>
+            <Input
+              id="deposit-account-reference"
+              value={accountReference}
+              onChange={(event) => setAccountReference(event.target.value)}
+              placeholder="sipho1-zar"
+              autoComplete="off"
+              disabled={approve.isPending}
+            />
+          </div>
 
           {approve.isError && (
             <Alert variant="destructive">
@@ -449,7 +455,7 @@ function ApproveDialog({
           <DialogFooter>
             <Button
               type="submit"
-              disabled={!userId.trim() || approve.isPending}
+              disabled={!accountReference.trim() || approve.isPending}
             >
               {approve.isPending ? "Confirming…" : "Confirm deposit"}
             </Button>
