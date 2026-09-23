@@ -5,8 +5,8 @@
  * a reload and the stepper's own triggers never lose it.
  */
 
-import type { PayoutCurrency } from "~/client"
-import { formatMoney } from "~/lib/money"
+import type { PayoutCurrency, QuoteRead as Quote } from "~/client"
+import { formatMoney, formatRate, SETTLEMENT_TOKEN_LABEL } from "~/lib/money"
 
 export const SEND_STEPS = [
   { key: "recipient", title: "Recipient" },
@@ -215,3 +215,98 @@ export function isRatesUnavailable(error: unknown): boolean {
 
 export const RATES_UNAVAILABLE_MESSAGE =
   "Exchange rates are unavailable right now."
+
+/** One line of the quote the sender confirms. */
+export type QuoteLine = {
+  label: string
+  value: string
+  /** A second reading of the same line, e.g. the other exchange rate. */
+  detail?: string
+}
+
+/**
+ * The brief's quotation lines, in its order, with the amount converted
+ * between the FX margin and the exchange rate. Every figure is the API's;
+ * the fee rates are config there, so no label carries a percentage.
+ */
+export function quoteLines(quote: Quote): QuoteLine[] {
+  const sender = quote.sender_currency
+  const receiver = quote.receiver_currency
+  return [
+    { label: "You send", value: formatMoney(quote.sender_amount, sender) },
+    {
+      label: "Transfer fee",
+      value: formatMoney(quote.sender_transaction_fee, sender),
+    },
+    {
+      label: "FX margin",
+      value: formatMoney(quote.exchange_rate_margin, sender),
+    },
+    {
+      label: "Amount converted",
+      value: formatMoney(quote.amount_converted, sender),
+    },
+    {
+      label: "Exchange rate",
+      value: `1 USD = R ${formatRate(quote.token_to_fiat_exchange_rate)}`,
+      detail: `1 ${sender} = ${formatRate(quote.fiat_exchange_rate)} ${receiver}`,
+    },
+    {
+      label: `${SETTLEMENT_TOKEN_LABEL} sent`,
+      value: formatMoney(quote.token_amount, quote.token_name),
+    },
+    {
+      label: "Cash-out fee",
+      value: formatMoney(quote.receiver_payout_fee, receiver),
+    },
+    {
+      label: "Recipient gets",
+      value: formatMoney(quote.receiver_payout_estimate, receiver),
+    },
+  ]
+}
+
+/** Whole seconds left until `expiresAt`, never below zero. */
+export function secondsLeft(expiresAt: string, now: number): number {
+  return Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 1000))
+}
+
+/** 872 → "14:32". */
+export function formatCountdown(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`
+}
+
+function statusOf(error: unknown): number | undefined {
+  return error instanceof Error && "status" in error
+    ? (error.status as number)
+    : undefined
+}
+
+export type QuoteRefusal = "rates_unavailable" | "unverified" | "other"
+
+/** Why `createQuote` refused. Anything else shows the API's own detail. */
+export function quoteRefusal(error: unknown): QuoteRefusal {
+  const status = statusOf(error)
+  if (status === 503) return "rates_unavailable"
+  if (status === 403) return "unverified"
+  return "other"
+}
+
+export type ConfirmRefusal =
+  "quote_inactive" | "insufficient_balance" | "unverified" | "other"
+
+/** Why `confirmRemittance` refused. */
+export function confirmRefusal(error: unknown): ConfirmRefusal {
+  const status = statusOf(error)
+  if (status === 409) return "quote_inactive"
+  if (status === 403) return "unverified"
+  if (
+    status === 400 &&
+    error instanceof Error &&
+    /available balance/i.test(error.message)
+  ) {
+    return "insufficient_balance"
+  }
+  return "other"
+}

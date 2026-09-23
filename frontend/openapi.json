@@ -3746,8 +3746,7 @@
             "type": "string"
           },
           "receiver_payout_currency": {
-            "title": "Receiver Payout Currency",
-            "type": "string"
+            "$ref": "#/components/schemas/PayoutCurrency"
           },
           "sender_amount": {
             "anyOf": [
@@ -3857,8 +3856,7 @@
       "QuotePreviewRequest": {
         "properties": {
           "receiver_payout_currency": {
-            "title": "Receiver Payout Currency",
-            "type": "string"
+            "$ref": "#/components/schemas/PayoutCurrency"
           },
           "sender_amount": {
             "anyOf": [
@@ -3887,6 +3885,13 @@
       },
       "QuoteRead": {
         "properties": {
+          "amount_converted": {
+            "description": "What's left of the sender amount after the transfer fee and FX\nmargin: the amount that becomes RLUSD (price_remittance's net).",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "readOnly": true,
+            "title": "Amount Converted",
+            "type": "string"
+          },
           "beneficiary_user_id": {
             "format": "uuid",
             "title": "Beneficiary User Id",
@@ -3970,6 +3975,12 @@
           "token_name": {
             "title": "Token Name",
             "type": "string"
+          },
+          "token_to_fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "readOnly": true,
+            "title": "Token To Fiat Exchange Rate",
+            "type": "string"
           }
         },
         "required": [
@@ -3990,7 +4001,9 @@
           "receiver_payout_estimate",
           "created_at",
           "expires_at",
-          "status"
+          "status",
+          "amount_converted",
+          "token_to_fiat_exchange_rate"
         ],
         "title": "QuoteRead",
         "type": "object"
@@ -5999,7 +6012,7 @@
                 }
               }
             },
-            "description": "Object storage is not configured."
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -7835,7 +7848,7 @@
                 }
               }
             },
-            "description": "Object storage is not configured."
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -8006,7 +8019,7 @@
                 }
               }
             },
-            "description": "Object storage is not configured."
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -8229,6 +8242,7 @@
     },
     "/quotes/create-quote": {
       "post": {
+        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, no account in `sender_currency`, an amount over the limit\nor the available balance, or one too small to cover the fees; 503 when\nno exchange rate is available.",
         "operationId": "create_quote",
         "requestBody": {
           "content": {
@@ -8251,6 +8265,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
           "401": {
             "content": {
               "application/json": {
@@ -8261,6 +8285,16 @@
             },
             "description": "No valid session."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8270,6 +8304,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -8277,7 +8321,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Create Quote",
+        "summary": "Lock in a price for a transfer to a beneficiary",
         "tags": [
           "quotes"
         ]
@@ -8285,6 +8329,7 @@
     },
     "/quotes/preview-quote": {
       "post": {
+        "description": "An indicative price for the send form: the same pricing as a quote,\nwith no beneficiary, no balance or limit checks, and nothing saved.\n\nRefusals: 400 for an amount too small to cover the fees or an\nunsupported currency; 503 when no exchange rate is available.",
         "operationId": "preview_quote",
         "requestBody": {
           "content": {
@@ -8307,6 +8352,16 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
           "401": {
             "content": {
               "application/json": {
@@ -8326,6 +8381,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -8333,7 +8398,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "Preview Quote",
+        "summary": "Price an amount without holding it",
         "tags": [
           "quotes"
         ]
