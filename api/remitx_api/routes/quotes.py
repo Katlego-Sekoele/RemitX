@@ -9,7 +9,7 @@ from remitx_api.models.schemas.quote import (
     QuotePreviewRequest,
     QuoteRead,
 )
-from remitx_api.openapi import Tag
+from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
 from remitx_api.services.exchange_rate_service import (
     RateUnavailableError,
@@ -27,11 +27,25 @@ router = create_customer_router(prefix="/quotes", tags=[Tag.QUOTES])
 controller = QuoteController()
 
 
-@router.post("/create-quote", response_model=QuoteRead)
+@router.post(
+    "/create-quote",
+    response_model=QuoteRead,
+    summary="Lock in a price for a transfer to a beneficiary",
+    responses=error_responses(400, 403, 503),
+)
 def create_quote(
     payload: QuoteCreateRequest,
     user: User = Depends(get_current_user),
 ):
+    """Prices `sender_amount` for one of the caller's beneficiaries and holds
+    that price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until
+    the quote is confirmed with `POST /remittances`.
+
+    Refusals: 403 if the caller isn't KYC-verified; 400 for an unknown
+    beneficiary, no account in `sender_currency`, an amount over the limit
+    or the available balance, or one too small to cover the fees; 503 when
+    no exchange rate is available.
+    """
     try:
         return controller.create_quote(
             sender_user_id=user.id,
@@ -71,12 +85,23 @@ def create_quote(
         ) from exc
 
 
-@router.post("/preview-quote", response_model=QuotePreviewRead)
+@router.post(
+    "/preview-quote",
+    response_model=QuotePreviewRead,
+    summary="Price an amount without holding it",
+    responses=error_responses(400, 503),
+)
 def preview_quote(
     payload: QuotePreviewRequest,
     # Login required; the pricing itself doesn't depend on who's asking.
     user: User = Depends(get_current_user),
 ):
+    """An indicative price for the send form: the same pricing as a quote,
+    with no beneficiary, no balance or limit checks, and nothing saved.
+
+    Refusals: 400 for an amount too small to cover the fees or an
+    unsupported currency; 503 when no exchange rate is available.
+    """
     del user
     try:
         return controller.preview_quote(

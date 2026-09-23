@@ -136,7 +136,7 @@ def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         409: "The current state refuses the request.",
         413: "The upload is too large.",
         502: "Object storage failed.",
-        503: "Object storage is not configured.",
+        503: "A service the request depends on is unavailable.",
     }
     return {
         code: {"model": ErrorResponse, "description": descriptions[code]}

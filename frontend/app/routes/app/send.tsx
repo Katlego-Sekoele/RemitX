@@ -8,6 +8,7 @@ import {
   BeneficiaryAvatar,
   RecipientStep,
 } from "~/components/send/recipient-step"
+import { ReviewStep } from "~/components/send/review-step"
 import { SendTimeline } from "~/components/send/send-timeline"
 import { Button } from "~/components/ui/button"
 import {
@@ -22,7 +23,6 @@ import {
   PageHeaderDescription,
   PageHeaderTitle,
 } from "~/components/ui/page-header"
-import { FieldDescription } from "~/components/ui/field"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
@@ -251,10 +251,16 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
             {
               step: "review",
               disabled: !beneficiary || !amountValid,
-              // SEND-2 (#107) prices and confirms the transfer here.
-              content: (
-                <FieldDescription>Your quote is on its way.</FieldDescription>
-              ),
+              content: beneficiary ? (
+                <ReviewStep
+                  beneficiary={beneficiary}
+                  amount={search.amount}
+                  currency={currency}
+                  // A changed amount needs a new quote; the old one simply
+                  // expires.
+                  onBack={() => update({ step: "amount" })}
+                />
+              ) : null,
             },
           ]}
         />

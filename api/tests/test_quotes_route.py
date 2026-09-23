@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
@@ -99,6 +100,10 @@ def test_create_quote_end_to_end(verified_client):
     assert body["sender_amount"] == "1000.00000000"
     assert body["status"] == "ACTIVE"
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
+    # Derived for display, so the UI does no arithmetic: 1000 less the
+    # R 20 fee and R 10 FX margin, and the token rate as rand per RLUSD.
+    assert Decimal(body["amount_converted"]) == Decimal("970")
+    assert body["token_to_fiat_exchange_rate"] == "18.5000"
 
 
 def test_insufficient_balance_is_a_400(verified_client):
@@ -221,8 +226,30 @@ def test_preview_unsupported_currency_is_a_400(verified_client):
         json={
             "sender_amount": "1000",
             "sender_currency": "EUR",
-            "receiver_payout_currency": "ZAR",
+            "receiver_payout_currency": "USD",
         },
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize("operation", ["create-quote", "preview-quote"])
+@pytest.mark.parametrize("currency", ["uctusd", "EUR"])
+def test_payout_currency_must_be_a_payout_currency(
+    verified_client, operation, currency
+):
+    """Beneficiaries are paid in ZAR, USD, ZWL or NAD. The token and any
+    other code are refused."""
+    client, _sender = verified_client
+
+    response = client.post(
+        f"{ENDPOINT}/{operation}",
+        json={
+            "beneficiary_id": str(uuid.uuid4()),
+            "sender_amount": "1000",
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": currency,
+        },
+    )
+
+    assert response.status_code == 422

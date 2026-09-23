@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest"
 
+import type { QuoteRead } from "~/client"
 import { ApiError } from "~/lib/api"
 import {
   amountIssue,
   amountIssueMessage,
   canPreview,
+  confirmRefusal,
+  formatCountdown,
+  quoteLines,
+  quoteRefusal,
+  secondsLeft,
   isRatesUnavailable,
   isTooSmallForFees,
   readSendSearch,
@@ -150,5 +156,113 @@ describe("API refusals", () => {
       isRatesUnavailable(new ApiError("Exchange rate unavailable", 503))
     ).toBe(true)
     expect(isRatesUnavailable(new Error("boom"))).toBe(false)
+  })
+})
+
+const QUOTE: QuoteRead = {
+  quote_id: "q1",
+  sender_user_id: "u1",
+  beneficiary_user_id: "u2",
+  sender_amount: "1000.00",
+  sender_currency: "ZAR",
+  sender_transaction_fee: "20.00",
+  exchange_rate_margin: "10.00",
+  fiat_to_token_exchange_rate: "0.05405405",
+  fiat_exchange_rate: "16.22000000",
+  token_amount: "52.43",
+  token_name: "uctusd",
+  receiver_amount: "15733.40",
+  receiver_currency: "ZWL",
+  receiver_payout_fee: "118.00",
+  receiver_payout_estimate: "15615.40",
+  amount_converted: "970.00",
+  token_to_fiat_exchange_rate: "18.5000",
+  created_at: "2026-09-22T10:00:00+00:00",
+  expires_at: "2026-09-22T10:15:00+00:00",
+  status: "active",
+}
+
+describe("quoteLines", () => {
+  const lines = quoteLines(QUOTE).map((line) => ({
+    ...line,
+    value: plain(line.value),
+    detail: line.detail && plain(line.detail),
+  }))
+
+  it("lists the brief's lines in order, with the amount converted", () => {
+    expect(lines.map((line) => line.label)).toEqual([
+      "You send",
+      "Transfer fee",
+      "FX margin",
+      "Amount converted",
+      "Exchange rate",
+      "RLUSD sent",
+      "Cash-out fee",
+      "Recipient gets",
+    ])
+  })
+
+  it("formats every value from the quote", () => {
+    expect(lines.map((line) => line.value)).toEqual([
+      "R 1,000.00",
+      "R 20.00",
+      "R 10.00",
+      "R 970.00",
+      "1 USD = R 18.5000",
+      "RLUSD 52.43",
+      "ZWL 118.00",
+      "ZWL 15,615.40",
+    ])
+    expect(lines[4].detail).toBe("1 ZAR = 16.2200 ZWL")
+  })
+
+  it("keeps percentages out of the labels", () => {
+    expect(lines.some((line) => line.label.includes("%"))).toBe(false)
+  })
+})
+
+describe("countdown", () => {
+  const expires = Date.parse(QUOTE.expires_at)
+
+  it("counts whole seconds down to zero", () => {
+    expect(secondsLeft(QUOTE.expires_at, expires - 15 * 60 * 1000)).toBe(900)
+    expect(secondsLeft(QUOTE.expires_at, expires - 1500)).toBe(2)
+    expect(secondsLeft(QUOTE.expires_at, expires)).toBe(0)
+    expect(secondsLeft(QUOTE.expires_at, expires + 60_000)).toBe(0)
+  })
+
+  it("reads as minutes and seconds", () => {
+    expect(formatCountdown(872)).toBe("14:32")
+    expect(formatCountdown(900)).toBe("15:00")
+    expect(formatCountdown(5)).toBe("0:05")
+  })
+})
+
+describe("refusals", () => {
+  it("classifies a quote refusal", () => {
+    expect(quoteRefusal(new ApiError("Exchange rate unavailable", 503))).toBe(
+      "rates_unavailable"
+    )
+    expect(quoteRefusal(new ApiError("Only KYC-approved users", 403))).toBe(
+      "unverified"
+    )
+    expect(quoteRefusal(new ApiError("Beneficiary not found", 400))).toBe(
+      "other"
+    )
+  })
+
+  it("classifies a confirm refusal", () => {
+    expect(confirmRefusal(new ApiError("Quote is no longer active", 409))).toBe(
+      "quote_inactive"
+    )
+    expect(
+      confirmRefusal(
+        new ApiError("available balance 10.00 is less than 1000.00", 400)
+      )
+    ).toBe("insufficient_balance")
+    expect(confirmRefusal(new ApiError("Verification lapsed", 403))).toBe(
+      "unverified"
+    )
+    expect(confirmRefusal(new ApiError("Quote not found", 400))).toBe("other")
   })
 })
