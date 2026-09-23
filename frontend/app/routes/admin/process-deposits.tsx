@@ -1,13 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  CheckCircle,
-  FileCsv,
-  PencilSimple,
-  Play,
-  Warning,
+  CheckCircleIcon,
+  FileCsvIcon,
+  PencilSimpleIcon,
+  PlayIcon,
+  WarningIcon,
   XIcon,
 } from "@phosphor-icons/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRef, useState } from "react"
+import { Link } from "react-router"
 
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
@@ -46,6 +47,11 @@ import {
   type DepositRow,
   type PendingDepositRead as PendingDeposit,
 } from "~/client"
+import {
+  missingStatementColumns,
+  parseStatementCsv,
+  type CsvRow,
+} from "~/lib/bank-statement-csv"
 import { PERMISSIONS } from "~/lib/permissions"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 
@@ -63,9 +69,6 @@ export function meta(): Route.MetaDescriptors {
 // itself.
 const COMPLETION_DISPLAY_MS = 1200
 
-/** One row of the raw CSV, keyed by its own header. */
-type CsvRow = Record<string, string>
-
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
 }
@@ -76,22 +79,6 @@ function formatDate(value: string) {
     month: "short",
     day: "numeric",
   })
-}
-
-function parseCsv(text: string): { headers: string[]; rows: CsvRow[] } {
-  const lines = text.split(/\r\n|\n/).filter((line) => line.trim().length > 0)
-  if (lines.length === 0) return { headers: [], rows: [] }
-
-  const headers = lines[0].split(",").map((cell) => cell.trim())
-  const rows = lines.slice(1).map((line) => {
-    const cells = line.split(",").map((cell) => cell.trim())
-    const row: CsvRow = {}
-    headers.forEach((header, index) => {
-      row[header] = cells[index] ?? ""
-    })
-    return row
-  })
-  return { headers, rows }
 }
 
 /** Statement rows only ever carry reference/amount/date to `process_deposits`
@@ -106,10 +93,11 @@ function toDepositRows(rows: CsvRow[]): DepositRow[] {
 }
 
 /**
- * Mirrors how the API gates this page (routes/admin/deposits.py): reading the
- * queue needs `cashin:read`, and the two ways to move money against it need
- * `cashin:confirm` on top. The server decides; this only keeps the UI from
- * offering what it would refuse.
+ * Mirrors how the API gates this page (routes/admin/deposits.py), and the
+ * same gate as Statement CSV: reading the queue needs `cashin:read`, and the
+ * two ways to move money against it need `cashin:confirm` on top. Staff
+ * without the cash-in role get neither page. The server decides; this only
+ * keeps the UI from offering what it would refuse.
  */
 export default function ProcessDeposits() {
   const canRead = useHasPermission(PERMISSIONS.cashinRead)
@@ -138,7 +126,19 @@ function ProcessDepositsPage() {
             {pageRoutingContextByModuleName?.title}
           </h1>
         </div>
-        {canConfirm && <UploadDialog onProcessed={refreshPending} />}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link to="/admin/statement-csv">
+                <FileCsvIcon data-icon="inline-start" />
+                Statement CSV
+              </Link>
+            }
+          />
+          {canConfirm && <UploadDialog onProcessed={refreshPending} />}
+        </div>
       </div>
 
       <Card>
@@ -199,11 +199,8 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
     if (!selected) return
     try {
       const text = await selected.text()
-      const parsed = parseCsv(text)
-      if (
-        !parsed.headers.includes("reference") ||
-        !parsed.headers.includes("amount")
-      ) {
+      const parsed = parseStatementCsv(text)
+      if (missingStatementColumns(parsed.headers).length > 0) {
         setParseError('CSV must have "reference" and "amount" columns.')
         setFile(null)
         setRows([])
@@ -230,7 +227,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
       }}
     >
       <DialogTrigger render={<Button />}>
-        <Play />
+        <PlayIcon data-icon="inline-start" />
         Process Deposits Simulation
       </DialogTrigger>
       <DialogContent>
@@ -240,7 +237,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
 
         {completed ? (
           <Alert>
-            <CheckCircle />
+            <CheckCircleIcon />
             <AlertTitle>Simulation completed</AlertTitle>
           </Alert>
         ) : (
@@ -248,7 +245,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
             {file ? (
               <div className="flex items-center justify-between gap-2 rounded-md border border-input px-2.5 py-1.5 text-xs">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <FileCsv className="size-4 shrink-0" />
+                  <FileCsvIcon className="size-4 shrink-0" />
                   <span className="truncate">{file.name}</span>
                   <span className="shrink-0 text-muted-foreground">
                     ({rows.length} line{rows.length === 1 ? "" : "s"})
@@ -277,7 +274,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
 
             {parseError && (
               <Alert variant="destructive">
-                <Warning />
+                <WarningIcon />
                 <AlertTitle>Could not use that file</AlertTitle>
                 <AlertDescription>{parseError}</AlertDescription>
               </Alert>
@@ -285,7 +282,7 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
 
             {process.isError && (
               <Alert variant="destructive">
-                <Warning />
+                <WarningIcon />
                 <AlertTitle>Simulation failed</AlertTitle>
                 <AlertDescription>
                   {errorMessage(process.error)}
@@ -335,7 +332,7 @@ function PendingTable({
   if (error) {
     return (
       <Alert variant="destructive">
-        <Warning />
+        <WarningIcon />
         <AlertTitle>Could not load pending deposits</AlertTitle>
         <AlertDescription>{errorMessage(error)}</AlertDescription>
       </Alert>
@@ -406,7 +403,7 @@ function ApproveDialog({
       }}
     >
       <DialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
-        <PencilSimple />
+        <PencilSimpleIcon />
         <span className="sr-only">Resolve deposit</span>
       </DialogTrigger>
       <DialogContent>
@@ -446,7 +443,7 @@ function ApproveDialog({
 
           {approve.isError && (
             <Alert variant="destructive">
-              <Warning />
+              <WarningIcon />
               <AlertTitle>Could not confirm</AlertTitle>
               <AlertDescription>{errorMessage(approve.error)}</AlertDescription>
             </Alert>

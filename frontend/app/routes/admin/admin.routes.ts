@@ -99,13 +99,29 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     label: "Deposits",
     order: 20,
     icon: "BankIcon",
+    // The whole cash-in flow — building the demo statement and reconciling
+    // it — is the treasury role's. Every page under this group declares
+    // `cashin:read`, which is what the API requires to see the queue, so a
+    // staff member without it never gets a link. Moving money still needs
+    // `cashin:confirm` on the process page and on the API.
     childItems: [
+      {
+        route: {
+          path: "admin/statement-csv",
+          module: "routes/admin/statement-csv.tsx",
+        },
+        label: "Statement CSV",
+        order: 0,
+        permission: "cashin:read",
+        childItems: [],
+      },
       {
         route: {
           path: "admin/process-deposits",
           module: "routes/admin/process-deposits.tsx",
         },
         label: "Process deposits",
+        order: 10,
         permission: "cashin:read",
         childItems: [],
       },
