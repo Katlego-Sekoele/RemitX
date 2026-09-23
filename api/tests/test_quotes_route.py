@@ -205,6 +205,8 @@ def test_preview_end_to_end_no_beneficiary_needed(verified_client):
     body = response.json()
     assert body["sender_currency"] == "ZAR"
     assert body["fiat_to_token_exchange_rate"] == "0.05405405"
+    # The same rate the way people read it, rand per RLUSD, to 4 dp.
+    assert body["token_to_fiat_exchange_rate"] == "18.5000"
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
     assert body["receiver_payout_currency"] == "USD"
     assert body["fiat_exchange_rate"] == "0.05400000"

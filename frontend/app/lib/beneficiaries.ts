@@ -53,3 +53,21 @@ export function invalidateBeneficiaries(queryClient: QueryClient) {
     queryKey: api.beneficiaries.listMyBeneficiaries().queryKey,
   })
 }
+
+/**
+ * The beneficiaries worth a one-tap pick on the send page: the first `limit`
+ * of the list as the caller sorted it. Picking one never reorders the row;
+ * one chosen from further down (by search) takes the last slot.
+ */
+export function quickPicks(
+  beneficiaries: BeneficiaryRead[],
+  selectedId: string | null,
+  limit: number
+): BeneficiaryRead[] {
+  const picks = beneficiaries.slice(0, limit)
+  const selected = beneficiaries.find(
+    (beneficiary) => beneficiary.beneficiary_id === selectedId
+  )
+  if (!selected || picks.includes(selected)) return picks
+  return [...picks.slice(0, limit - 1), selected]
+}

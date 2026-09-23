@@ -3776,7 +3776,7 @@
         "type": "object"
       },
       "QuotePreviewRead": {
-        "description": "A stateless rate preview \u2014 no beneficiary, nothing persisted, so no\nquote_id/status/expires_at. See services/quote_service.py's\nRemittancePricing, which this mirrors field-for-field.",
+        "description": "A stateless rate preview \u2014 no beneficiary, nothing persisted, so no\nquote_id/status/expires_at. See services/quote_service.py's\nRemittancePricing, which this mirrors field-for-field, plus the rate\nthe other way round for display.",
         "properties": {
           "exchange_rate_margin": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -3829,6 +3829,12 @@
           "token_name": {
             "title": "Token Name",
             "type": "string"
+          },
+          "token_to_fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "readOnly": true,
+            "title": "Token To Fiat Exchange Rate",
+            "type": "string"
           }
         },
         "required": [
@@ -3842,7 +3848,8 @@
           "receiver_payout_currency",
           "receiver_amount",
           "receiver_payout_fee",
-          "receiver_payout_estimate"
+          "receiver_payout_estimate",
+          "token_to_fiat_exchange_rate"
         ],
         "title": "QuotePreviewRead",
         "type": "object"

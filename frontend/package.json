@@ -10,9 +10,9 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "npm run generate:api && react-router typegen && tsc",
+    "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx}\"",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test app/lib/*.test.ts",
     "lint": "npm run typecheck && npm run format:check && npm run test"
   },
   "dependencies": {
@@ -63,6 +63,7 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
     "typescript": "^6",
-    "vite": "^8"
+    "vite": "^8",
+    "vitest": "^5.0.1"
   }
 }

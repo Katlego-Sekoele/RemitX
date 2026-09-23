@@ -7,6 +7,7 @@ cd frontend
 npm ci
 npm run dev          # http://localhost:5173
 npm run typecheck
+npm test             # vitest: unit tests for app/lib (*.test.ts)
 npm run format
 ```
 

@@ -64,6 +64,13 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     icon: "WalletIcon",
   },
   {
+    route: { path: "app/send", module: "routes/app/send.tsx" },
+    label: "Send",
+    order: 15,
+    icon: "PaperPlaneTiltIcon",
+    kycAttention: true,
+  },
+  {
     route: {
       path: "app/beneficiaries",
       module: "routes/app/beneficiaries.tsx",
