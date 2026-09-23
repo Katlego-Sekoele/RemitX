@@ -16,7 +16,7 @@ not. `tx_id` always points at the one `transactions` row this deposit is:
 
 import uuid
 
-from sqlalchemy import ForeignKey, Text, Uuid
+from sqlalchemy import ForeignKey, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -36,10 +36,21 @@ CONFIRMED_BY_SYSTEM = "system"
 
 class Deposit(Base):
     __tablename__ = "deposits"
+    __table_args__ = (
+        # One bank-statement line, one deposit. Re-uploading the same CSV
+        # (or an overlapping date range) must not credit the balance again.
+        UniqueConstraint(
+            "statement_fingerprint",
+            name="uq_deposits_statement_fingerprint",
+        ),
+    )
 
     deposit_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
+    # Identity of the statement line: UTC date, stripped reference, amount at
+    # 2dp. See deposit_service.statement_fingerprint.
+    statement_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
     tx_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=False
     )

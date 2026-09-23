@@ -200,6 +200,20 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
     assert response.json()["confirmed_by"] not in (None, "system")
 
 
+def test_process_without_a_platform_bank_account_is_refused(treasury_client):
+    response = treasury_client.post(
+        PROCESS,
+        json={
+            "rows": [
+                {"reference": "someone-zar", "amount": "10.00", "date": "2026-09-10"}
+            ]
+        },
+    )
+
+    assert response.status_code == 409
+    assert "RemitX SA Bank Account" in response.json()["detail"]
+
+
 def test_approving_an_unknown_deposit_is_a_400(treasury_client):
     user = UserController().ensure_provisioned(
         "user_approve_missing", lambda: "missing@example.com", lambda: "Miss"

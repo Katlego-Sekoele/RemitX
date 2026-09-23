@@ -68,6 +68,44 @@ def test_token_reference_matches_its_own_account(app_context):
     assert token_account.account_balance == Decimal("500.00")
 
 
+def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context):
+    """Uploading the same CSV twice, or an overlapping date range, must not
+    create a second deposit or move the balance again.
+    """
+    _seed_bank_account()
+    user = UserController().ensure_provisioned(
+        "user_dedup", lambda: "dedup@example.com", lambda: "Dedup"
+    )
+    zar_reference = f"{user.base_reference}-zar"
+    line = {"reference": zar_reference, "amount": "500.00", "date": "2026-09-10"}
+
+    first = deposit_service.process_deposits([line])
+    second = deposit_service.process_deposits([line, dict(line)])
+
+    assert len(first) == 1
+    assert second == []
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    assert zar_account.account_balance == Decimal("500.00")
+    assert len(deposit_service.get_deposits_for_user(user.id)) == 1
+
+    later = deposit_service.process_deposits(
+        [{"reference": zar_reference, "amount": "10.00", "date": "2026-09-10"}]
+    )
+    assert len(later) == 1
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    assert zar_account.account_balance == Decimal("510.00")
+
+
+def test_reprocessing_an_unmatched_line_does_not_queue_it_twice(app_context):
+    _seed_bank_account()
+    line = {"reference": "not-a-person", "amount": "80.00", "date": "2026-09-09"}
+
+    deposit_service.process_deposits([line])
+    deposit_service.process_deposits([line])
+
+    assert len(deposit_service.get_pending_deposits()) == 1
+
+
 def test_outgoing_lines_are_skipped_not_recorded_as_deposits(app_context):
     """A real statement mixes RemitX's own outgoing payments in with sender
     deposits — a negative amount was never a deposit and must not become one
