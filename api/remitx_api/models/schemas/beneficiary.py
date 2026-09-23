@@ -90,7 +90,7 @@ class BeneficiaryRead(Schema):
     payout_currencies: list[PayoutCurrency] = Field(
         description=(
             "Payout currencies this person already holds an account for, "
-            "in USD, ZWL, NAD order. The edit form offers only these."
+            "in ZAR, USD, ZWL, NAD order. The edit form offers only these."
         )
     )
     relationship: BeneficiaryRelationship
@@ -144,7 +144,7 @@ class BeneficiaryLookupResponse(Schema):
     payout_currencies: list[PayoutCurrency] = Field(
         description=(
             "Payout currencies this person already holds an account for, "
-            "in USD, ZWL, NAD order. The add form offers only these."
+            "in ZAR, USD, ZWL, NAD order. The add form offers only these."
         )
     )
 

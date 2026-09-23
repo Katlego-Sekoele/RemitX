@@ -78,8 +78,8 @@ def _approved_user_id(
 
 
 def _hold(user_id: uuid.UUID, *currencies: str) -> None:
-    """Give a person payout accounts. Signup only creates ZAR and the token
-    account, and a beneficiary can only be paid in a currency they hold."""
+    """Give a person payout accounts beyond the ZAR account signup creates.
+    A beneficiary can only be paid in a fiat currency they hold."""
     token = db.open_session()
     try:
         user = db.session.get(User, user_id)
@@ -136,8 +136,8 @@ def test_lookup_by_fiat_account_reference_succeeds(verified_client):
     assert body["first_name"] == "Lookup"
     assert body["display_name"] == "Lookup"
     assert body["account_currency"] == "ZAR"
-    # A new user holds ZAR and a token account, neither of which is a payout.
-    assert body["payout_currencies"] == []
+    # Signup creates a ZAR account, so they can already be paid in ZAR.
+    assert body["payout_currencies"] == ["ZAR"]
 
 
 def test_lookup_shows_a_short_verified_name_country_and_currency_only(
@@ -176,7 +176,7 @@ def test_lookup_shows_a_short_verified_name_country_and_currency_only(
         "country": "ZW",
         "country_name": "Zimbabwe",
         "account_currency": "ZWL",
-        "payout_currencies": ["ZWL"],
+        "payout_currencies": ["ZAR", "ZWL"],
     }
     # A reference is guessable, so the lookup must not become a directory.
     assert "tendai.moyo" not in response.text
@@ -252,7 +252,7 @@ def test_create_and_list_my_beneficiary(verified_client):
     assert body["country_name"] is None
     assert body["masked_email"] == "t•••@example.com"
     assert body["masked_mobile_number"] is None
-    assert body["payout_currencies"] == ["ZWL"]
+    assert body["payout_currencies"] == ["ZAR", "ZWL"]
 
     listed = client.get(LIST_ENDPOINT)
     assert listed.status_code == 200
@@ -291,12 +291,33 @@ def test_create_rejects_an_invalid_payout_currency(verified_client):
         CREATE_ENDPOINT,
         json={
             "linked_user_id": str(linked_id),
-            "payout_currency": "ZAR",  # sender-side currency, not a valid payout
+            "payout_currency": "EUR",  # not a fiat account currency
             "relationship": "friend",
         },
     )
 
     assert response.status_code == 422
+
+
+def test_create_accepts_the_zar_account_from_signup(verified_client):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id(
+        "user_beneficiary_zar", "zar-payout@example.com", "Zar"
+    )
+
+    response = client.post(
+        CREATE_ENDPOINT,
+        json={
+            "linked_user_id": str(linked_id),
+            "payout_currency": "ZAR",
+            "relationship": "friend",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["payout_currency"] == "ZAR"
+    assert body["payout_currencies"] == ["ZAR"]
 
 
 def test_create_rejects_a_payout_currency_they_do_not_hold(verified_client):
@@ -316,8 +337,7 @@ def test_create_rejects_a_payout_currency_they_do_not_hold(verified_client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == (
-        "They don't have a payout account yet. Ask for a reference ending in "
-        "-usd, -zwl or -nad."
+        "They don't have a USD account. They can be paid in ZAR."
     )
     assert client.get(LIST_ENDPOINT).json() == []
 
@@ -332,7 +352,7 @@ def test_create_rejects_a_payout_currency_they_do_not_hold(verified_client):
     )
     assert held.status_code == 400
     assert held.json()["detail"] == (
-        "They don't have a USD account. They can be paid in ZWL."
+        "They don't have a USD account. They can be paid in ZAR or ZWL."
     )
 
 
@@ -569,7 +589,7 @@ def test_an_edit_must_change_something_and_only_what_it_may(verified_client):
         ).status_code
         == 422
     )
-    assert client.patch(path, json={"payout_currency": "ZAR"}).status_code == 422
+    assert client.patch(path, json={"payout_currency": "EUR"}).status_code == 422
     assert client.patch(path, json={"relationship": "stranger"}).status_code == 422
     # ZWL is the account they hold. USD is a payout currency they do not.
     refused = client.patch(path, json={"payout_currency": "USD"})

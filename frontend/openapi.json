@@ -268,7 +268,7 @@
             "type": "string"
           },
           "payout_currencies": {
-            "description": "Payout currencies this person already holds an account for, in USD, ZWL, NAD order. The add form offers only these.",
+            "description": "Payout currencies this person already holds an account for, in ZAR, USD, ZWL, NAD order. The add form offers only these.",
             "items": {
               "$ref": "#/components/schemas/PayoutCurrency"
             },
@@ -370,7 +370,7 @@
             "title": "Masked Mobile Number"
           },
           "payout_currencies": {
-            "description": "Payout currencies this person already holds an account for, in USD, ZWL, NAD order. The edit form offers only these.",
+            "description": "Payout currencies this person already holds an account for, in ZAR, USD, ZWL, NAD order. The edit form offers only these.",
             "items": {
               "$ref": "#/components/schemas/PayoutCurrency"
             },
@@ -3423,8 +3423,9 @@
         "type": "object"
       },
       "PayoutCurrency": {
-        "description": "What a beneficiary may be paid out in. An enum so the OpenAPI spec,\nand therefore the frontend client, carries the option list.",
+        "description": "What a beneficiary may be paid out in. An enum so the OpenAPI spec,\nand therefore the frontend client, carries the option list.\n\nEvery fiat account counts, including the ZAR account created at signup.\nThe token account does not: nobody is paid into it directly.",
         "enum": [
+          "ZAR",
           "USD",
           "ZWL",
           "NAD"

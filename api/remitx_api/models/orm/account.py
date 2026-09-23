@@ -58,8 +58,13 @@ CURRENCY_NAD = "NAD"
 
 class PayoutCurrency(StrEnum):
     """What a beneficiary may be paid out in. An enum so the OpenAPI spec,
-    and therefore the frontend client, carries the option list."""
+    and therefore the frontend client, carries the option list.
 
+    Every fiat account counts, including the ZAR account created at signup.
+    The token account does not: nobody is paid into it directly.
+    """
+
+    ZAR = CURRENCY_ZAR
     USD = CURRENCY_USD
     ZWL = CURRENCY_ZWL
     NAD = CURRENCY_NAD

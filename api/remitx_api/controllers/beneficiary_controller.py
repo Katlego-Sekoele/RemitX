@@ -167,9 +167,8 @@ class BeneficiaryController:
         return self._accounts.payout_currencies_by_user([user_id]).get(user_id, ())
 
     def _require_payout_account(self, user_id: uuid.UUID, currency: str) -> None:
-        """A payout can only land in a USD, ZWL or NAD account they already
-        hold. Signup creates ZAR and the token account, neither of which
-        counts."""
+        """A payout can only land in a fiat account they already hold:
+        ZAR, USD, ZWL or NAD. The token account does not count."""
         held = self._payout_currencies(user_id)
         if currency not in held:
             raise PayoutAccountMissingError(currency, held)

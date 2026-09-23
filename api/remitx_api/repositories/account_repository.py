@@ -73,9 +73,9 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         self, user_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, tuple[str, ...]]:
         """Payout currencies each person already holds an account for, in
-        USD, ZWL, NAD order. ZAR and the token account are not payout
-        accounts: signup creates only those two, and a payout lands in the
-        currency account the person already has."""
+        ZAR, USD, ZWL, NAD order. The token account is not a payout
+        account. Signup creates ZAR, so a new user can already be paid in
+        ZAR."""
         if not user_ids:
             return {}
         rows = db.session.execute(
