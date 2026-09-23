@@ -33,7 +33,8 @@ export function accountNavLabel(account: AccountRead) {
 /**
  * Demo bank details for Add money. Nothing is ever paid into these: deposits
  * reach a balance only when staff upload a statement on
- * /admin/process-deposits.
+ * /admin/process-deposits. The file itself is built on /admin/statement-csv.
+ * Both pages are limited to the cash-in role.
  */
 export const DEMO_BANK_DETAILS = {
   accountName: "RemitX SA",

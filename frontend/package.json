@@ -12,7 +12,8 @@
     "typecheck": "npm run generate:api && react-router typegen && tsc",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx}\"",
-    "lint": "npm run typecheck && npm run format:check"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test app/lib/*.test.ts",
+    "lint": "npm run typecheck && npm run format:check && npm run test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
