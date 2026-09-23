@@ -24,12 +24,16 @@ class DepositController:
         return [self._fatten(deposit) for deposit in deposits]
 
     def approve(
-        self, deposit_id: uuid.UUID, user_id: uuid.UUID, admin_id: uuid.UUID
+        self, deposit_id: uuid.UUID, account_reference: str, admin_id: uuid.UUID
     ) -> dict:
-        """An admin resolves one pending deposit to a user, once that user has
-        proven (off-platform — email/SMS) that a statement line is theirs.
+        """An admin resolves one pending deposit to the customer who holds
+        ``account_reference``, once that person has proven (off-platform)
+        that the statement line is theirs. The credit always lands on their
+        ZAR account.
         """
-        deposit = deposit_service.approve_pending_deposit(deposit_id, user_id, admin_id)
+        deposit = deposit_service.approve_pending_deposit(
+            deposit_id, account_reference, admin_id
+        )
         return self._fatten(deposit)
 
     def _fatten(self, deposit: Deposit) -> dict:

@@ -161,7 +161,7 @@ def test_treasury_operator_approves_a_pending_deposit(treasury_client):
 
     response = treasury_client.post(
         _approve_path(pending["deposit_id"]),
-        json={"user_id": user_id},
+        json={"account_reference": f"{user.base_reference}-zar"},
     )
 
     assert response.status_code == 200
@@ -179,7 +179,6 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
     user = UserController().ensure_provisioned(
         "user_approve_audit", lambda: "audit@example.com", lambda: "Aud"
     )
-    user_id = str(user.id)
 
     treasury_client.post(
         PROCESS,
@@ -193,7 +192,7 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
 
     response = treasury_client.post(
         _approve_path(pending["deposit_id"]),
-        json={"user_id": user_id},
+        json={"account_reference": f"  {user.base_reference}-ZAR  "},
     )
 
     assert response.status_code == 200
@@ -221,7 +220,29 @@ def test_approving_an_unknown_deposit_is_a_400(treasury_client):
 
     response = treasury_client.post(
         _approve_path(uuid.uuid4()),
-        json={"user_id": str(user.id)},
+        json={"account_reference": f"{user.base_reference}-zar"},
     )
 
     assert response.status_code == 400
+
+
+def test_approving_with_an_unknown_reference_is_a_400(treasury_client):
+    _seed_bank_account()
+    treasury_client.post(
+        PROCESS,
+        json={
+            "rows": [
+                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-11"}
+            ]
+        },
+    )
+    [pending] = treasury_client.get(PENDING).json()
+
+    response = treasury_client.post(
+        _approve_path(pending["deposit_id"]),
+        json={"account_reference": "nobody1-zar"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "No RemitX account has that reference."
+    assert treasury_client.get(PENDING).json() != []

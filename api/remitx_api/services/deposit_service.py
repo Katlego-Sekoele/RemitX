@@ -7,6 +7,10 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.exc import IntegrityError
 
 from remitx_api.errors.base import ConflictError
+from remitx_api.errors.deposits import (
+    DepositNotPendingError,
+    UnknownDepositReferenceError,
+)
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR, Account
 from remitx_api.models.orm.deposit import CONFIRMED_BY_SYSTEM, Deposit
@@ -19,7 +23,6 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.deposit_repository import DepositRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
-from remitx_api.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -280,49 +283,50 @@ def get_pending_deposits() -> list[Deposit]:
 
 
 def approve_pending_deposit(
-    deposit_id: uuid.UUID, user_id: uuid.UUID, admin_id: uuid.UUID
+    deposit_id: uuid.UUID, account_reference: str, admin_id: uuid.UUID
 ) -> Deposit:
-    """An admin manually links a pending deposit to a user and confirms it.
+    """An admin manually links a pending deposit to a customer and confirms it.
 
     The admin-triggered counterpart to automatic matching in
     `_create_deposit` — used when a bank statement line's reference didn't
     match anyone at import time (e.g. a typo, or an unregistered sender) and
-    an admin has since worked out, from the portal's pending list, which
-    user it actually belongs to.
+    an admin has since worked out which customer it belongs to. They identify
+    that customer by an account reference (``sipho1-zar``, or another of that
+    person's currency references). The credit always lands on the ZAR account.
 
-    Raises ValueError if the deposit isn't pending (already confirmed, or
-    doesn't exist) — the guarded transition on its transaction is what
-    stops two admins from both confirming the same deposit.
+    Raises if the deposit isn't pending (already confirmed, or doesn't exist)
+    — the guarded transition on its transaction is what stops two admins from
+    both confirming the same deposit.
     """
     deposit_repo = DepositRepository()
     transaction_repo = TransactionRepository()
     account_repo = AccountRepository()
-    user_repo = UserRepository()
 
     deposit = deposit_repo.get_by_id(deposit_id)
     if deposit is None:
-        raise ValueError(f"Deposit {deposit_id} does not exist")
-
+        raise DepositNotPendingError()
     transaction = transaction_repo.get_by_id(deposit.tx_id)
-    user = user_repo.get_by_id(user_id)
-    if user is None:
-        raise ValueError(f"User {user_id} does not exist")
 
-    # Since only SA bank deposits for simulation, assume user has ZAR account.
-    user_account = account_repo.get_user_account(user.id, CURRENCY_ZAR)
+    reference = account_reference.strip().lower()
+    matched = account_repo.get_user_account_by_reference(reference)
+    if matched is None:
+        raise UnknownDepositReferenceError()
+
+    # Deposits are ZAR cash-in even when the reference that identified the
+    # customer was one of their other currency accounts.
+    user_account = account_repo.get_user_account(matched.user_id, CURRENCY_ZAR)
     if user_account is None:
-        # Should never happen post-eager-creation — defensive, not a normal path.
-        raise ValueError(f"User {user_id} has no ZAR account")
+        raise UnknownDepositReferenceError()
 
     confirmed_at = datetime.now(UTC)
     if not transaction_repo.confirm_pending_deposit_transaction(
         deposit.tx_id, user_account.account_id, confirmed_at
     ):
-        raise ValueError(f"Deposit {deposit_id} is not pending or does not exist")
+        raise DepositNotPendingError()
 
     account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
     account_repo.increase_balance(user_account.account_id, transaction.amount)
-    deposit_repo.link_deposit_to_user(deposit_id, user_id, str(admin_id))
+    deposit_repo.link_deposit_to_user(deposit_id, matched.user_id, str(admin_id))
 
     db.session.commit()
     return deposit_repo.get_by_id(deposit_id)
