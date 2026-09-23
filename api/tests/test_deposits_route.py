@@ -3,13 +3,19 @@ import uuid
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR, TYPE_PLATFORM_FIAT, Account
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_PLATFORM_FIAT,
+    Account,
+)
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.services import deposit_service
 from tests.rbac_helpers import make_user, rbac_client
 
 PROCESS = "/admin/deposits/process"
 PENDING = "/admin/deposits/pending"
+REFERENCES = "/admin/deposits/account-references"
 
 
 def _approve_path(deposit_id: str | uuid.UUID) -> str:
@@ -48,6 +54,7 @@ def test_anonymous_caller_is_rejected(anonymous_client):
     response = anonymous_client.post(PROCESS, json={"rows": []})
 
     assert response.status_code == 401
+    assert anonymous_client.get(REFERENCES).status_code == 401
 
 
 def test_other_staff_roles_cannot_touch_deposits():
@@ -57,6 +64,7 @@ def test_other_staff_roles_cannot_touch_deposits():
     """
     with rbac_client(make_user("officer"), roles=("compliance_officer",)) as client:
         assert client.get(PENDING).status_code == 403
+        assert client.get(REFERENCES).status_code == 403
         assert client.post(PROCESS, json={"rows": []}).status_code == 403
         assert client.post(_approve_path(uuid.uuid4()), json={}).status_code == 403
 
@@ -69,6 +77,7 @@ def test_reading_the_queue_does_not_grant_confirming_it():
         make_user("viewer"), permissions=(PermissionCode.CASHIN_READ,)
     ) as client:
         assert client.get(PENDING).status_code == 200
+        assert client.get(REFERENCES).status_code == 200
 
         blocked = client.post(PROCESS, json={"rows": []})
         assert blocked.status_code == 403
@@ -211,6 +220,37 @@ def test_process_without_a_platform_bank_account_is_refused(treasury_client):
 
     assert response.status_code == 409
     assert "RemitX SA Bank Account" in response.json()["detail"]
+
+
+def test_treasury_lists_customer_account_references_only(treasury_client):
+    user = UserController().ensure_provisioned(
+        "user_refs", lambda: "sian@example.com", lambda: "Sian"
+    )
+    # A platform account shares the customer's user id but has no reference
+    # and must not show up as something a statement line can match.
+    db.session.add(
+        Account(
+            user_id=user.id,
+            type=TYPE_PLATFORM_FIAT,
+            account_currency=CURRENCY_ZAR,
+            label=deposit_service.REMITX_SA_BANK_ACCOUNT_LABEL,
+        )
+    )
+    db.session.commit()
+    base = user.base_reference
+
+    response = treasury_client.get(REFERENCES)
+
+    assert response.status_code == 200
+    by_reference = {row["reference"]: row for row in response.json()}
+    assert set(by_reference) == {f"{base}-zar", f"{base}-tok"}
+    assert by_reference[f"{base}-zar"] == {
+        "reference": f"{base}-zar",
+        "currency": CURRENCY_ZAR,
+        "name": "Sian",
+    }
+    assert by_reference[f"{base}-tok"]["currency"] == CURRENCY_TOKEN
+    assert [row["reference"] for row in response.json()] == sorted(by_reference)
 
 
 def test_approving_an_unknown_deposit_is_a_400(treasury_client):

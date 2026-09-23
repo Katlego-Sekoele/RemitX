@@ -16,6 +16,7 @@ from remitx_api.controllers.deposit_controller import DepositController
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.deposit import (
+    AccountReferenceRead,
     ApproveDepositRequest,
     PendingDepositRead,
     ProcessDepositsRequest,
@@ -43,6 +44,17 @@ def process_deposits(payload: ProcessDepositsRequest):
     wait in the pending queue for manual matching. Needs ``cashin:confirm``."""
     rows = [row.model_dump() for row in payload.rows]
     return controller.process_deposits(rows)
+
+
+@router.get(
+    "/account-references",
+    response_model=list[AccountReferenceRead],
+    summary="List customer account references",
+)
+def list_account_references():
+    """References a statement line can match, for the cash-in editor.
+    Needs ``cashin:read``. Names are display names, not email addresses."""
+    return controller.list_account_references()
 
 
 @router.get(

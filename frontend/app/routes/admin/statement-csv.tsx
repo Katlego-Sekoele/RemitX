@@ -4,9 +4,11 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@phosphor-icons/react"
+import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { Link } from "react-router"
 
+import { AccountReferenceCombobox } from "~/components/admin/account-reference-combobox"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
 import { Button } from "~/components/ui/button"
@@ -34,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table"
+import { api } from "~/client"
 import { useHasPermission } from "~/hooks/use-permissions"
 import {
   SAMPLE_STATEMENT_LINES,
@@ -97,6 +100,7 @@ function StatementCsvPage() {
   const [lines, setLines] = useState<DraftLine[]>(() =>
     draftFrom(SAMPLE_STATEMENT_LINES)
   )
+  const accounts = useQuery(api.admin.deposits.listAccountReferences())
 
   function update(id: string, column: StatementColumn, value: string) {
     setLines((current) =>
@@ -191,17 +195,28 @@ function StatementCsvPage() {
                   <TableRow key={line.id}>
                     {STATEMENT_COLUMNS.map((column) => (
                       <TableCell key={column}>
-                        <Input
-                          value={line[column]}
-                          type={column === "date" ? "date" : "text"}
-                          inputMode={
-                            column === "amount" ? "decimal" : undefined
-                          }
-                          aria-label={`${COLUMN_LABEL[column]} on line ${index + 1}`}
-                          onChange={(event) =>
-                            update(line.id, column, event.target.value)
-                          }
-                        />
+                        {column === "reference" ? (
+                          <AccountReferenceCombobox
+                            accounts={accounts.data ?? []}
+                            value={line.reference}
+                            onChange={(reference) =>
+                              update(line.id, "reference", reference)
+                            }
+                            placeholder={`Reference on line ${index + 1}`}
+                          />
+                        ) : (
+                          <Input
+                            value={line[column]}
+                            type={column === "date" ? "date" : "text"}
+                            inputMode={
+                              column === "amount" ? "decimal" : undefined
+                            }
+                            aria-label={`${COLUMN_LABEL[column]} on line ${index + 1}`}
+                            onChange={(event) =>
+                              update(line.id, column, event.target.value)
+                            }
+                          />
+                        )}
                       </TableCell>
                     ))}
                     <TableCell>
