@@ -18,6 +18,12 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Deposit)
 
+    def get_by_statement_fingerprint(self, fingerprint: str) -> Deposit | None:
+        """The deposit already written for this bank-statement line, if any."""
+        return db.session.scalars(
+            select(Deposit).where(Deposit.statement_fingerprint == fingerprint)
+        ).first()
+
     def add(self, deposit: Deposit) -> Deposit:
         """Insert a new deposit row. Flushes only — caller commits."""
         db.session.add(deposit)

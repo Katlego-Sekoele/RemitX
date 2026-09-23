@@ -2,8 +2,11 @@ import csv
 import logging
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy.exc import IntegrityError
+
+from remitx_api.errors.base import ConflictError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR, Account
 from remitx_api.models.orm.deposit import CONFIRMED_BY_SYSTEM, Deposit
@@ -22,6 +25,47 @@ logger = logging.getLogger(__name__)
 
 # Hand-seeded platform account every deposit's source leg debits from.
 REMITX_SA_BANK_ACCOUNT_LABEL = "RemitX SA Bank Account"
+_AMOUNT_QUANTUM = Decimal("0.01")
+
+
+class PlatformBankAccountMissingError(ConflictError):
+    """Reconciliation has nowhere to take the money from."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "RemitX SA Bank Account is not set up, so deposits cannot be "
+            "reconciled. Seed the platform accounts and try again."
+        )
+
+
+def statement_fingerprint(row: dict) -> str:
+    """Stable identity of one bank-statement line.
+
+    Date (UTC calendar day), the reference as written, and the amount at
+    2dp. The same CSV uploaded twice, or an overlapping date range, produces
+    the same fingerprint and is not credited again. Two different amounts,
+    dates, or references are two deposits.
+    """
+    reference = (row.get("reference") or "").strip()
+    amount = Decimal(str(row.get("amount"))).quantize(
+        _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
+    )
+    return f"{_fingerprint_date(row.get('date'))}|{reference}|{format(amount, 'f')}"
+
+
+def _fingerprint_date(value) -> str:
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError:
+            return ""
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC)
+    return parsed.date().isoformat()
 
 
 def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
@@ -70,7 +114,7 @@ def _create_deposit(
 
     `row`'s "date" becomes the transaction's `created_at` — see `_parse_statement_date`.
     """
-    reference = row.get("reference")
+    reference = (row.get("reference") or "").strip() or None
     amount = Decimal(str(row.get("amount")))
     if amount <= 0:
         logger.info(
@@ -79,13 +123,52 @@ def _create_deposit(
             amount,
         )
         return None
+    fingerprint = statement_fingerprint(
+        {**row, "reference": reference, "amount": amount}
+    )
+    if deposit_repo.get_by_statement_fingerprint(fingerprint) is not None:
+        logger.info("Skipping statement line already reconciled (%s)", fingerprint)
+        return None
+
     processed_at = datetime.now(UTC)
     statement_date = _parse_statement_date(row.get("date"), processed_at)
     # For now we only support ZAR deposits, so the bank account is always the same.
-    RemitX_bank_account = account_repo.get_platform_account_by_label(
+    remitx_bank_account = account_repo.get_platform_account_by_label(
         REMITX_SA_BANK_ACCOUNT_LABEL
     )
+    if remitx_bank_account is None:
+        raise PlatformBankAccountMissingError()
 
+    try:
+        with db.session.begin_nested():
+            return _insert_deposit(
+                reference,
+                amount,
+                fingerprint,
+                statement_date,
+                processed_at,
+                remitx_bank_account,
+                deposit_repo,
+                transaction_repo,
+                account_repo,
+            )
+    except IntegrityError:
+        # A concurrent reconciliation inserted this fingerprint first.
+        logger.info("Skipping statement line already reconciled (%s)", fingerprint)
+        return None
+
+
+def _insert_deposit(
+    reference: str | None,
+    amount: Decimal,
+    fingerprint: str,
+    statement_date: datetime,
+    processed_at: datetime,
+    remitx_bank_account: Account,
+    deposit_repo: DepositRepository,
+    transaction_repo: TransactionRepository,
+    account_repo: AccountRepository,
+) -> Deposit:
     account = _find_account(reference, account_repo)
     # If no account matches the reference, create a pending transaction and deposit
     if account is None:
@@ -97,34 +180,38 @@ def _create_deposit(
         transaction = transaction_repo.add(
             Transaction(
                 type=TYPE_DEPOSIT,
-                credit_account_id=RemitX_bank_account.account_id,
+                credit_account_id=remitx_bank_account.account_id,
                 debit_account_id=None,
                 amount=amount,
-                currency=RemitX_bank_account.account_currency,
+                currency=remitx_bank_account.account_currency,
                 status=STATUS_PENDING,
                 created_at=statement_date,
                 processed_at=processed_at,
             )
         )
         return deposit_repo.add(
-            Deposit(tx_id=transaction.tx_id, user_account_reference=reference)
+            Deposit(
+                tx_id=transaction.tx_id,
+                user_account_reference=reference,
+                statement_fingerprint=fingerprint,
+            )
         )
 
     # Else we have a user account, so create a confirmed transaction and deposit
     transaction = transaction_repo.add(
         Transaction(
             type=TYPE_DEPOSIT,
-            credit_account_id=RemitX_bank_account.account_id,
+            credit_account_id=remitx_bank_account.account_id,
             debit_account_id=account.account_id,
             amount=amount,
-            currency=RemitX_bank_account.account_currency,
+            currency=remitx_bank_account.account_currency,
             status=STATUS_CONFIRMED,
             created_at=statement_date,
             processed_at=processed_at,
             confirmed_at=processed_at,
         )
     )
-    account_repo.decrease_balance(RemitX_bank_account.account_id, amount)
+    account_repo.decrease_balance(remitx_bank_account.account_id, amount)
     account_repo.increase_balance(account.account_id, amount)
     return deposit_repo.add(
         Deposit(
@@ -132,6 +219,7 @@ def _create_deposit(
             user_id=account.user_id,
             user_account_reference=reference,
             confirmed_by=CONFIRMED_BY_SYSTEM,
+            statement_fingerprint=fingerprint,
         )
     )
 
