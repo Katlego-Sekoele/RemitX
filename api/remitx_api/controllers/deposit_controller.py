@@ -1,8 +1,19 @@
 import uuid
 
 from remitx_api.models.orm.deposit import Deposit
+from remitx_api.models.orm.user import short_display_name
+from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
+
+
+def _customer_name(
+    full_name: str | None, first_name: str | None, last_name: str | None
+) -> str | None:
+    verified = (full_name or "").strip()
+    if verified:
+        return verified
+    return short_display_name(first_name, last_name)
 
 
 class DepositController:
@@ -17,6 +28,19 @@ class DepositController:
         """
         deposits = deposit_service.process_deposits(rows)
         return [self._fatten(deposit) for deposit in deposits]
+
+    def list_account_references(self) -> list[dict]:
+        """Customer account references the statement editor can search."""
+        return [
+            {
+                "reference": reference,
+                "currency": currency,
+                "name": _customer_name(full_name, first_name, last_name),
+            }
+            for reference, currency, full_name, first_name, last_name in (
+                AccountRepository().list_customer_references()
+            )
+        ]
 
     def list_pending(self) -> list[dict]:
         """Pending deposits for the admin portal's manual-review queue."""

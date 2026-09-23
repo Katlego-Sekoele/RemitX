@@ -36,6 +36,17 @@ class PendingDepositRead(Schema):
     created_at: UtcDateTime
 
 
+class AccountReferenceRead(Schema):
+    """One customer account a statement line can match.
+
+    ``name`` is a display name, never an email.
+    """
+
+    reference: str
+    currency: str
+    name: str | None = None
+
+
 class ApproveDepositRequest(Schema):
     """The customer's account reference, for example ``sipho1-zar``.
 

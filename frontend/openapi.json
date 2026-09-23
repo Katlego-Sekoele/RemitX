@@ -47,6 +47,37 @@
         "title": "AccountRead",
         "type": "object"
       },
+      "AccountReferenceRead": {
+        "description": "One customer account a statement line can match.\n\n``name`` is a display name, never an email.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "currency",
+          "name"
+        ],
+        "title": "AccountReferenceRead",
+        "type": "object"
+      },
       "AccountTransactionRead": {
         "description": "A read-only representation of a transaction on a customer currency account.",
         "properties": {
@@ -4544,6 +4575,57 @@
         "summary": "List one account's transaction history",
         "tags": [
           "accounts"
+        ]
+      }
+    },
+    "/admin/deposits/account-references": {
+      "get": {
+        "description": "References a statement line can match, for the cash-in editor.\nNeeds ``cashin:read``. Names are display names, not email addresses.",
+        "operationId": "list_account_references",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountReferenceRead"
+                  },
+                  "title": "Response List Account References",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List customer account references",
+        "tags": [
+          "admin.deposits"
         ]
       }
     },

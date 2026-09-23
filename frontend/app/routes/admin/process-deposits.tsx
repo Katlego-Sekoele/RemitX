@@ -2,16 +2,26 @@ import {
   CheckCircleIcon,
   FileCsvIcon,
   PencilSimpleIcon,
-  PlayIcon,
+  TrashIcon,
+  UploadSimpleIcon,
   WarningIcon,
-  XIcon,
 } from "@phosphor-icons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useRef, useState } from "react"
+import { useId, useState } from "react"
 import { Link } from "react-router"
 
+import { AccountReferenceCombobox } from "~/components/admin/account-reference-combobox"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "~/components/ui/attachment"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -30,7 +40,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "~/components/ui/dialog"
-import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
 import {
   Table,
@@ -64,10 +73,6 @@ export function meta(): Route.MetaDescriptors {
     { name: "robots", content: "noindex" },
   ]
 }
-
-// How long "Simulation completed" stays up before the upload dialog closes
-// itself.
-const COMPLETION_DISPLAY_MS = 1200
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
@@ -126,20 +131,19 @@ function ProcessDepositsPage() {
             {pageRoutingContextByModuleName?.title}
           </h1>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={
-              <Link to="/admin/statement-csv">
-                <FileCsvIcon data-icon="inline-start" />
-                Statement CSV
-              </Link>
-            }
-          />
-          {canConfirm && <UploadDialog onProcessed={refreshPending} />}
-        </div>
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link to="/admin/statement-csv">
+              <FileCsvIcon data-icon="inline-start" />
+              Statement CSV
+            </Link>
+          }
+        />
       </div>
+
+      {canConfirm && <StatementUpload onProcessed={refreshPending} />}
 
       <Card>
         <CardHeader>
@@ -162,41 +166,40 @@ function ProcessDepositsPage() {
   )
 }
 
-function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
-  const [open, setOpen] = useState(false)
+/**
+ * Choosing the file is not final — a bad CSV can be removed — so it stays
+ * on the page, in the same drop zone KYC uploads use. Running the statement
+ * is the action, and it sits beside the file rather than inside a modal.
+ */
+function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
+  const inputId = useId()
+  const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [rows, setRows] = useState<CsvRow[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const process = useMutation({
     ...api.admin.deposits.processDeposits(),
     onSuccess: () => {
       onProcessed()
       setCompleted(true)
-      window.setTimeout(() => setOpen(false), COMPLETION_DISPLAY_MS)
+      setFile(null)
+      setRows([])
     },
   })
-
-  function resetDialog() {
-    setFile(null)
-    setRows([])
-    setParseError(null)
-    setCompleted(false)
-    process.reset()
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
 
   function clearFile() {
     setFile(null)
     setRows([])
     setParseError(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    setCompleted(false)
+    process.reset()
   }
 
   async function handleFile(selected: File | undefined) {
-    if (!selected) return
+    if (!selected || process.isPending) return
+    setCompleted(false)
     try {
       const text = await selected.text()
       const parsed = parseStatementCsv(text)
@@ -219,96 +222,111 @@ function UploadDialog({ onProcessed }: { onProcessed: () => void }) {
   const canRun = file !== null && rows.length > 0 && !parseError
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) resetDialog()
-      }}
-    >
-      <DialogTrigger render={<Button />}>
-        <PlayIcon data-icon="inline-start" />
-        Process Deposits Simulation
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Upload CSV</DialogTitle>
-        </DialogHeader>
-
-        {completed ? (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bank statement</CardTitle>
+        <CardDescription>
+          Drop the CSV from Statement CSV. Matching lines credit the customer.
+          The rest wait below.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {completed && (
           <Alert>
             <CheckCircleIcon />
             <AlertTitle>Simulation completed</AlertTitle>
           </Alert>
+        )}
+
+        {file ? (
+          <Attachment
+            className="w-full max-w-full"
+            state={process.isPending ? "processing" : "done"}
+          >
+            <AttachmentMedia variant="icon">
+              <FileCsvIcon />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{file.name}</AttachmentTitle>
+              <AttachmentDescription>
+                {rows.length} line{rows.length === 1 ? "" : "s"}
+              </AttachmentDescription>
+            </AttachmentContent>
+            <AttachmentActions>
+              <AttachmentAction
+                aria-label="Remove file"
+                disabled={process.isPending}
+                onClick={clearFile}
+              >
+                <TrashIcon />
+              </AttachmentAction>
+            </AttachmentActions>
+          </Attachment>
         ) : (
-          <div className="flex flex-col gap-3">
-            {file ? (
-              <div className="flex items-center justify-between gap-2 rounded-md border border-input px-2.5 py-1.5 text-xs">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <FileCsvIcon className="size-4 shrink-0" />
-                  <span className="truncate">{file.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    ({rows.length} line{rows.length === 1 ? "" : "s"})
-                  </span>
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  disabled={process.isPending}
-                  onClick={clearFile}
-                  aria-label="Remove file"
-                >
-                  <XIcon />
-                </Button>
-              </div>
-            ) : (
-              <Input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                aria-label="Bank statement CSV"
-                onChange={(event) => handleFile(event.target.files?.[0])}
-              />
-            )}
-
-            {parseError && (
-              <Alert variant="destructive">
-                <WarningIcon />
-                <AlertTitle>Could not use that file</AlertTitle>
-                <AlertDescription>{parseError}</AlertDescription>
-              </Alert>
-            )}
-
-            {process.isError && (
-              <Alert variant="destructive">
-                <WarningIcon />
-                <AlertTitle>Simulation failed</AlertTitle>
-                <AlertDescription>
-                  {errorMessage(process.error)}
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+          <Attachment
+            state={parseError ? "error" : "idle"}
+            data-dragging={dragging}
+            aria-disabled={process.isPending}
+            className="min-h-24 w-full max-w-full justify-center"
+          >
+            <input
+              id={inputId}
+              type="file"
+              accept=".csv,text/csv"
+              disabled={process.isPending}
+              aria-label="Bank statement CSV"
+              className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+              onDragEnter={() => setDragging(true)}
+              onDragLeave={() => setDragging(false)}
+              onDrop={() => setDragging(false)}
+              onChange={(event) => {
+                handleFile(event.target.files?.[0])
+                event.target.value = ""
+              }}
+            />
+            <AttachmentMedia variant="icon">
+              <UploadSimpleIcon aria-hidden="true" />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>
+                Drop a statement here, or click to browse
+              </AttachmentTitle>
+              <AttachmentDescription>
+                CSV with reference and amount columns.
+              </AttachmentDescription>
+            </AttachmentContent>
+          </Attachment>
         )}
 
-        {!completed && (
-          <DialogFooter>
-            <Button
-              type="button"
-              onClick={() =>
-                process.mutate({ body: { rows: toDepositRows(rows) } })
-              }
-              disabled={!canRun || process.isPending}
-            >
-              {process.isPending
-                ? "Running…"
-                : "Run Process Deposit Simulation"}
-            </Button>
-          </DialogFooter>
+        {parseError && (
+          <Alert variant="destructive">
+            <WarningIcon />
+            <AlertTitle>Could not use that file</AlertTitle>
+            <AlertDescription>{parseError}</AlertDescription>
+          </Alert>
         )}
-      </DialogContent>
-    </Dialog>
+
+        {process.isError && (
+          <Alert variant="destructive">
+            <WarningIcon />
+            <AlertTitle>Simulation failed</AlertTitle>
+            <AlertDescription>{errorMessage(process.error)}</AlertDescription>
+          </Alert>
+        )}
+
+        <div>
+          <Button
+            type="button"
+            onClick={() =>
+              process.mutate({ body: { rows: toDepositRows(rows) } })
+            }
+            disabled={!canRun || process.isPending}
+          >
+            {process.isPending ? "Running…" : "Run Process Deposit Simulation"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -382,6 +400,10 @@ function ApproveDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [accountReference, setAccountReference] = useState("")
+  const accounts = useQuery({
+    ...api.admin.deposits.listAccountReferences(),
+    enabled: open,
+  })
 
   const approve = useMutation({
     ...api.admin.deposits.approveDeposit(),
@@ -431,13 +453,13 @@ function ApproveDialog({
         >
           <div className="flex flex-col gap-2">
             <Label htmlFor="deposit-account-reference">Account reference</Label>
-            <Input
+            <AccountReferenceCombobox
               id="deposit-account-reference"
+              accounts={accounts.data ?? []}
               value={accountReference}
-              onChange={(event) => setAccountReference(event.target.value)}
-              placeholder="sipho1-zar"
-              autoComplete="off"
+              onChange={setAccountReference}
               disabled={approve.isPending}
+              placeholder="Search accounts"
             />
           </div>
 

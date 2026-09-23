@@ -17,6 +17,7 @@ from remitx_api.models.orm.transaction import (
     STATUS_PROCESSING,
     Transaction,
 )
+from remitx_api.models.orm.user import User
 from remitx_api.repositories.repository import Repository
 
 
@@ -57,6 +58,25 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_USER,
             )
         ).first()
+
+    def list_customer_references(self) -> list[tuple]:
+        """Every customer account a statement line can name, with the
+        name fields needed to label it. Platform accounts have no
+        reference and are excluded.
+        """
+        rows = db.session.execute(
+            select(
+                Account.reference,
+                Account.account_currency,
+                User.full_name,
+                User.first_name,
+                User.last_name,
+            )
+            .join(User, User.id == Account.user_id)
+            .where(Account.type == TYPE_USER, Account.reference.is_not(None))
+            .order_by(Account.reference)
+        ).all()
+        return list(rows)
 
     def get_user_account(self, user_id: uuid.UUID, currency: str) -> Account | None:
         """Strict lookup, no creation — every user has both accounts eagerly
