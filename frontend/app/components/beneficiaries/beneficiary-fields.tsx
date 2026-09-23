@@ -23,8 +23,8 @@ export function asPayoutCurrency(
     : null
 }
 
-/** The currencies this person can be paid in: the payout accounts they
- * already hold. An empty list means they have none yet. */
+/** The currencies this person can be paid in: the fiat accounts they
+ * already hold, including ZAR. An empty list means they have none yet. */
 export function PayoutCurrencyField({
   id,
   value,
@@ -42,7 +42,7 @@ export function PayoutCurrencyField({
         <FieldLabel>Payout currency</FieldLabel>
         <FieldDescription>
           They don&apos;t have a payout account yet. Ask for a reference ending
-          in -usd, -zwl or -nad.
+          in -zar, -usd, -zwl or -nad.
         </FieldDescription>
       </Field>
     )
