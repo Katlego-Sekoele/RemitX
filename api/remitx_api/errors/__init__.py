@@ -12,6 +12,7 @@ from remitx_api.errors.base import (
     ForbiddenError,
     NotFoundError,
 )
+from remitx_api.errors.remittances import UnknownRemittanceError
 from remitx_api.errors.roles import (
     LastProtectedRoleHolderError,
     RoleNotGrantableError,
@@ -28,6 +29,7 @@ __all__ = [
     "NotFoundError",
     "RoleNotGrantableError",
     "RoleNotHeldError",
+    "UnknownRemittanceError",
     "UnknownRoleError",
     "UnknownUserError",
 ]

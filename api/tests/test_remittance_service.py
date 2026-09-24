@@ -377,8 +377,6 @@ def test_second_active_quote_fails_available_balance_check_after_first_confirms(
 
     with pytest.raises(remittance_service.InsufficientBalanceError):
         remittance_service.confirm_remittance(sender.id, second_quote.quote_id)
-
-
 def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(
     app_context, enqueued
 ):
@@ -388,7 +386,7 @@ def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
     _seed_platform_accounts()
-    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 
     BeneficiaryController().delete(sender.id, beneficiary.beneficiary_id)

@@ -5,8 +5,18 @@
  * a reload and the stepper's own triggers never lose it.
  */
 
-import type { PayoutCurrency, QuoteRead as Quote } from "~/client"
-import { formatMoney, formatRate, SETTLEMENT_TOKEN_LABEL } from "~/lib/money"
+import type { QuoteCreateRequest } from "~/client"
+import {
+  formatMoney,
+  formatRate,
+  fromCents,
+  invertRate,
+  subtractAmounts,
+  toCents,
+  TOKEN_LABEL,
+} from "~/lib/money"
+
+export const SEND_PATH = "/app/send"
 
 export const SEND_STEPS = [
   { key: "recipient", title: "Recipient" },
@@ -20,11 +30,11 @@ export type SendStep = (typeof SEND_STEPS)[number]["key"]
 /** The step the page can show; Sent is the transfer's own page (SEND-3). */
 export type SendPageStep = Exclude<SendStep, "sent">
 
-export type { PayoutCurrency }
+export type PayoutCurrency = QuoteCreateRequest["receiver_payout_currency"]
 
 /**
  * What a beneficiary can be paid out in, as options for a select. The type
- * comes from the API's enum, including the ZAR account from signup.
+ * comes from the quote API's enum, including the ZAR account from signup.
  */
 export const PAYOUT_CURRENCIES = [
   "ZAR",
@@ -116,9 +126,6 @@ export function sanitizeAmountInput(value: string): string {
   return `${whole}.${fraction}`
 }
 
-/** Rand, with at most two decimal places. */
-const AMOUNT_PATTERN = /^\d+(\.\d{0,2})?$/
-
 export type AmountIssue =
   | "empty"
   | "invalid"
@@ -147,13 +154,13 @@ export function amountIssue(
   limits: AmountLimits
 ): AmountIssue | null {
   if (!amount.trim()) return "empty"
-  if (!AMOUNT_PATTERN.test(amount.trim())) return "invalid"
-  // Comparing is all the UI does with an amount, and two-decimal values
-  // compare exactly as numbers. The API does the money arithmetic.
-  const value = Number(amount)
-  if (value <= 0) return "zero"
-  const over = (limit: string | undefined) =>
-    limit !== undefined && value > Number(limit)
+  const cents = toCents(amount)
+  if (cents === null) return "invalid"
+  if (cents <= 0n) return "zero"
+  const over = (limit: string | undefined) => {
+    const limitCents = limit === undefined ? null : toCents(limit)
+    return limitCents !== null && cents > limitCents
+  }
   if (over(limits.available)) return "over_balance"
   if (over(limits.dailyRemaining)) return "over_daily_limit"
   if (over(limits.monthlyRemaining)) return "over_monthly_limit"
@@ -216,6 +223,12 @@ export function isRatesUnavailable(error: unknown): boolean {
 export const RATES_UNAVAILABLE_MESSAGE =
   "Exchange rates are unavailable right now."
 
+/** "1000.5" → "1000.50", the form the API and the URL both keep. */
+export function normalizeAmount(amount: string): string {
+  const cents = toCents(amount)
+  return cents === null ? amount : fromCents(cents)
+}
+
 /** One line of the quote the sender confirms. */
 export type QuoteLine = {
   label: string
@@ -225,34 +238,70 @@ export type QuoteLine = {
 }
 
 /**
- * The brief's quotation lines, in its order, with the amount converted
- * between the FX margin and the exchange rate. Every figure is the API's;
- * the fee rates are config there, so no label carries a percentage.
+ * The priced fields a quote and a transfer receipt share. Sender fee lines
+ * are null on a received transfer: the recipient sees what arrived, not
+ * what the sender paid.
  */
-export function quoteLines(quote: Quote): QuoteLine[] {
+export type PricedQuote = {
+  sender_amount: string | null
+  sender_currency: string
+  sender_transaction_fee: string | null
+  exchange_rate_margin: string | null
+  fiat_to_token_exchange_rate: string
+  fiat_exchange_rate: string
+  token_amount: string
+  token_name: string
+  receiver_currency: string
+  receiver_payout_fee: string
+  receiver_payout_estimate: string
+}
+
+/**
+ * The brief's quotation lines, in its order, with the amount converted
+ * derived between the FX margin and the exchange rate. The fee rates are
+ * config on the API, so no label carries a percentage. A receipt with no
+ * sender lines (a received transfer) starts at the exchange rate and names
+ * the last line "Received".
+ */
+export function quoteLines(quote: PricedQuote): QuoteLine[] {
   const sender = quote.sender_currency
   const receiver = quote.receiver_currency
+  const paid =
+    quote.sender_amount !== null &&
+    quote.sender_transaction_fee !== null &&
+    quote.exchange_rate_margin !== null
+      ? {
+          amount: quote.sender_amount,
+          fee: quote.sender_transaction_fee,
+          margin: quote.exchange_rate_margin,
+        }
+      : null
+
   return [
-    { label: "You send", value: formatMoney(quote.sender_amount, sender) },
-    {
-      label: "Transfer fee",
-      value: formatMoney(quote.sender_transaction_fee, sender),
-    },
-    {
-      label: "FX margin",
-      value: formatMoney(quote.exchange_rate_margin, sender),
-    },
-    {
-      label: "Amount converted",
-      value: formatMoney(quote.amount_converted, sender),
-    },
+    ...(paid
+      ? [
+          { label: "You send", value: formatMoney(paid.amount, sender) },
+          {
+            label: "Transfer fee",
+            value: formatMoney(paid.fee, sender),
+          },
+          { label: "FX margin", value: formatMoney(paid.margin, sender) },
+          {
+            label: "Amount converted",
+            value: formatMoney(
+              subtractAmounts(paid.amount, paid.fee, paid.margin),
+              sender
+            ),
+          },
+        ]
+      : []),
     {
       label: "Exchange rate",
-      value: `1 USD = R ${formatRate(quote.token_to_fiat_exchange_rate)}`,
+      value: `1 USD = R ${invertRate(quote.fiat_to_token_exchange_rate)}`,
       detail: `1 ${sender} = ${formatRate(quote.fiat_exchange_rate)} ${receiver}`,
     },
     {
-      label: `${SETTLEMENT_TOKEN_LABEL} sent`,
+      label: `${TOKEN_LABEL} sent`,
       value: formatMoney(quote.token_amount, quote.token_name),
     },
     {
@@ -260,7 +309,7 @@ export function quoteLines(quote: Quote): QuoteLine[] {
       value: formatMoney(quote.receiver_payout_fee, receiver),
     },
     {
-      label: "Recipient gets",
+      label: paid ? "Recipient gets" : "Received",
       value: formatMoney(quote.receiver_payout_estimate, receiver),
     },
   ]

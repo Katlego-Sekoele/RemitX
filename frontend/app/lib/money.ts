@@ -15,9 +15,14 @@ export const SETTLEMENT_TOKEN_LABEL = "RLUSD"
 /** The token's API name. Quote lines still carry this code. */
 export const TOKEN_CURRENCY = "uctusd"
 
+/** Quote lines use these names for the same token label and note. */
+export const TOKEN_LABEL = SETTLEMENT_TOKEN_LABEL
+
 /** Said once, wherever the token first appears on a page. */
 export const SETTLEMENT_TOKEN_NOTE =
   "Test token on the XRP Ledger Testnet, the lecturer-approved stand-in for RLUSD."
+
+export const TOKEN_NOTE = SETTLEMENT_TOKEN_NOTE
 
 const CURRENCY_NAMES: Record<string, string> = {
   ZAR: "South African rand",
@@ -31,6 +36,8 @@ const CURRENCY_NAMES: Record<string, string> = {
 const SYMBOLS: Record<string, string> = { ZAR: "R" }
 
 type Sign = "auto" | "always" | "exceptZero" | "never"
+
+const AMOUNT_PATTERN = /^\d+(\.\d{0,2})?$/
 
 function isSettlement(currency: string, kind: AccountKind) {
   return kind === "settlement" || currency === TOKEN_CURRENCY
@@ -83,42 +90,99 @@ function join(parts: Intl.NumberFormatPart[]): string {
   return parts.map((part) => part.value).join("")
 }
 
-function toCents(amount: string): bigint {
-  const trimmed = amount.trim()
-  const negative = trimmed.startsWith("-")
-  const [whole, fraction = ""] = trimmed.replace(/^[-+]/, "").split(".")
-  const cents =
-    BigInt(whole || "0") * 100n + BigInt(`${fraction}00`.slice(0, 2))
-  return negative ? -cents : cents
+/**
+ * "1000.5" → 100050n. `null` for anything that isn't a plain, non-negative
+ * amount with at most two decimal places. Typed amounts use this; stored
+ * decimals use `amountToCents`.
+ */
+export function toCents(value: string): bigint | null {
+  const trimmed = value.trim()
+  if (!AMOUNT_PATTERN.test(trimmed)) return null
+  const [whole, fraction = ""] = trimmed.split(".")
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"))
 }
 
-function fromCents(cents: bigint): string {
+/** 100050n → "1000.50". */
+export function fromCents(cents: bigint): string {
   const negative = cents < 0n
   const magnitude = negative ? -cents : cents
   const fraction = (magnitude % 100n).toString().padStart(2, "0")
   return `${negative ? "-" : ""}${magnitude / 100n}.${fraction}`
 }
 
+/**
+ * The API's decimal strings are always 2 dp, but a stored value can carry
+ * trailing zeros ("12.50000000"). Accept those too, and refuse anything that
+ * would lose a cent.
+ */
+export function amountToCents(value: string): bigint {
+  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(value.trim())
+  if (!match) throw new Error(`Not a decimal amount: ${value}`)
+  const [, sign, whole, fraction = ""] = match
+  if (/[1-9]/.test(fraction.slice(2))) {
+    throw new Error(`More than 2 decimal places: ${value}`)
+  }
+  const cents =
+    BigInt(whole) * 100n + BigInt(fraction.slice(0, 2).padEnd(2, "0"))
+  return sign ? -cents : cents
+}
+
+function parseCents(amount: string): bigint {
+  return amountToCents(amount)
+}
+
+/** `a − b − …` on 2 dp decimal strings, exactly. */
+export function subtractAmounts(from: string, ...amounts: string[]): string {
+  return fromCents(
+    amounts.reduce(
+      (total, amount) => total - amountToCents(amount),
+      amountToCents(from)
+    )
+  )
+}
+
 /** `a - b`, as a 2 dp decimal string. */
 export function subtractMoney(a: string, b: string): string {
-  return fromCents(toCents(a) - toCents(b))
+  return fromCents(parseCents(a) - parseCents(b))
 }
 
 /** The sum of 2 dp decimal strings, as one. */
 export function sumMoney(amounts: readonly string[]): string {
-  return fromCents(amounts.reduce((total, a) => total + toCents(a), 0n))
+  return fromCents(amounts.reduce((total, a) => total + parseCents(a), 0n))
 }
 
 export function isZeroMoney(amount: string): boolean {
-  return toCents(amount) === 0n
+  return parseCents(amount) === 0n
 }
 
+const RATE_DP = 4
+
 const rateFormatter = new Intl.NumberFormat("en", {
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
+  minimumFractionDigits: RATE_DP,
+  maximumFractionDigits: RATE_DP,
 })
 
 /** Rates display to 4 dp: "18.5000". */
 export function formatRate(rate: string): string {
-  return rateFormatter.format(rate as Intl.StringNumericLiteral)
+  return rateFormatter.format(rate as unknown as number)
+}
+
+/**
+ * `1 / rate` to `dp` places, rounded half up, without floats. The API prices
+ * the token leg as token units per 1 ZAR (0.05405405); people read it the
+ * other way round, as rand per dollar (18.5000).
+ */
+export function invertRate(rate: string, dp: number = RATE_DP): string {
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(rate.trim())
+  if (!match) throw new Error(`Not a positive rate: ${rate}`)
+  const [, whole, fraction = ""] = match
+  const scale = 10n ** BigInt(fraction.length)
+  const numerator = BigInt(whole + fraction)
+  if (numerator === 0n) throw new Error("Cannot invert a zero rate")
+  // 1 / (numerator / scale) = scale / numerator; scaled by 10^dp, then
+  // rounded half up by adding half the divisor before dividing.
+  const target = 10n ** BigInt(dp)
+  const quotient = (2n * scale * target + numerator) / (2n * numerator)
+  const digits = quotient.toString().padStart(dp + 1, "0")
+  return dp === 0 ? digits : `${digits.slice(0, -dp)}.${digits.slice(-dp)}`
 }

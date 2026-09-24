@@ -6,6 +6,14 @@ import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card"
+import {
   DescriptionDetails,
   DescriptionItem,
   DescriptionList,
@@ -36,13 +44,14 @@ import { Skeleton } from "~/components/ui/skeleton"
 import { useDebouncedValue } from "~/hooks/use-debounced-value"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
-import { formatMoney, formatRate } from "~/lib/money"
+import { formatMoney, invertRate } from "~/lib/money"
 import {
   amountIssue,
   amountIssueMessage,
   canPreview,
   isRatesUnavailable,
   isTooSmallForFees,
+  normalizeAmount,
   PAYOUT_CURRENCIES,
   PREVIEW_DEBOUNCE_MS,
   RATES_UNAVAILABLE_MESSAGE,
@@ -63,12 +72,13 @@ function usePreview(
   currency: PayoutCurrency,
   enabled: boolean
 ) {
+  const senderAmount = normalizeAmount(amount)
   return useQuery({
-    queryKey: ["quotes", "preview", amount, currency],
+    queryKey: ["quotes", "preview", senderAmount, currency],
     queryFn: async ({ signal }) => {
       const { data } = await sdk.quotes.previewQuote({
         body: {
-          sender_amount: amount,
+          sender_amount: senderAmount,
           sender_currency: SENDER_CURRENCY,
           receiver_payout_currency: currency,
         },
@@ -117,148 +127,158 @@ export function AmountStep({
   const name = beneficiaryName(beneficiary)
 
   return (
-    <form
-      className="flex flex-col gap-6"
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (issue === null && priced) onContinue()
-      }}
-    >
-      <FieldGroup>
-        <Field data-invalid={showIssue}>
-          <FieldLabel htmlFor="send-amount">You send (ZAR)</FieldLabel>
-          <InputGroup>
-            <InputGroupAddon>
-              <InputGroupText>R</InputGroupText>
-            </InputGroupAddon>
-            <InputGroupInput
-              id="send-amount"
-              value={amount}
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="0.00"
-              aria-invalid={showIssue}
-              onChange={(event) =>
-                onAmountChange(sanitizeAmountInput(event.target.value))
-              }
-            />
-          </InputGroup>
-          <FieldDescription>
-            {limits.available === undefined
-              ? "Loading your balance…"
-              : `Available: ${formatMoney(limits.available, SENDER_CURRENCY)}`}
-            {limits.dailyRemaining === undefined
-              ? null
-              : ` · Daily limit: ${formatMoney(limits.dailyRemaining, SENDER_CURRENCY)}`}
-            {limits.monthlyRemaining === undefined
-              ? null
-              : ` · Monthly limit: ${formatMoney(limits.monthlyRemaining, SENDER_CURRENCY)}`}
-          </FieldDescription>
-          {showIssue ? (
-            <FieldError>{amountIssueMessage(issue, limits)}</FieldError>
+    <Card>
+      <CardHeader>
+        <CardTitle>How much are you sending?</CardTitle>
+        <CardDescription>To {name}, from your ZAR balance.</CardDescription>
+      </CardHeader>
+      <form
+        className="flex flex-col gap-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (issue === null && priced) onContinue()
+        }}
+      >
+        <CardContent className="flex flex-col gap-6">
+          <FieldGroup>
+            <Field data-invalid={showIssue}>
+              <FieldLabel htmlFor="send-amount">You send (ZAR)</FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>R</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="send-amount"
+                  value={amount}
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="0.00"
+                  aria-invalid={showIssue}
+                  onChange={(event) =>
+                    onAmountChange(sanitizeAmountInput(event.target.value))
+                  }
+                />
+              </InputGroup>
+              <FieldDescription>
+                {limits.available === undefined
+                  ? "Loading your balance…"
+                  : `Available: ${formatMoney(limits.available, SENDER_CURRENCY)}`}
+                {limits.dailyRemaining === undefined
+                  ? null
+                  : ` · Daily limit: ${formatMoney(limits.dailyRemaining, SENDER_CURRENCY)}`}
+                {limits.monthlyRemaining === undefined
+                  ? null
+                  : ` · Monthly limit: ${formatMoney(limits.monthlyRemaining, SENDER_CURRENCY)}`}
+              </FieldDescription>
+              {showIssue ? (
+                <FieldError>{amountIssueMessage(issue, limits)}</FieldError>
+              ) : null}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="send-currency">They receive in</FieldLabel>
+              <Select
+                items={CURRENCY_ITEMS}
+                value={currency}
+                onValueChange={(next) => {
+                  if (next) onCurrencyChange(next)
+                }}
+              >
+                <SelectTrigger id="send-currency" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {CURRENCY_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                {currency === beneficiary.payout_currency
+                  ? `${name}'s payout currency.`
+                  : `For this transfer only. ${name} is usually paid in ${beneficiary.payout_currency}.`}
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+
+          {ratesUnavailable ? (
+            <Alert variant="destructive">
+              <WarningCircleIcon />
+              <AlertTitle>{RATES_UNAVAILABLE_MESSAGE}</AlertTitle>
+              <AlertDescription>Try again in a few minutes.</AlertDescription>
+            </Alert>
           ) : null}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="send-currency">They receive in</FieldLabel>
-          <Select
-            items={CURRENCY_ITEMS}
-            value={currency}
-            onValueChange={(next) => {
-              if (next) onCurrencyChange(next)
-            }}
-          >
-            <SelectTrigger id="send-currency" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                {CURRENCY_ITEMS.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <FieldDescription>
-            {currency === beneficiary.payout_currency
-              ? `${name}'s payout currency.`
-              : `For this transfer only. ${name} is usually paid in ${beneficiary.payout_currency}.`}
-          </FieldDescription>
-        </Field>
-      </FieldGroup>
 
-      {ratesUnavailable ? (
-        <Alert variant="destructive">
-          <WarningCircleIcon />
-          <AlertTitle>{RATES_UNAVAILABLE_MESSAGE}</AlertTitle>
-          <AlertDescription>Try again in a few minutes.</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {previewable && !ratesUnavailable && !isTooSmallForFees(preview.error) ? (
-        <section aria-label="Estimate" className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">Estimate</Badge>
-            <FieldDescription>
-              The firm price comes with your quote on the next step.
-            </FieldDescription>
-          </div>
-          {preview.isError && settled ? (
-            <FieldError>{errorMessage(preview.error)}</FieldError>
-          ) : priced && preview.data ? (
-            <DescriptionList className="sm:grid-cols-3">
-              <DescriptionItem>
-                <DescriptionTerm>They receive</DescriptionTerm>
-                <DescriptionDetails>
-                  ≈{" "}
-                  {formatMoney(
-                    preview.data.receiver_payout_estimate,
-                    preview.data.receiver_payout_currency
-                  )}
-                </DescriptionDetails>
-              </DescriptionItem>
-              <DescriptionItem>
-                <DescriptionTerm>Exchange rate</DescriptionTerm>
-                <DescriptionDetails>
-                  1 USD = R{" "}
-                  {formatRate(preview.data.token_to_fiat_exchange_rate)}
-                </DescriptionDetails>
-              </DescriptionItem>
-              <DescriptionItem>
-                <DescriptionTerm>Fees</DescriptionTerm>
-                <DescriptionDetails>
-                  {formatMoney(
-                    preview.data.sender_transaction_fee,
-                    SENDER_CURRENCY
-                  )}
-                </DescriptionDetails>
+          {previewable &&
+          !ratesUnavailable &&
+          !isTooSmallForFees(preview.error) ? (
+            <section aria-label="Estimate" className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">Estimate</Badge>
                 <FieldDescription>
-                  Plus{" "}
-                  {formatMoney(
-                    preview.data.exchange_rate_margin,
-                    SENDER_CURRENCY
-                  )}{" "}
-                  FX margin
+                  The firm price comes with your quote on the next step.
                 </FieldDescription>
-              </DescriptionItem>
-            </DescriptionList>
-          ) : (
-            <Skeleton className="h-12 w-full" />
-          )}
-        </section>
-      ) : null}
-      <div className="flex justify-between gap-2">
-        <Button type="button" variant="outline" onClick={onBack}>
-          Back
-        </Button>
-        <Button type="submit" disabled={issue !== null || !priced}>
-          Get quote
-        </Button>
-      </div>
-    </form>
+              </div>
+              {preview.isError && settled ? (
+                <FieldError>{errorMessage(preview.error)}</FieldError>
+              ) : priced && preview.data ? (
+                <DescriptionList className="sm:grid-cols-3">
+                  <DescriptionItem>
+                    <DescriptionTerm>They receive</DescriptionTerm>
+                    <DescriptionDetails>
+                      ≈{" "}
+                      {formatMoney(
+                        preview.data.receiver_payout_estimate,
+                        preview.data.receiver_payout_currency
+                      )}
+                    </DescriptionDetails>
+                  </DescriptionItem>
+                  <DescriptionItem>
+                    <DescriptionTerm>Exchange rate</DescriptionTerm>
+                    <DescriptionDetails>
+                      1 USD = R{" "}
+                      {invertRate(preview.data.fiat_to_token_exchange_rate)}
+                    </DescriptionDetails>
+                  </DescriptionItem>
+                  <DescriptionItem>
+                    <DescriptionTerm>Fees</DescriptionTerm>
+                    <DescriptionDetails>
+                      {formatMoney(
+                        preview.data.sender_transaction_fee,
+                        SENDER_CURRENCY
+                      )}
+                    </DescriptionDetails>
+                    <FieldDescription>
+                      Plus{" "}
+                      {formatMoney(
+                        preview.data.exchange_rate_margin,
+                        SENDER_CURRENCY
+                      )}{" "}
+                      FX margin
+                    </FieldDescription>
+                  </DescriptionItem>
+                </DescriptionList>
+              ) : (
+                <Skeleton className="h-12 w-full" />
+              )}
+            </section>
+          ) : null}
+        </CardContent>
+        <CardFooter className="justify-between gap-2">
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back
+          </Button>
+          <Button type="submit" disabled={issue !== null || !priced}>
+            Get quote
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
   )
 }

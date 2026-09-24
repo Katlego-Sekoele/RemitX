@@ -23,6 +23,7 @@ export default [
           module: "routes/app/account-history.tsx",
         },
       ]).map(({ path, module }) => route(path, module)),
+      route("app/transfers/:remittanceId", "routes/app/transfer.tsx"),
       layout("routes/app/verification/layout.tsx", [
         route(
           "app/profile/verification/new",
