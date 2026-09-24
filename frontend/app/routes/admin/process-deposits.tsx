@@ -142,8 +142,8 @@ function ProcessDepositsPage() {
           <CardTitle>Pending deposits</CardTitle>
           <CardDescription>
             Statement lines that didn&apos;t match an account. Search the
-            customer on the row and confirm; the credit lands on the account
-            you pick (ZAR or token). Only confirm once they have proven, off
+            customer on the row and confirm; the credit lands on the account you
+            pick (ZAR or token). Only confirm once they have proven, off
             platform, that the payment is theirs.
           </CardDescription>
         </CardHeader>
