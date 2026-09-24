@@ -2,7 +2,7 @@
 
 import uuid
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
@@ -29,7 +29,7 @@ class ProcessedDepositRead(Schema):
     confirmed_by: str | None
 
 
-class SkippedStatementLineReason(str, Enum):
+class SkippedStatementLineReason(StrEnum):
     """Why a statement line produced no deposit on this run."""
 
     UNPARSEABLE_DATE = "unparseable_date"

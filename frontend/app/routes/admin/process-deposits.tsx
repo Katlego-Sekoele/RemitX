@@ -173,7 +173,7 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
   const [parseError, setParseError] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
   const [skippedLines, setSkippedLines] = useState<SkippedStatementLineRead[]>(
-    [],
+    []
   )
 
   const process = useMutation({
@@ -183,7 +183,7 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
       setSkippedLines(data.skipped ?? [])
       setCompleted(true)
       const needsFix = (data.skipped ?? []).some(
-        (line) => line.reason === "unparseable_date",
+        (line) => line.reason === "unparseable_date"
       )
       if (!needsFix) {
         setFile(null)

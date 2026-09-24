@@ -22,7 +22,6 @@ from remitx_api.models.schemas.deposit import (
     ProcessDepositsRequest,
     ProcessDepositsResponse,
     ProcessedDepositRead,
-    SkippedStatementLineRead,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
