@@ -49,13 +49,13 @@ export function AccountReferenceCombobox({
       items={accounts}
       value={selected}
       inputValue={value}
-      onInputValueChange={(next) => {
+      onInputValueChange={(next, details) => {
+        // The list closes by clearing a filter that matched nothing. That
+        // typed reference is the value, so keep it.
+        if (details.reason === "input-clear") return
         if (next !== value) onChange(next)
       }}
       onValueChange={(account) => {
-        // Closing the list without a match must not wipe a typed reference.
-        // "nope" and "remitx deposit" are real inputs; only a picked account
-        // replaces what was typed.
         if (account) onChange(account.reference)
       }}
       itemToStringLabel={labelOf}
