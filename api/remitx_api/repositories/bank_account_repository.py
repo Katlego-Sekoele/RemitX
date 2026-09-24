@@ -69,12 +69,13 @@ class BankAccountRepository(Repository[BankAccount, uuid.UUID]):
     ) -> bool:
         """Guarded pending_verification -> verified. Flushes only — caller
         commits. Returns True iff a row changed."""
+        # Call _transition_from_pending to update the bank account status to verified
         return self._transition_from_pending(
             bank_account_id,
             status=STATUS_VERIFIED,
             verified_by_admin_id=admin_id,
             verified_at=verified_at,
-        ) # Call _transition_from_pending to update the bank account status to verified
+        )
 
     def reject(
         self,
@@ -85,17 +86,18 @@ class BankAccountRepository(Repository[BankAccount, uuid.UUID]):
     ) -> bool:
         """Guarded pending_verification -> rejected. Flushes only — caller
         commits. Returns True iff a row changed."""
+        # Call _transition_from_pending to update the bank account status to rejected
         return self._transition_from_pending(
             bank_account_id,
             status=STATUS_REJECTED,
             verified_by_admin_id=admin_id,
             verified_at=rejected_at,
             rejection_reason=reason,
-        )# Call _transition_from_pending to update the bank account status to rejected
+        )
 
     def _transition_from_pending(self, bank_account_id: uuid.UUID, **values) -> bool:
-        """Helper method to update a bank account's status from pending verification to 
-        either verified or rejected. Returns True if the update was successful 
+        """Helper method to update a bank account's status from pending verification to
+        either verified or rejected. Returns True if the update was successful
         (i.e., a row was updated), otherwise returns False."""
         result = db.session.execute(
             update(BankAccount)

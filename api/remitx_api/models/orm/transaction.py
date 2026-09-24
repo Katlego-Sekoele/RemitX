@@ -84,10 +84,10 @@ class Transaction(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default=STATUS_PENDING)
     quote_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("quotes.quote_id"), nullable=True
-    ) # groups legs of a remittance together
+    )  # groups legs of a remittance together
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
-    )# Set to `utcnow()` on insert, never updated.
+    )  # Set to `utcnow()` on insert, never updated.
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

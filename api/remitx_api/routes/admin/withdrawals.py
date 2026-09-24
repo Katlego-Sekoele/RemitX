@@ -1,12 +1,8 @@
 """Admin visibility into withdrawals.
 
-A withdrawal settles synchronously the moment it's requested — the
-destination bank account must already be verified, so there is no
-processing queue and nothing here for an admin to confirm or fail (see
-services/withdrawal_service.py). The one thing this router exposes is a
-customer's withdrawal history for the admin portal's user-profile page.
-Gated by the payout_operator role's `cashout:read` permission
-(models/orm/rbac_seed.py), same pattern as routes/admin/deposits.py.
+Router exposes is a customer's withdrawal history for the admin portal's
+user-profile page.
+Gated by the payout_operator role's `cashout:read` permission.
 """
 
 import uuid

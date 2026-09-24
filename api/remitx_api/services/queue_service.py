@@ -140,7 +140,7 @@ def enqueue_confirm_treasury_burn(
 ) -> None:
     """Enqueued by `burn_treasury_tokens` once the XRPL call has resolved
     (success or failure).
-    
+
     `tx_hash` is `None` for a failed burn, in which case `error` carries the
     XRPL exception's message so `confirm_treasury_burn` can log it.
     """

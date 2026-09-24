@@ -13,6 +13,7 @@ from remitx_api.services.withdrawal_service import (
     CurrencyMismatchError,
     InsufficientBalanceError,
     InvalidAmountError,
+    WithdrawalNotPendingError,
 )
 
 router = create_customer_router(prefix="/withdrawals", tags=[Tag.WITHDRAWALS])
@@ -29,12 +30,13 @@ def request_withdrawal(
     payload: WithdrawalCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """Make a withdrawal request from the user's fiat account to a bank account. 
+    """Make a withdrawal request from the user's fiat account to a bank account.
     The bank account must be verified and match the currency of the withdrawal."""
     try:
+        # get the view model for the withdrawal request
         view = controller.request(
             user.id, payload.bank_account_id, payload.currency, payload.amount
-        )# get the view model for the withdrawal request
+        )
     except (BankAccountNotFoundError, CurrencyMismatchError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
@@ -53,6 +55,11 @@ def request_withdrawal(
             status_code=status.HTTP_409_CONFLICT,
             detail="Bank account was rejected and cannot receive funds",
         ) from exc
+    except WithdrawalNotPendingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Withdrawal could not be settled; nothing was withdrawn",
+        ) from exc
     return WithdrawalRead.model_validate(view)
 
 
@@ -62,6 +69,7 @@ def request_withdrawal(
     summary="List the caller's own withdrawals",
 )
 def list_withdrawals(user: User = Depends(get_current_user)):
+    """List every withdrawal this user has ever made, newest first."""
     return [
         WithdrawalRead.model_validate(view)
         for view in controller.list_user_withdrawal_history(user.id)

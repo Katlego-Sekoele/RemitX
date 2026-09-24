@@ -176,7 +176,7 @@ class AccountRepository(Repository[Account, uuid.UUID]):
 
         Only for call sites that are about to gate a spend on the result —
         `withdrawal_service.request_withdrawal`,
-        `remittance_service.confirm_remittance`. 
+        `remittance_service.confirm_remittance`.
         A read-only path (e.g.`GET /accounts`) use `get_available_balance` as
         a lock would add unnecessary contention with genuine spenders.
         """
