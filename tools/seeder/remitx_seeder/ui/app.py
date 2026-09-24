@@ -553,7 +553,8 @@ def reset_section() -> None:
         "1. deletes the Clerk users the seeder made (your own accounts stay)\n"
         "2. empties the KYC document bucket\n"
         "3. drops and recreates the database schema, then `alembic upgrade head`"
-        " (which also creates the platform accounts)\n\n"
+        " (which also creates the platform accounts and records the treasury's"
+        " on-chain starting balance)\n\n"
         "Staff roles are **not** restored: grant your testers theirs again on "
         "the Access page."
     )

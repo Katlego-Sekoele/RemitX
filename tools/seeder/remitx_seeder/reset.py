@@ -8,7 +8,9 @@ In order:
 2. Empty the target's KYC document bucket.
 3. Drop the `public` schema and recreate it.
 4. `alembic upgrade head`: the schema, and every row the migrations own
-   (countries, KYC rules, roles and permissions, the platform accounts).
+   (countries, KYC rules, roles and permissions, the platform accounts, and
+   the treasury's on-chain starting balance when PLATFORM_WALLET_ADDRESS is
+   set).
 
 Role grants are not restored: grant your testers theirs again on the Access
 page.

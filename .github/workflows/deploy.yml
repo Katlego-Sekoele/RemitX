@@ -287,6 +287,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
           DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+          # The treasury-funding migration (a77cbaf94587) reads the platform
+          # wallet's uctusd balance from the testnet once. The terraform job
+          # already refuses to run with any of these unset.
+          PLATFORM_WALLET_ADDRESS: ${{ vars.TF_VAR_platform_wallet_address }}
+          XRPL_TESTNET_URL: ${{ vars.TF_VAR_xrpl_testnet_url }}
+          UCTUSD_ISSUER: ${{ vars.TF_VAR_uctusd_issuer }}
+          UCTUSD_CURRENCY_CODE_HEX: ${{ vars.TF_VAR_uctusd_currency_code_hex }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::Set MIGRATIONS_DATABASE_URL on the '${DEPLOY_ENV}' GitHub environment."
