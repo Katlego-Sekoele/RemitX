@@ -58,9 +58,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "ALTER TABLE deposits ALTER COLUMN statement_fingerprint SET NOT NULL"
-    )
+    op.execute("ALTER TABLE deposits ALTER COLUMN statement_fingerprint SET NOT NULL")
     op.create_unique_constraint(_CONSTRAINT, "deposits", ["statement_fingerprint"])
 
 

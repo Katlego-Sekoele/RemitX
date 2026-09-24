@@ -50,8 +50,7 @@ _SKIP_MESSAGES: dict[SkippedStatementLineReason, str] = {
         "recorded as a deposit."
     ),
     SkippedStatementLineReason.ALREADY_RECONCILED: (
-        "This line was already reconciled on a previous run and was not "
-        "credited again."
+        "This line was already reconciled on a previous run and was not credited again."
     ),
 }
 
