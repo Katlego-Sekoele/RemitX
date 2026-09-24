@@ -4,6 +4,8 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Query, status
 
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.caching import cache, invalidate_cache, key_from_args
+from remitx_api.caching.namespaces import Namespace
 from remitx_api.controllers.beneficiary_controller import (
     SORT_NEWEST,
     BeneficiaryController,
@@ -21,6 +23,12 @@ from remitx_api.routes.routers import create_customer_router
 
 router = create_customer_router(prefix="/beneficiaries", tags=[Tag.BENEFICIARIES])
 controller = BeneficiaryController()
+
+# The list is cached per caller and sort order. A write names only the caller,
+# which drops the list in every order at once (see caching/keys.py).
+LIST_CACHE_SECONDS = 300
+_list_key = key_from_args("user.id", "sort")
+_caller_key = key_from_args("user.id")
 
 
 @router.get(
@@ -59,6 +67,7 @@ def lookup_beneficiary_by_reference(
     summary="Add a beneficiary",
     responses=error_responses(400, 409),
 )
+@invalidate_cache(namespace=Namespace.BENEFICIARY_LIST, key_builder=_caller_key)
 def create_beneficiary(
     payload: BeneficiaryCreateRequest,
     user: User = Depends(get_current_user),
@@ -83,6 +92,11 @@ def create_beneficiary(
     "/get-beneficiary-list",
     response_model=list[BeneficiaryRead],
     summary="List my beneficiaries",
+)
+@cache(
+    expire=LIST_CACHE_SECONDS,
+    namespace=Namespace.BENEFICIARY_LIST,
+    key_builder=_list_key,
 )
 def list_my_beneficiaries(
     user: User = Depends(get_current_user),  # Get the current authenticated user
@@ -110,6 +124,7 @@ def list_my_beneficiaries(
     summary="Edit a beneficiary",
     responses=error_responses(400, 404),
 )
+@invalidate_cache(namespace=Namespace.BENEFICIARY_LIST, key_builder=_caller_key)
 def update_beneficiary(
     beneficiary_id: uuid.UUID,
     payload: BeneficiaryUpdateRequest,
@@ -137,6 +152,7 @@ def update_beneficiary(
     summary="Remove a beneficiary",
     responses=error_responses(404),
 )
+@invalidate_cache(namespace=Namespace.BENEFICIARY_LIST, key_builder=_caller_key)
 def delete_beneficiary(
     beneficiary_id: uuid.UUID,
     user: User = Depends(get_current_user),

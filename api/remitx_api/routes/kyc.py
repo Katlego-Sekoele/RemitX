@@ -12,6 +12,8 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, status
 
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.caching import cache, key_from_args
+from remitx_api.caching.namespaces import Namespace
 from remitx_api.controllers.kyc_onboarding_controller import (
     KycApplicationDetailView,
     KycOnboardingController,
@@ -38,6 +40,11 @@ from remitx_api.routes.routers import create_customer_router
 
 router: APIRouter = create_customer_router(prefix="/kyc", tags=[Tag.KYC_ONBOARDING])
 controller = KycOnboardingController()
+
+# Only a migration changes the reference data, and the client already keeps
+# it for the whole session; after a deploy that does, the old copy is served
+# for up to this long.
+REFERENCE_CACHE_SECONDS = 3600
 
 
 def _steps(view: KycOnboardingView | KycApplicationDetailView):
@@ -84,6 +91,11 @@ def _detail(view: KycApplicationDetailView) -> KycApplicationDetailRead:
     "/reference",
     response_model=KycReferenceRead,
     summary="Get onboarding reference data",
+)
+@cache(
+    expire=REFERENCE_CACHE_SECONDS,
+    namespace=Namespace.KYC_REFERENCE,
+    key_builder=key_from_args(),
 )
 def get_reference():
     """Countries, and the identity schemes each one accepts."""

@@ -1,14 +1,17 @@
 import uuid
 
+import pytest
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
+from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from tests.kyc_helpers import insert_application, make_user
+from tests.rbac_helpers import grant_permissions, seed_rbac_catalogue
 
 CREATE_ENDPOINT = "/beneficiaries/create-beneficiary"
 LIST_ENDPOINT = "/beneficiaries/get-beneficiary-list"
@@ -647,3 +650,173 @@ def test_removing_someone_elses_or_an_unknown_beneficiary_is_404(verified_client
     assert response.status_code == 404
     assert len(client.get(LIST_ENDPOINT).json()) == 1
     assert client.delete(f"/beneficiaries/{uuid.uuid4()}").status_code == 404
+
+
+# --- The cached list --------------------------------------------------------
+#
+# Cached per caller and order (routes/beneficiaries.py). Every write that
+# changes what a sender's list shows has to drop it, including writes by
+# someone else: the beneficiary's own profile, and a reviewer's approval.
+
+
+def _list(client, sort: str = "newest"):
+    response = client.get(LIST_ENDPOINT, params={"sort": sort})
+    assert response.status_code == 200, response.text
+    return response
+
+
+def _both_orders(client) -> list[list[dict]]:
+    return [_list(client, sort).json() for sort in ("newest", "alphabetical")]
+
+
+def _acting_as(client, sender, user_id: uuid.UUID):
+    """Point the client at another persisted user until the returned callable
+    restores the sender."""
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=user_id)
+
+    def restore():
+        client.app.dependency_overrides[get_current_user] = lambda: sender
+
+    return restore
+
+
+def _under_review(user_id: uuid.UUID, *, full_name: str, country: str) -> uuid.UUID:
+    token = db.open_session()
+    try:
+        return insert_application(
+            user_id,
+            KycStatus.UNDER_REVIEW,
+            full_name=full_name,
+            residential_country=country,
+        ).application_id
+    finally:
+        db.close_session(token)
+
+
+def _reviewer_id() -> uuid.UUID:
+    token = db.open_session()
+    try:
+        seed_rbac_catalogue()
+        reviewer = make_user()
+        grant_permissions(
+            reviewer.id,
+            PermissionCode.KYC_APPLICATION_READ,
+            PermissionCode.KYC_APPLICATION_DECIDE,
+        )
+        return reviewer.id
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.cache_enabled
+def test_the_list_is_cached_per_caller_and_order(verified_client):
+    client, sender = verified_client
+    _add(client, _provisioned_user_id("user_cached_list", "cached@example.com", "C"))
+
+    first, again = _list(client), _list(client)
+    other_order = _list(client, "alphabetical")
+    restore = _as_other_sender(client, sender, "user_cached_list_other")
+    try:
+        someone_elses = _list(client)
+    finally:
+        restore()
+
+    assert first.headers["X-FastAPI-Cache"] == "MISS"
+    assert again.headers["X-FastAPI-Cache"] == "HIT"
+    assert again.json() == first.json()
+    assert other_order.headers["X-FastAPI-Cache"] == "MISS"
+    assert someone_elses.headers["X-FastAPI-Cache"] == "MISS"
+    assert someone_elses.json() == []
+
+
+@pytest.mark.cache_enabled
+def test_adding_editing_and_removing_refresh_the_list_in_every_order(
+    verified_client,
+):
+    client, _sender = verified_client
+    linked_id = _provisioned_user_id("user_cached_writes", "writes@example.com", "W")
+    _hold(linked_id, "USD")
+    assert _both_orders(client) == [[], []]
+
+    created = _add(client, linked_id)
+    [[newest], [alphabetical]] = _both_orders(client)
+    assert newest == alphabetical == created
+
+    path = f"/beneficiaries/{created['beneficiary_id']}"
+    assert client.patch(path, json={"payout_currency": "USD"}).status_code == 200
+    [[newest], [alphabetical]] = _both_orders(client)
+    assert newest["payout_currency"] == alphabetical["payout_currency"] == "USD"
+
+    assert client.delete(path).status_code == 204
+    assert _both_orders(client) == [[], []]
+
+
+@pytest.mark.cache_enabled
+def test_a_senders_write_leaves_other_senders_cached_lists(verified_client):
+    client, sender = verified_client
+    restore = _as_other_sender(client, sender, "user_cached_bystander")
+    try:
+        _list(client)
+    finally:
+        restore()
+
+    _add(client, _provisioned_user_id("user_cached_added", "added@example.com", "A"))
+
+    restore = _as_other_sender(client, sender, "user_cached_bystander")
+    try:
+        bystanders = _list(client)
+    finally:
+        restore()
+    assert bystanders.headers["X-FastAPI-Cache"] == "HIT"
+
+
+@pytest.mark.cache_enabled
+def test_a_beneficiary_changing_their_mobile_refreshes_senders_lists(
+    verified_client,
+):
+    client, sender = verified_client
+    linked_id = _approved_user_id(
+        "user_cached_mobile",
+        "Tendai",
+        full_name="Tendai Moyo",
+        country="ZW",
+        mobile_number="+263771234523",
+    )
+    _add(client, linked_id)
+    [before] = _list(client).json()
+
+    restore = _acting_as(client, sender, linked_id)
+    try:
+        response = client.patch("/me", json={"mobile_number": "+263779876599"})
+    finally:
+        restore()
+
+    assert response.status_code == 200, response.text
+    [after] = _list(client).json()
+    assert before["masked_mobile_number"] == "+2637••••••23"
+    assert after["masked_mobile_number"] == "+2637••••••99"
+
+
+@pytest.mark.cache_enabled
+def test_approving_a_beneficiarys_kyc_refreshes_senders_lists(verified_client):
+    client, sender = verified_client
+    linked_id = _provisioned_user_id(
+        "user_cached_approval", "approval@example.com", "Tendai"
+    )
+    application_id = _under_review(linked_id, full_name="Tendai Moyo", country="ZW")
+    _add(client, linked_id)
+    [before] = _list(client).json()
+
+    restore = _acting_as(client, sender, _reviewer_id())
+    try:
+        response = client.post(
+            f"/admin/kyc/applications/{application_id}/approve",
+            json={"expected_version": 1},
+        )
+    finally:
+        restore()
+
+    assert response.status_code == 200, response.text
+    [after] = _list(client).json()
+    assert (before["full_name"], before["country"]) == ("Tendai", None)
+    assert (after["full_name"], after["country"]) == ("Tendai Moyo", "ZW")

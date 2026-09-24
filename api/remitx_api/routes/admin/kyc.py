@@ -19,6 +19,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.auth.permissions import RequirePermission
+from remitx_api.caching import invalidate_cache
+from remitx_api.caching.namespaces import Namespace
 from remitx_api.controllers.kyc_controller import KycController
 from remitx_api.models.orm.kyc_lifecycle import KycReasonCode, KycStatus
 from remitx_api.models.orm.permission import PermissionCode
@@ -176,6 +178,9 @@ def start_application_review(
     summary="Approve a KYC application",
     responses=error_responses(400, 403, 404, 409),
 )
+# Approval copies the verified name and country onto the applicant, which is
+# what every sender who has added them sees in their beneficiary list.
+@invalidate_cache(namespace=Namespace.BENEFICIARY_LIST)
 def approve_application(
     application_id: uuid.UUID,
     payload: KycApproveRequest,

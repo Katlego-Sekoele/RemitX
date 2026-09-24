@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.auth.permissions import get_effective_permissions
+from remitx_api.caching import invalidate_cache
+from remitx_api.caching.namespaces import Namespace
 from remitx_api.controllers.permission_controller import PermissionController
 from remitx_api.controllers.profile_controller import ProfileController, ProfileView
 from remitx_api.controllers.role_controller import RoleController
@@ -43,6 +45,9 @@ def get_my_profile(user: User = Depends(get_current_user)):
     response_model=ProfileRead,
     summary="Update the caller's contact mobile",
 )
+# The mobile shows, masked, in the beneficiary list of everyone who has added
+# the caller. Which senders those are, this route cannot tell: every list goes.
+@invalidate_cache(namespace=Namespace.BENEFICIARY_LIST)
 def update_my_profile(
     changes: ProfileUpdate,
     user: User = Depends(get_current_user),

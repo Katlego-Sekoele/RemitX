@@ -73,3 +73,6 @@ extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "cache_enabled: build the test's app with the response cache on (tests/conftest.py)",
+]

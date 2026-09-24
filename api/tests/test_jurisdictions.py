@@ -1,12 +1,15 @@
 """Countries, the jurisdictions RemitX operates in, and scheme resolution — read
 from rows, not from a list in code."""
 
+import uuid
 from dataclasses import replace
 
 import pytest
+from remitx_api.auth.dependencies import get_current_user
 from remitx_api.errors.kyc import KycIdentitySchemesMisconfiguredError
 from remitx_api.extensions import db
 from remitx_api.models.orm.country import Country
+from remitx_api.models.orm.user import User
 from remitx_api.repositories.jurisdiction_repository import JurisdictionRepository
 from sqlalchemy import update
 from tests.kyc_helpers import seed_kyc_reference_data
@@ -90,3 +93,20 @@ def test_the_reference_endpoint_lists_countries_and_schemes():
     assert ssn["label"] == "Social Security Number"
     assert ssn["requires_expiry"] is False
     assert "validator" not in ssn
+
+
+@pytest.mark.cache_enabled
+def test_the_reference_data_is_cached_once_for_everyone(client):
+    token = db.open_session()
+    try:
+        seed_kyc_reference_data()
+    finally:
+        db.close_session(token)
+
+    first = client.get("/kyc/reference")
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=uuid.uuid4())
+    someone_elses = client.get("/kyc/reference")
+
+    assert first.headers["X-FastAPI-Cache"] == "MISS"
+    assert someone_elses.headers["X-FastAPI-Cache"] == "HIT"
+    assert someone_elses.content == first.content

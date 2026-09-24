@@ -13,6 +13,22 @@ from remitx_api.services import queue_service
 from tests.kyc_helpers import insert_application
 
 
+class CachingTestConfig(TestConfig):
+    CACHE_ENABLED = True
+
+
+@pytest.fixture
+def app_config(request) -> type[TestConfig]:
+    """The config the client fixtures build their app from.
+
+    The response cache is off, as in `TestConfig`, unless the test is marked
+    ``@pytest.mark.cache_enabled``.
+    """
+    if request.node.get_closest_marker("cache_enabled"):
+        return CachingTestConfig
+    return TestConfig
+
+
 @pytest.fixture
 def current_user():
     """The caller every authenticated test acts as.
@@ -30,17 +46,17 @@ def current_user():
 
 
 @pytest.fixture
-def client(current_user):
+def client(current_user, app_config):
     """Authenticated client. Token verification is bypassed, not faked —
     exercising real Clerk verification is test_clerk_verification.py's job."""
-    app = create_app(TestConfig)
+    app = create_app(app_config)
     app.dependency_overrides[get_current_user] = lambda: current_user
     with TestClient(app) as test_client:
         yield test_client
 
 
 @pytest.fixture
-def verified_client():
+def verified_client(app_config):
     """Authenticated client backed by a real, DB-persisted, KYC-verified user
     with real ZAR/uctusd accounts.
 
@@ -52,7 +68,7 @@ def verified_client():
     application row, not by setting an attribute. Yields `(test_client,
     user)`.
     """
-    app = create_app(TestConfig)
+    app = create_app(app_config)
     with TestClient(app) as test_client:
         token = db.open_session()
         try:
@@ -79,21 +95,21 @@ def verified_client():
 
 
 @pytest.fixture
-def anonymous_client():
+def anonymous_client(app_config):
     """Client with no auth override, so the real dependency runs and rejects."""
-    app = create_app(TestConfig)
+    app = create_app(app_config)
     with TestClient(app) as test_client:
         yield test_client
 
 
 @pytest.fixture
-def app_context():
+def app_context(app_config):
     """Open a DB session outside a request, for repository/model tests.
 
     The app's session middleware only runs per-request, so anything touching
     db.session directly has to open one itself.
     """
-    app = create_app(TestConfig)
+    app = create_app(app_config)
     with TestClient(app):
         token = db.open_session()
         try:
