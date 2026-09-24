@@ -1,10 +1,6 @@
-"""Admin endpoints for the ZAR cash-in reconciliation job.
+"""Admin endpoints for the cash-in reconciliation job.
 
-Gated by the cash-in permissions the `treasury_operator` role carries
-(models/orm/rbac_seed.py), not by "is this caller an admin": reading the
-queue and moving money against it are separate capabilities, so the router
-declares the read baseline and the two mutating routes escalate to
-`cashin:confirm` on top of it.
+Gated by the cash-in permissions.
 """
 
 import uuid
@@ -78,8 +74,6 @@ def list_pending_deposits():
 def approve_deposit(
     deposit_id: uuid.UUID,
     payload: ApproveDepositRequest,
-    # Not a gate — the permission dependency above is. This is only here
-    # because the resolved deposit records who confirmed it.
     operator: User = Depends(get_current_user),
 ):
     """Confirms the deposit against the customer who holds

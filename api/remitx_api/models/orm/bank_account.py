@@ -40,7 +40,8 @@ class BankAccount(Base):
     )
     account_holder_name: Mapped[str] = mapped_column(Text, nullable=False)
     bank_name: Mapped[str] = mapped_column(Text, nullable=False)
-    # Account no. not encrypted or masked because this is only a prototype simulating cash-out
+    # Account no. not encrypted or masked because this is only a prototype
+    # simulating cash-out
     account_number: Mapped[str] = mapped_column(Text, nullable=False)
     branch_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Must match the currency of the user's account being withdrawn from

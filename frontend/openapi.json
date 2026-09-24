@@ -5213,6 +5213,7 @@
     },
     "/admin/bank-accounts/pending": {
       "get": {
+        "description": "List every bank account that is `pending_verification` and awaiting an\nadmin's approval or rejection. The full account number is returned here,\nbecause this is an admin endpoint, but the customer-facing endpoints mask\nit for security.",
         "operationId": "list_pending_bank_accounts",
         "responses": {
           "200": {
@@ -5263,7 +5264,7 @@
     },
     "/admin/bank-accounts/{bank_account_id}/reject": {
       "post": {
-        "description": "Needs `cashout:fail`.",
+        "description": "Reject a user's bank account and record who rejected it and why.",
         "operationId": "reject_bank_account",
         "parameters": [
           {
@@ -5352,7 +5353,7 @@
     },
     "/admin/bank-accounts/{bank_account_id}/verify": {
       "post": {
-        "description": "Needs `cashout:approve`. Records who verified it.",
+        "description": "Verify a user's bank account and record who verified it.",
         "operationId": "verify_bank_account",
         "parameters": [
           {
@@ -7569,7 +7570,7 @@
     },
     "/bank-accounts": {
       "get": {
-        "description": "Every bank account this caller has added for `currency` (or for any\ncurrency, if omitted), whatever its status \u2014 the currency-account\ndetail view, so a `pending_verification` or `rejected` account still\nshows up here even though `GET /bank-accounts/withdrawable` would skip\nit.",
+        "description": "Get every bank account this user has added for `currency` (or for any\ncurrency, if omitted), whatever its status \u2014 the currency-account\ndetail view, so a `pending_verification` or `rejected` account still\nshows up here even though `GET /bank-accounts/withdrawable` would skip\nit.",
         "operationId": "list_bank_accounts",
         "parameters": [
           {
@@ -7632,13 +7633,13 @@
             "ClerkSession": []
           }
         ],
-        "summary": "List the caller's own bank accounts",
+        "summary": "List the user's own bank accounts",
         "tags": [
           "bank_accounts"
         ]
       },
       "post": {
-        "description": "Stored `pending_verification` \u2014 it can't receive a withdrawal until an\nadmin verifies it. See `POST /withdrawals` and the admin bank-account\nqueue.",
+        "description": "Add a bank account for the user",
         "operationId": "add_bank_account",
         "requestBody": {
           "content": {
@@ -7705,7 +7706,7 @@
     },
     "/bank-accounts/withdrawable": {
       "get": {
-        "description": "The withdrawal page's destination picker: every bank account this\ncaller can withdraw a `currency` balance into right now. Only\n`verified` accounts are returned \u2014 a `pending_verification` or\n`rejected` account can't settle a withdrawal (see\n`POST /withdrawals`), so it isn't offered as a choice here even though\nit still shows up in `GET /bank-accounts`.",
+        "description": "For the withdrawal page's destination picker: every bank account this\nuser can withdraw a `currency` balance into right now. Only\n`verified` accounts are returned.",
         "operationId": "list_withdrawable_bank_accounts",
         "parameters": [
           {
@@ -7761,7 +7762,7 @@
             "ClerkSession": []
           }
         ],
-        "summary": "List the caller's verified bank accounts in a currency",
+        "summary": "List the user's verified bank accounts in a currency",
         "tags": [
           "bank_accounts"
         ]
@@ -9689,6 +9690,7 @@
     },
     "/withdrawals": {
       "get": {
+        "description": "List every withdrawal this user has ever made, newest first.",
         "operationId": "list_withdrawals",
         "responses": {
           "200": {
@@ -9727,7 +9729,7 @@
         ]
       },
       "post": {
-        "description": "The destination bank account must already be verified \u2014 see\n`GET /bank-accounts/withdrawable` for the set of accounts that qualify.\nSettles immediately, synchronously, in this same call.",
+        "description": "Make a withdrawal request from the user's fiat account to a bank account.\nThe bank account must be verified and match the currency of the withdrawal.",
         "operationId": "request_withdrawal",
         "requestBody": {
           "content": {

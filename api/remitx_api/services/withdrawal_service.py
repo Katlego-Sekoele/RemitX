@@ -100,7 +100,8 @@ def request_withdrawal(
     transactions = TransactionRepository()
     withdrawals = WithdrawalRepository()
 
-    bank_account = bank_accounts.get_by_id(bank_account_id) # Get the bank account object by its ID
+    # Get the bank account object by its ID
+    bank_account = bank_accounts.get_by_id(bank_account_id)
     if bank_account is None or bank_account.user_id != user_id:
         logger.warning(
             "withdrawal refused for user %s: bank_account %s not found",
@@ -142,15 +143,19 @@ def request_withdrawal(
         )
         raise CurrencyMismatchError(f"No {currency} account for this user")
 
-    amount = round_amount(amount) # Round the requested amount to the nearest valid quantum
-    # Calculate the minimum amount allowed for withdrawal, which is the sum of the minimum cash-out fee and the amount quantum.
+    # Round the requested amount to the nearest valid quantum
+    amount = round_amount(amount)
+    # Calculate the minimum amount allowed for withdrawal, which is the sum of the
+    # minimum cash-out fee and the amount quantum.
     min_amount = Config.MIN_CASH_OUT_FEE + AMOUNT_QUANTUM
-    if amount < min_amount: # If the requested amount is less than the minimum allowed amount.
+    # If the requested amount is less than the minimum allowed amount.
+    if amount < min_amount:
         logger.warning(
             "withdrawal refused for user %s: amount %s below minimum", user_id, amount
         )
         raise InvalidAmountError(f"Amount must be at least {min_amount}, got {amount}")
-    # get user's available balance in the requested currency and check if it's sufficient for the withdrawal.
+    # get user's available balance in the requested currency and check if it's
+    # sufficient for the withdrawal.
     available = accounts.get_available_balance_locked(user_fiat_account.account_id)
     if available < amount:
         logger.warning(
@@ -164,12 +169,22 @@ def request_withdrawal(
         )
     # payout fee calculation.
     fee = max(round_amount(Config.CASH_OUT_FEE_RATE * amount), Config.MIN_CASH_OUT_FEE)
-    net = amount - fee # Amount payable to the user after deducting the fee
+    net = amount - fee  # Amount payable to the user after deducting the fee
 
-    # The fee transaction goes to RemitX's fee revenue account and the net transaction goes to
-    # RemitX's fiat platform account, both in the withdrawal's own currency.
+    # The fee transaction goes to RemitX's fee revenue account and the net
+    # transaction goes to RemitX's fiat platform account, both in the
+    # withdrawal's own currency.
     fee_revenue_account = accounts.get_platform_account(TYPE_PLATFORM_REVENUE, currency)
     payout_source_account = accounts.get_platform_account(TYPE_PLATFORM_FIAT, currency)
+    # RemitX has no fiat/revenue account seeded in this currency, so it can't
+    # pay out in it. A seeding gap, not a customer mistake, hence the error log.
+    if fee_revenue_account is None or payout_source_account is None:
+        logger.error(
+            "withdrawal refused for user %s: no RemitX %s fiat/revenue account",
+            user_id,
+            currency,
+        )
+        raise CurrencyMismatchError(f"Withdrawals in {currency} are not available")
 
     # fee transaction
     fee_tx = transactions.add(
@@ -183,7 +198,8 @@ def request_withdrawal(
         )
     )
     # Withdrawal transaction (net amount)
-    # User fiat account is credited (decreased) and the payout source account is debited (increased).
+    # User fiat account is credited (decreased) and the payout source account is
+    # debited (increased).
     withdrawal_tx = transactions.add(
         Transaction(
             type=TYPE_WITHDRAWAL,
@@ -207,7 +223,6 @@ def request_withdrawal(
             currency=currency,
         )
     )
-    db.session.commit()
     logger.info(
         "withdrawal %s requested by user %s: amount=%s fee=%s currency=%s "
         "bank_account=%s",
@@ -219,7 +234,10 @@ def request_withdrawal(
         bank_account_id,
     )
 
-    # Immediately settle the withdrawal, which confirms the pending transactions and moves the balances.
+    # Immediately settle the withdrawal, which confirms the pending transactions
+    # and moves the balances. Not committed before this: settlement commits the
+    # request and the settlement together, or rolls both back, so a refused
+    # settlement can't leave pending legs holding the customer's funds.
     _settle_withdrawal(withdrawal, confirmed_by=CONFIRMED_BY_SYSTEM)
 
     return withdrawals.get_by_id(withdrawal.withdrawal_id)
@@ -233,7 +251,9 @@ def list_user_withdrawals(user_id: uuid.UUID) -> list[tuple[Withdrawal, Transact
 def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
     """Confirm the withdrawal's pending transactions and move the balances. Raises
     `WithdrawalNotPendingError` if the transactions aren't `pending` any more
-    (already settled)."""
+    (already settled), after rolling back everything uncommitted in the
+    session — including, when called from `request_withdrawal`, the withdrawal
+    row and its legs."""
     accounts = AccountRepository()
     transactions = TransactionRepository()
 
@@ -244,7 +264,8 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
     ):
         withdrawal_id = withdrawal.withdrawal_id
         logger.error(
-            "withdrawal %s settlement refused: fee transaction %s / withdrawal transaction %s no longer pending",
+            "withdrawal %s settlement refused: fee transaction %s / "
+            "withdrawal transaction %s no longer pending",
             withdrawal_id,
             withdrawal.fee_tx_id,
             withdrawal.tx_id,
@@ -252,11 +273,13 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
         db.session.rollback()
         raise WithdrawalNotPendingError(str(withdrawal_id))
 
+    # get the user's fiat account in the withdrawal's currency
     user_fiat_account = accounts.get_user_account(
         withdrawal.user_id, withdrawal.currency
-    ) # get the user's fiat account in the withdrawal's currency
-    # Decrease the user's fiat account balance by the gross withdrawal amount (which includes the fee)
-    accounts.decrease_balance(user_fiat_account.account_id, withdrawal.gross_amount) 
+    )
+    # Decrease the user's fiat account balance by the gross withdrawal amount
+    # (which includes the fee)
+    accounts.decrease_balance(user_fiat_account.account_id, withdrawal.gross_amount)
 
     fee_revenue_account = accounts.get_platform_account(
         TYPE_PLATFORM_REVENUE, withdrawal.currency
@@ -268,10 +291,13 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
     )
     # Increase the payout source account balance by amount to be paid out to the user)
     accounts.increase_balance(payout_account.account_id, withdrawal.net_amount)
-    
-    # Decrease the payout source account balance by the net amount being paid out to the user.
-    # Simulate the external payout by reducing the balance of RemitX's fiat platform account.
-    # Deliberately NOT backed by a transaction for simplicity, as the actual payout is external and not tracked in the system.
+
+    # Decrease the payout source account balance by the net amount being paid
+    # out to the user.
+    # Simulate the external payout by reducing the balance of RemitX's fiat
+    # platform account.
+    # Deliberately NOT backed by a transaction for simplicity, as the actual
+    # payout is external and not tracked in the system.
     accounts.decrease_balance(payout_account.account_id, withdrawal.net_amount)
 
     # Settlement runs once per withdrawal.
@@ -286,4 +312,4 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
         confirmed_by,
     )
 
-    db.session.commit() # Commit changes
+    db.session.commit()  # Commit changes
