@@ -12,10 +12,9 @@ app. Two reasons:
 
 import logging
 import threading
-import urllib.error
-import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor
 
+import httpx
 from celery import Celery
 
 from remitx_api.config import Config
@@ -46,16 +45,30 @@ _wake_lock = threading.Lock()
 _wake_in_flight = False
 
 
+def _http_get(url: str, timeout: float) -> None:
+    """GET the worker health URL without honoring process proxy env vars.
+
+    ``urllib`` and ``httpx`` (with ``trust_env=True``) route through
+    ``http_proxy`` / ``https_proxy``. A mis-set proxy on the API service
+    makes browser visits to the worker work while server-side pings fail
+    silently (logged only here).
+    """
+    with httpx.Client(trust_env=False, timeout=timeout) as client:
+        # Do not raise on 502/503: Render's edge has already accepted the
+        # request and started the spin-up; that is all the wake needs.
+        client.get(url)
+
+
 def _ping(url: str) -> None:
     global _wake_in_flight
     try:
-        urllib.request.urlopen(url, timeout=WAKE_TIMEOUT_SECONDS)
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        _http_get(url, WAKE_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
         # Never the enqueue's problem: the task is already on Redis, and the
         # worker re-enqueues leftover PENDING rows when it does boot. A 502
         # here is the ordinary answer from an instance that is still starting.
         #
-        # One line, no traceback: every frame of it is urllib internals, and
+        # One line, no traceback: every frame of it is httpx internals, and
         # this fires on every cold start. The exception already names the
         # cause, and a wall of stack for the expected case buries the
         # unexpected one.
@@ -89,7 +102,13 @@ def wake_worker() -> Future | None:
         if _wake_in_flight:
             return None
         _wake_in_flight = True
-    return _wake_executor.submit(_ping, url)
+    try:
+        logger.info("worker wake ping scheduled for %s", url)
+        return _wake_executor.submit(_ping, url)
+    except Exception:
+        with _wake_lock:
+            _wake_in_flight = False
+        raise
 
 
 def enqueue_integration_message(message_id: str) -> None:
