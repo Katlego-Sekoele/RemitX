@@ -576,3 +576,278 @@ def test_settling_an_already_settled_withdrawal_is_refused(env):
         db.close_session(token)
 
     assert _available_zar(env) == "900.00000000"
+
+
+def _count_withdrawals() -> int:
+    from remitx_api.models.orm.withdrawal import Withdrawal
+    from sqlalchemy import func, select
+
+    token = db.open_session()
+    try:
+        return db.session.scalar(select(func.count()).select_from(Withdrawal))
+    finally:
+        db.close_session(token)
+
+
+def _fund_customer_account(env, currency, amount) -> None:
+    """Give the customer an account in `currency` (only ZAR + uctusd exist from
+    signup) holding `amount`."""
+    token = db.open_session()
+    try:
+        account_repo = AccountRepository()
+        account = account_repo.get_or_create_user_account(
+            env.customer.id, env.customer.base_reference, currency
+        )
+        account_repo.increase_balance(account.account_id, Decimal(amount))
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+
+def _seed_platform_accounts(env, currency, country) -> None:
+    token = db.open_session()
+    try:
+        for type_, label in (
+            (TYPE_PLATFORM_FIAT, f"RemitX {country} Bank Account"),
+            (TYPE_PLATFORM_REVENUE, f"RemitX {country} Fee Revenue"),
+        ):
+            db.session.add(
+                Account(
+                    user_id=env.admin.id,
+                    type=type_,
+                    account_currency=currency,
+                    label=label,
+                )
+            )
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+
+def test_a_pending_outgoing_leg_holds_funds_back_from_a_withdrawal(env):
+    """Money already committed to an in-flight remittance leg isn't available
+    to withdraw, even though the raw balance hasn't dropped yet."""
+    from remitx_api.models.orm.transaction import (
+        STATUS_PENDING,
+        TYPE_REMITTANCE,
+        Transaction,
+    )
+
+    token = db.open_session()
+    try:
+        account_repo = AccountRepository()
+        zar = account_repo.get_user_account(env.customer.id, CURRENCY_ZAR)
+        platform = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, CURRENCY_ZAR)
+        db.session.add(
+            Transaction(
+                type=TYPE_REMITTANCE,
+                credit_account_id=zar.account_id,
+                debit_account_id=platform.account_id,
+                amount=Decimal("700"),
+                currency=CURRENCY_ZAR,
+                status=STATUS_PENDING,
+            )
+        )
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+    bank_account = _verified_bank_account(env)
+    refused = _withdraw(env, bank_account["bank_account_id"], "500.00")
+    allowed = _withdraw(env, bank_account["bank_account_id"], "300.00")
+
+    assert refused.status_code == 400
+    assert allowed.status_code == 200
+    assert Decimal(_available_zar(env)) == Decimal("0")
+
+
+def test_failed_settlement_does_not_leave_the_funds_locked(env, monkeypatch):
+    """If settlement is refused after the request has committed its pending
+    legs, the customer's money must not stay held by legs nothing will ever
+    confirm, and the caller must get a clean 409 rather than a crash."""
+    from remitx_api.repositories.transaction_repository import (
+        TransactionRepository,
+    )
+
+    bank_account = _verified_bank_account(env)
+    monkeypatch.setattr(
+        TransactionRepository,
+        "confirm_pending_transactions",
+        lambda self, tx_ids, confirmed_at: False,
+    )
+    client = TestClient(env.app, raise_server_exceptions=False)
+    response = client.post(
+        WITHDRAWALS,
+        json={
+            "bank_account_id": bank_account["bank_account_id"],
+            "currency": "ZAR",
+            "amount": "100.00",
+        },
+    )
+    monkeypatch.undo()
+
+    assert response.status_code == 409
+    assert _count_withdrawals() == 0
+    assert _available_zar(env) == "1000.00000000"
+
+
+def test_withdrawal_without_platform_accounts_in_that_currency_writes_nothing(env):
+    """A currency whose RemitX fiat/revenue accounts were never seeded is a
+    configuration gap: the request must be refused with a 400, not crash,
+    and nothing may be written."""
+    _fund_customer_account(env, "USD", "500")
+    bank_account = _verified_bank_account(env, currency="USD")
+
+    client = TestClient(env.app, raise_server_exceptions=False)
+    response = client.post(
+        WITHDRAWALS,
+        json={
+            "bank_account_id": bank_account["bank_account_id"],
+            "currency": "USD",
+            "amount": "100.00",
+        },
+    )
+
+    assert response.status_code == 400
+    assert _count_withdrawals() == 0
+    usd = next(a for a in env.client.get("/accounts").json() if a["currency"] == "USD")
+    assert Decimal(usd["available_balance"]) == Decimal("500")
+
+
+def test_lowercase_currency_is_refused_and_writes_nothing(env):
+    """Currency codes are matched exactly — `zar` is not `ZAR`."""
+    bank_account = _verified_bank_account(env)
+    response = _withdraw(env, bank_account["bank_account_id"], "100.00", "zar")
+
+    assert response.status_code == 400
+    assert _count_withdrawals() == 0
+    assert _available_zar(env) == "1000.00000000"
+
+
+def test_usd_withdrawal_uses_the_usd_platform_accounts_only(env):
+    """Fees and payouts stay in the withdrawal's own currency: a USD
+    withdrawal touches the US accounts and leaves the SA ones alone."""
+    _seed_platform_accounts(env, "USD", "US")
+    _fund_customer_account(env, "USD", "500")
+    bank_account = _verified_bank_account(env, currency="USD")
+
+    response = _withdraw(env, bank_account["bank_account_id"], "200.00", "USD")
+
+    assert response.status_code == 200
+    assert Decimal(response.json()["fee_amount"]) == Decimal("1.50")
+    token = db.open_session()
+    try:
+        account_repo = AccountRepository()
+        us_revenue = account_repo.get_platform_account(TYPE_PLATFORM_REVENUE, "USD")
+        us_fiat = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, "USD")
+        sa_revenue = account_repo.get_platform_account(
+            TYPE_PLATFORM_REVENUE, CURRENCY_ZAR
+        )
+        sa_fiat = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, CURRENCY_ZAR)
+        assert us_revenue.account_balance == Decimal("1.50")
+        assert us_fiat.account_balance == Decimal("0")
+        assert sa_revenue.account_balance == Decimal("0")
+        assert sa_fiat.account_balance == Decimal("0")
+        usd = account_repo.get_user_account(env.customer.id, "USD")
+        assert usd.account_balance == Decimal("300")
+    finally:
+        db.close_session(token)
+    assert _available_zar(env) == "1000.00000000"
+
+
+def test_fee_on_an_exact_half_cent_rounds_up(env):
+    """0.0075 * 2.00 = 0.015 -> 0.02 (ROUND_HALF_UP), not 0.01."""
+    bank_account = _verified_bank_account(env)
+    body = _withdraw(env, bank_account["bank_account_id"], "2.00").json()
+
+    assert Decimal(body["fee_amount"]) == Decimal("0.02")
+    assert Decimal(body["net_amount"]) == Decimal("1.98")
+
+
+@pytest.mark.parametrize("amount", ["0.67", "1.33", "13.37", "66.66", "999.99"])
+def test_fee_plus_net_always_equals_gross(env, amount):
+    bank_account = _verified_bank_account(env)
+    body = _withdraw(env, bank_account["bank_account_id"], amount).json()
+
+    gross = Decimal(body["gross_amount"])
+    assert gross == Decimal(amount)
+    assert Decimal(body["fee_amount"]) + Decimal(body["net_amount"]) == gross
+    assert Decimal(body["fee_amount"]) >= Decimal("0.01")
+
+
+def test_settled_legs_record_currency_accounts_and_timestamps(env):
+    from remitx_api.models.orm.transaction import Transaction
+    from remitx_api.models.orm.withdrawal import Withdrawal
+
+    bank_account = _verified_bank_account(env)
+    body = _withdraw(env, bank_account["bank_account_id"], "100.00").json()
+
+    token = db.open_session()
+    try:
+        zar = AccountRepository().get_user_account(env.customer.id, CURRENCY_ZAR)
+        withdrawal = db.session.get(Withdrawal, uuid.UUID(body["withdrawal_id"]))
+        assert withdrawal.confirmed_by == "system"
+        for tx_id in (withdrawal.tx_id, withdrawal.fee_tx_id):
+            tx = db.session.get(Transaction, tx_id)
+            assert tx.status == "confirmed"
+            assert tx.currency == CURRENCY_ZAR
+            assert tx.credit_account_id == zar.account_id
+            assert tx.confirmed_at is not None
+            assert tx.quote_id is None
+    finally:
+        db.close_session(token)
+
+
+def test_fiat_balance_is_its_transactions_minus_total_paid_out(env):
+    """The one deliberate ledger exception (Transaction_Flow_Context.md §7):
+    REMITX_FIAT's stored balance equals its confirmed transactions minus
+    every withdrawal net paid out, which is what a reconciliation check will
+    have to allow for."""
+    from remitx_api.models.orm.transaction import Transaction
+    from remitx_api.models.orm.withdrawal import Withdrawal
+    from sqlalchemy import func, select
+
+    bank_account = _verified_bank_account(env)
+    for amount in ("100.00", "250.50", "0.50"):
+        response = _withdraw(env, bank_account["bank_account_id"], amount)
+        assert response.status_code == 200
+
+    token = db.open_session()
+    try:
+        fiat = AccountRepository().get_platform_account(
+            TYPE_PLATFORM_FIAT, CURRENCY_ZAR
+        )
+
+        def confirmed_sum(column):
+            return db.session.scalar(
+                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                    column == fiat.account_id, Transaction.status == "confirmed"
+                )
+            )
+
+        from_transactions = Decimal(confirmed_sum(Transaction.debit_account_id)) - (
+            Decimal(confirmed_sum(Transaction.credit_account_id))
+        )
+        paid_out = Decimal(db.session.scalar(select(func.sum(Withdrawal.net_amount))))
+        assert paid_out > 0
+        assert fiat.account_balance == from_transactions - paid_out
+    finally:
+        db.close_session(token)
+
+
+def test_a_verified_account_stays_withdrawable_after_a_refused_rejection(env):
+    """Rejecting an already-verified account is refused, and it doesn't
+    quietly stop the account receiving withdrawals."""
+    bank_account = _verified_bank_account(env)
+
+    env.as_admin()
+    reject = env.client.post(
+        f"/admin/bank-accounts/{bank_account['bank_account_id']}/reject",
+        json={"reason": "changed my mind"},
+    )
+    env.as_customer()
+
+    assert reject.status_code == 400
+    response = _withdraw(env, bank_account["bank_account_id"], "100.00")
+    assert response.status_code == 200
+    assert response.json()["status"] == "confirmed"

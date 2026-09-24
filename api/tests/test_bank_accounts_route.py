@@ -405,3 +405,10 @@ def test_unsupported_currency_is_refused(env):
     response = env.client.post(BANK_ACCOUNTS, json=_payload(currency="XYZ"))
 
     assert response.status_code in (400, 422)
+
+
+def test_lowercase_currency_is_refused(env):
+    """Currency codes are matched exactly against SUPPORTED_CURRENCIES."""
+    response = env.client.post(BANK_ACCOUNTS, json=_payload(currency="zar"))
+
+    assert response.status_code == 400

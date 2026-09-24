@@ -53,7 +53,8 @@ def add_bank_account(
             branch_code=branch_code,
             currency=currency,
             country=country,
-            status=STATUS_PENDING_VERIFICATION,  # New bank accounts are always pending verification
+            # New bank accounts are always pending verification
+            status=STATUS_PENDING_VERIFICATION,
         )
     )
     db.session.commit()
@@ -93,10 +94,12 @@ def _raise_not_pending_account(
     admin_id: uuid.UUID,
     action: str,
 ) -> NoReturn:
-    """Helper function to raise a BankAccountNotPendingError or BankAccountNotFoundError with 
-    logging if the bank account is not pending or not found."""
+    """Helper function to raise a BankAccountNotPendingError or
+    BankAccountNotFoundError with logging if the bank account is not pending
+    or not found."""
     bank_account = bank_accounts.get_by_id(bank_account_id)
-    if bank_account is None: # if the bank account doesn't exist, raise a BankAccountNotFoundError
+    # if the bank account doesn't exist, raise a BankAccountNotFoundError
+    if bank_account is None:
         logger.warning(
             "admin %s tried to %s unknown bank_account %s",
             admin_id,
@@ -104,8 +107,10 @@ def _raise_not_pending_account(
             bank_account_id,
         )
         raise BankAccountNotFoundError(str(bank_account_id))
-    # Else the bank account exists but is not pending, raise a BankAccountNotPendingError
-    # Reason it isn't pending should be because its status is either verified or rejected.
+    # Else the bank account exists but is not pending, raise a
+    # BankAccountNotPendingError
+    # Reason it isn't pending should be because its status is either verified
+    # or rejected.
     logger.warning(
         "admin %s tried to %s bank_account %s, already %s",
         admin_id,
@@ -120,12 +125,15 @@ def verify_bank_account(bank_account_id: uuid.UUID, admin_id: uuid.UUID) -> Bank
     """Approve a pending bank account so it can receive withdrawals. The status
     guard lives in the UPDATE itself, so two admins racing can't both win."""
     bank_accounts = BankAccountRepository()
-    # if verify returns False, it means no updates were made, which implies the bank account is either not found or not pending.
+    # if verify returns False, it means no updates were made, which implies the
+    # bank account is either not found or not pending.
     if not bank_accounts.verify(bank_account_id, admin_id, datetime.now(UTC)):
         _raise_not_pending_account(bank_accounts, bank_account_id, admin_id, "verify")
-    db.session.commit() # Commit the transaction to save the verification in the database
+    # Commit the transaction to save the verification in the database
+    db.session.commit()
     logger.info("bank account %s verified by admin %s", bank_account_id, admin_id)
-    return bank_accounts.get_by_id(bank_account_id) # Return the updated bank account object after verification
+    # Return the updated bank account object after verification
+    return bank_accounts.get_by_id(bank_account_id)
 
 
 def reject_bank_account(
@@ -133,11 +141,14 @@ def reject_bank_account(
 ) -> BankAccount:
     """Allow admin to reject a bank account, providing a reason."""
     bank_accounts = BankAccountRepository()
-    # if reject returns False, it means no updates were made, which implies the bank account is either not found or not pending.
+    # if reject returns False, it means no updates were made, which implies the
+    # bank account is either not found or not pending.
     if not bank_accounts.reject(bank_account_id, admin_id, reason, datetime.now(UTC)):
         _raise_not_pending_account(bank_accounts, bank_account_id, admin_id, "reject")
-    db.session.commit() # Commit the transaction to save the rejection in the database
+    # Commit the transaction to save the rejection in the database
+    db.session.commit()
     logger.info(
         "bank account %s rejected by admin %s (%s)", bank_account_id, admin_id, reason
     )
-    return bank_accounts.get_by_id(bank_account_id) # Return the updated bank account object after rejection
+    # Return the updated bank account object after rejection
+    return bank_accounts.get_by_id(bank_account_id)

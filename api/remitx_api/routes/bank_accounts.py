@@ -20,14 +20,14 @@ controller = BankAccountController()
 
 def _mask_account_number(account_number: str) -> str:
     """Last 4 digits only. The full number is still stored and still goes
-    over the wire to the admin endpoints. This is about not putting a customer's 
+    over the wire to the admin endpoints. This is about not putting a customer's
     own full account number on their screen on every page load."""
     visible = account_number[-4:]
     return f"****{visible}" if len(account_number) > len(visible) else account_number
 
 
 def _read(view: BankAccountView) -> BankAccountRead:
-    """Convert a BankAccountView to a BankAccountRead schema, 
+    """Convert a BankAccountView to a BankAccountRead schema,
     masking the account number for security."""
     return BankAccountRead.model_validate(view).model_copy(
         update={"account_number": _mask_account_number(view.account_number)}

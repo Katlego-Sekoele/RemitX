@@ -13,8 +13,8 @@ Three currency concepts live on this row:
   `receiver_payout_estimate` — the beneficiary's payout currency and cash-out
   in it. `receiver_amount` (net sender amount converted via
   `fiat_exchange_rate`, not through the token leg) is what settlement
-  actually credits to the beneficiary's fiat account, with no cash-out fee deducted. 
-  `receiver_payout_fee`/ `receiver_payout_estimate` apply `CASH_OUT_FEE_RATE` 
+  actually credits to the beneficiary's fiat account, with no cash-out fee deducted.
+  `receiver_payout_fee`/ `receiver_payout_estimate` apply `CASH_OUT_FEE_RATE`
   on top but stay display-only until a real withdrawal flow exists.
 - `fiat_exchange_rate`/`fiat_exchange_rate_id` — the direct sender-currency
   to payout-currency rate (e.g. ZAR -> ZWL, its own fetched pair, not derived
@@ -56,16 +56,16 @@ class Quote(Base):
     )
     sender_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False, index=True
-    )# Sender user id
+    )  # Sender user id
     beneficiary_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False
-    )# Beneficiary user id
+    )  # Beneficiary user id
     sender_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # Used with sender user id to get the sender's fiat account.
     sender_currency: Mapped[str] = mapped_column(Text, nullable=False)
     sender_transaction_fee: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
-    ) # In the sender's currency.
+    )  # In the sender's currency.
     token_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # Name of the token used for settlement, e.g. "uctusd"
     token_name: Mapped[str] = mapped_column(Text, nullable=False)

@@ -2,12 +2,7 @@
 
 The approval queue every new bank account passes through before it can
 receive a withdrawal. Verifying or rejecting here changes the account's
-status and nothing else: a withdrawal into an account that isn't `verified`
-is refused outright, so no withdrawal is ever pending against one waiting
-on this decision (see `bank_account_service.verify_bank_account`/
-`reject_bank_account`). Gated by the payout_operator role's cashout:*
-permissions (models/orm/rbac_seed.py), same pattern as
-routes/admin/deposits.py.
+status.
 """
 
 import uuid
@@ -43,6 +38,10 @@ controller = BankAccountController()
     summary="List bank accounts awaiting verification",
 )
 def list_pending_bank_accounts():
+    """List every bank account that is `pending_verification` and awaiting an
+    admin's approval or rejection. The full account number is returned here,
+    because this is an admin endpoint, but the customer-facing endpoints mask
+    it for security."""
     return [BankAccountRead.model_validate(view) for view in controller.list_pending()]
 
 
@@ -57,7 +56,7 @@ def verify_bank_account(
     bank_account_id: uuid.UUID,
     operator: User = Depends(get_current_user),
 ):
-    """Needs `cashout:approve`. Records who verified it."""
+    """Verify a user's bank account and record who verified it."""
     try:
         view = controller.verify(bank_account_id, operator.id)
     except (BankAccountNotFoundError, BankAccountNotPendingError) as exc:
@@ -79,7 +78,7 @@ def reject_bank_account(
     payload: RejectBankAccountRequest,
     operator: User = Depends(get_current_user),
 ):
-    """Needs `cashout:fail`."""
+    """Reject a user's bank account and record who rejected it and why."""
     try:
         view = controller.reject(bank_account_id, operator.id, payload.reason)
     except (BankAccountNotFoundError, BankAccountNotPendingError) as exc:
