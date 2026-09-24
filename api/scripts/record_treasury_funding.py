@@ -1,32 +1,22 @@
 """
-One-off setup for a new environment: the two steps a migration can't do,
-because each needs a service outside the database. RemitX's platform accounts
-themselves come from `alembic upgrade head` (see
+Record the Treasury Wallet's real, pre-funded uctusd balance as a one-time
+`treasury_funding` transaction (see ECO5040W's clarifications: the lecturer
+funds the platform wallet directly on the testnet — RemitX never buys or
+mints tokens), so `accounts.account_balance` matches the real on-chain
+balance instead of silently starting at 0.
+
+Not a migration because it reads the balance from the XRPL testnet. The
+platform accounts it books against come from `alembic upgrade head` (see
 remitx_api/models/orm/platform_account_seed.py), so run that first.
-
-1. The admin (needs ADMIN_CLERK_USER_ID and Clerk). User rows are normally
-   created just-in-time on first Clerk login (see
-   UserController.ensure_provisioned). This provisions the admin's row through
-   that same path, so their eventual real login finds it instead of creating a
-   duplicate, and grants it every staff role in the RBAC catalogue — which is
-   what opens the admin portal and its permission-gated routes.
-
-2. Treasury funding (needs PLATFORM_WALLET_ADDRESS and network access to
-   XRPL_TESTNET_URL). Records the Treasury Wallet's real, pre-funded uctusd
-   balance as a one-time `treasury_funding` transaction (see ECO5040W's
-   clarifications: the lecturer funds the platform wallet directly on the
-   testnet — RemitX never buys or mints tokens), so
-   `accounts.account_balance` matches the real on-chain balance instead of
-   silently starting at 0.
 
 To Run:
     cd api && source .venv/bin/activate
     alembic upgrade head
-    python scripts/bootstrap.py
+    python scripts/record_treasury_funding.py
 
-A step whose settings are missing, or whose service can't be reached, is
-skipped with a warning rather than failing the whole run. Re-running skips
-whatever's already there instead of creating duplicates.
+Requires PLATFORM_WALLET_ADDRESS and network access to XRPL_TESTNET_URL — if
+either is unavailable, it is skipped with a warning rather than failing.
+Re-running skips a funding already recorded.
 """
 
 import os
@@ -34,26 +24,20 @@ import sys
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from remitx_api.auth.clerk import fetch_user_email, fetch_user_first_name
 from remitx_api.config import Config
-from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN
 from remitx_api.models.orm.platform_account_seed import (
     ISSUER_LABEL,
     TREASURY_WALLET_LABEL,
 )
-from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     TYPE_TREASURY_FUNDING,
     Transaction,
 )
-from remitx_api.models.orm.user import User
-from remitx_api.models.orm.user_role import UserRole
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
-from sqlalchemy import select
 
 
 def main() -> None:
@@ -61,71 +45,16 @@ def main() -> None:
     db.init(config.DATABASE_URL)
     token = db.open_session()
     try:
-        admin_clerk_id = os.environ.get("ADMIN_CLERK_USER_ID")
-        if admin_clerk_id:
-            _ensure_admin(admin_clerk_id, config)
-        else:
-            print(
-                "ADMIN_CLERK_USER_ID is not set — skipping the admin "
-                "(see .env.example)",
-                file=sys.stderr,
-            )
-        _seed_treasury_funding()
+        _record_treasury_funding()
     finally:
         db.close_session(token)
 
 
-def _ensure_admin(clerk_user_id: str, config: Config) -> None:
-    """Provision the admin's User row and grant it every staff role, idempotently."""
-    admin = UserController().ensure_provisioned(
-        clerk_user_id,
-        lambda: fetch_user_email(clerk_user_id, config),
-        lambda: fetch_user_first_name(clerk_user_id, config),
-    )
-    _grant_every_staff_role(admin)
-    print(f"Admin: {admin.id} ({admin.email or clerk_user_id})")
-
-
-def _grant_every_staff_role(admin: User) -> None:
-    """Grant each `is_admin` role in the catalogue to the local super admin.
-
-    Deliberately broad, and only because this is the one-off local bootstrap:
-    there is no in-app way to grant a role yet, so the account named by
-    ADMIN_CLERK_USER_ID has to arrive holding all of them to exercise the
-    staff portal end to end. Real access is per role, per permission — the
-    routes gate on `PermissionCode` (auth/permissions.py), and nothing reads
-    a flag on the User row.
-    """
-    staff_roles = db.session.scalars(
-        select(Role).where(Role.is_admin.is_(True)).order_by(Role.name)
-    ).all()
-    held = set(
-        db.session.scalars(
-            select(UserRole.role_id)
-            .where(UserRole.user_id == admin.id)
-            .where(UserRole.revoked_at.is_(None))
-        ).all()
-    )
-
-    granted = []
-    for role in staff_roles:
-        if role.role_id in held:
-            continue
-        db.session.add(UserRole(user_id=admin.id, role_id=role.role_id))
-        granted.append(role.name)
-
-    if granted:
-        db.session.commit()
-        print(f"Granted roles: {', '.join(granted)}")
-    else:
-        print("Skipped (already granted): every staff role")
-
-
-def _seed_treasury_funding() -> None:
+def _record_treasury_funding() -> None:
     """Record the Treasury Wallet's real, pre-funded uctusd balance as a
     one-time `treasury_funding` transaction. Idempotent — skips if already
-    recorded, and skips (rather than failing the whole script) if the
-    on-chain balance can't be read right now.
+    recorded, and skips with a warning if the on-chain balance can't be read
+    right now.
     """
     account_repo = AccountRepository()
     treasury_account = account_repo.get_platform_account_by_label(TREASURY_WALLET_LABEL)
@@ -160,7 +89,7 @@ def _seed_treasury_funding() -> None:
     except Exception as exc:  # noqa: BLE001 — see rationale below
         # Deliberately broad: this is a one-off setup step, not the request
         # path — a network hiccup here shouldn't be any noisier than "try
-        # again later", and should never take down the rest of this script.
+        # again later".
         print(f"Could not query on-chain balance for {address}: {exc}", file=sys.stderr)
         return
 
