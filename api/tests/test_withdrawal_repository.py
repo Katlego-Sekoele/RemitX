@@ -29,7 +29,7 @@ def _setup(balance="1000"):
         "user_wd_repo", lambda: "wd-repo@example.com", lambda: "Repo"
     )
     platform = Account(
-        user_id=user.id,
+        user_id=None,
         type=TYPE_PLATFORM_FIAT,
         account_currency=CURRENCY_ZAR,
         label="RemitX SA Bank Account",
