@@ -2,6 +2,7 @@
 
 import uuid
 from decimal import Decimal
+from enum import Enum
 
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
@@ -26,6 +27,27 @@ class ProcessedDepositRead(Schema):
     status: str
     user_id: uuid.UUID | None
     confirmed_by: str | None
+
+
+class SkippedStatementLineReason(str, Enum):
+    """Why a statement line produced no deposit on this run."""
+
+    UNPARSEABLE_DATE = "unparseable_date"
+    NOT_INCOMING = "not_incoming"
+    ALREADY_RECONCILED = "already_reconciled"
+
+
+class SkippedStatementLineRead(Schema):
+    reference: str | None
+    amount: Decimal
+    date: str | None
+    reason: SkippedStatementLineReason
+    message: str
+
+
+class ProcessDepositsResponse(Schema):
+    processed: list[ProcessedDepositRead]
+    skipped: list[SkippedStatementLineRead]
 
 
 class PendingDepositRead(Schema):

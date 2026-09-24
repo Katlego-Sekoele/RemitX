@@ -20,7 +20,9 @@ from remitx_api.models.schemas.deposit import (
     ApproveDepositRequest,
     PendingDepositRead,
     ProcessDepositsRequest,
+    ProcessDepositsResponse,
     ProcessedDepositRead,
+    SkippedStatementLineRead,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
@@ -35,7 +37,7 @@ controller = DepositController()
 
 @router.post(
     "/process",
-    response_model=list[ProcessedDepositRead],
+    response_model=ProcessDepositsResponse,
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
     summary="Reconcile bank-statement rows into deposits",
 )

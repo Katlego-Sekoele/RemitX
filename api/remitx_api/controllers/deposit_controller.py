@@ -2,6 +2,11 @@ import uuid
 
 from remitx_api.models.orm.deposit import Deposit
 from remitx_api.models.orm.user import short_display_name
+from remitx_api.models.schemas.deposit import (
+    ProcessDepositsResponse,
+    ProcessedDepositRead,
+    SkippedStatementLineRead,
+)
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
@@ -20,14 +25,29 @@ class DepositController:
     def __init__(self) -> None:
         self._transactions = TransactionRepository()
 
-    def process_deposits(self, rows: list[dict]) -> list[dict]:
+    def process_deposits(self, rows: list[dict]) -> ProcessDepositsResponse:
         """Run the reconciliation job, then fatten each resulting Deposit
         with its transaction's amount/currency/status — a Deposit row alone
         doesn't carry those, and the admin portal needs them to show what
         happened per statement line.
         """
-        deposits = deposit_service.process_deposits(rows)
-        return [self._fatten(deposit) for deposit in deposits]
+        result = deposit_service.process_deposits(rows)
+        return ProcessDepositsResponse(
+            processed=[
+                ProcessedDepositRead(**self._fatten(deposit))
+                for deposit in result.deposits
+            ],
+            skipped=[
+                SkippedStatementLineRead(
+                    reference=line.reference,
+                    amount=line.amount,
+                    date=line.date,
+                    reason=line.reason,
+                    message=line.message,
+                )
+                for line in result.skipped
+            ],
+        )
 
     def list_account_references(self) -> list[dict]:
         """Customer account references the statement editor can search."""

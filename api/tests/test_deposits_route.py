@@ -105,7 +105,7 @@ def test_treasury_operator_confirms_a_matching_row(treasury_client):
     )
 
     assert response.status_code == 200
-    [result] = response.json()
+    [result] = response.json()["processed"]
     assert result["status"] == "confirmed"
     assert result["user_id"] == user_id
     assert result["amount"] == "500.00000000"
@@ -125,7 +125,7 @@ def test_treasury_operator_leaves_an_unmatched_row_pending(treasury_client):
     )
 
     assert response.status_code == 200
-    [result] = response.json()
+    [result] = response.json()["processed"]
     assert result["status"] == "pending"
     assert result["user_id"] is None
 
@@ -206,6 +206,30 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
 
     assert response.status_code == 200
     assert response.json()["confirmed_by"] not in (None, "system")
+
+
+def test_process_reports_unparseable_dates_without_recording_them(treasury_client):
+    _seed_bank_account()
+
+    response = treasury_client.post(
+        PROCESS,
+        json={
+            "rows": [
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "date": "not-a-date",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] == []
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["reason"] == "unparseable_date"
+    assert treasury_client.get(PENDING).json() == []
 
 
 def test_process_without_a_platform_bank_account_is_refused(treasury_client):
