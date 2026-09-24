@@ -1,4 +1,5 @@
 import {
+  ArrowCircleUpIcon,
   CaretDownIcon,
   ClockCountdownIcon,
   ListBulletsIcon,
@@ -34,6 +35,7 @@ import {
   subtractMoney,
   type AccountKind,
 } from "~/lib/money"
+import { canWithdrawFrom, withdrawHref } from "~/lib/withdrawals"
 
 type AccountCardFrameProps = {
   title: string
@@ -154,6 +156,16 @@ export function AccountCard({ account }: { account: AccountRead }) {
               Add money
               <CaretDownIcon data-icon="inline-end" />
             </CollapsibleTrigger>
+          ) : null}
+          {canWithdrawFrom(account) ? (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link to={withdrawHref(account.currency)} />}
+            >
+              <ArrowCircleUpIcon data-icon="inline-start" />
+              Withdraw
+            </Button>
           ) : null}
           <Button
             variant="outline"
