@@ -1,9 +1,15 @@
 import * as PhosphorIcons from "@phosphor-icons/react"
+import { CaretRightIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router"
 
 import { api, type AccountRead } from "~/client"
 import { Badge } from "~/components/ui/badge"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "~/components/ui/collapsible"
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -36,6 +42,17 @@ function hrefForPath(path: string): string {
 function subItemActive(pathname: string, item: AppSubNavItem): boolean {
   const href = hrefForPath(item.path)
   return item.exact ? pathname === href : matches(pathname, href)
+}
+
+function sectionActive(
+  pathname: string,
+  href: string,
+  children: readonly AppSubNavItem[]
+): boolean {
+  return (
+    matches(pathname, href) ||
+    children.some((child) => subItemActive(pathname, child))
+  )
 }
 
 // The badge's primitive positions itself off a sibling `peer/menu-button`;
@@ -71,22 +88,52 @@ export function AppNav() {
           const showBadge = Boolean(item.kycAttention && kycIncomplete)
           const children = navChildren(item, accounts.data)
 
+          if (!children?.length) {
+            return (
+              <SidebarMenuItem key={href}>
+                <SidebarMenuButton
+                  tooltip={
+                    showBadge
+                      ? `${item.label} — complete verification to send`
+                      : item.label
+                  }
+                  isActive={matches(pathname, href)}
+                  render={<Link to={href} />}
+                >
+                  {Icon ? <Icon /> : null}
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+                {showBadge ? <AttentionBadge /> : null}
+              </SidebarMenuItem>
+            )
+          }
+
+          const open = sectionActive(pathname, href, children)
+
           return (
-            <SidebarMenuItem key={href}>
-              <SidebarMenuButton
-                tooltip={
-                  showBadge
-                    ? `${item.label} — complete verification to send`
-                    : item.label
+            <Collapsible
+              key={href}
+              defaultOpen={open}
+              className="group/collapsible"
+              render={<SidebarMenuItem />}
+            >
+              <CollapsibleTrigger
+                render={
+                  <SidebarMenuButton
+                    tooltip={
+                      showBadge
+                        ? `${item.label} — complete verification to send`
+                        : item.label
+                    }
+                    isActive={open}
+                  />
                 }
-                isActive={matches(pathname, href)}
-                render={<Link to={href} />}
               >
                 {Icon ? <Icon /> : null}
                 <span>{item.label}</span>
-              </SidebarMenuButton>
-              {showBadge && !children ? <AttentionBadge /> : null}
-              {children ? (
+                <CaretRightIcon className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
                 <SidebarMenuSub>
                   {children.map((child) => {
                     const ChildIcon = child.icon
@@ -108,8 +155,8 @@ export function AppNav() {
                     )
                   })}
                 </SidebarMenuSub>
-              ) : null}
-            </SidebarMenuItem>
+              </CollapsibleContent>
+            </Collapsible>
           )
         })}
       </SidebarMenu>
@@ -125,11 +172,19 @@ function navChildren(
   // Profile's children are fixed sections. Accounts lists each currency
   // account this person holds, and each one opens that account's history.
   if (item.route.path !== "app/accounts" || !accounts?.length) return undefined
-  return accounts.map((account) => ({
-    path: `app/accounts/${account.account_id}`,
-    label: accountNavLabel(account),
-    icon: navIcon(account),
-  }))
+  return [
+    {
+      path: "app/accounts",
+      label: "All accounts",
+      icon: "WalletIcon",
+      exact: true,
+    },
+    ...accounts.map((account) => ({
+      path: `app/accounts/${account.account_id}`,
+      label: accountNavLabel(account),
+      icon: navIcon(account),
+    })),
+  ]
 }
 
 function navIcon(account: AccountRead): PhosphorIconName {
