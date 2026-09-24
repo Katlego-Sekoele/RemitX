@@ -52,7 +52,12 @@ export function AccountReferenceCombobox({
       onInputValueChange={(next) => {
         if (next !== value) onChange(next)
       }}
-      onValueChange={(account) => onChange(account?.reference ?? "")}
+      onValueChange={(account) => {
+        // Closing the list without a match must not wipe a typed reference.
+        // "nope" and "remitx deposit" are real inputs; only a picked account
+        // replaces what was typed.
+        if (account) onChange(account.reference)
+      }}
       itemToStringLabel={labelOf}
       itemToStringValue={labelOf}
       isItemEqualToValue={sameReference}
