@@ -137,6 +137,11 @@ variable "cash_out_fee_rate" {
   description = "Cash-out fee as a decimal rate. GitHub variable TF_VAR_cash_out_fee_rate."
 }
 
+variable "min_cash_out_fee" {
+  type        = string
+  description = "Floor on the cash-out fee, in the withdrawal's currency. GitHub variable TF_VAR_min_cash_out_fee."
+}
+
 variable "daily_limit_zar_unverified" {
   type        = string
   description = "Daily send limit for unverified users, ZAR. GitHub variable TF_VAR_daily_limit_zar_unverified."

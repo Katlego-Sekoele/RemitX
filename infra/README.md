@@ -76,6 +76,7 @@ Hobby includes two custom domains: Production `remitx.tech` and QA
 | `TF_VAR_percentage_fee_rate` | **Variable** | Percentage fee as a decimal (`0.005`) |
 | `TF_VAR_fx_margin_rate` | **Variable** | FX spread as a decimal (`0.01`) |
 | `TF_VAR_cash_out_fee_rate` | **Variable** | Cash-out fee as a decimal (`0.0075`) |
+| `TF_VAR_min_cash_out_fee` | **Variable** | Floor on the cash-out fee (`0.01`); the smallest withdrawal is this plus `0.01` |
 | `TF_VAR_daily_limit_zar_unverified` | **Variable** | Unverified daily limit, ZAR |
 | `TF_VAR_monthly_limit_zar_unverified` | **Variable** | Unverified monthly limit, ZAR |
 | `TF_VAR_daily_limit_zar` | **Variable** | Verified daily limit, ZAR |

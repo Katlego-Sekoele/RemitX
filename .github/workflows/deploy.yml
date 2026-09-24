@@ -154,6 +154,7 @@ jobs:
       TF_VAR_percentage_fee_rate: ${{ vars.TF_VAR_percentage_fee_rate }}
       TF_VAR_fx_margin_rate: ${{ vars.TF_VAR_fx_margin_rate }}
       TF_VAR_cash_out_fee_rate: ${{ vars.TF_VAR_cash_out_fee_rate }}
+      TF_VAR_min_cash_out_fee: ${{ vars.TF_VAR_min_cash_out_fee }}
       TF_VAR_daily_limit_zar_unverified: ${{ vars.TF_VAR_daily_limit_zar_unverified }}
       TF_VAR_monthly_limit_zar_unverified: ${{ vars.TF_VAR_monthly_limit_zar_unverified }}
       TF_VAR_daily_limit_zar: ${{ vars.TF_VAR_daily_limit_zar }}
@@ -200,6 +201,7 @@ jobs:
           [ -n "${TF_VAR_percentage_fee_rate}" ] || missing+=("TF_VAR_percentage_fee_rate (variable)")
           [ -n "${TF_VAR_fx_margin_rate}" ] || missing+=("TF_VAR_fx_margin_rate (variable)")
           [ -n "${TF_VAR_cash_out_fee_rate}" ] || missing+=("TF_VAR_cash_out_fee_rate (variable)")
+          [ -n "${TF_VAR_min_cash_out_fee}" ] || missing+=("TF_VAR_min_cash_out_fee (variable)")
           [ -n "${TF_VAR_daily_limit_zar_unverified}" ] || missing+=("TF_VAR_daily_limit_zar_unverified (variable)")
           [ -n "${TF_VAR_monthly_limit_zar_unverified}" ] || missing+=("TF_VAR_monthly_limit_zar_unverified (variable)")
           [ -n "${TF_VAR_daily_limit_zar}" ] || missing+=("TF_VAR_daily_limit_zar (variable)")
