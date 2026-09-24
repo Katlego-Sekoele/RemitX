@@ -1,24 +1,12 @@
 """Request/response schemas for the customer quote endpoints."""
 
 import uuid
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
-from pydantic import ConfigDict, computed_field
+from pydantic import ConfigDict
 
 from remitx_api.models.orm.account import PayoutCurrency
 from remitx_api.models.schemas.base import Schema, UtcDateTime
-
-# The inverted rate is for reading only, so it's rounded to the 4 dp people
-# see: 1 / 0.05405405 is 18.50000139, not the 18.50 it was inverted from.
-DISPLAY_RATE_QUANTUM = Decimal("0.0001")
-
-
-def _token_to_fiat(fiat_to_token_exchange_rate: Decimal) -> Decimal:
-    """Sender currency per token unit (18.5000 rand per RLUSD), the way people
-    read the rate. Pricing keeps it the other way round, at full precision."""
-    return (Decimal("1") / fiat_to_token_exchange_rate).quantize(
-        DISPLAY_RATE_QUANTUM, rounding=ROUND_HALF_UP
-    )
 
 
 class QuoteCreateRequest(Schema):
@@ -50,20 +38,6 @@ class QuoteRead(Schema):
     expires_at: UtcDateTime
     status: str
 
-    @computed_field
-    @property
-    def amount_converted(self) -> Decimal:
-        """What's left of the sender amount after the transfer fee and FX
-        margin: the amount that becomes RLUSD (price_remittance's net)."""
-        return (
-            self.sender_amount - self.sender_transaction_fee - self.exchange_rate_margin
-        )
-
-    @computed_field
-    @property
-    def token_to_fiat_exchange_rate(self) -> Decimal:
-        return _token_to_fiat(self.fiat_to_token_exchange_rate)
-
 
 class QuotePreviewRequest(Schema):
     sender_amount: Decimal
@@ -74,8 +48,7 @@ class QuotePreviewRequest(Schema):
 class QuotePreviewRead(Schema):
     """A stateless rate preview — no beneficiary, nothing persisted, so no
     quote_id/status/expires_at. See services/quote_service.py's
-    RemittancePricing, which this mirrors field-for-field, plus the rate
-    the other way round for display."""
+    RemittancePricing, which this mirrors field-for-field."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,8 +63,3 @@ class QuotePreviewRead(Schema):
     receiver_amount: Decimal
     receiver_payout_fee: Decimal
     receiver_payout_estimate: Decimal
-
-    @computed_field
-    @property
-    def token_to_fiat_exchange_rate(self) -> Decimal:
-        return _token_to_fiat(self.fiat_to_token_exchange_rate)

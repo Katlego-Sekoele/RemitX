@@ -175,8 +175,6 @@ const QUOTE: QuoteRead = {
   receiver_currency: "ZWL",
   receiver_payout_fee: "118.00",
   receiver_payout_estimate: "15615.40",
-  amount_converted: "970.00",
-  token_to_fiat_exchange_rate: "18.5000",
   created_at: "2026-09-22T10:00:00+00:00",
   expires_at: "2026-09-22T10:15:00+00:00",
   status: "active",
@@ -218,6 +216,22 @@ describe("quoteLines", () => {
 
   it("keeps percentages out of the labels", () => {
     expect(lines.some((line) => line.label.includes("%"))).toBe(false)
+  })
+
+  it("hides the sender's fees on a received transfer", () => {
+    const received = quoteLines({
+      ...QUOTE,
+      sender_amount: null,
+      sender_transaction_fee: null,
+      exchange_rate_margin: null,
+    }).map((line) => line.label)
+
+    expect(received).toEqual([
+      "Exchange rate",
+      "RLUSD sent",
+      "Cash-out fee",
+      "Received",
+    ])
   })
 })
 

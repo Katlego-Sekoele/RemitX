@@ -1,14 +1,21 @@
-from fastapi import Depends, HTTPException, status
+import uuid
+
+from fastapi import Depends, HTTPException, Query, status
 
 from remitx_api.auth.dependencies import get_current_user
+from dataclasses import asdict
+
 from remitx_api.controllers.remittance_controller import (
     RemittanceController,
     RemittanceView,
+    TransferView,
 )
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.remittance import (
     RemittanceConfirmRequest,
     RemittanceRead,
+    TransferRead,
+    TransferTimelineStageRead,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
@@ -20,6 +27,17 @@ from remitx_api.services.remittance_service import (
 
 router = create_customer_router(prefix="/remittances", tags=[Tag.REMITTANCES])
 controller = RemittanceController()
+
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
+
+
+def _transfer_read(view: TransferView) -> TransferRead:
+    data = asdict(view)
+    data["timeline"] = [
+        TransferTimelineStageRead(**asdict(stage)) for stage in view.timeline
+    ]
+    return TransferRead(**data)
 
 
 def _read(view: RemittanceView) -> RemittanceRead:
@@ -70,3 +88,31 @@ def confirm_remittance(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
     return _read(view)
+
+
+@router.get(
+    "",
+    response_model=list[TransferRead],
+    summary="List the caller's transfers, sent and received",
+)
+def list_remittances(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    user: User = Depends(get_current_user),
+):
+    """Newest first. A received transfer leaves out the sender's fee lines."""
+    return [_transfer_read(view) for view in controller.list_transfers(user.id, limit)]
+
+
+@router.get(
+    "/{remittance_id}",
+    response_model=TransferRead,
+    summary="Read one transfer's status and receipt",
+    responses=error_responses(404),
+)
+def get_remittance(
+    remittance_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """Readable by its sender and its recipient; anyone else gets 404. Poll
+    it while `status` is `pending` or `processing`."""
+    return _transfer_read(controller.get_transfer(user.id, remittance_id))

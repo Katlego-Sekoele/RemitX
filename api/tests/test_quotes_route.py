@@ -5,7 +5,11 @@ from decimal import Decimal
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.account import (
+    CURRENCY_ZAR,
+    PAYOUT_CURRENCIES,
+    PayoutCurrency,
+)
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.repositories.account_repository import AccountRepository
 
@@ -100,10 +104,6 @@ def test_create_quote_end_to_end(verified_client):
     assert body["sender_amount"] == "1000.00000000"
     assert body["status"] == "ACTIVE"
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
-    # Derived for display, so the UI does no arithmetic: 1000 less the
-    # R 20 fee and R 10 FX margin, and the token rate as rand per RLUSD.
-    assert Decimal(body["amount_converted"]) == Decimal("970")
-    assert body["token_to_fiat_exchange_rate"] == "18.5000"
 
 
 def test_insufficient_balance_is_a_400(verified_client):
@@ -210,8 +210,6 @@ def test_preview_end_to_end_no_beneficiary_needed(verified_client):
     body = response.json()
     assert body["sender_currency"] == "ZAR"
     assert body["fiat_to_token_exchange_rate"] == "0.05405405"
-    # The same rate the way people read it, rand per RLUSD, to 4 dp.
-    assert body["token_to_fiat_exchange_rate"] == "18.5000"
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
     assert body["receiver_payout_currency"] == "USD"
     assert body["fiat_exchange_rate"] == "0.05400000"
@@ -253,3 +251,7 @@ def test_payout_currency_must_be_a_payout_currency(
     )
 
     assert response.status_code == 422
+
+
+def test_payout_currency_type_matches_the_model():
+    assert tuple(currency.value for currency in PayoutCurrency) == PAYOUT_CURRENCIES

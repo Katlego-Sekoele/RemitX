@@ -74,7 +74,7 @@ TAGS: list[dict[str, str]] = [
     },
     {
         "name": Tag.REMITTANCES,
-        "description": "Confirming a quote and starting settlement.",
+        "description": "Confirming a quote, then following the transfer as it settles.",
     },
     {
         "name": Tag.ACCOUNTS,

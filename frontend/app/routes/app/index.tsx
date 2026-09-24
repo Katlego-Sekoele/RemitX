@@ -4,9 +4,11 @@ import { Link } from "react-router"
 
 import { BalanceSummary } from "~/components/accounts/balance-summary"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { RecentTransfers } from "~/components/transfers/recent-transfers"
 import { Button } from "~/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -14,11 +16,14 @@ import {
 } from "~/components/ui/card"
 import { SEND_HREF } from "~/lib/accounts"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
+import { SEND_PATH } from "~/lib/send"
+import { TRANSFERS_PATH } from "~/lib/transfers"
 import type { Route } from "./+types/index"
 import { PageHeader, PageHeaderTitle } from "~/components/ui/page-header"
 import { api } from "~/client"
 
 const ROUTE_MODULE = "routes/app/index.tsx"
+const RECENT_LIMIT = 5
 
 export function meta(): Route.MetaDescriptors {
   return [{ title: "Account — RemitX" }, { name: "robots", content: "noindex" }]
@@ -66,14 +71,40 @@ export default function AppHome() {
               <CardDescription>You&apos;re verified.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-start gap-3">
-              <p>No remittances yet.</p>
-              <Button
-                nativeButton={false}
-                variant="outline"
-                render={<Link to="/app/beneficiaries" />}
-              >
-                Manage beneficiaries
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button nativeButton={false} render={<Link to={SEND_PATH} />}>
+                  Send money
+                </Button>
+                <Button
+                  nativeButton={false}
+                  variant="outline"
+                  render={<Link to="/app/beneficiaries" />}
+                >
+                  Manage beneficiaries
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+        {onboarding.data ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent transfers</CardTitle>
+              <CardDescription>
+                Your last {RECENT_LIMIT}, sent and received.
+              </CardDescription>
+              <CardAction>
+                <Button
+                  nativeButton={false}
+                  variant="link"
+                  render={<Link to={TRANSFERS_PATH} />}
+                >
+                  See all
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <RecentTransfers limit={RECENT_LIMIT} />
             </CardContent>
           </Card>
         ) : null}

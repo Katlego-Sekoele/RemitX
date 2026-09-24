@@ -4,12 +4,9 @@ import { Link, useSearchParams } from "react-router"
 import { api, type KycStandingRead as KycStanding } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { AmountStep } from "~/components/send/amount-step"
-import {
-  BeneficiaryAvatar,
-  RecipientStep,
-} from "~/components/send/recipient-step"
+import { RecipientStep } from "~/components/send/recipient-step"
 import { ReviewStep } from "~/components/send/review-step"
-import { SendTimeline } from "~/components/send/send-timeline"
+import { SendProgress } from "~/components/send/send-progress"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -26,8 +23,7 @@ import {
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
-import { beneficiaryName } from "~/lib/beneficiaries"
-import { formatMoney, isZeroMoney } from "~/lib/money"
+import { amountToCents, fromCents } from "~/lib/money"
 import {
   amountIssue,
   isPayoutCurrency,
@@ -35,6 +31,7 @@ import {
   readSendSearch,
   resolveStep,
   SENDER_CURRENCY,
+  stepNumber,
   writeSendSearch,
   type AmountLimits,
   type PayoutCurrency,
@@ -48,6 +45,15 @@ export function meta(): Route.MetaDescriptors {
   return [{ title: "Send — RemitX" }, { name: "robots", content: "noindex" }]
 }
 
+function asAmount(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  try {
+    return fromCents(amountToCents(value))
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * What's left to send. Until KYC-3 (#25) reports usage, that's the whole of
  * the tier's limits; the API still refuses a quote over its own ceiling.
@@ -57,9 +63,9 @@ function limitsFrom(
   available: string | undefined
 ): AmountLimits {
   return {
-    available,
-    dailyRemaining: standing?.daily_limit_zar,
-    monthlyRemaining: standing?.monthly_limit_zar,
+    available: asAmount(available),
+    dailyRemaining: asAmount(standing?.daily_limit_zar),
+    monthlyRemaining: asAmount(standing?.monthly_limit_zar),
   }
 }
 
@@ -144,7 +150,8 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
   )
   const limits = limitsFrom(standing, zarAccount?.available_balance)
   const emptyBalance =
-    zarAccount !== undefined && isZeroMoney(zarAccount.available_balance)
+    zarAccount !== undefined &&
+    amountToCents(zarAccount.available_balance) <= 0n
 
   const beneficiary =
     beneficiaries.data?.find(
@@ -162,6 +169,11 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
     beneficiaries.isPending && search.beneficiaryId
       ? null
       : resolveStep(effective, amountValid)
+  const maxStep = !beneficiary
+    ? stepNumber("recipient")
+    : amountValid
+      ? stepNumber("review")
+      : stepNumber("amount")
 
   /** Step changes are history entries; typing replaces the current one. */
   function update(patch: Partial<SendSearch>, replace = false) {
@@ -177,92 +189,64 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
       ? beneficiary.payout_currency
       : PAYOUT_CURRENCIES[0])
 
-  const recipientSection = (
-    <RecipientStep
-      beneficiaries={beneficiaries.data ?? []}
-      loading={beneficiaries.isPending}
-      error={beneficiaries.error}
-      selected={beneficiary}
-      missing={missing}
-      onSelect={(next) =>
-        update(
-          {
-            beneficiaryId: next?.beneficiary_id ?? null,
-            // A new recipient brings their own payout currency.
-            currency: null,
-            step: "recipient",
-          },
-          true
-        )
-      }
-      onContinue={() => update({ step: "amount" })}
-    />
-  )
-
   return (
     <div className="flex flex-col gap-6">
+      {step ? (
+        <SendProgress
+          step={step}
+          maxStep={maxStep}
+          onStepChange={(next) => update({ step: next })}
+        />
+      ) : null}
       {emptyBalance ? <AddMoney /> : null}
       {step === null ? (
         <Skeleton className="h-40 w-full" />
+      ) : step === "recipient" || !beneficiary ? (
+        <RecipientStep
+          beneficiaries={beneficiaries.data ?? []}
+          loading={beneficiaries.isPending}
+          error={beneficiaries.error}
+          selected={beneficiary}
+          missing={missing}
+          onSelect={(next) =>
+            update(
+              {
+                beneficiaryId: next?.beneficiary_id ?? null,
+                // A new recipient brings their own payout currency.
+                currency: null,
+                step: "recipient",
+              },
+              true
+            )
+          }
+          onContinue={() => update({ step: "amount" })}
+        />
+      ) : step === "amount" ? (
+        <AmountStep
+          beneficiary={beneficiary}
+          amount={search.amount}
+          currency={currency}
+          limits={limits}
+          onAmountChange={(amount) => update({ amount }, true)}
+          onCurrencyChange={(next) =>
+            update(
+              {
+                // The beneficiary's own currency needs no override.
+                currency: next === beneficiary.payout_currency ? null : next,
+              },
+              true
+            )
+          }
+          onBack={() => update({ step: "recipient" })}
+          onContinue={() => update({ step: "review" })}
+        />
       ) : (
-        <SendTimeline
-          step={step}
-          onStepChange={(next) => update({ step: next })}
-          sections={[
-            {
-              step: "recipient",
-              disabled: false,
-              summary: beneficiary ? (
-                <span className="flex items-center gap-2">
-                  <BeneficiaryAvatar beneficiary={beneficiary} size="sm" />
-                  {beneficiaryName(beneficiary)} · paid in {currency}
-                </span>
-              ) : null,
-              content: recipientSection,
-            },
-            {
-              step: "amount",
-              disabled: !beneficiary,
-              summary: amountValid
-                ? `${formatMoney(search.amount, SENDER_CURRENCY)} from your ZAR balance`
-                : null,
-              content: beneficiary ? (
-                <AmountStep
-                  beneficiary={beneficiary}
-                  amount={search.amount}
-                  currency={currency}
-                  limits={limits}
-                  onAmountChange={(amount) => update({ amount }, true)}
-                  onCurrencyChange={(next) =>
-                    update(
-                      {
-                        // The beneficiary's own currency needs no override.
-                        currency:
-                          next === beneficiary.payout_currency ? null : next,
-                      },
-                      true
-                    )
-                  }
-                  onBack={() => update({ step: "recipient" })}
-                  onContinue={() => update({ step: "review" })}
-                />
-              ) : null,
-            },
-            {
-              step: "review",
-              disabled: !beneficiary || !amountValid,
-              content: beneficiary ? (
-                <ReviewStep
-                  beneficiary={beneficiary}
-                  amount={search.amount}
-                  currency={currency}
-                  // A changed amount needs a new quote; the old one simply
-                  // expires.
-                  onBack={() => update({ step: "amount" })}
-                />
-              ) : null,
-            },
-          ]}
+        <ReviewStep
+          beneficiary={beneficiary}
+          amount={search.amount}
+          currency={currency}
+          // A changed amount needs a new quote; the old one simply expires.
+          onBack={() => update({ step: "amount" })}
         />
       )}
     </div>

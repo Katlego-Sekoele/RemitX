@@ -61,9 +61,8 @@ class Quote(Base):
         Uuid, ForeignKey("users.id"), nullable=False
     )# Beneficiary user id
     sender_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    sender_currency: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )  # used with sender user id to get the sender's fiat account
+    # Used with sender user id to get the sender's fiat account.
+    sender_currency: Mapped[str] = mapped_column(Text, nullable=False)
     sender_transaction_fee: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
     ) # In the sender's currency.
@@ -76,8 +75,8 @@ class Quote(Base):
     fiat_to_token_exchange_rate_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("exchange_rates.id"), nullable=True
     )
-    # same as the rate between the sender currency and USD, since the token
-    # is pegged to USD
+    # Same as the rate between the sender currency and USD, since the token
+    # is pegged to USD.
     fiat_to_token_exchange_rate: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
     )
@@ -91,10 +90,9 @@ class Quote(Base):
     )
     # Gross estimated cash-out, in receiver_currency, before receiver_payout_fee.
     receiver_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    # The beneficiary's chosen payout currency (e.g. ZWL).
-    receiver_currency: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )  # used with beneficiary user id to get the beneficiary's fiat account
+    # The beneficiary's chosen payout currency (e.g. ZWL). Used with
+    # beneficiary user id to get the beneficiary's fiat account.
+    receiver_currency: Mapped[str] = mapped_column(Text, nullable=False)
     receiver_payout_fee: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     receiver_payout_estimate: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False

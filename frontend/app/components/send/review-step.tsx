@@ -13,7 +13,15 @@ import {
 } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
-import { FieldDescription } from "~/components/ui/field"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card"
+import { QuoteLines } from "~/components/send/quote-lines"
 import {
   Item,
   ItemActions,
@@ -22,21 +30,20 @@ import {
   ItemTitle,
 } from "~/components/ui/item"
 import { Skeleton } from "~/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableRow } from "~/components/ui/table"
 import { useNow } from "~/hooks/use-now"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
-import { SETTLEMENT_TOKEN_LABEL, SETTLEMENT_TOKEN_NOTE } from "~/lib/money"
 import {
   confirmRefusal,
   formatCountdown,
-  quoteLines,
+  normalizeAmount,
   quoteRefusal,
   RATES_UNAVAILABLE_MESSAGE,
   secondsLeft,
   SENDER_CURRENCY,
   type PayoutCurrency,
 } from "~/lib/send"
+import { transferPath } from "~/lib/transfers"
 
 /**
  * Creating a quote holds a price, so it's a POST, but it's read like a
@@ -49,13 +56,14 @@ function useQuote(
   amount: string,
   currency: PayoutCurrency
 ) {
+  const senderAmount = normalizeAmount(amount)
   return useQuery({
-    queryKey: ["quotes", "create", beneficiaryId, amount, currency],
+    queryKey: ["quotes", "create", beneficiaryId, senderAmount, currency],
     queryFn: async () => {
       const { data } = await sdk.quotes.createQuote({
         body: {
           beneficiary_id: beneficiaryId,
-          sender_amount: amount,
+          sender_amount: senderAmount,
           sender_currency: SENDER_CURRENCY,
           receiver_payout_currency: currency,
         },
@@ -94,11 +102,16 @@ export function ReviewStep({
       if (error) confirming.current = false
     },
     onSuccess: (remittance) => {
+      // The pending legs have lowered the available balance, and every
+      // transfer list (whatever limit) has a new row.
       queryClient.invalidateQueries({
         queryKey: api.accounts.getAccounts().queryKey,
       })
+      queryClient.invalidateQueries({
+        queryKey: api.remittances.listRemittances().queryKey,
+      })
       toast.success("Transfer sent")
-      navigate(`/app/transfers/${remittance.remittance_id}`)
+      navigate(transferPath(remittance.remittance_id))
     },
     onError: (error) => {
       const refusal = confirmRefusal(error)
@@ -137,29 +150,34 @@ export function ReviewStep({
   if (quote.isError) {
     const refusal = quoteRefusal(quote.error)
     return (
-      <div className="flex flex-col gap-4">
-        <Alert variant="destructive">
-          <WarningCircleIcon />
-          <AlertTitle>
-            {refusal === "rates_unavailable"
-              ? RATES_UNAVAILABLE_MESSAGE
-              : "We couldn't price this transfer"}
-          </AlertTitle>
-          <AlertDescription>
-            {refusal === "rates_unavailable"
-              ? "Try again in a few minutes."
-              : errorMessage(quote.error)}
-          </AlertDescription>
-        </Alert>
-        <div className="flex justify-between gap-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Review your transfer</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>
+              {refusal === "rates_unavailable"
+                ? RATES_UNAVAILABLE_MESSAGE
+                : "We couldn't price this transfer"}
+            </AlertTitle>
+            <AlertDescription>
+              {refusal === "rates_unavailable"
+                ? "Try again in a few minutes."
+                : errorMessage(quote.error)}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+        <CardFooter className="justify-between gap-2">
           <Button variant="outline" onClick={onBack}>
             Back
           </Button>
           {refusal === "rates_unavailable" ? (
             <Button onClick={() => quote.refetch()}>Try again</Button>
           ) : null}
-        </div>
-      </div>
+        </CardFooter>
+      </Card>
     )
   }
 
@@ -172,97 +190,76 @@ export function ReviewStep({
   const sending = confirm.isPending || confirm.isSuccess
 
   return (
-    <div className="flex flex-col gap-6">
-      <Item variant="outline">
-        <ItemContent>
-          <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
-          <ItemDescription>
-            Receives {data.receiver_currency} · Paid from your ZAR balance
-          </ItemDescription>
-        </ItemContent>
-        <ItemActions>
-          <Badge variant={stale ? "destructive" : "secondary"}>
-            <ClockIcon aria-hidden="true" />
-            <span role="timer" aria-live="off">
-              {stale
-                ? "Price expired"
-                : `Price held for ${formatCountdown(seconds)}`}
-            </span>
-          </Badge>
-        </ItemActions>
-      </Item>
+    <Card>
+      <CardHeader>
+        <CardTitle>Review your transfer</CardTitle>
+        <CardDescription>
+          This price is locked in until the timer runs out.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-6">
+        <Item variant="outline">
+          <ItemContent>
+            <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
+            <ItemDescription>
+              Receives {data.receiver_currency} · Paid from your ZAR balance
+            </ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            <Badge variant={stale ? "destructive" : "secondary"}>
+              <ClockIcon aria-hidden="true" />
+              <span role="timer" aria-live="off">
+                {stale
+                  ? "Price expired"
+                  : `Price held for ${formatCountdown(seconds)}`}
+              </span>
+            </Badge>
+          </ItemActions>
+        </Item>
 
-      <Table>
-        <TableBody>
-          {quoteLines(data).map((line, index, lines) => (
-            <TableRow key={line.label}>
-              <TableCell>
-                {index === lines.length - 1 ? (
-                  <ItemTitle>{line.label}</ItemTitle>
-                ) : (
-                  line.label
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-col items-end gap-0.5">
-                  {index === lines.length - 1 ? (
-                    <ItemTitle>{line.value}</ItemTitle>
-                  ) : (
-                    line.value
-                  )}
-                  {line.detail ? (
-                    <FieldDescription>{line.detail}</FieldDescription>
-                  ) : null}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <FieldDescription>
-        {SETTLEMENT_TOKEN_LABEL}: {SETTLEMENT_TOKEN_NOTE}
-      </FieldDescription>
+        <QuoteLines quote={data} />
 
-      {stale ? (
-        <Alert variant="destructive">
-          <WarningCircleIcon />
-          <AlertTitle>
-            {refusal === "quote_inactive"
-              ? "This quote has been used or has expired"
-              : "This price has expired"}
-          </AlertTitle>
-          <AlertDescription>
-            Rates move, so prices are only held for a short while. Get a new
-            quote to carry on.
-          </AlertDescription>
-          <AlertAction>
-            <Button size="sm" onClick={newQuote}>
-              Get a new quote
-            </Button>
-          </AlertAction>
-        </Alert>
-      ) : refusal === "insufficient_balance" ? (
-        <Alert variant="destructive">
-          <WarningCircleIcon />
-          <AlertTitle>Your balance no longer covers this transfer</AlertTitle>
-          <AlertDescription>
-            Another transfer may have spent it first. Add money to your ZAR
-            balance by EFT, then get a new quote.
-          </AlertDescription>
-          <AlertAction>
-            <Button size="sm" variant="outline" onClick={newQuote}>
-              Get a new quote
-            </Button>
-          </AlertAction>
-        </Alert>
-      ) : refusal === "other" ? (
-        <Alert variant="destructive">
-          <WarningCircleIcon />
-          <AlertTitle>We couldn&apos;t send this transfer</AlertTitle>
-          <AlertDescription>{errorMessage(confirm.error)}</AlertDescription>
-        </Alert>
-      ) : null}
-      <div className="flex justify-between gap-2">
+        {stale ? (
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>
+              {refusal === "quote_inactive"
+                ? "This quote has been used or has expired"
+                : "This price has expired"}
+            </AlertTitle>
+            <AlertDescription>
+              Rates move, so prices are only held for a short while. Get a new
+              quote to carry on.
+            </AlertDescription>
+            <AlertAction>
+              <Button size="sm" onClick={newQuote}>
+                Get a new quote
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : refusal === "insufficient_balance" ? (
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>Your balance no longer covers this transfer</AlertTitle>
+            <AlertDescription>
+              Another transfer may have spent it first. Add money to your ZAR
+              balance by EFT, then get a new quote.
+            </AlertDescription>
+            <AlertAction>
+              <Button size="sm" variant="outline" onClick={newQuote}>
+                Get a new quote
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : refusal === "other" ? (
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>We couldn&apos;t send this transfer</AlertTitle>
+            <AlertDescription>{errorMessage(confirm.error)}</AlertDescription>
+          </Alert>
+        ) : null}
+      </CardContent>
+      <CardFooter className="justify-between gap-2">
         <Button variant="outline" disabled={sending} onClick={onBack}>
           Back
         </Button>
@@ -276,7 +273,7 @@ export function ReviewStep({
         >
           {sending ? "Sending…" : "Confirm and send"}
         </Button>
-      </div>
-    </div>
+      </CardFooter>
+    </Card>
   )
 }

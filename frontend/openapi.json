@@ -3775,7 +3775,7 @@
         "type": "object"
       },
       "QuotePreviewRead": {
-        "description": "A stateless rate preview \u2014 no beneficiary, nothing persisted, so no\nquote_id/status/expires_at. See services/quote_service.py's\nRemittancePricing, which this mirrors field-for-field, plus the rate\nthe other way round for display.",
+        "description": "A stateless rate preview \u2014 no beneficiary, nothing persisted, so no\nquote_id/status/expires_at. See services/quote_service.py's\nRemittancePricing, which this mirrors field-for-field.",
         "properties": {
           "exchange_rate_margin": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -3828,12 +3828,6 @@
           "token_name": {
             "title": "Token Name",
             "type": "string"
-          },
-          "token_to_fiat_exchange_rate": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "readOnly": true,
-            "title": "Token To Fiat Exchange Rate",
-            "type": "string"
           }
         },
         "required": [
@@ -3847,8 +3841,7 @@
           "receiver_payout_currency",
           "receiver_amount",
           "receiver_payout_fee",
-          "receiver_payout_estimate",
-          "token_to_fiat_exchange_rate"
+          "receiver_payout_estimate"
         ],
         "title": "QuotePreviewRead",
         "type": "object"
@@ -3885,13 +3878,6 @@
       },
       "QuoteRead": {
         "properties": {
-          "amount_converted": {
-            "description": "What's left of the sender amount after the transfer fee and FX\nmargin: the amount that becomes RLUSD (price_remittance's net).",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "readOnly": true,
-            "title": "Amount Converted",
-            "type": "string"
-          },
           "beneficiary_user_id": {
             "format": "uuid",
             "title": "Beneficiary User Id",
@@ -3975,12 +3961,6 @@
           "token_name": {
             "title": "Token Name",
             "type": "string"
-          },
-          "token_to_fiat_exchange_rate": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "readOnly": true,
-            "title": "Token To Fiat Exchange Rate",
-            "type": "string"
           }
         },
         "required": [
@@ -4001,9 +3981,7 @@
           "receiver_payout_estimate",
           "created_at",
           "expires_at",
-          "status",
-          "amount_converted",
-          "token_to_fiat_exchange_rate"
+          "status"
         ],
         "title": "QuoteRead",
         "type": "object"
@@ -4287,6 +4265,248 @@
           "explanation"
         ],
         "title": "ToxicCombinationRead",
+        "type": "object"
+      },
+      "TransferRead": {
+        "description": "One transfer, sent or received, as the caller sees it.\n\n`status` is the settlement leg's: `pending` (queued), `processing`\n(settling on the XRPL Testnet), `confirmed` or `failed`. `xrpl_tx_hash`\nis the burn transaction's hash, set once the transfer has confirmed.",
+        "properties": {
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The other person's verified name: the recipient of a sent transfer, the sender of a received one.",
+            "title": "Counterparty Name"
+          },
+          "counterparty_user_id": {
+            "description": "The other person. For a sent transfer, the `linked_user_id` of the beneficiary it went to.",
+            "format": "uuid",
+            "title": "Counterparty User Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "sent",
+              "received"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "exchange_rate_margin": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Margin"
+          },
+          "fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fiat Exchange Rate",
+            "type": "string"
+          },
+          "fiat_to_token_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fiat To Token Exchange Rate",
+            "type": "string"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When settlement started on the XRPL Testnet.",
+            "title": "Processed At"
+          },
+          "quote_id": {
+            "format": "uuid",
+            "title": "Quote Id",
+            "type": "string"
+          },
+          "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Receiver Amount",
+            "type": "string"
+          },
+          "receiver_currency": {
+            "title": "Receiver Currency",
+            "type": "string"
+          },
+          "receiver_payout_estimate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Receiver Payout Estimate",
+            "type": "string"
+          },
+          "receiver_payout_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Receiver Payout Fee",
+            "type": "string"
+          },
+          "remittance_id": {
+            "format": "uuid",
+            "title": "Remittance Id",
+            "type": "string"
+          },
+          "sender_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null on a received transfer, like the sender's fees.",
+            "title": "Sender Amount"
+          },
+          "sender_currency": {
+            "title": "Sender Currency",
+            "type": "string"
+          },
+          "sender_transaction_fee": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Transaction Fee"
+          },
+          "settled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the transfer confirmed; null until it has.",
+            "title": "Settled At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TransferTimelineStageRead"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "timeline_step": {
+            "description": "Which stage is active on the settlement timeline.",
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Timeline Step",
+            "type": "integer"
+          },
+          "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Token Amount",
+            "type": "string"
+          },
+          "token_name": {
+            "title": "Token Name",
+            "type": "string"
+          },
+          "xrpl_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xrpl Tx Hash"
+          }
+        },
+        "required": [
+          "remittance_id",
+          "quote_id",
+          "direction",
+          "counterparty_user_id",
+          "counterparty_name",
+          "status",
+          "created_at",
+          "processed_at",
+          "settled_at",
+          "xrpl_tx_hash",
+          "sender_amount",
+          "sender_currency",
+          "sender_transaction_fee",
+          "exchange_rate_margin",
+          "fiat_to_token_exchange_rate",
+          "fiat_exchange_rate",
+          "token_amount",
+          "token_name",
+          "receiver_amount",
+          "receiver_currency",
+          "receiver_payout_fee",
+          "receiver_payout_estimate",
+          "timeline_step",
+          "timeline"
+        ],
+        "title": "TransferRead",
+        "type": "object"
+      },
+      "TransferTimelineStageRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "step": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Step",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "title",
+          "description",
+          "occurred_at"
+        ],
+        "title": "TransferTimelineStageRead",
         "type": "object"
       },
       "UserAccessRead": {
@@ -8405,6 +8625,69 @@
       }
     },
     "/remittances": {
+      "get": {
+        "description": "Newest first. A received transfer leaves out the sender's fee lines.",
+        "operationId": "list_remittances",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransferRead"
+                  },
+                  "title": "Response List Remittances",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's transfers, sent and received",
+        "tags": [
+          "remittances"
+        ]
+      },
       "post": {
         "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
         "operationId": "confirm_remittance",
@@ -8480,6 +8763,75 @@
           "remittances"
         ]
       }
+    },
+    "/remittances/{remittance_id}": {
+      "get": {
+        "description": "Readable by its sender and its recipient; anyone else gets 404. Poll\nit while `status` is `pending` or `processing`.",
+        "operationId": "get_remittance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "remittance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Remittance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read one transfer's status and receipt",
+        "tags": [
+          "remittances"
+        ]
+      }
     }
   },
   "tags": [
@@ -8504,7 +8856,7 @@
       "name": "quotes"
     },
     {
-      "description": "Confirming a quote and starting settlement.",
+      "description": "Confirming a quote, then following the transfer as it settles.",
       "name": "remittances"
     },
     {

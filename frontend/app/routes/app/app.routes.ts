@@ -71,6 +71,13 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     kycAttention: true,
   },
   {
+    // A transfer's own page, app/transfers/:remittanceId, is in routes.ts.
+    route: { path: "app/transfers", module: "routes/app/transfers.tsx" },
+    label: "Transfers",
+    order: 15,
+    icon: "ArrowsLeftRightIcon",
+  },
+  {
     route: {
       path: "app/beneficiaries",
       module: "routes/app/beneficiaries.tsx",
