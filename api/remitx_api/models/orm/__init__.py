@@ -3,6 +3,7 @@
 from remitx_api.extensions import Base
 from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
+from remitx_api.models.orm.bank_account import BankAccount
 from remitx_api.models.orm.beneficiary import Beneficiary
 from remitx_api.models.orm.country import Country
 from remitx_api.models.orm.deposit import Deposit
@@ -41,12 +42,14 @@ from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.transaction import Transaction
 from remitx_api.models.orm.user import User
 from remitx_api.models.orm.user_role import UserRole
+from remitx_api.models.orm.withdrawal import Withdrawal
 
 __all__ = [
     "Account",
     "AuditAction",
     "AuditLog",
     "AuditSubject",
+    "BankAccount",
     "Base",
     "Beneficiary",
     "Country",
@@ -82,5 +85,6 @@ __all__ = [
     "Transaction",
     "User",
     "UserRole",
+    "Withdrawal",
     "kyc_application_risk",
 ]
