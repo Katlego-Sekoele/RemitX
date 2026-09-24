@@ -89,7 +89,7 @@ def env(request):
 
             db.session.add(
                 Account(
-                    user_id=admin.id,
+                    user_id=None,
                     type=TYPE_PLATFORM_FIAT,
                     account_currency=CURRENCY_ZAR,
                     label="RemitX SA Bank Account",
@@ -97,7 +97,7 @@ def env(request):
             )
             db.session.add(
                 Account(
-                    user_id=admin.id,
+                    user_id=None,
                     type=TYPE_PLATFORM_REVENUE,
                     account_currency=CURRENCY_ZAR,
                     label="RemitX SA Fee Revenue",
@@ -160,7 +160,7 @@ def test_withdrawal_into_a_verified_account_settles_immediately(env):
 
     accounts_response = env.client.get("/accounts")
     zar = next(a for a in accounts_response.json() if a["currency"] == "ZAR")
-    assert zar["available_balance"] == "900.00000000"
+    assert zar["available_balance"] == "900.00"
 
 
 def test_withdrawal_into_an_unverified_account_is_refused(env):
@@ -185,7 +185,7 @@ def test_withdrawal_into_an_unverified_account_is_refused(env):
     # Nothing was held — the whole balance is still available.
     accounts_response = env.client.get("/accounts")
     zar = next(a for a in accounts_response.json() if a["currency"] == "ZAR")
-    assert zar["available_balance"] == "1000.00000000"
+    assert zar["available_balance"] == "1000.00"
 
 
 @pytest.mark.parametrize("env", ["10"], indirect=True)
@@ -361,7 +361,7 @@ def test_two_withdrawals_in_a_row_each_settle_and_balances_add_up(env):
     assert second.status_code == 200
     assert first.json()["status"] == "confirmed"
     assert second.json()["status"] == "confirmed"
-    assert _available_zar(env) == "700.00000000"
+    assert _available_zar(env) == "700.00"
 
     token = db.open_session()
     try:
@@ -412,7 +412,7 @@ def test_withdrawal_whose_fee_rounds_to_zero_is_charged_the_minimum_fee(env):
         assert fee_tx.status == "confirmed"
     finally:
         db.close_session(token)
-    assert _available_zar(env) == "999.50000000"
+    assert _available_zar(env) == "999.50"
 
 
 def test_smallest_withdrawal_pays_out_one_cent(env):
@@ -465,7 +465,7 @@ def test_withdrawal_into_a_rejected_account_is_a_409(env):
     response = _withdraw(env, bank_account["bank_account_id"], "100.00")
 
     assert response.status_code == 409
-    assert _available_zar(env) == "1000.00000000"
+    assert _available_zar(env) == "1000.00"
 
 
 def test_withdrawal_into_another_users_verified_account_is_a_400(env):
@@ -489,7 +489,7 @@ def test_withdrawal_into_another_users_verified_account_is_a_400(env):
     response = _withdraw(env, other_account_id, "100.00")
 
     assert response.status_code == 400
-    assert _available_zar(env) == "1000.00000000"
+    assert _available_zar(env) == "1000.00"
 
 
 def test_currency_not_matching_the_bank_account_is_a_400(env):
@@ -575,7 +575,7 @@ def test_settling_an_already_settled_withdrawal_is_refused(env):
     finally:
         db.close_session(token)
 
-    assert _available_zar(env) == "900.00000000"
+    assert _available_zar(env) == "900.00"
 
 
 def _count_withdrawals() -> int:
@@ -604,7 +604,7 @@ def _fund_customer_account(env, currency, amount) -> None:
         db.close_session(token)
 
 
-def _seed_platform_accounts(env, currency, country) -> None:
+def _seed_platform_accounts(currency, country) -> None:
     token = db.open_session()
     try:
         for type_, label in (
@@ -613,7 +613,7 @@ def _seed_platform_accounts(env, currency, country) -> None:
         ):
             db.session.add(
                 Account(
-                    user_id=env.admin.id,
+                    user_id=None,
                     type=type_,
                     account_currency=currency,
                     label=label,
@@ -688,7 +688,7 @@ def test_failed_settlement_does_not_leave_the_funds_locked(env, monkeypatch):
 
     assert response.status_code == 409
     assert _count_withdrawals() == 0
-    assert _available_zar(env) == "1000.00000000"
+    assert _available_zar(env) == "1000.00"
 
 
 def test_withdrawal_without_platform_accounts_in_that_currency_writes_nothing(env):
@@ -721,13 +721,13 @@ def test_lowercase_currency_is_refused_and_writes_nothing(env):
 
     assert response.status_code == 400
     assert _count_withdrawals() == 0
-    assert _available_zar(env) == "1000.00000000"
+    assert _available_zar(env) == "1000.00"
 
 
 def test_usd_withdrawal_uses_the_usd_platform_accounts_only(env):
     """Fees and payouts stay in the withdrawal's own currency: a USD
     withdrawal touches the US accounts and leaves the SA ones alone."""
-    _seed_platform_accounts(env, "USD", "US")
+    _seed_platform_accounts("USD", "US")
     _fund_customer_account(env, "USD", "500")
     bank_account = _verified_bank_account(env, currency="USD")
 
@@ -752,7 +752,7 @@ def test_usd_withdrawal_uses_the_usd_platform_accounts_only(env):
         assert usd.account_balance == Decimal("300")
     finally:
         db.close_session(token)
-    assert _available_zar(env) == "1000.00000000"
+    assert _available_zar(env) == "1000.00"
 
 
 def test_fee_on_an_exact_half_cent_rounds_up(env):
