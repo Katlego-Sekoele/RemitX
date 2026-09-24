@@ -109,9 +109,9 @@ def test_reprocessing_an_unmatched_line_does_not_queue_it_twice(app_context):
     assert len(again.skipped) == 1
 
 
-def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
-    """The reference identifies the customer. The money always lands in ZAR,
-    including when the admin quotes their uctusd reference.
+def test_approving_by_token_reference_credits_the_token_account(app_context):
+    """The reference identifies the account. A token reference credits the
+    token balance, not ZAR.
     """
     _seed_bank_account()
     user = UserController().ensure_provisioned(
@@ -131,8 +131,8 @@ def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
 
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
     token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
-    assert zar_account.account_balance == Decimal("80.00")
-    assert token_account.account_balance == Decimal("0")
+    assert zar_account.account_balance == Decimal("0")
+    assert token_account.account_balance == Decimal("80.00")
     assert deposit_service.get_pending_deposits() == []
 
 

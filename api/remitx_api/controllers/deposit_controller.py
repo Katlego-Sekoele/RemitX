@@ -72,8 +72,8 @@ class DepositController:
     ) -> dict:
         """An admin resolves one pending deposit to the customer who holds
         ``account_reference``, once that person has proven (off-platform)
-        that the statement line is theirs. The credit always lands on their
-        ZAR account.
+        that the statement line is theirs. The credit lands on whichever
+        account ``account_reference`` identifies (ZAR or token).
         """
         deposit = deposit_service.approve_pending_deposit(
             deposit_id, account_reference, admin_id
