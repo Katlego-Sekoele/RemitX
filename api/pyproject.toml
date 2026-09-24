@@ -12,11 +12,18 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
     "celery>=5.4.0",
-    "redis>=5.0.0",
+    "redis>=5.0.1",  # 5.0.1 added the asyncio client's aclose()
     "clerk-backend-api>=7.0.0,<8",
     "xrpl-py>=4.3.0",
     # S3 client for Neon Object Storage (MinIO locally) — KYC document uploads.
     "boto3>=1.35.0",
+    # Response caching for read endpoints (remitx_api/caching). Not the
+    # `[redis]` extra: it pins redis<5, and the backend only needs the
+    # `redis.asyncio` client already required above.
+    "fastapi-cache2>=0.2.2,<0.3",
+    # fastapi-cache2's coder imports starlette.templating, which refuses to
+    # import without jinja2 — an undeclared dependency of 0.2.x.
+    "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]

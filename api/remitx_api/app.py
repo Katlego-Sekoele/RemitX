@@ -4,6 +4,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from remitx_api.caching import (
+    CachedResponseHeadersMiddleware,
+    close_cache,
+    init_cache,
+)
 from remitx_api.config import Config
 from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
@@ -20,7 +25,9 @@ async def _lifespan(app: FastAPI):
         import remitx_api.models.orm  # noqa: F401 — register ORM models
 
         db.create_all()
+    cache_backend = init_cache(config)
     yield
+    await close_cache(cache_backend)
 
 
 def create_app(config_class: type[Config] = Config) -> FastAPI:
@@ -36,11 +43,13 @@ def create_app(config_class: type[Config] = Config) -> FastAPI:
     app.state.config = config
 
     # Starlette runs the *last* middleware added outermost, so this reads
-    # inside out: CORS, then the request id, then the body guard, then
-    # routing. CORS has to stay outside the guard — a 413 without CORS
-    # headers reaches the browser as an opaque network error rather than as
-    # the refusal it is — and the guard has to stay outside routing, so an
-    # oversized body costs nothing even on a path that does not exist.
+    # inside out: CORS, then the request id, then the body guard, then the
+    # cached-response headers, then routing. CORS has to stay outside the
+    # guard — a 413 without CORS headers reaches the browser as an opaque
+    # network error rather than as the refusal it is — and the guard has to
+    # stay outside routing, so an oversized body costs nothing even on a path
+    # that does not exist.
+    app.add_middleware(CachedResponseHeadersMiddleware)
     app.add_middleware(MaxBodySizeMiddleware)
     app.add_middleware(RequestIdMiddleware)
 

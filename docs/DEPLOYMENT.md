@@ -15,7 +15,7 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 | Worker | Free web service (HTTP + Celery) | Free web service (HTTP + Celery) |
 | Database | Neon branch `qa` | Neon branch `main` / `production` |
 | KYC documents | Neon Object Storage bucket `remitx-qa-kyc-documents` | Neon Object Storage bucket `remitx-prod-kyc-documents` |
-| Queue | Shared Key Value `/0` | Shared Key Value `/1` |
+| Queue + response cache | Shared Key Value `/0` | Shared Key Value `/1` |
 | Auth | Clerk QA app | Clerk Production app |
 | Secrets | Render env vars via Terraform | same |
 | Region | Frankfurt | Frankfurt |
@@ -189,6 +189,15 @@ regardless).
 
 On worker boot, `PENDING` integration messages are re-enqueued. That covers
 a free Key Value restart wiping the broker. Settlement stays idempotent.
+
+The API also caches read responses in the same Key Value database
+(`api/remitx_api/caching`), every key under `remitx-cache:`. The Key Value
+runs `noeviction`, so a full one refuses new queue messages as well as cache
+entries: every entry expires (5 minutes unless its route says otherwise), and
+only small responses belong in it. A restart that wipes the cache costs only
+misses. An unreachable Key Value makes reads uncached, and up to a couple of
+seconds slower, rather than failed; set `CACHE_ENABLED=false` on the API
+service to switch the cache off outright.
 
 ## Local development
 

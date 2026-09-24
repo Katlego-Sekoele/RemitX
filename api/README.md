@@ -36,7 +36,8 @@ docker compose -f docker-compose.dev.yml up --build
 | `PORT`             | HTTP port the dev server listens on        | `4200`                                       |
 | `DEBUG`            | Enable auto-reload and `create_all()`      | `false`                                      |
 | `DATABASE_URL`     | SQLAlchemy database URI                    | `sqlite:///<api>/remitx.db`                   |
-| `REDIS_URL`        | Redis URI for Celery broker/backend       | `redis://localhost:6379/0`                   |
+| `REDIS_URL`        | Redis URI for Celery broker/backend, and the response cache | `redis://localhost:6379/0` |
+| `CACHE_ENABLED`    | Cache read responses (`remitx_api/caching`) | `true`                                     |
 | `POSTGRES_*`       | Postgres credentials (see root `.env`)     | `remitx` / `remitx` / `remitx`                  |
 
 
@@ -91,6 +92,7 @@ api/
     app.py              # Application factory
     config.py           # Environment-based settings
     extensions.py       # SQLAlchemy Base + session
+    caching/            # Response cache: @cache, @invalidate_cache, key builders
     controllers/        # Request handling / business logic
     models/
       orm/              # SQLAlchemy ORM models (Base)

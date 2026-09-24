@@ -48,6 +48,18 @@ class Config:
     # test databases do.
     CREATE_ALL = False
 
+    # Where cached read responses live (remitx_api/caching): "redis" is
+    # REDIS_URL, the same Key Value as the Celery broker; "memory" is one
+    # store per app, which only a single-process test can rely on — a write
+    # handled by one API process would leave the others' copies stale.
+    CACHE_BACKEND = "redis"
+
+    # Off switch for the response cache. Off, every read goes to the
+    # database and invalidation does nothing.
+    @property
+    def CACHE_ENABLED(self) -> bool:
+        return os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+
     # Read per-instance rather than at class-definition time: tests
     # monkeypatch the environment after import, and a class attribute would
     # freeze whatever was set when the module first loaded.
@@ -186,6 +198,12 @@ class TestConfig(Config):
     DEBUG = False
     DATABASE_URL = "sqlite:///:memory:"
     CREATE_ALL = True
+
+    # CI has no Redis. Off, too, so a test that changes rows directly and
+    # reads them back through a route sees the change; tests of the cache
+    # itself turn it on.
+    CACHE_BACKEND = "memory"
+    CACHE_ENABLED = False
 
     # Verification is always mocked in tests; this only has to be non-empty
     # so the "not configured" guard in auth/clerk.py does not trip.
