@@ -48,9 +48,7 @@ def transfer_timeline(
         TimelineStage(
             4,
             "Failed" if failed else "Completed",
-            "Settlement didn't complete."
-            if failed
-            else "The recipient has been paid.",
+            "Settlement didn't complete." if failed else "The recipient has been paid.",
             None if failed else settled_at,
         ),
     ]
