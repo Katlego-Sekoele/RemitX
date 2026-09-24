@@ -3,10 +3,11 @@ import uuid
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.models.orm.account import (
-    CURRENCY_TOKEN,
+    CURRENCY_USD,
     CURRENCY_ZAR,
 )
 from remitx_api.models.orm.permission import PermissionCode
+from remitx_api.repositories.account_repository import AccountRepository
 from tests.platform_account_helpers import seed_platform_accounts
 from tests.rbac_helpers import make_user, rbac_client
 
@@ -225,7 +226,7 @@ def test_process_without_a_platform_bank_account_is_refused(treasury_client):
     )
 
     assert response.status_code == 409
-    assert "RemitX SA Bank Account" in response.json()["detail"]
+    assert "no ZAR bank account" in response.json()["detail"]
 
 
 def test_treasury_lists_customer_account_references_only(treasury_client):
@@ -236,18 +237,20 @@ def test_treasury_lists_customer_account_references_only(treasury_client):
     # match one.
     seed_platform_accounts()
     base = user.base_reference
+    AccountRepository().get_or_create_user_account(user.id, base, CURRENCY_USD)
 
     response = treasury_client.get(REFERENCES)
 
     assert response.status_code == 200
     by_reference = {row["reference"]: row for row in response.json()}
-    assert set(by_reference) == {f"{base}-zar", f"{base}-tok"}
+    # No deposit lands on a token account, so its reference is not offered.
+    assert set(by_reference) == {f"{base}-usd", f"{base}-zar"}
     assert by_reference[f"{base}-zar"] == {
         "reference": f"{base}-zar",
         "currency": CURRENCY_ZAR,
         "name": "Sian",
     }
-    assert by_reference[f"{base}-tok"]["currency"] == CURRENCY_TOKEN
+    assert by_reference[f"{base}-usd"]["currency"] == CURRENCY_USD
     assert [row["reference"] for row in response.json()] == sorted(by_reference)
 
 
@@ -284,3 +287,28 @@ def test_approving_with_an_unknown_reference_is_a_400(treasury_client):
     assert response.status_code == 400
     assert response.json()["detail"] == "No RemitX account has that reference."
     assert treasury_client.get(PENDING).json() != []
+
+
+def test_approving_with_a_token_reference_is_a_400(treasury_client):
+    seed_platform_accounts()
+    user = UserController().ensure_provisioned(
+        "user_approve_tok_route", lambda: "tok-route@example.com", lambda: "Tok"
+    )
+    treasury_client.post(
+        PROCESS,
+        json={
+            "rows": [
+                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-11"}
+            ]
+        },
+    )
+    [pending] = treasury_client.get(PENDING).json()
+
+    response = treasury_client.post(
+        _approve_path(pending["deposit_id"]),
+        json={"account_reference": f"{user.base_reference}-tok"},
+    )
+
+    assert response.status_code == 400
+    assert "token account" in response.json()["detail"]
+    assert treasury_client.get(PENDING).json() == [pending]

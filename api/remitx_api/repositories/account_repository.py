@@ -67,9 +67,9 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         ).first()
 
     def list_customer_references(self) -> list[tuple]:
-        """Every customer account a statement line can name, with the
-        name fields needed to label it. Platform accounts have no
-        reference and are excluded.
+        """Every customer account a deposit can land on, with the name
+        fields needed to label it. Platform accounts have no reference, and
+        no deposit lands on a token account, so both are excluded.
         """
         rows = db.session.execute(
             select(
@@ -80,7 +80,11 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 User.last_name,
             )
             .join(User, User.id == Account.user_id)
-            .where(Account.type == TYPE_USER, Account.reference.is_not(None))
+            .where(
+                Account.type == TYPE_USER,
+                Account.reference.is_not(None),
+                Account.account_currency != CURRENCY_TOKEN,
+            )
             .order_by(Account.reference)
         ).all()
         return list(rows)

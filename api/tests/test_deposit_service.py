@@ -1,14 +1,50 @@
 from decimal import Decimal
 
+import pytest
 from remitx_api.controllers.user_controller import UserController
+from remitx_api.errors.deposits import TokenAccountDepositError
 from remitx_api.models.orm.account import (
+    CURRENCY_NAD,
     CURRENCY_TOKEN,
+    CURRENCY_USD,
     CURRENCY_ZAR,
+    CURRENCY_ZWL,
+    TYPE_PLATFORM_FIAT,
+    create_account_reference,
 )
+from remitx_api.models.orm.transaction import STATUS_CONFIRMED
 from remitx_api.models.schemas.deposit import SkippedStatementLineReason
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
 from tests.platform_account_helpers import seed_platform_accounts
+
+FOREIGN_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
+
+
+def _bank_balance(currency: str) -> Decimal:
+    return (
+        AccountRepository()
+        .get_platform_account(TYPE_PLATFORM_FIAT, currency)
+        .account_balance
+    )
+
+
+def _assert_deposited_in(deposit, currency: str, amount: str) -> None:
+    """The deposit is one confirmed transaction in `currency`, out of RemitX's
+    bank account in `currency` into the customer's account in it."""
+    accounts = AccountRepository()
+    transaction = TransactionRepository().get_by_id(deposit.tx_id)
+    source = accounts.get_by_id(transaction.credit_account_id)
+    destination = accounts.get_by_id(transaction.debit_account_id)
+    assert transaction.status == STATUS_CONFIRMED
+    assert transaction.currency == currency
+    assert source.type == TYPE_PLATFORM_FIAT
+    assert source.account_currency == currency
+    assert destination.user_id == deposit.user_id
+    assert destination.account_currency == currency
+    assert destination.account_balance == Decimal(amount)
+    assert source.account_balance == -Decimal(amount)
 
 
 def test_matching_zar_reference_confirms_and_credits_immediately(app_context):
@@ -28,10 +64,36 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context):
     assert zar_account.account_balance == Decimal("500.00")
 
 
-def test_token_reference_matches_its_own_account(app_context):
-    """A reference is matched purely on its own (globally unique) value —
-    a statement line quoting a user's uctusd reference resolves to their
-    token account, not their ZAR one.
+@pytest.mark.parametrize("currency", FOREIGN_CURRENCIES)
+def test_fiat_reference_credits_that_account_in_its_currency(app_context, currency):
+    """A deposit quoting a customer's USD, ZWL or NAD reference is money in
+    that currency: it comes out of RemitX's bank account in it, never out of
+    the ZAR one, and leaves their ZAR balance alone.
+    """
+    seed_platform_accounts()
+    user = UserController().ensure_provisioned(
+        "user_fx_dep", lambda: "fx-dep@example.com", lambda: "Fx"
+    )
+    AccountRepository().get_or_create_user_account(
+        user.id, user.base_reference, currency
+    )
+    reference = create_account_reference(user.base_reference, currency)
+
+    result = deposit_service.process_deposits(
+        [{"reference": reference, "amount": "500.00", "date": "2026-09-10"}]
+    )
+
+    [deposit] = result.deposits
+    assert deposit.user_id == user.id
+    _assert_deposited_in(deposit, currency, "500.00")
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    assert zar_account.account_balance == Decimal("0")
+    assert _bank_balance(CURRENCY_ZAR) == Decimal("0")
+
+
+def test_token_reference_is_left_pending(app_context):
+    """No deposit lands on a token account. A line quoting one waits for an
+    admin, and no balance moves.
     """
     seed_platform_accounts()
     user = UserController().ensure_provisioned(
@@ -43,10 +105,12 @@ def test_token_reference_matches_its_own_account(app_context):
         [{"reference": token_reference, "amount": "500.00", "date": "2026-09-10"}]
     )
 
-    assert len(result.deposits) == 1
-    assert result.deposits[0].user_id == user.id
-    token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
-    assert token_account.account_balance == Decimal("500.00")
+    [deposit] = result.deposits
+    assert deposit.user_id is None
+    assert deposit_service.get_pending_deposits() == [deposit]
+    accounts = AccountRepository()
+    assert accounts.get_user_account(user.id, CURRENCY_TOKEN).account_balance == 0
+    assert accounts.get_user_account(user.id, CURRENCY_ZAR).account_balance == 0
 
 
 def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context):
@@ -89,9 +153,67 @@ def test_reprocessing_an_unmatched_line_does_not_queue_it_twice(app_context):
     assert len(again.skipped) == 1
 
 
-def test_approving_by_token_reference_credits_the_token_account(app_context):
-    """The reference identifies the account. A token reference credits the
-    token balance, not ZAR.
+def test_approving_by_zar_reference_credits_the_zar_account(app_context):
+    seed_platform_accounts()
+    user = UserController().ensure_provisioned(
+        "user_approve_zar", lambda: "approve-zar@example.com", lambda: "Zar"
+    )
+    admin = UserController().ensure_provisioned(
+        "user_admin_approve", lambda: "admin-approve@example.com", lambda: "Adm"
+    )
+    deposit_service.process_deposits(
+        [{"reference": "not-a-person", "amount": "80.00", "date": "2026-09-11"}]
+    )
+    [pending] = deposit_service.get_pending_deposits()
+
+    deposit = deposit_service.approve_pending_deposit(
+        pending.deposit_id, f"{user.base_reference}-ZAR", admin.id
+    )
+
+    _assert_deposited_in(deposit, CURRENCY_ZAR, "80.00")
+    assert deposit_service.get_pending_deposits() == []
+
+
+@pytest.mark.parametrize("currency", FOREIGN_CURRENCIES)
+def test_approving_by_fiat_reference_credits_that_account_in_its_currency(
+    app_context, currency
+):
+    """An unmatched line waits in ZAR against RemitX SA. The account the
+    admin names decides its currency: the transaction moves to RemitX's bank
+    account in that currency, and the customer's ZAR balance stays put.
+    """
+    seed_platform_accounts()
+    user = UserController().ensure_provisioned(
+        "user_approve_fx", lambda: "approve-fx@example.com", lambda: "Fx"
+    )
+    AccountRepository().get_or_create_user_account(
+        user.id, user.base_reference, currency
+    )
+    admin = UserController().ensure_provisioned(
+        "user_admin_approve", lambda: "admin-approve@example.com", lambda: "Adm"
+    )
+    deposit_service.process_deposits(
+        [{"reference": "not-a-person", "amount": "80.00", "date": "2026-09-11"}]
+    )
+    [pending] = deposit_service.get_pending_deposits()
+
+    deposit = deposit_service.approve_pending_deposit(
+        pending.deposit_id,
+        create_account_reference(user.base_reference, currency),
+        admin.id,
+    )
+
+    assert deposit.user_id == user.id
+    _assert_deposited_in(deposit, currency, "80.00")
+    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
+    assert zar_account.account_balance == Decimal("0")
+    assert _bank_balance(CURRENCY_ZAR) == Decimal("0")
+    assert deposit_service.get_pending_deposits() == []
+
+
+def test_approving_by_token_reference_is_refused(app_context):
+    """The admin must name a fiat account. The deposit stays pending and no
+    balance moves.
     """
     seed_platform_accounts()
     user = UserController().ensure_provisioned(
@@ -103,17 +225,17 @@ def test_approving_by_token_reference_credits_the_token_account(app_context):
     deposit_service.process_deposits(
         [{"reference": "not-a-person", "amount": "80.00", "date": "2026-09-11"}]
     )
-    pending = deposit_service.get_pending_deposits()[0]
+    [pending] = deposit_service.get_pending_deposits()
 
-    deposit_service.approve_pending_deposit(
-        pending.deposit_id, f"{user.base_reference}-TOK", admin.id
-    )
+    with pytest.raises(TokenAccountDepositError):
+        deposit_service.approve_pending_deposit(
+            pending.deposit_id, f"{user.base_reference}-TOK", admin.id
+        )
 
-    zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
-    token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
-    assert zar_account.account_balance == Decimal("0")
-    assert token_account.account_balance == Decimal("80.00")
-    assert deposit_service.get_pending_deposits() == []
+    accounts = AccountRepository()
+    assert accounts.get_user_account(user.id, CURRENCY_TOKEN).account_balance == 0
+    assert accounts.get_user_account(user.id, CURRENCY_ZAR).account_balance == 0
+    assert deposit_service.get_pending_deposits() == [pending]
 
 
 def test_unparseable_statement_date_is_skipped(app_context):

@@ -143,8 +143,9 @@ function ProcessDepositsPage() {
           <CardDescription>
             Statement lines that didn&apos;t match an account. Search the
             customer on the row and confirm; the credit lands on the account you
-            pick (ZAR or token). Only confirm once they have proven, off
-            platform, that the payment is theirs.
+            pick, in its currency. Token accounts can&apos;t take deposits. Only
+            confirm once they have proven, off platform, that the payment is
+            theirs.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -1,4 +1,4 @@
-"""Errors raised while reconciling a ZAR deposit."""
+"""Errors raised while reconciling a deposit."""
 
 from __future__ import annotations
 
@@ -19,11 +19,21 @@ class UnknownDepositReferenceError(DomainError):
         super().__init__("No RemitX account has that reference.")
 
 
-class PlatformBankAccountMissingError(ConflictError):
-    """Reconciliation has nowhere to take the money from."""
+class TokenAccountDepositError(DomainError):
+    """The reference names a token account, which no deposit lands on."""
 
     def __init__(self) -> None:
         super().__init__(
-            "RemitX SA Bank Account is not set up, so deposits cannot be "
-            "reconciled. Seed the platform accounts and try again."
+            "Deposits cannot land on a token account. Use one of the "
+            "customer's fiat account references instead."
+        )
+
+
+class PlatformBankAccountMissingError(ConflictError):
+    """Reconciliation has nowhere to take the money from."""
+
+    def __init__(self, currency: str) -> None:
+        super().__init__(
+            f"RemitX has no {currency} bank account, so {currency} deposits "
+            "cannot be reconciled. Seed the platform accounts and try again."
         )

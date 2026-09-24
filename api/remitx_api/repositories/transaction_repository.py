@@ -124,10 +124,17 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
     def confirm_pending_deposit_transaction(
         self,
         tx_id: uuid.UUID,
+        *,
+        credit_account_id: uuid.UUID,
         debit_account_id: uuid.UUID,
+        currency: str,
         confirmed_at: datetime,
     ) -> bool:
-        """Fill in a pending row's destination account and confirm it.
+        """Fill in a pending row's accounts and currency, and confirm it.
+
+        An unmatched line is recorded in ZAR against RemitX's SA bank account.
+        The account an admin matches it to decides its currency, and so which
+        of RemitX's bank accounts it came into.
 
         Guarded on status='pending', so two admins resolving the same
         unmatched deposit can't both succeed. Returns True iff a row changed.
@@ -136,7 +143,9 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
             update(Transaction)
             .where(Transaction.tx_id == tx_id, Transaction.status == STATUS_PENDING)
             .values(
+                credit_account_id=credit_account_id,
                 debit_account_id=debit_account_id,
+                currency=currency,
                 status=STATUS_CONFIRMED,
                 confirmed_at=confirmed_at,
             )

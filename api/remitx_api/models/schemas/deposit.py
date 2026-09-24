@@ -72,8 +72,9 @@ class AccountReferenceRead(Schema):
 class ApproveDepositRequest(Schema):
     """The customer's account reference, for example ``sipho1-zar``.
 
-    Deposits always credit that customer's ZAR account. A reference for one
-    of their other currencies still identifies them.
+    The deposit lands on the account that reference names, in its currency.
+    Any fiat account (ZAR, USD, ZWL, NAD) can take one. A token account
+    reference is refused.
     """
 
     account_reference: str
