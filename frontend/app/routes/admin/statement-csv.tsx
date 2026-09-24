@@ -27,6 +27,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "~/components/ui/empty"
+import { DatePicker } from "~/components/ui/date-picker"
 import { Input } from "~/components/ui/input"
 import {
   Table,
@@ -195,10 +196,15 @@ function StatementCsvPage() {
                             }
                             placeholder={`Reference on line ${index + 1}`}
                           />
+                        ) : column === "date" ? (
+                          <DatePicker
+                            id={`${line.id}-date`}
+                            value={line.date}
+                            onChange={(value) => update(line.id, "date", value)}
+                          />
                         ) : (
                           <Input
                             value={line[column]}
-                            type={column === "date" ? "date" : "text"}
                             inputMode={
                               column === "amount" ? "decimal" : undefined
                             }

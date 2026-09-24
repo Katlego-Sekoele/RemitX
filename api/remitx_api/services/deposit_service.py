@@ -13,7 +13,7 @@ from remitx_api.errors.deposits import (
     UnknownDepositReferenceError,
 )
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR, Account
+from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.deposit import CONFIRMED_BY_SYSTEM, Deposit
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
@@ -361,8 +361,8 @@ def approve_pending_deposit(
     `_create_deposit` — used when a bank statement line's reference didn't
     match anyone at import time (e.g. a typo, or an unregistered sender) and
     an admin has since worked out which customer it belongs to. They identify
-    that customer by an account reference (``sipho1-zar``, or another of that
-    person's currency references). The credit always lands on the ZAR account.
+    that customer by an account reference (``sipho1-zar``, ``sipho1-tok``, …).
+    The credit lands on whichever account that reference identifies.
 
     Raises if the deposit isn't pending (already confirmed, or doesn't exist)
     — the guarded transition on its transaction is what stops two admins from
@@ -382,20 +382,14 @@ def approve_pending_deposit(
     if matched is None:
         raise UnknownDepositReferenceError()
 
-    # Deposits are ZAR cash-in even when the reference that identified the
-    # customer was one of their other currency accounts.
-    user_account = account_repo.get_user_account(matched.user_id, CURRENCY_ZAR)
-    if user_account is None:
-        raise UnknownDepositReferenceError()
-
     confirmed_at = datetime.now(UTC)
     if not transaction_repo.confirm_pending_deposit_transaction(
-        deposit.tx_id, user_account.account_id, confirmed_at
+        deposit.tx_id, matched.account_id, confirmed_at
     ):
         raise DepositNotPendingError()
 
     account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
-    account_repo.increase_balance(user_account.account_id, transaction.amount)
+    account_repo.increase_balance(matched.account_id, transaction.amount)
     deposit_repo.link_deposit_to_user(deposit_id, matched.user_id, str(admin_id))
 
     db.session.commit()
