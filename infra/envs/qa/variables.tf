@@ -55,6 +55,108 @@ variable "xrpl_encryption_key" {
   sensitive = true
 }
 
+variable "platform_wallet_seed_encrypted" {
+  type        = string
+  sensitive   = true
+  description = "Fernet-encrypted treasury seed. GitHub secret TF_VAR_platform_wallet_seed_encrypted. Worker only."
+}
+
+variable "exchange_rate_api_key" {
+  type        = string
+  sensitive   = true
+  description = "exchangerate-api.com key. GitHub secret TF_VAR_exchange_rate_api_key. API only."
+}
+
+variable "platform_wallet_address" {
+  type        = string
+  description = "Treasury XRPL address. GitHub variable TF_VAR_platform_wallet_address."
+}
+
+variable "xrpl_testnet_url" {
+  type        = string
+  description = "XRPL testnet JSON-RPC URL. GitHub variable TF_VAR_xrpl_testnet_url."
+}
+
+variable "uctusd_issuer" {
+  type        = string
+  description = "UCTUSD issuer account. GitHub variable TF_VAR_uctusd_issuer."
+}
+
+variable "uctusd_currency_code_hex" {
+  type        = string
+  description = "On-chain UCTUSD currency code, hex. GitHub variable TF_VAR_uctusd_currency_code_hex."
+}
+
+variable "uctusd_currency_code" {
+  type        = string
+  description = "On-chain UCTUSD currency code, plain text. GitHub variable TF_VAR_uctusd_currency_code."
+}
+
+variable "uctusd_trust_limit" {
+  type        = string
+  description = "Trust-line limit used when opening the treasury trust line. GitHub variable TF_VAR_uctusd_trust_limit."
+}
+
+variable "uctusd_distributor_address" {
+  type        = string
+  description = "UCTUSD distributor address. GitHub variable TF_VAR_uctusd_distributor_address."
+}
+
+variable "rate_fixing_interval_hours" {
+  type        = string
+  description = "Hours a fetched FX rate may be quoted. GitHub variable TF_VAR_rate_fixing_interval_hours."
+}
+
+variable "max_rate_staleness_hours" {
+  type        = string
+  description = "Oldest stored FX rate a quote may fall back to. GitHub variable TF_VAR_max_rate_staleness_hours."
+}
+
+variable "quote_ttl_minutes" {
+  type        = string
+  description = "How long a customer quote is honoured. GitHub variable TF_VAR_quote_ttl_minutes."
+}
+
+variable "fixed_fee_zar" {
+  type        = string
+  description = "Fixed send fee, ZAR. GitHub variable TF_VAR_fixed_fee_zar."
+}
+
+variable "percentage_fee_rate" {
+  type        = string
+  description = "Percentage send fee as a decimal rate. GitHub variable TF_VAR_percentage_fee_rate."
+}
+
+variable "fx_margin_rate" {
+  type        = string
+  description = "FX spread as a decimal rate. GitHub variable TF_VAR_fx_margin_rate."
+}
+
+variable "cash_out_fee_rate" {
+  type        = string
+  description = "Cash-out fee as a decimal rate. GitHub variable TF_VAR_cash_out_fee_rate."
+}
+
+variable "daily_limit_zar_unverified" {
+  type        = string
+  description = "Daily send limit for unverified users, ZAR. GitHub variable TF_VAR_daily_limit_zar_unverified."
+}
+
+variable "monthly_limit_zar_unverified" {
+  type        = string
+  description = "Monthly send limit for unverified users, ZAR. GitHub variable TF_VAR_monthly_limit_zar_unverified."
+}
+
+variable "daily_limit_zar" {
+  type        = string
+  description = "Daily send limit for verified users, ZAR. GitHub variable TF_VAR_daily_limit_zar."
+}
+
+variable "monthly_limit_zar" {
+  type        = string
+  description = "Monthly send limit for verified users, ZAR. GitHub variable TF_VAR_monthly_limit_zar."
+}
+
 variable "api_custom_domain" {
   type    = string
   default = ""
