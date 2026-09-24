@@ -1,0 +1,48 @@
+[project]
+name = "remitx-seeder"
+version = "0.1.0"
+description = "Local-only QA test-data seeder for RemitX. Never deployed."
+requires-python = ">=3.11"
+# `remitx-api` is not listed: it is a sibling path install
+# (`pip install -e ../../api`), which pip cannot express portably here. The
+# README's setup installs both.
+dependencies = [
+    "nicegui>=2.0",
+    "faker>=30.0",
+    "time-machine>=2.14",
+    "pillow>=10.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+remitx-seeder = "remitx_seeder.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+# An editable install exposes the `remitx_seeder` package only. Without this
+# the whole of tools/seeder lands on sys.path, and its `tests` package shadows
+# api/tests for anyone with both installed in one virtualenv.
+dev-mode-exact = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["remitx_seeder"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

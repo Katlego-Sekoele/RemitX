@@ -1,0 +1,23 @@
+{
+  "_about": "Per nationality: which name cultures its people draw from, how its passport numbers look, and how its mobile numbers look. `passport_pattern` uses L for a letter and D for a digit. `mobile` builds an E.164 number: the country prefix, one of the network prefixes, then `subscriber_digits` random digits.",
+  "ZA": {
+    "cultures": {"zulu": 30, "xhosa": 20, "sotho": 15, "tswana": 10, "afrikaans": 10, "english_sa": 10, "indian_sa": 5},
+    "passport_pattern": "ADDDDDDDD",
+    "mobile": {"country_code": "+27", "prefixes": ["60", "61", "62", "71", "72", "73", "74", "76", "78", "79", "81", "82", "83", "84"], "subscriber_digits": 7}
+  },
+  "ZW": {
+    "cultures": {"shona": 75, "ndebele": 25},
+    "passport_pattern": "LLDDDDDD",
+    "mobile": {"country_code": "+263", "prefixes": ["71", "73", "77", "78"], "subscriber_digits": 7}
+  },
+  "NA": {
+    "cultures": {"oshiwambo": 100},
+    "passport_pattern": "PDDDDDDD",
+    "mobile": {"country_code": "+264", "prefixes": ["81", "85"], "subscriber_digits": 7}
+  },
+  "US": {
+    "cultures": {"american": 100},
+    "passport_pattern": "LDDDDDDDD",
+    "mobile": {"country_code": "+1", "prefixes": ["212", "312", "404", "713", "917", "973"], "subscriber_digits": 7, "fictional_exchange": "555", "_fictional_note": "US numbers use the 555-01XX range, which is reserved for fiction."}
+  }
+}

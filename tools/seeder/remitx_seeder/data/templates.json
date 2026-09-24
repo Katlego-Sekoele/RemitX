@@ -1,0 +1,53 @@
+{
+  "_about": "Free text people and staff write. `{placeholders}` are filled from the persona. Everything here is fictional: PEP positions name offices, never office holders.",
+  "source_of_funds_other": [
+    "Money my brother sends me from Botswana each month",
+    "Rent from a back room I let out in {suburb}",
+    "Selling second-hand clothes at the {city} market on weekends",
+    "Stokvel payout from our savings club",
+    "Tips and cash jobs doing garden work",
+    "Payout from my late father's funeral policy"
+  ],
+  "source_of_wealth": [
+    "Savings from {years} years of employment as a {occupation}",
+    "Proceeds from selling a house in {home_town}",
+    "Inheritance from my grandmother's estate",
+    "Retirement annuity paid out on leaving my previous employer",
+    "Profits from a small business I ran for {years} years"
+  ],
+  "pep_positions": {
+    "self": ["Ward councillor, {city} Metropolitan Municipality", "Member of a provincial legislature", "Board member of a state-owned utility", "Senior official in a national government department"],
+    "immediate_family_member": ["My mother is a ward councillor", "My brother is a senior official in a provincial department", "My spouse sits on the board of a state-owned entity"],
+    "known_close_associate": ["Business partner of a municipal councillor", "Personal assistant to a senior government official"]
+  },
+  "pep_details": [
+    "Declared for completeness; the role ended {years} years ago.",
+    "The position is unpaid and part-time.",
+    "I do not handle public funds in this role."
+  ],
+  "more_info_reasons": {
+    "document_illegible": ["The ID photo is too blurry to read the ID number. Please upload a clearer scan.", "Proof of address is cropped: the account holder's name is cut off."],
+    "document_expired": ["The proof of address is older than three months. Please upload a recent statement."],
+    "details_mismatch": ["The address on the proof of address does not match the address you entered."]
+  },
+  "reject_reasons": {
+    "details_mismatch": ["The name on the ID document does not match the declared name.", "Date of birth on the document differs from the application."],
+    "suspected_fraud": ["Document shows signs of alteration. Escalated internally."],
+    "other": ["Applicant asked us to close the application."]
+  },
+  "approve_notes": ["Documents match the declaration.", "ID and proof of address verified.", "Verified; address confirmed against utility bill."],
+  "tier_two_reasons": ["Declared source of wealth supports a higher monthly limit.", "Long-standing salaried employment; enhanced due diligence completed."],
+  "override_reasons": {
+    "low": ["Long-term SA resident with a stable salaried job; nationality signal is not meaningful here."],
+    "medium": ["Volume is above what the declared income supports; keep at medium until activity is observed."],
+    "high": ["Inconsistent answers during the review call; treat as high risk."]
+  },
+  "role_grant_reasons": {
+    "compliance_analyst": "Joins the KYC review team as an analyst.",
+    "compliance_officer": "Compliance officer for KYC decisions.",
+    "treasury_operator": "Runs the daily bank-statement reconciliation.",
+    "support_agent": "Customer support desk.",
+    "auditor": "Quarterly internal audit access."
+  },
+  "home_towns": {"ZA": ["Mthatha", "Tzaneen", "Kimberley", "Mahikeng", "Ladysmith"], "ZW": ["Bulawayo", "Gweru", "Masvingo", "Mutare", "Chitungwiza"], "NA": ["Oshakati", "Ondangwa", "Rundu", "Walvis Bay"], "US": ["Detroit", "Baltimore", "Memphis"]}
+}

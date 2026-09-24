@@ -55,3 +55,24 @@ class ExchangeRateApiProvider:
             return Decimal(str(payload["conversion_rate"]))
         except (KeyError, ArithmeticError, TypeError, ValueError) as exc:
             raise RateFetchError(f"unexpected rate API response: {payload!r}") from exc
+
+
+# Set by `use_rate_provider`. None means "the live API", built fresh per call
+# so its config is read when the rate is needed, not at import.
+_override: RateProvider | None = None
+
+
+def rate_provider() -> RateProvider:
+    """The provider `exchange_rate_service` fetches live rates from."""
+    return _override if _override is not None else ExchangeRateApiProvider()
+
+
+def use_rate_provider(provider: RateProvider | None) -> None:
+    """Install a different rate source, or ``None`` to go back to the live API.
+
+    For code that runs the services outside a request and must not reach the
+    live API: tests, and the QA seeder (tools/seeder), which replays past days
+    and needs rates for those days rather than today's.
+    """
+    global _override
+    _override = provider

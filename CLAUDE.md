@@ -28,6 +28,7 @@ Monorepo with two apps sharing one env file:
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
+- [tools/seeder/](tools/seeder/) — local-only QA test-data seeder (NiceGUI). Never deployed; drives the backend's own controllers, services and worker tasks. See its [README](tools/seeder/README.md) and [ADR 0001](docs/adr/0001-qa-seeder-drives-the-service-layer.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
 - [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
 
@@ -35,7 +36,9 @@ Monorepo with two apps sharing one env file:
 
 **A single root `.env` is the only source of config** for the API, the frontend, and both compose files. [api/remitx_api/config.py](api/remitx_api/config.py) walks up from the package to load the *repo-root* `.env` explicitly — there is no `api/.env`. Copy `.env.example` to `.env` on first setup; adding a new setting means updating `.env.example` too.
 
-`.env` is gitignored and a pre-commit hook hard-blocks committing any file named `.env`.
+`.env` is gitignored and a pre-commit hook hard-blocks committing any file named `.env` or `.env.*` (templates named `*.example` excepted).
+
+The one exception to the single `.env`: the seeder's QA target reads `tools/seeder/.env.qa` (gitignored), so QA credentials never sit in the file the API uses locally.
 
 ## Commands
 
@@ -83,6 +86,17 @@ npm test             # vitest: unit tests for app/lib (*.test.ts)
 npm run format       # prettier --write
 npx shadcn@latest add <component>
 ```
+
+### Seeder (local only)
+
+```bash
+cd tools/seeder && source .venv/bin/activate
+pip install -e ../../api -e '.[dev]'
+python -m remitx_seeder              # UI on http://127.0.0.1:8090
+pytest                              # needs SEEDER_TEST_DATABASE_URL (a Postgres it can create DBs on)
+```
+
+A backend change that breaks the seeder fails its CI job: update the story in `tools/seeder/remitx_seeder/stories/`. Writes that bypass product flows go only in `direct.py`.
 
 ### Git hooks
 

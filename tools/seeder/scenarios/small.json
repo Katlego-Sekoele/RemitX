@@ -1,0 +1,48 @@
+{
+  "name": "small",
+  "description": "A quick run: two weeks, a handful of people. Good for checking a change.",
+  "seed": 20260924,
+  "days": 14,
+  "senders": 6,
+  "recipients": {
+    "ZW": 3,
+    "NA": 1,
+    "ZA": 2,
+    "US": 1
+  },
+  "staff": {
+    "compliance_analyst": 1,
+    "compliance_officer": 1,
+    "treasury_operator": 1
+  },
+  "clerk_user_cap": 80,
+  "ensure_every_path": true,
+  "email_domain": "example.com",
+  "kyc": {
+    "never_start_rate": 0.06,
+    "abandon_rate": 0.08,
+    "more_info_rate": 0.15,
+    "more_info_no_reply_rate": 0.25,
+    "reject_rate": 0.07,
+    "reapply_rate": 0.4,
+    "override_rate": 0.08,
+    "tier_two_rate": 0.5,
+    "pep_rate": 0.03,
+    "other_source_rate": 0.05,
+    "high_volume_rate": 0.05,
+    "review_delay_hours": [
+      2,
+      72
+    ]
+  },
+  "money": {
+    "dormant_rate": 0.1,
+    "reference_typo_rate": 0.06,
+    "resolve_pending_rate": 0.6,
+    "quote_abandon_rate": 0.15,
+    "settlement_failure_rate": 0.03,
+    "deposit_headroom": 1.08
+  },
+  "live_settlements": 0,
+  "live_token_budget": 25.0
+}

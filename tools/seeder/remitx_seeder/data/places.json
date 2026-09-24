@@ -1,0 +1,29 @@
+{
+  "_about": "Where senders and verified recipients live. Only countries RemitX operates in need addresses, because only they can complete KYC. Weights bias the pick; streets are generic street names, never a particular address.",
+  "ZA": {
+    "cities": [
+      {"city": "Johannesburg", "weight": 35, "suburbs": [["Hillbrow", "2001"], ["Yeoville", "2198"], ["Berea", "2198"], ["Braamfontein", "2001"], ["Randburg", "2194"], ["Sandton", "2196"], ["Alexandra", "2090"], ["Rosettenville", "2190"], ["Orlando East, Soweto", "1804"], ["Diepkloof, Soweto", "1864"]]},
+      {"city": "Cape Town", "weight": 20, "suburbs": [["Khayelitsha", "7784"], ["Gugulethu", "7750"], ["Observatory", "7925"], ["Sea Point", "8005"], ["Woodstock", "7925"], ["Bellville", "7530"], ["Mitchells Plain", "7785"]]},
+      {"city": "Durban", "weight": 15, "suburbs": [["Umlazi", "4031"], ["Berea", "4001"], ["Chatsworth", "4092"], ["Morningside", "4001"], ["KwaMashu", "4360"]]},
+      {"city": "Pretoria", "weight": 15, "suburbs": [["Sunnyside", "0002"], ["Arcadia", "0083"], ["Mamelodi", "0122"], ["Hatfield", "0083"], ["Pretoria West", "0183"]]},
+      {"city": "Gqeberha", "weight": 5, "suburbs": [["Central", "6001"], ["New Brighton", "6200"], ["Walmer", "6070"]]},
+      {"city": "Polokwane", "weight": 5, "suburbs": [["Bendor", "0699"], ["Seshego", "0742"]]},
+      {"city": "Bloemfontein", "weight": 5, "suburbs": [["Westdene", "9301"], ["Mangaung", "9323"]]}
+    ],
+    "streets": ["Main Road", "Church Street", "Voortrekker Road", "Jan Smuts Avenue", "Louis Botha Avenue", "Beit Street", "Rockey Street", "Bree Street", "Loop Street", "Victoria Road", "Station Road", "Market Street", "Kerk Street", "Pritchard Street", "Esselen Street", "Twist Street", "Klip Street", "Hospital Road", "Nelson Mandela Drive", "School Street"],
+    "unit_formats": ["Flat {n}", "Unit {n}", "Room {n}", "{n} {complex} Court", "Block {letter}, {complex} Flats"],
+    "complexes": ["Highpoint", "Ponte", "Sunnyside Gardens", "Protea", "Jacaranda", "Karee", "Marula", "Acacia", "Baobab", "Aloe"]
+  },
+  "US": {
+    "cities": [
+      {"city": "Houston", "weight": 25, "suburbs": [["Alief", "77072"], ["Sharpstown", "77036"]]},
+      {"city": "Atlanta", "weight": 25, "suburbs": [["Decatur", "30030"], ["Midtown", "30308"]]},
+      {"city": "Newark", "weight": 20, "suburbs": [["Ironbound", "07105"], ["Vailsburg", "07106"]]},
+      {"city": "Dallas", "weight": 15, "suburbs": [["Oak Lawn", "75219"], ["Lake Highlands", "75238"]]},
+      {"city": "Minneapolis", "weight": 15, "suburbs": [["Cedar-Riverside", "55454"], ["Phillips", "55407"]]}
+    ],
+    "streets": ["Main Street", "Oak Avenue", "Maple Drive", "Park Avenue", "Washington Street", "Lakeview Road", "Elm Street", "Cedar Lane", "Pine Street", "Hillcrest Drive"],
+    "unit_formats": ["Apt {n}", "Unit {n}", "Suite {n}"],
+    "complexes": []
+  }
+}

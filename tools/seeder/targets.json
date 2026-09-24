@@ -1,0 +1,16 @@
+{
+  "local": {
+    "description": "Your Docker Compose stack (docker-compose.dev.yml), configured by the repo-root .env.",
+    "database_hosts": ["localhost", "127.0.0.1", "::1", "postgres"],
+    "buckets": ["kyc-documents"],
+    "api_url": "http://localhost:4200",
+    "api_origin": "http://localhost:5173"
+  },
+  "qa": {
+    "description": "The QA stack (main branch): Neon qa branch, QA Clerk app, QA bucket.",
+    "database_hosts": [],
+    "buckets": ["remitx-qa-kyc-documents"],
+    "api_url": "https://remitx-qa-api.onrender.com",
+    "api_origin": "https://qa.remitx.tech"
+  }
+}
