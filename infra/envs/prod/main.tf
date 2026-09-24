@@ -77,6 +77,7 @@ locals {
     PERCENTAGE_FEE_RATE          = var.percentage_fee_rate
     FX_MARGIN_RATE               = var.fx_margin_rate
     CASH_OUT_FEE_RATE            = var.cash_out_fee_rate
+    MIN_CASH_OUT_FEE             = var.min_cash_out_fee
     DAILY_LIMIT_ZAR_UNVERIFIED   = var.daily_limit_zar_unverified
     MONTHLY_LIMIT_ZAR_UNVERIFIED = var.monthly_limit_zar_unverified
     DAILY_LIMIT_ZAR              = var.daily_limit_zar
