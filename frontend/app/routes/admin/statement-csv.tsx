@@ -48,8 +48,9 @@ import { PERMISSIONS } from "~/lib/permissions"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/statement-csv"
 
-const moduleName = import.meta.filename
-const pageRoutingContextByModuleName = adminRouteContext(moduleName)
+// The literal path, not `import.meta.filename` — see routes/admin/access.tsx.
+const ROUTE_MODULE = "routes/admin/statement-csv.tsx"
+const pageRoutingContext = adminRouteContext(ROUTE_MODULE)
 
 type DraftLine = StatementLine & { id: string }
 
@@ -62,7 +63,7 @@ const COLUMN_LABEL: Record<StatementColumn, string> = {
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: `${pageRoutingContextByModuleName?.title} — RemitX` },
+    { title: `${pageRoutingContext?.title} — RemitX` },
     { name: "robots", content: "noindex" },
   ]
 }
@@ -114,10 +115,10 @@ function StatementCsvPage() {
   }
 
   return (
-    <AdminPageFrame module={moduleName}>
+    <AdminPageFrame module={ROUTE_MODULE}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          {pageRoutingContextByModuleName?.title}
+          {pageRoutingContext?.title}
         </h1>
         <div className="flex flex-wrap gap-2">
           <Button
