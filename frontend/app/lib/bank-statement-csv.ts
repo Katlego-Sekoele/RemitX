@@ -4,7 +4,10 @@
  * reference, amount, and date; description is for the person reconciling.
  */
 
-import { parse, stringify } from "csv/sync"
+// `csv/sync` is the Node build. It calls `Buffer` while the module evaluates,
+// which throws in the browser and makes React Router reload Process deposits
+// instead of opening it. The browser sync build ships its own Buffer.
+import { parse, stringify } from "csv/browser/esm/sync"
 
 export const STATEMENT_COLUMNS = [
   "date",
