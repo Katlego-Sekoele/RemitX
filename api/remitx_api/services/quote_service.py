@@ -38,7 +38,7 @@ from remitx_api.services import exchange_rate_service
 AMOUNT_QUANTUM = Decimal("0.01")
 
 
-def _round_amount(value: Decimal) -> Decimal:
+def round_amount(value: Decimal) -> Decimal:
     return value.quantize(AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
 
 
@@ -154,7 +154,7 @@ def _convert_zar_fee_to_sender_currency(
     if sender_currency == CURRENCY_ZAR:
         return fee_zar
     zar_rate, _ = _token_rate(CURRENCY_ZAR)
-    return _round_amount(fee_zar * zar_rate / fiat_to_token_exchange_rate)
+    return round_amount(fee_zar * zar_rate / fiat_to_token_exchange_rate)
 
 
 def price_remittance(
@@ -165,7 +165,7 @@ def price_remittance(
     # Round the input itself, not just what's derived from it — a caller
     # sending e.g. 1000.456 shouldn't leave that extra precision alive in
     # net/fee/token_amount below.
-    sender_amount = _round_amount(sender_amount)
+    sender_amount = round_amount(sender_amount)
 
     # Required — the sender leg is what token_amount is actually computed
     # from, so RateUnavailableError/UnsupportedCurrencyError propagate.
@@ -176,15 +176,15 @@ def price_remittance(
     fixed_fee = _convert_zar_fee_to_sender_currency(
         Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
     )
-    fee = _round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
-    margin = _round_amount(Config.FX_MARGIN_RATE * sender_amount)
+    fee = round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
+    margin = round_amount(Config.FX_MARGIN_RATE * sender_amount)
     net = sender_amount - fee - margin
     if net <= 0:
         raise ValueError("sender_amount is too small to cover fees")
     # Quantized explicitly rather than relying on the column's Numeric(20,8)
     # to truncate on storage — SQLite doesn't enforce that the way Postgres
     # does, so the two backends could otherwise disagree.
-    token_amount = _round_amount(net * fiat_to_token_exchange_rate)
+    token_amount = round_amount(net * fiat_to_token_exchange_rate)
 
     # Direct fiat conversion leg — sender currency straight to the
     # beneficiary's payout currency (e.g. ZAR -> ZWL), not derived from two
@@ -199,8 +199,8 @@ def price_remittance(
     # pre-token-conversion) converted directly via fiat_exchange_rate — not
     # routed through the token/USD leg — then Config.CASH_OUT_FEE_RATE applied. No
     # real redemption happens at quote time, so this is a display estimate.
-    receiver_amount = _round_amount(net * fiat_exchange_rate)
-    payout_fee = _round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
+    receiver_amount = round_amount(net * fiat_exchange_rate)
+    payout_fee = round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
     payout_estimate = receiver_amount - payout_fee
 
     return RemittancePricing(
@@ -234,7 +234,7 @@ def create_quote(
     # Rounded up front so the limit/balance checks below, the stored
     # Quote.sender_amount, and price_remittance's own internal rounding all
     # agree on the same value — see AMOUNT_QUANTUM.
-    sender_amount = _round_amount(sender_amount)
+    sender_amount = round_amount(sender_amount)
 
     sender = users.get_by_id(sender_user_id)
     if sender is None:

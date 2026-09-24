@@ -270,6 +270,142 @@
         "title": "ApproveDepositRequest",
         "type": "object"
       },
+      "BankAccountCreateRequest": {
+        "description": "Request schema for creating a bank account.",
+        "properties": {
+          "account_holder_name": {
+            "minLength": 1,
+            "title": "Account Holder Name",
+            "type": "string"
+          },
+          "account_number": {
+            "minLength": 1,
+            "title": "Account Number",
+            "type": "string"
+          },
+          "bank_name": {
+            "minLength": 1,
+            "title": "Bank Name",
+            "type": "string"
+          },
+          "branch_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "currency": {
+            "minLength": 1,
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_holder_name",
+          "bank_name",
+          "account_number",
+          "currency"
+        ],
+        "title": "BankAccountCreateRequest",
+        "type": "object"
+      },
+      "BankAccountRead": {
+        "description": "Response schema for reading a bank account.\n\n`account_number` is masked to its last 4 digits on the customer-facing\n`routes/bank_accounts.py` endpoints, and returned in full on the admin\nones (`routes/admin/bank_accounts.py`).",
+        "properties": {
+          "account_holder_name": {
+            "title": "Account Holder Name",
+            "type": "string"
+          },
+          "account_number": {
+            "title": "Account Number",
+            "type": "string"
+          },
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "bank_name": {
+            "title": "Bank Name",
+            "type": "string"
+          },
+          "branch_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bank_account_id",
+          "account_holder_name",
+          "bank_name",
+          "account_number",
+          "branch_code",
+          "currency",
+          "country",
+          "status",
+          "rejection_reason",
+          "created_at"
+        ],
+        "title": "BankAccountRead",
+        "type": "object"
+      },
       "BeneficiaryCreateRequest": {
         "additionalProperties": false,
         "description": "Schema for creating a new beneficiary.",
@@ -4043,6 +4179,20 @@
         "title": "QuoteRead",
         "type": "object"
       },
+      "RejectBankAccountRequest": {
+        "description": "Request schema for rejecting a bank account.",
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RejectBankAccountRequest",
+        "type": "object"
+      },
       "RemittanceConfirmRequest": {
         "properties": {
           "quote_id": {
@@ -4792,6 +4942,111 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WithdrawalCreateRequest": {
+        "description": "Request schema for creating a withdrawal.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bank_account_id",
+          "currency",
+          "amount"
+        ],
+        "title": "WithdrawalCreateRequest",
+        "type": "object"
+      },
+      "WithdrawalRead": {
+        "description": "Response schema for reading a withdrawal.",
+        "properties": {
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "fee_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fee Amount",
+            "type": "string"
+          },
+          "gross_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gross Amount",
+            "type": "string"
+          },
+          "net_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Net Amount",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tx_id": {
+            "format": "uuid",
+            "title": "Tx Id",
+            "type": "string"
+          },
+          "withdrawal_id": {
+            "format": "uuid",
+            "title": "Withdrawal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "withdrawal_id",
+          "tx_id",
+          "bank_account_id",
+          "status",
+          "gross_amount",
+          "fee_amount",
+          "net_amount",
+          "currency",
+          "confirmed_by",
+          "created_at"
+        ],
+        "title": "WithdrawalRead",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4953,6 +5208,224 @@
         "summary": "List one account's transaction history",
         "tags": [
           "accounts"
+        ]
+      }
+    },
+    "/admin/bank-accounts/pending": {
+      "get": {
+        "operationId": "list_pending_bank_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BankAccountRead"
+                  },
+                  "title": "Response List Pending Bank Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List bank accounts awaiting verification",
+        "tags": [
+          "admin.bank_accounts"
+        ]
+      }
+    },
+    "/admin/bank-accounts/{bank_account_id}/reject": {
+      "post": {
+        "description": "Needs `cashout:fail`.",
+        "operationId": "reject_bank_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bank_account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bank Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectBankAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Reject a bank account",
+        "tags": [
+          "admin.bank_accounts"
+        ]
+      }
+    },
+    "/admin/bank-accounts/{bank_account_id}/verify": {
+      "post": {
+        "description": "Needs `cashout:approve`. Records who verified it.",
+        "operationId": "verify_bank_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bank_account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bank Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Verify a bank account",
+        "tags": [
+          "admin.bank_accounts"
         ]
       }
     },
@@ -7021,6 +7494,279 @@
         ]
       }
     },
+    "/admin/withdrawals/users/{user_id}": {
+      "get": {
+        "description": "The admin portal's user-profile page: every withdrawal this customer\nhas ever made, newest first.",
+        "operationId": "list_withdrawals_for_user",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WithdrawalRead"
+                  },
+                  "title": "Response List Withdrawals For User",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List a user's withdrawals",
+        "tags": [
+          "admin.withdrawals"
+        ]
+      }
+    },
+    "/bank-accounts": {
+      "get": {
+        "description": "Every bank account this caller has added for `currency` (or for any\ncurrency, if omitted), whatever its status \u2014 the currency-account\ndetail view, so a `pending_verification` or `rejected` account still\nshows up here even though `GET /bank-accounts/withdrawable` would skip\nit.",
+        "operationId": "list_bank_accounts",
+        "parameters": [
+          {
+            "description": "e.g. ZAR \u2014 omit to list across every currency",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "e.g. ZAR \u2014 omit to list across every currency",
+              "title": "Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BankAccountRead"
+                  },
+                  "title": "Response List Bank Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's own bank accounts",
+        "tags": [
+          "bank_accounts"
+        ]
+      },
+      "post": {
+        "description": "Stored `pending_verification` \u2014 it can't receive a withdrawal until an\nadmin verifies it. See `POST /withdrawals` and the admin bank-account\nqueue.",
+        "operationId": "add_bank_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BankAccountCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Add a bank account",
+        "tags": [
+          "bank_accounts"
+        ]
+      }
+    },
+    "/bank-accounts/withdrawable": {
+      "get": {
+        "description": "The withdrawal page's destination picker: every bank account this\ncaller can withdraw a `currency` balance into right now. Only\n`verified` accounts are returned \u2014 a `pending_verification` or\n`rejected` account can't settle a withdrawal (see\n`POST /withdrawals`), so it isn't offered as a choice here even though\nit still shows up in `GET /bank-accounts`.",
+        "operationId": "list_withdrawable_bank_accounts",
+        "parameters": [
+          {
+            "description": "e.g. ZAR",
+            "in": "query",
+            "name": "currency",
+            "required": true,
+            "schema": {
+              "description": "e.g. ZAR",
+              "title": "Currency",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BankAccountRead"
+                  },
+                  "title": "Response List Withdrawable Bank Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's verified bank accounts in a currency",
+        "tags": [
+          "bank_accounts"
+        ]
+      }
+    },
     "/beneficiaries/create-beneficiary": {
       "post": {
         "description": "Save a registered RemitX user as one of the caller's beneficiaries.\n\nAnswers 409 when that person is already one of the caller's\nbeneficiaries, or has no email or mobile on file; 400 when\n`linked_user_id` is not a user, or when they do not hold an account in\n`payout_currency`.",
@@ -8940,6 +9686,121 @@
           "remittances"
         ]
       }
+    },
+    "/withdrawals": {
+      "get": {
+        "operationId": "list_withdrawals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WithdrawalRead"
+                  },
+                  "title": "Response List Withdrawals",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List the caller's own withdrawals",
+        "tags": [
+          "withdrawals"
+        ]
+      },
+      "post": {
+        "description": "The destination bank account must already be verified \u2014 see\n`GET /bank-accounts/withdrawable` for the set of accounts that qualify.\nSettles immediately, synchronously, in this same call.",
+        "operationId": "request_withdrawal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawalCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Request a withdrawal from a fiat account to a bank account",
+        "tags": [
+          "withdrawals"
+        ]
+      }
     }
   },
   "tags": [
@@ -8972,6 +9833,14 @@
       "name": "accounts"
     },
     {
+      "description": "A caller's own external bank accounts for withdrawals.",
+      "name": "bank_accounts"
+    },
+    {
+      "description": "Requesting a withdrawal from a fiat account to a bank account.",
+      "name": "withdrawals"
+    },
+    {
       "description": "The applicant's resumable KYC application.",
       "name": "kyc.onboarding"
     },
@@ -8994,6 +9863,14 @@
     {
       "description": "ZAR cash-in reconciliation against bank statements.",
       "name": "admin.deposits"
+    },
+    {
+      "description": "Verifying or rejecting a customer's external bank account.",
+      "name": "admin.bank_accounts"
+    },
+    {
+      "description": "Read-only withdrawal history; withdrawals settle on request.",
+      "name": "admin.withdrawals"
     },
     {
       "description": "The reviewer queue and risk ratings.",

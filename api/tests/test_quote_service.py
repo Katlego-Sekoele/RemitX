@@ -22,7 +22,7 @@ from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
 
 def _round_amount(value: Decimal) -> Decimal:
-    """Mirrors quote_service.AMOUNT_QUANTUM/_round_amount — every monetary
+    """Mirrors quote_service.AMOUNT_QUANTUM/round_amount — every monetary
     amount (not rate) is 2dp now, see Transaction_Flow_Context.md Open
     Question #10."""
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -213,7 +213,7 @@ def test_fee_and_margin_round_half_up_at_an_exact_cent_boundary(app_context):
     would have carried 4 decimal places. It also pins the rounding *mode* —
     212.50 makes exchange_rate_margin land on exactly 2.125, where
     ROUND_HALF_UP (2.13) and Python's Decimal default, ROUND_HALF_EVEN
-    (2.12), disagree — so this fails if `_round_amount` is ever changed to
+    (2.12), disagree — so this fails if `round_amount` is ever changed to
     a bare `.quantize()` with no explicit rounding mode.
     """
     _store_rate("18.50")  # USD -> ZAR, needed for token math
