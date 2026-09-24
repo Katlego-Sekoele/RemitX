@@ -1,15 +1,13 @@
-import { zodResolver } from "@hookform/resolvers/zod"
-import { IdentificationCardIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Controller, useForm } from "react-hook-form"
-import { Navigate, useNavigate } from "react-router"
-import * as z from "zod"
-
 import {
-  ResidenceSelect,
-  residenceFormValue,
-  UnsupportedJurisdictionNotice,
-} from "~/components/kyc/residence-select"
+  EyeSlashIcon,
+  IdentificationCardIcon,
+  ScalesIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Navigate, useNavigate } from "react-router"
+
+import { PersonalInformationIllustration } from "~/components/illustrations/personal-information"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -21,13 +19,14 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-} from "~/components/ui/field"
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from "~/components/ui/item"
 import { Skeleton } from "~/components/ui/skeleton"
-import { useKycReference } from "~/hooks/use-kyc-reference"
 import { errorMessage, storeApplication } from "~/hooks/use-onboarding"
 import {
   applicationPath,
@@ -36,21 +35,30 @@ import {
   isOpenStatus,
   verificationPath,
 } from "~/lib/kyc-onboarding"
-import { OUTSIDE_OPERATING_COUNTRIES } from "~/lib/kyc-reference"
 import { api } from "~/client"
 
-const schema = z.object({
-  residence: z
-    .string()
-    .min(1, "Tell us where you live.")
-    .refine((value) => value !== OUTSIDE_OPERATING_COUNTRIES, {
-      message: "We can only verify residents of the countries listed.",
-    }),
-})
+const REASONS = [
+  {
+    icon: ScalesIcon,
+    title: "The law requires it",
+    body: "Anyone moving money across borders must confirm who their customers are.",
+  },
+  {
+    icon: ShieldCheckIcon,
+    title: "It protects you",
+    body: "It stops anyone else from sending money in your name.",
+  },
+  {
+    icon: EyeSlashIcon,
+    title: "It stays private",
+    body: "Staff see your details masked. Only reviewers can open your documents, and every view is logged.",
+  },
+]
 
-/** Starting an application: the one place residence is asked before a draft
- * exists. An open application is resumed instead, and a customer whose
- * approval still stands has nothing to start. */
+/** Starting an application. Residence is asked on the address step, which
+ * (with submit) enforces where RemitX operates. An open application is
+ * resumed instead, and a customer whose approval still stands has nothing to
+ * start. */
 export default function NewApplication() {
   const standing = useQuery(api.kyc.onboarding.getApplication())
 
@@ -74,26 +82,14 @@ export default function NewApplication() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <StartForm previousResidence={current?.residential_country} />
+      <StartCard />
     </div>
   )
 }
 
-function StartForm({
-  previousResidence,
-}: {
-  previousResidence: string | null | undefined
-}) {
-  const reference = useKycReference()
+function StartCard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    mode: "onTouched",
-    defaultValues: {
-      residence: residenceFormValue(reference, previousResidence),
-    },
-  })
   const start = useMutation({
     ...api.kyc.onboarding.startApplication(),
     onSuccess: (data) => {
@@ -107,7 +103,6 @@ function StartForm({
       )
     },
   })
-  const outside = form.watch("residence") === OUTSIDE_OPERATING_COUNTRIES
 
   return (
     <Card>
@@ -115,64 +110,58 @@ function StartForm({
         <CardTitle>New application</CardTitle>
         <CardDescription>Takes about five minutes.</CardDescription>
       </CardHeader>
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={form.handleSubmit((values) =>
-          start.mutate({ body: { residential_country: values.residence } })
-        )}
-      >
-        <CardContent className="flex flex-col gap-5">
-          <Controller
-            name="residence"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid && !outside}>
-                <FieldLabel htmlFor="residence">Where do you live?</FieldLabel>
-                <ResidenceSelect
-                  id="residence"
-                  reference={reference}
-                  value={field.value}
-                  onChange={field.onChange}
-                  invalid={fieldState.invalid && !outside}
-                />
-                <FieldDescription>
-                  Where you live, not your nationality.
-                </FieldDescription>
-                {fieldState.invalid && !outside ? (
-                  <FieldError errors={[fieldState.error]} />
-                ) : null}
-              </Field>
-            )}
-          />
-          {outside ? (
-            <UnsupportedJurisdictionNotice reference={reference} />
-          ) : null}
-          <div className="flex flex-col gap-2">
-            <p>Have these to hand:</p>
-            <ul className="list-disc space-y-1 pl-4">
-              <li>Your national ID number, or your passport</li>
-              <li>A photo of that document</li>
-              <li>
-                Proof of address (a recent utility bill or bank statement)
-              </li>
-              <li>Your mobile number and the name as it appears on the ID</li>
-            </ul>
-          </div>
-          <p>You can leave and come back — your progress is saved.</p>
-        </CardContent>
-        <CardFooter className="flex flex-col items-stretch gap-3">
-          {start.isError ? (
-            <Alert variant="destructive">
-              <AlertTitle>Could not start</AlertTitle>
-              <AlertDescription>{errorMessage(start.error)}</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button type="submit" disabled={start.isPending || outside}>
-            <IdentificationCardIcon />
-            {start.isPending ? "Starting…" : "Continue"}
-          </Button>
-        </CardFooter>
-      </form>
+      <CardContent className="flex flex-col gap-5">
+        <PersonalInformationIllustration className="mx-auto h-auto w-full max-w-xs" />
+        <div className="flex flex-col gap-2">
+          <p>Why we ask for your details:</p>
+          <ItemGroup>
+            {REASONS.map((reason) => (
+              <Item
+                key={reason.title}
+                size="sm"
+                role="listitem"
+                className="px-0"
+              >
+                <ItemMedia variant="icon">
+                  <reason.icon />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{reason.title}</ItemTitle>
+                  <ItemDescription className="line-clamp-none">
+                    {reason.body}
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+            ))}
+          </ItemGroup>
+        </div>
+        <div className="flex flex-col gap-2">
+          <p>Have these to hand:</p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>Your national ID number, or your passport</li>
+            <li>A photo of that document</li>
+            <li>Proof of address (a recent utility bill or bank statement)</li>
+            <li>Your mobile number and the name as it appears on the ID</li>
+          </ul>
+        </div>
+        <p>You can leave and come back — your progress is saved.</p>
+      </CardContent>
+      <CardFooter className="flex flex-col items-stretch gap-3">
+        {start.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Could not start</AlertTitle>
+            <AlertDescription>{errorMessage(start.error)}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Button
+          type="button"
+          disabled={start.isPending}
+          onClick={() => start.mutate({})}
+        >
+          <IdentificationCardIcon />
+          {start.isPending ? "Starting…" : "Continue"}
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
