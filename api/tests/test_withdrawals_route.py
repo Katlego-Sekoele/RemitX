@@ -10,7 +10,12 @@ from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR, TYPE_PLATFORM_FIAT, Account
+from remitx_api.models.orm.account import (
+    CURRENCY_ZAR,
+    TYPE_PLATFORM_FIAT,
+    TYPE_PLATFORM_REVENUE,
+    Account,
+)
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from tests.rbac_helpers import grant_role, seed_rbac_catalogue
@@ -88,6 +93,14 @@ def env(request):
                     type=TYPE_PLATFORM_FIAT,
                     account_currency=CURRENCY_ZAR,
                     label="RemitX SA Bank Account",
+                )
+            )
+            db.session.add(
+                Account(
+                    user_id=admin.id,
+                    type=TYPE_PLATFORM_REVENUE,
+                    account_currency=CURRENCY_ZAR,
+                    label="RemitX SA Fee Revenue",
                 )
             )
             db.session.commit()
@@ -296,9 +309,11 @@ def _available_zar(env) -> str:
     return next(a for a in accounts if a["currency"] == "ZAR")["available_balance"]
 
 
-def test_withdrawal_moves_the_gross_amount_into_the_platform_fiat_account(env):
-    """Both legs (net + fee) credit the same RemitX ZAR fiat account, so it
-    gains the full gross amount; both transactions end up confirmed."""
+def test_withdrawal_splits_the_fee_into_revenue_and_the_net_into_fiat(env):
+    """The net leg lands in RemitX's ZAR fiat account and the fee leg in its
+    ZAR fee revenue account; both transactions end up confirmed. Settlement
+    then takes the net back off the fiat account (no transaction) to show it
+    leaving RemitX's bank, so fiat ends where it started."""
     from remitx_api.models.orm.transaction import Transaction
     from remitx_api.models.orm.withdrawal import Withdrawal
 
@@ -310,7 +325,11 @@ def test_withdrawal_moves_the_gross_amount_into_the_platform_fiat_account(env):
         platform = AccountRepository().get_platform_account(
             TYPE_PLATFORM_FIAT, CURRENCY_ZAR
         )
-        assert platform.account_balance == Decimal("100")
+        revenue = AccountRepository().get_platform_account(
+            TYPE_PLATFORM_REVENUE, CURRENCY_ZAR
+        )
+        assert platform.account_balance == Decimal("0")
+        assert revenue.account_balance == Decimal("0.75")
 
         withdrawal = db.session.get(Withdrawal, uuid.UUID(body["withdrawal_id"]))
         net_tx = db.session.get(Transaction, withdrawal.tx_id)
@@ -318,9 +337,53 @@ def test_withdrawal_moves_the_gross_amount_into_the_platform_fiat_account(env):
         assert net_tx.type == "withdrawal"
         assert net_tx.amount == Decimal("99.25")
         assert net_tx.status == "confirmed"
+        assert net_tx.debit_account_id == platform.account_id
         assert fee_tx.type == "fee"
+        assert fee_tx.debit_account_id == revenue.account_id
         assert fee_tx.amount == Decimal("0.75")
         assert fee_tx.status == "confirmed"
+    finally:
+        db.close_session(token)
+
+
+def test_two_withdrawals_in_a_row_each_settle_and_balances_add_up(env):
+    """Each withdrawal confirms only its own two legs, and the balance moves
+    accumulate: the user loses both gross amounts, revenue gains both fees,
+    and the fiat account still ends at zero (each net goes in and back out)."""
+    from remitx_api.models.orm.transaction import Transaction
+    from remitx_api.models.orm.withdrawal import Withdrawal
+
+    bank_account = _verified_bank_account(env)
+    first = _withdraw(env, bank_account["bank_account_id"], "100.00")
+    second = _withdraw(env, bank_account["bank_account_id"], "200.00")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["status"] == "confirmed"
+    assert second.json()["status"] == "confirmed"
+    assert _available_zar(env) == "700.00000000"
+
+    token = db.open_session()
+    try:
+        platform = AccountRepository().get_platform_account(
+            TYPE_PLATFORM_FIAT, CURRENCY_ZAR
+        )
+        revenue = AccountRepository().get_platform_account(
+            TYPE_PLATFORM_REVENUE, CURRENCY_ZAR
+        )
+        assert platform.account_balance == Decimal("0")
+        # 0.75% of 100 + 0.75% of 200
+        assert revenue.account_balance == Decimal("2.25")
+
+        for response, net in ((first, "99.25"), (second, "198.50")):
+            withdrawal = db.session.get(
+                Withdrawal, uuid.UUID(response.json()["withdrawal_id"])
+            )
+            net_tx = db.session.get(Transaction, withdrawal.tx_id)
+            fee_tx = db.session.get(Transaction, withdrawal.fee_tx_id)
+            assert net_tx.amount == Decimal(net)
+            assert net_tx.status == "confirmed"
+            assert fee_tx.status == "confirmed"
     finally:
         db.close_session(token)
 

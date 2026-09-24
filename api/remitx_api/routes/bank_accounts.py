@@ -20,15 +20,15 @@ controller = BankAccountController()
 
 def _mask_account_number(account_number: str) -> str:
     """Last 4 digits only. The full number is still stored and still goes
-    over the wire to the admin endpoints (an operator needs it to actually
-    verify the account, see routes/admin/bank_accounts.py) — this is purely
-    about not putting a customer's own full account number on their screen
-    on every page load."""
+    over the wire to the admin endpoints. This is about not putting a customer's 
+    own full account number on their screen on every page load."""
     visible = account_number[-4:]
     return f"****{visible}" if len(account_number) > len(visible) else account_number
 
 
 def _read(view: BankAccountView) -> BankAccountRead:
+    """Convert a BankAccountView to a BankAccountRead schema, 
+    masking the account number for security."""
     return BankAccountRead.model_validate(view).model_copy(
         update={"account_number": _mask_account_number(view.account_number)}
     )
@@ -44,9 +44,7 @@ def add_bank_account(
     payload: BankAccountCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """Stored `pending_verification` — it can't receive a withdrawal until an
-    admin verifies it. See `POST /withdrawals` and the admin bank-account
-    queue."""
+    """Add a bank account for the user"""
     try:
         view = controller.add(
             user.id,
@@ -67,7 +65,7 @@ def add_bank_account(
 @router.get(
     "",
     response_model=list[BankAccountRead],
-    summary="List the caller's own bank accounts",
+    summary="List the user's own bank accounts",
 )
 def list_bank_accounts(
     currency: str | None = Query(
@@ -75,7 +73,7 @@ def list_bank_accounts(
     ),
     user: User = Depends(get_current_user),
 ):
-    """Every bank account this caller has added for `currency` (or for any
+    """Get every bank account this user has added for `currency` (or for any
     currency, if omitted), whatever its status — the currency-account
     detail view, so a `pending_verification` or `rejected` account still
     shows up here even though `GET /bank-accounts/withdrawable` would skip
@@ -86,17 +84,14 @@ def list_bank_accounts(
 @router.get(
     "/withdrawable",
     response_model=list[BankAccountRead],
-    summary="List the caller's verified bank accounts in a currency",
+    summary="List the user's verified bank accounts in a currency",
 )
 def list_withdrawable_bank_accounts(
     currency: str = Query(..., description="e.g. ZAR"),
     user: User = Depends(get_current_user),
 ):
-    """The withdrawal page's destination picker: every bank account this
-    caller can withdraw a `currency` balance into right now. Only
-    `verified` accounts are returned — a `pending_verification` or
-    `rejected` account can't settle a withdrawal (see
-    `POST /withdrawals`), so it isn't offered as a choice here even though
-    it still shows up in `GET /bank-accounts`."""
+    """For the withdrawal page's destination picker: every bank account this
+    user can withdraw a `currency` balance into right now. Only
+    `verified` accounts are returned."""
     views = controller.list_withdrawable(user.id, currency)
     return [_read(view) for view in views]
