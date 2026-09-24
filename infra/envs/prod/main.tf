@@ -43,7 +43,7 @@ locals {
     : data.terraform_remote_state.shared.outputs.qa_environment_id
   )
 
-  worker_env = {
+  runtime_env = {
     DATABASE_URL        = var.database_url
     REDIS_URL           = local.redis_url
     CLERK_SECRET_KEY    = var.clerk_secret_key
@@ -55,10 +55,42 @@ locals {
     CELERY_CONCURRENCY = "2"
   }
 
+  # Public chain identity. The encrypted seed is not in this map: only the
+  # worker signs, so it is added on worker_env alone.
+  xrpl_env = {
+    XRPL_TESTNET_URL           = var.xrpl_testnet_url
+    UCTUSD_ISSUER              = var.uctusd_issuer
+    UCTUSD_CURRENCY_CODE_HEX   = var.uctusd_currency_code_hex
+    UCTUSD_CURRENCY_CODE       = var.uctusd_currency_code
+    UCTUSD_TRUST_LIMIT         = var.uctusd_trust_limit
+    UCTUSD_DISTRIBUTOR_ADDRESS = var.uctusd_distributor_address
+    PLATFORM_WALLET_ADDRESS    = var.platform_wallet_address
+  }
+
+  # Quote and limit settings are read by the API. The worker never prices a send.
+  quote_env = {
+    EXCHANGE_RATE_API_KEY        = var.exchange_rate_api_key
+    RATE_FIXING_INTERVAL_HOURS   = var.rate_fixing_interval_hours
+    MAX_RATE_STALENESS_HOURS     = var.max_rate_staleness_hours
+    QUOTE_TTL_MINUTES            = var.quote_ttl_minutes
+    FIXED_FEE_ZAR                = var.fixed_fee_zar
+    PERCENTAGE_FEE_RATE          = var.percentage_fee_rate
+    FX_MARGIN_RATE               = var.fx_margin_rate
+    CASH_OUT_FEE_RATE            = var.cash_out_fee_rate
+    DAILY_LIMIT_ZAR_UNVERIFIED   = var.daily_limit_zar_unverified
+    MONTHLY_LIMIT_ZAR_UNVERIFIED = var.monthly_limit_zar_unverified
+    DAILY_LIMIT_ZAR              = var.daily_limit_zar
+    MONTHLY_LIMIT_ZAR            = var.monthly_limit_zar
+  }
+
+  worker_env = merge(local.runtime_env, local.xrpl_env, {
+    PLATFORM_WALLET_SEED_ENCRYPTED = var.platform_wallet_seed_encrypted
+  })
+
   # One map for the module and the api_env_vars output. The service ignores
   # env_vars after creation, so the output is what actually reaches Render;
   # a hand-kept copy there silently dropped keys.
-  api_env = merge(local.worker_env, {
+  api_env = merge(local.runtime_env, local.xrpl_env, local.quote_env, {
     CORS_ORIGINS    = local.cors_origins
     WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
     # Only the API signs upload and download URLs; the worker never touches

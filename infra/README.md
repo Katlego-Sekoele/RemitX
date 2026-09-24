@@ -51,15 +51,43 @@ Hobby includes two custom domains: Production `remitx.tech` and QA
 |------|------|---------|
 | `TF_CLOUD_ORGANIZATION` | **Variable** | HCP org name (`cloud` blocks cannot take Terraform variables) |
 | `TF_API_TOKEN` | Secret | HCP Terraform token |
-| `RENDER_API_KEY` | Render API key (mapped to `TF_VAR_render_api_key` for HCP) |
-| `RENDER_OWNER_ID` | Render owner id (mapped to `TF_VAR_render_owner_id` for HCP) |
-| `TF_VAR_database_url` | Neon URL for that environment (SQLAlchemy form) |
-| `MIGRATIONS_DATABASE_URL` | Same Neon URL (Actions is off-Render) |
-| `TF_VAR_clerk_secret_key` | Clerk secret key |
-| `TF_VAR_clerk_publishable_key` | Clerk publishable key |
-| `TF_VAR_xrpl_encryption_key` | XRPL encryption key |
-| `TF_VAR_object_storage_access_key_id` | Neon Object Storage key for the KYC document bucket (optional — unset leaves only the document routes answering 503) |
-| `TF_VAR_object_storage_secret_access_key` | Its secret (optional, same) |
+| `RENDER_API_KEY` | Secret | Render API key (mapped to `TF_VAR_render_api_key` for HCP) |
+| `RENDER_OWNER_ID` | Secret | Render owner id (mapped to `TF_VAR_render_owner_id` for HCP) |
+| `TF_VAR_database_url` | Secret | Neon URL for that environment (SQLAlchemy form) |
+| `MIGRATIONS_DATABASE_URL` | Secret | Same Neon URL (Actions is off-Render) |
+| `TF_VAR_clerk_secret_key` | Secret | Clerk secret key |
+| `TF_VAR_clerk_publishable_key` | Secret | Clerk publishable key |
+| `TF_VAR_xrpl_encryption_key` | Secret | Fernet key that decrypts the treasury seed. Already required. API and worker. |
+| `TF_VAR_platform_wallet_seed_encrypted` | Secret | Encrypted treasury seed (`PLATFORM_WALLET_SEED_ENCRYPTED`). Worker only. |
+| `TF_VAR_exchange_rate_api_key` | Secret | exchangerate-api.com key. API only. |
+| `TF_VAR_object_storage_access_key_id` | Secret | Neon Object Storage key for the KYC document bucket (optional — unset leaves only the document routes answering 503) |
+| `TF_VAR_object_storage_secret_access_key` | Secret | Its secret (optional, same) |
+| `TF_VAR_platform_wallet_address` | **Variable** | Treasury XRPL classic address. API and worker. |
+| `TF_VAR_xrpl_testnet_url` | **Variable** | Testnet JSON-RPC URL, e.g. `https://s.altnet.rippletest.net:51234/` |
+| `TF_VAR_uctusd_issuer` | **Variable** | UCTUSD issuer address |
+| `TF_VAR_uctusd_currency_code_hex` | **Variable** | On-chain currency code, hex |
+| `TF_VAR_uctusd_currency_code` | **Variable** | On-chain currency code, plain text (`UCTUSD`) |
+| `TF_VAR_uctusd_trust_limit` | **Variable** | Trust-line limit (`1000000` in `.env.example`) |
+| `TF_VAR_uctusd_distributor_address` | **Variable** | UCTUSD distributor address |
+| `TF_VAR_rate_fixing_interval_hours` | **Variable** | How long a fetched rate may be quoted |
+| `TF_VAR_max_rate_staleness_hours` | **Variable** | Oldest stored rate a failed fetch may reuse |
+| `TF_VAR_quote_ttl_minutes` | **Variable** | How long a customer quote is honoured |
+| `TF_VAR_fixed_fee_zar` | **Variable** | Fixed send fee in ZAR |
+| `TF_VAR_percentage_fee_rate` | **Variable** | Percentage fee as a decimal (`0.005`) |
+| `TF_VAR_fx_margin_rate` | **Variable** | FX spread as a decimal (`0.01`) |
+| `TF_VAR_cash_out_fee_rate` | **Variable** | Cash-out fee as a decimal (`0.0075`) |
+| `TF_VAR_daily_limit_zar_unverified` | **Variable** | Unverified daily limit, ZAR |
+| `TF_VAR_monthly_limit_zar_unverified` | **Variable** | Unverified monthly limit, ZAR |
+| `TF_VAR_daily_limit_zar` | **Variable** | Verified daily limit, ZAR |
+| `TF_VAR_monthly_limit_zar` | **Variable** | Verified monthly limit, ZAR |
+
+The **Variable** rows are GitHub environment variables (`vars`), not secrets.
+Quote, fee, and limit values land on the API. The XRPL rows land on the API
+and the worker, except `TF_VAR_platform_wallet_seed_encrypted`, which lands
+on the worker only. Copy the non-secret values from `.env.example` when QA
+and Production should match local. Add the same names to both the `qa` and
+`prod` environments. A rollout with any of them empty fails in the
+`terraform` job before apply.
 
 4. Apply **shared first**. QA and Production read `remitx-shared` via
    `terraform_remote_state`. Shared apply authorizes those workspaces as

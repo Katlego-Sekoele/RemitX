@@ -136,6 +136,28 @@ jobs:
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
       TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
+      TF_VAR_platform_wallet_seed_encrypted: ${{ secrets.TF_VAR_platform_wallet_seed_encrypted }}
+      TF_VAR_exchange_rate_api_key: ${{ secrets.TF_VAR_exchange_rate_api_key }}
+      # Non-secret FX and XRPL settings. GitHub environment variables, not
+      # secrets: addresses, the public testnet URL, fees, and limits.
+      TF_VAR_platform_wallet_address: ${{ vars.TF_VAR_platform_wallet_address }}
+      TF_VAR_xrpl_testnet_url: ${{ vars.TF_VAR_xrpl_testnet_url }}
+      TF_VAR_uctusd_issuer: ${{ vars.TF_VAR_uctusd_issuer }}
+      TF_VAR_uctusd_currency_code_hex: ${{ vars.TF_VAR_uctusd_currency_code_hex }}
+      TF_VAR_uctusd_currency_code: ${{ vars.TF_VAR_uctusd_currency_code }}
+      TF_VAR_uctusd_trust_limit: ${{ vars.TF_VAR_uctusd_trust_limit }}
+      TF_VAR_uctusd_distributor_address: ${{ vars.TF_VAR_uctusd_distributor_address }}
+      TF_VAR_rate_fixing_interval_hours: ${{ vars.TF_VAR_rate_fixing_interval_hours }}
+      TF_VAR_max_rate_staleness_hours: ${{ vars.TF_VAR_max_rate_staleness_hours }}
+      TF_VAR_quote_ttl_minutes: ${{ vars.TF_VAR_quote_ttl_minutes }}
+      TF_VAR_fixed_fee_zar: ${{ vars.TF_VAR_fixed_fee_zar }}
+      TF_VAR_percentage_fee_rate: ${{ vars.TF_VAR_percentage_fee_rate }}
+      TF_VAR_fx_margin_rate: ${{ vars.TF_VAR_fx_margin_rate }}
+      TF_VAR_cash_out_fee_rate: ${{ vars.TF_VAR_cash_out_fee_rate }}
+      TF_VAR_daily_limit_zar_unverified: ${{ vars.TF_VAR_daily_limit_zar_unverified }}
+      TF_VAR_monthly_limit_zar_unverified: ${{ vars.TF_VAR_monthly_limit_zar_unverified }}
+      TF_VAR_daily_limit_zar: ${{ vars.TF_VAR_daily_limit_zar }}
+      TF_VAR_monthly_limit_zar: ${{ vars.TF_VAR_monthly_limit_zar }}
       # Deliberately absent from the required list below: with no bucket
       # credential the API starts normally and only the KYC document routes
       # answer 503, so a missing one must not block the whole rollout.
@@ -162,6 +184,26 @@ jobs:
           [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key")
           [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key")
           [ -n "${TF_VAR_xrpl_encryption_key}" ]  || missing+=("TF_VAR_xrpl_encryption_key")
+          [ -n "${TF_VAR_platform_wallet_seed_encrypted}" ] || missing+=("TF_VAR_platform_wallet_seed_encrypted")
+          [ -n "${TF_VAR_exchange_rate_api_key}" ] || missing+=("TF_VAR_exchange_rate_api_key")
+          [ -n "${TF_VAR_platform_wallet_address}" ] || missing+=("TF_VAR_platform_wallet_address (variable)")
+          [ -n "${TF_VAR_xrpl_testnet_url}" ] || missing+=("TF_VAR_xrpl_testnet_url (variable)")
+          [ -n "${TF_VAR_uctusd_issuer}" ] || missing+=("TF_VAR_uctusd_issuer (variable)")
+          [ -n "${TF_VAR_uctusd_currency_code_hex}" ] || missing+=("TF_VAR_uctusd_currency_code_hex (variable)")
+          [ -n "${TF_VAR_uctusd_currency_code}" ] || missing+=("TF_VAR_uctusd_currency_code (variable)")
+          [ -n "${TF_VAR_uctusd_trust_limit}" ] || missing+=("TF_VAR_uctusd_trust_limit (variable)")
+          [ -n "${TF_VAR_uctusd_distributor_address}" ] || missing+=("TF_VAR_uctusd_distributor_address (variable)")
+          [ -n "${TF_VAR_rate_fixing_interval_hours}" ] || missing+=("TF_VAR_rate_fixing_interval_hours (variable)")
+          [ -n "${TF_VAR_max_rate_staleness_hours}" ] || missing+=("TF_VAR_max_rate_staleness_hours (variable)")
+          [ -n "${TF_VAR_quote_ttl_minutes}" ] || missing+=("TF_VAR_quote_ttl_minutes (variable)")
+          [ -n "${TF_VAR_fixed_fee_zar}" ] || missing+=("TF_VAR_fixed_fee_zar (variable)")
+          [ -n "${TF_VAR_percentage_fee_rate}" ] || missing+=("TF_VAR_percentage_fee_rate (variable)")
+          [ -n "${TF_VAR_fx_margin_rate}" ] || missing+=("TF_VAR_fx_margin_rate (variable)")
+          [ -n "${TF_VAR_cash_out_fee_rate}" ] || missing+=("TF_VAR_cash_out_fee_rate (variable)")
+          [ -n "${TF_VAR_daily_limit_zar_unverified}" ] || missing+=("TF_VAR_daily_limit_zar_unverified (variable)")
+          [ -n "${TF_VAR_monthly_limit_zar_unverified}" ] || missing+=("TF_VAR_monthly_limit_zar_unverified (variable)")
+          [ -n "${TF_VAR_daily_limit_zar}" ] || missing+=("TF_VAR_daily_limit_zar (variable)")
+          [ -n "${TF_VAR_monthly_limit_zar}" ] || missing+=("TF_VAR_monthly_limit_zar (variable)")
 
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Set these on the '${DEPLOY_ENV}' GitHub environment: ${missing[*]}"
