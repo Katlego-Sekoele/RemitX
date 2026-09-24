@@ -1,9 +1,14 @@
-import { PaperPlaneTiltIcon } from "@phosphor-icons/react"
+import { useUser } from "@clerk/react-router"
+import {
+  IdentificationCardIcon,
+  PaperPlaneTiltIcon,
+} from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router"
 
 import { BalanceSummary } from "~/components/accounts/balance-summary"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { WorldIllustration } from "~/components/illustrations/world"
 import { RecentTransfers } from "~/components/transfers/recent-transfers"
 import { Button } from "~/components/ui/button"
 import {
@@ -14,12 +19,15 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
-import { SEND_HREF } from "~/lib/accounts"
+import {
+  PageHeader,
+  PageHeaderDescription,
+  PageHeaderTitle,
+} from "~/components/ui/page-header"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import { SEND_PATH } from "~/lib/send"
 import { TRANSFERS_PATH } from "~/lib/transfers"
 import type { Route } from "./+types/index"
-import { PageHeader, PageHeaderTitle } from "~/components/ui/page-header"
 import { api } from "~/client"
 
 const ROUTE_MODULE = "routes/app/index.tsx"
@@ -36,56 +44,8 @@ export default function AppHome() {
   return (
     <AppPageFrame module={ROUTE_MODULE}>
       <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <PageHeader>
-            <PageHeaderTitle>Overview</PageHeaderTitle>
-          </PageHeader>
-          <Button nativeButton={false} render={<Link to={SEND_HREF} />}>
-            <PaperPlaneTiltIcon data-icon="inline-start" />
-            Send money
-          </Button>
-        </div>
-        {!verified && onboarding.data ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Verification required</CardTitle>
-              <CardDescription>
-                Finish verification to start sending.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                nativeButton={false}
-                render={<Link to={verificationPath()} />}
-              >
-                Continue verification
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
+        <Welcome verified={verified} loaded={onboarding.data !== undefined} />
         <BalanceSummary />
-        {verified ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Ready to send</CardTitle>
-              <CardDescription>You&apos;re verified.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-start gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Button nativeButton={false} render={<Link to={SEND_PATH} />}>
-                  Send money
-                </Button>
-                <Button
-                  nativeButton={false}
-                  variant="outline"
-                  render={<Link to="/app/beneficiaries" />}
-                >
-                  Manage beneficiaries
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
         {onboarding.data ? (
           <Card>
             <CardHeader>
@@ -110,5 +70,55 @@ export default function AppHome() {
         ) : null}
       </div>
     </AppPageFrame>
+  )
+}
+
+/** The greeting, and the one thing to do next: verify, or send. */
+function Welcome({ verified, loaded }: { verified: boolean; loaded: boolean }) {
+  const { user } = useUser()
+  const name = user?.firstName
+  const greeting = verified ? "Welcome back" : "Welcome to RemitX"
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col-reverse items-center gap-6 sm:flex-row sm:justify-between">
+        <div className="flex w-full flex-col items-start gap-4">
+          <PageHeader>
+            <PageHeaderTitle>
+              {name ? `${greeting}, ${name}` : greeting}
+            </PageHeaderTitle>
+            <PageHeaderDescription>
+              {verified
+                ? "You're verified and ready to send money to family and friends across borders."
+                : "Send money to family and friends across borders. Verify your identity to get started."}
+            </PageHeaderDescription>
+          </PageHeader>
+          {!loaded ? null : verified ? (
+            <div className="flex flex-wrap gap-2">
+              <Button nativeButton={false} render={<Link to={SEND_PATH} />}>
+                <PaperPlaneTiltIcon data-icon="inline-start" />
+                Send money
+              </Button>
+              <Button
+                nativeButton={false}
+                variant="outline"
+                render={<Link to="/app/beneficiaries" />}
+              >
+                Manage beneficiaries
+              </Button>
+            </div>
+          ) : (
+            <Button
+              nativeButton={false}
+              render={<Link to={verificationPath()} />}
+            >
+              <IdentificationCardIcon data-icon="inline-start" />
+              Continue verification
+            </Button>
+          )}
+        </div>
+        <WorldIllustration className="h-auto w-full max-w-60 shrink-0" />
+      </CardContent>
+    </Card>
   )
 }
