@@ -142,7 +142,8 @@ Change those to change the population; no code needed.
   seed, git commit, counts, refusals and the verify report.
 - **Reset** deletes the seeded Clerk users, empties the bucket, drops and
   recreates the schema and runs `alembic upgrade head`, which also creates the
-  platform accounts. Type `reset <target>` to confirm. Staff roles are not
+  platform accounts and, when the target has a `PLATFORM_WALLET_ADDRESS`,
+  records the treasury's on-chain starting balance. Type `reset <target>` to confirm. Staff roles are not
   restored: grant your testers theirs again on the Access page.
 
 ## Keeping it working while the backend changes
