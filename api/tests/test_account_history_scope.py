@@ -116,7 +116,7 @@ def _confirmed_send(
         expires_at=now + timedelta(minutes=15),
     )
     treasury = Account(
-        user_id=sender_id,
+        user_id=None,
         type=TYPE_XRPL_WALLET,
         account_currency=CURRENCY_TOKEN,
         label="history-scope treasury",

@@ -1,10 +1,11 @@
 """
 Every party that can hold a balance — a real user, RemitX itself, or an
-external counterparty — is one row here. Platform accounts (RemitX's bank
-accounts, XRPL treasury wallet, fee revenue, ...) are hand-seeded by
-`scripts/seed_platform_accounts.py` with `user_id` set to the administering
-admin's own id — an admin is a `User` row too. Only a genuinely `EXTERNAL`
-row (Kraken - a crypto exchange) has `user_id` NULL.
+external counterparty — is one row here. `user_id` is the customer a `USER`
+row belongs to, and NULL on every other row: RemitX's own platform accounts
+(bank accounts, XRPL treasury wallet, fee revenue, ...) and `EXTERNAL`
+counterparties belong to no user. The platform accounts are inserted by
+migration — see `platform_account_seed.py` — and are visible to staff holding
+`platform_account:read`.
 
 One row per (user_id, account_currency) for a `USER` row — a user with both
 ZAR and token activity has two rows as they then have a Zar account and a
@@ -102,10 +103,10 @@ class Account(Base):
             "'REMITX_REVENUE','EXTERNAL')",
             name="accounts_type_valid",
         ),
-        # Constraints to check currency is valid
+        # Only a customer's account belongs to a user
         CheckConstraint(
-            "(type <> 'EXTERNAL' AND user_id IS NOT NULL) "
-            "OR (type = 'EXTERNAL' AND user_id IS NULL)",
+            "(type = 'USER' AND user_id IS NOT NULL) "
+            "OR (type <> 'USER' AND user_id IS NULL)",
             name="accounts_owner_matches_type",
         ),
         # Constraints to check reference is valid

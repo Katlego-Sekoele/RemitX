@@ -12,10 +12,7 @@ from remitx_api.models.orm.account import (
     CURRENCY_USD,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
-    TYPE_EXTERNAL,
-    TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -23,13 +20,10 @@ from remitx_api.models.orm.user import User, short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service, remittance_service
-from remitx_api.services.remittance_service import (
-    REMITX_TREASURY_WALLET_LABEL,
-    TOKEN_ISSUER_LABEL,
-)
 from remitx_worker import db as worker_db
 from remitx_worker.tasks import confirm_treasury_burn
 from sqlalchemy.orm import sessionmaker
+from tests.platform_account_helpers import seed_platform_accounts
 
 ACCOUNTS = "/accounts"
 HISTORY = "/accounts-history"
@@ -219,46 +213,7 @@ def _send_remittance(client, sender, monkeypatch, funded="1000", amount="1000"):
             ]
         )
 
-        admin = UserController().ensure_provisioned(
-            "user_admin_accounts_route",
-            lambda: "admin-accounts@example.com",
-            lambda: "Adm",
-        )
-        db.session.add_all(
-            [
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_FIAT,
-                    account_currency=CURRENCY_ZAR,
-                    label="RemitX SA Bank Account",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_REVENUE,
-                    account_currency=CURRENCY_ZAR,
-                    label="RemitX SA Fee Revenue",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_FIAT,
-                    account_currency=CURRENCY_ZWL,
-                    label="RemitX ZIM Bank Account",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_XRPL_WALLET,
-                    account_currency=CURRENCY_TOKEN,
-                    label=REMITX_TREASURY_WALLET_LABEL,
-                ),
-                Account(
-                    user_id=None,
-                    type=TYPE_EXTERNAL,
-                    account_currency=CURRENCY_TOKEN,
-                    label=TOKEN_ISSUER_LABEL,
-                ),
-            ]
-        )
-        db.session.commit()
+        seed_platform_accounts()
 
         recipient = UserController().ensure_provisioned(
             "user_accounts_route_recipient",
@@ -366,20 +321,7 @@ def _sign_in_as(client, user: User) -> None:
 def _seed_bank_account() -> None:
     token = db.open_session()
     try:
-        admin = UserController().ensure_provisioned(
-            "user_admin_accounts_deposits",
-            lambda: "admin-deposits@example.com",
-            lambda: "Adm",
-        )
-        db.session.add(
-            Account(
-                user_id=admin.id,
-                type=TYPE_PLATFORM_FIAT,
-                account_currency=CURRENCY_ZAR,
-                label=deposit_service.REMITX_SA_BANK_ACCOUNT_LABEL,
-            )
-        )
-        db.session.commit()
+        seed_platform_accounts()
     finally:
         db.close_session(token)
 
@@ -530,15 +472,12 @@ def test_history_limit_out_of_range_is_a_422(verified_client):
         assert response.status_code == 422
 
 
-def test_history_refuses_a_platform_account_the_caller_administers(
-    verified_client,
-):
-    client, sender = verified_client
+def test_history_refuses_a_platform_account(verified_client):
+    client, _ = verified_client
     token = db.open_session()
     try:
-        # Platform accounts carry their administering admin's user id.
         platform = Account(
-            user_id=sender.id,
+            user_id=None,
             type=TYPE_PLATFORM_REVENUE,
             account_currency=CURRENCY_ZAR,
             label="RemitX SA Fee Revenue",

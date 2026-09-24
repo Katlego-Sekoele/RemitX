@@ -10,11 +10,6 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
-    TYPE_EXTERNAL,
-    TYPE_PLATFORM_FIAT,
-    TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
-    Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
@@ -32,10 +27,10 @@ from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import queue_service, quote_service, remittance_service
 from remitx_api.services.remittance_service import (
-    REMITX_TREASURY_WALLET_LABEL,
     TOKEN_ISSUER_LABEL,
 )
 from tests.kyc_helpers import insert_application
+from tests.platform_account_helpers import seed_platform_accounts
 
 
 @pytest.fixture
@@ -73,50 +68,6 @@ def _store_rate(
     db.session.add(row)
     db.session.commit()
     return row
-
-
-def _seed_platform_accounts() -> None:
-    admin = UserController().ensure_provisioned(
-        "user_admin_remit_seed", lambda: "admin@example.com", lambda: "Admin"
-    )
-    db.session.add_all(
-        [
-            Account(
-                user_id=admin.id,
-                type=TYPE_PLATFORM_FIAT,
-                account_currency=CURRENCY_ZAR,
-                label="RemitX SA Bank Account",
-            ),
-            Account(
-                user_id=admin.id,
-                type=TYPE_PLATFORM_REVENUE,
-                account_currency=CURRENCY_ZAR,
-                label="RemitX SA Fee Revenue",
-            ),
-            # Beneficiary's-country bank account — every test beneficiary
-            # here is set up with payout_currency="ZWL" (_make_sender_and_
-            # beneficiary), which the payout leg credits from.
-            Account(
-                user_id=admin.id,
-                type=TYPE_PLATFORM_FIAT,
-                account_currency=CURRENCY_ZWL,
-                label="RemitX ZIM Bank Account",
-            ),
-            Account(
-                user_id=admin.id,
-                type=TYPE_XRPL_WALLET,
-                account_currency=CURRENCY_TOKEN,
-                label=REMITX_TREASURY_WALLET_LABEL,
-            ),
-            Account(
-                user_id=None,
-                type=TYPE_EXTERNAL,
-                account_currency=CURRENCY_TOKEN,
-                label=TOKEN_ISSUER_LABEL,
-            ),
-        ]
-    )
-    db.session.commit()
 
 
 def _make_sender_and_beneficiary():
@@ -161,7 +112,7 @@ def _fund_and_quote(sender, beneficiary, amount: Decimal):
 def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 
@@ -257,7 +208,7 @@ def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
 def test_confirming_a_quote_flips_it_to_used(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 
@@ -269,7 +220,7 @@ def test_confirming_a_quote_flips_it_to_used(app_context, enqueued):
 def test_confirming_records_the_remittance_row(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 
@@ -282,7 +233,7 @@ def test_confirming_records_the_remittance_row(app_context, enqueued):
 def test_confirming_enqueues_settlement_after_commit(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 
@@ -292,7 +243,7 @@ def test_confirming_enqueues_settlement_after_commit(app_context, enqueued):
 
 
 def test_unknown_quote_is_rejected(app_context, enqueued):
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, _recipient, _beneficiary = _make_sender_and_beneficiary()
 
     with pytest.raises(remittance_service.QuoteNotFoundError):
@@ -302,7 +253,7 @@ def test_unknown_quote_is_rejected(app_context, enqueued):
 def test_someone_elses_quote_is_rejected(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
     other = _approve(
@@ -318,7 +269,7 @@ def test_someone_elses_quote_is_rejected(app_context, enqueued):
 def test_already_confirmed_quote_cannot_be_confirmed_again(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
     remittance_service.confirm_remittance(sender.id, quote.quote_id)
@@ -330,7 +281,7 @@ def test_already_confirmed_quote_cannot_be_confirmed_again(app_context, enqueued
 def test_expired_quote_cannot_be_confirmed(app_context, enqueued):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
     quote.expires_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -351,7 +302,7 @@ def test_second_active_quote_fails_available_balance_check_after_first_confirms(
     """
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     account_repo = AccountRepository()
     sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
@@ -377,6 +328,8 @@ def test_second_active_quote_fails_available_balance_check_after_first_confirms(
 
     with pytest.raises(remittance_service.InsufficientBalanceError):
         remittance_service.confirm_remittance(sender.id, second_quote.quote_id)
+
+
 def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(
     app_context, enqueued
 ):
@@ -385,7 +338,7 @@ def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(
     an issued quote, and the transfer it becomes, intact."""
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
-    _seed_platform_accounts()
+    seed_platform_accounts()
     sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
 

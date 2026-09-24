@@ -79,7 +79,7 @@ def _account(session, *, type_, currency, balance="0") -> uuid.UUID:
     account_id = uuid.uuid4()
     account = Account(
         account_id=account_id,
-        user_id=None if type_ == TYPE_EXTERNAL else _user(session),
+        user_id=_user(session) if type_ == TYPE_USER else None,
         type=type_,
         reference=f"{account_id}-{currency}" if type_ == TYPE_USER else None,
         account_currency=currency,

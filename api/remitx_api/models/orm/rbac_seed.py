@@ -134,6 +134,10 @@ PERMISSION_SEEDS: tuple[PermissionSeed, ...] = (
         "Read any customer's transfer history (cross-user).",
     ),
     PermissionSeed(
+        PermissionCode.PLATFORM_ACCOUNT_READ,
+        "View RemitX's own account balances: bank, fee revenue and treasury.",
+    ),
+    PermissionSeed(
         PermissionCode.CONFIG_FEES_WRITE,
         "Change fee schedules and pricing rules.",
     ),
@@ -212,6 +216,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionCode.CASHIN_CONFIRM,
             PermissionCode.CASHIN_CANCEL,
             PermissionCode.TRANSACTION_READ_ANY,
+            PermissionCode.PLATFORM_ACCOUNT_READ,
         ),
     ),
     RoleSeed(
