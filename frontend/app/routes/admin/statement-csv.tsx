@@ -44,7 +44,6 @@ import {
   type StatementColumn,
   type StatementLine,
 } from "~/lib/bank-statement-csv"
-import { SAMPLE_STATEMENT_LINES } from "~/lib/sample-statement-lines"
 import { PERMISSIONS } from "~/lib/permissions"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/statement-csv"
@@ -68,10 +67,6 @@ export function meta(): Route.MetaDescriptors {
   ]
 }
 
-function draftFrom(lines: readonly StatementLine[]): DraftLine[] {
-  return lines.map((line) => ({ ...line, id: crypto.randomUUID() }))
-}
-
 function blankLine(): DraftLine {
   return {
     id: crypto.randomUUID(),
@@ -83,7 +78,7 @@ function blankLine(): DraftLine {
 }
 
 /**
- * Demo file for the cash-in job. Same gate as Process deposits
+ * Bank statement CSV builder for the cash-in job. Same gate as Process deposits
  * (`cashin:read`): building the statement is part of that flow, and staff
  * without the cash-in role never see it. The server still refuses the
  * upload that actually moves money.
@@ -97,9 +92,7 @@ export default function StatementCsv() {
 }
 
 function StatementCsvPage() {
-  const [lines, setLines] = useState<DraftLine[]>(() =>
-    draftFrom(SAMPLE_STATEMENT_LINES)
-  )
+  const [lines, setLines] = useState<DraftLine[]>([])
   const accounts = useQuery(api.admin.deposits.listAccountReferences())
 
   function update(id: string, column: StatementColumn, value: string) {
@@ -137,12 +130,6 @@ function StatementCsvPage() {
               </Link>
             }
           />
-          <Button
-            variant="outline"
-            onClick={() => setLines(draftFrom(SAMPLE_STATEMENT_LINES))}
-          >
-            Reset sample
-          </Button>
           <Button onClick={download} disabled={lines.length === 0}>
             <DownloadSimpleIcon data-icon="inline-start" />
             Download CSV
@@ -168,15 +155,18 @@ function StatementCsvPage() {
                 </EmptyMedia>
                 <EmptyTitle>No lines</EmptyTitle>
                 <EmptyDescription>
-                  Add a line, or restore the sample statement.
+                  Add a line to build a bank statement CSV for upload.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button
                   variant="outline"
-                  onClick={() => setLines(draftFrom(SAMPLE_STATEMENT_LINES))}
+                  onClick={() =>
+                    setLines((current) => [...current, blankLine()])
+                  }
                 >
-                  Reset sample
+                  <PlusIcon data-icon="inline-start" />
+                  Add line
                 </Button>
               </EmptyContent>
             </Empty>
