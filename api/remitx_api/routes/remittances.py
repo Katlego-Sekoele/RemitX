@@ -1,10 +1,9 @@
 import uuid
+from dataclasses import asdict
 
 from fastapi import Depends, HTTPException, Query, status
 
 from remitx_api.auth.dependencies import get_current_user
-from dataclasses import asdict
-
 from remitx_api.controllers.remittance_controller import (
     RemittanceController,
     RemittanceView,

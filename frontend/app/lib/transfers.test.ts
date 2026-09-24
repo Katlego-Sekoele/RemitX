@@ -25,7 +25,6 @@ describe("status", () => {
     expect(isInFlight("confirmed")).toBe(false)
     expect(isInFlight("failed")).toBe(false)
   })
-
 })
 
 describe("isSlowToStart", () => {
