@@ -48,6 +48,13 @@ class PlatformAccountRead(Schema):
     available_balance: Decimal
 
 
+class TreasuryCoverageRead(Schema):
+    """Token the treasury wallet can still spend, and token customers hold."""
+
+    token_available: Decimal
+    customer_token_balances: Decimal
+
+
 class AccountTransactionRead(Schema):
     """A read-only representation of a transaction on a customer currency account."""
 

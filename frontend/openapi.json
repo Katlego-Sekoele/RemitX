@@ -178,6 +178,33 @@
         "title": "AccountTransactionRead",
         "type": "object"
       },
+      "ActivityDayRead": {
+        "description": "One UTC day of the caller's own transfers.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "token_received": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Token Received",
+            "type": "string"
+          },
+          "zar_sent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Zar Sent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "zar_sent",
+          "token_received"
+        ],
+        "title": "ActivityDayRead",
+        "type": "object"
+      },
       "AdminMemberRead": {
         "description": "One row of the admin list: a person and the roles they hold now.",
         "properties": {
@@ -670,6 +697,26 @@
         "title": "BeneficiaryRelationship",
         "type": "string"
       },
+      "BeneficiarySpendRead": {
+        "description": "How much ZAR the caller has sent to one person, failures excluded.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "zar_sent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Zar Sent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "zar_sent"
+        ],
+        "title": "BeneficiarySpendRead",
+        "type": "object"
+      },
       "BeneficiaryUpdateRequest": {
         "additionalProperties": false,
         "description": "Change how a beneficiary is paid, or how the sender knows them. The\nperson can't change: a different person is a different beneficiary.",
@@ -696,6 +743,61 @@
           }
         },
         "title": "BeneficiaryUpdateRequest",
+        "type": "object"
+      },
+      "CountRead": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "CountRead",
+        "type": "object"
+      },
+      "DashboardRead": {
+        "description": "Everything the account overview draws besides balances.",
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityDayRead"
+            },
+            "title": "Activity",
+            "type": "array"
+          },
+          "beneficiaries": {
+            "items": {
+              "$ref": "#/components/schemas/BeneficiarySpendRead"
+            },
+            "title": "Beneficiaries",
+            "type": "array"
+          },
+          "has_transfers": {
+            "title": "Has Transfers",
+            "type": "boolean"
+          },
+          "in_flight": {
+            "items": {
+              "$ref": "#/components/schemas/InFlightTransferRead"
+            },
+            "title": "In Flight",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitHeadroomRead"
+          }
+        },
+        "required": [
+          "limits",
+          "activity",
+          "has_transfers",
+          "in_flight",
+          "beneficiaries"
+        ],
+        "title": "DashboardRead",
         "type": "object"
       },
       "DepositRow": {
@@ -822,6 +924,63 @@
           "status"
         ],
         "title": "HealthRead",
+        "type": "object"
+      },
+      "InFlightTransferRead": {
+        "description": "A transfer still queued or settling.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "sent",
+              "received"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "remittance_id": {
+            "format": "uuid",
+            "title": "Remittance Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "remittance_id",
+          "direction",
+          "counterparty_name",
+          "status",
+          "amount",
+          "currency",
+          "created_at"
+        ],
+        "title": "InFlightTransferRead",
         "type": "object"
       },
       "IntegrationMessageCreate": {
@@ -3617,6 +3776,39 @@
         "title": "KycTierRead",
         "type": "object"
       },
+      "LimitHeadroomRead": {
+        "description": "ZAR already sent against the caller's daily and monthly allowance.\n\nSent includes queued and settling transfers and leaves out ones that\nfailed. The allowance is the KYC standing's limit.",
+        "properties": {
+          "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Limit Zar",
+            "type": "string"
+          },
+          "daily_sent_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Sent Zar",
+            "type": "string"
+          },
+          "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Limit Zar",
+            "type": "string"
+          },
+          "monthly_sent_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Sent Zar",
+            "type": "string"
+          }
+        },
+        "required": [
+          "daily_limit_zar",
+          "daily_sent_zar",
+          "monthly_limit_zar",
+          "monthly_sent_zar"
+        ],
+        "title": "LimitHeadroomRead",
+        "type": "object"
+      },
       "MeAccessResponse": {
         "properties": {
           "is_admin": {
@@ -3688,6 +3880,36 @@
         "title": "MyRoleResponse",
         "type": "object"
       },
+      "OperationsRead": {
+        "description": "Volume and pipeline for the staff overview, plus the failed count.",
+        "properties": {
+          "failed_settlements": {
+            "title": "Failed Settlements",
+            "type": "integer"
+          },
+          "pipeline": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineDayRead"
+            },
+            "title": "Pipeline",
+            "type": "array"
+          },
+          "volume": {
+            "items": {
+              "$ref": "#/components/schemas/VolumeDayRead"
+            },
+            "title": "Volume",
+            "type": "array"
+          }
+        },
+        "required": [
+          "failed_settlements",
+          "volume",
+          "pipeline"
+        ],
+        "title": "OperationsRead",
+        "type": "object"
+      },
       "PayoutCurrency": {
         "description": "What a beneficiary may be paid out in. An enum so the OpenAPI spec,\nand therefore the frontend client, carries the option list.\n\nEvery fiat account counts, including the ZAR account created at signup.\nThe token account does not: nobody is paid into it directly.",
         "enum": [
@@ -3739,6 +3961,41 @@
           "created_at"
         ],
         "title": "PendingDepositRead",
+        "type": "object"
+      },
+      "PipelineDayRead": {
+        "description": "Transfers created that UTC day, by the settlement leg's current status.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "settled": {
+            "title": "Settled",
+            "type": "integer"
+          },
+          "settling": {
+            "title": "Settling",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "queued",
+          "settling",
+          "settled",
+          "failed"
+        ],
+        "title": "PipelineDayRead",
         "type": "object"
       },
       "PlatformAccountRead": {
@@ -4754,6 +5011,27 @@
         "title": "TransferTimelineStageRead",
         "type": "object"
       },
+      "TreasuryCoverageRead": {
+        "description": "Token the treasury wallet can still spend, and token customers hold.",
+        "properties": {
+          "customer_token_balances": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Customer Token Balances",
+            "type": "string"
+          },
+          "token_available": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Token Available",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_available",
+          "customer_token_balances"
+        ],
+        "title": "TreasuryCoverageRead",
+        "type": "object"
+      },
       "UserAccessRead": {
         "description": "Everything the access page shows about one person's access.",
         "properties": {
@@ -4979,6 +5257,33 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VolumeDayRead": {
+        "description": "Confirmed ZAR cash-in and confirmed token settlement on one UTC day.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "token_settled": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Token Settled",
+            "type": "string"
+          },
+          "zar_cash_in": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Zar Cash In",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "zar_cash_in",
+          "token_settled"
+        ],
+        "title": "VolumeDayRead",
         "type": "object"
       },
       "WithdrawalCreateRequest": {
@@ -5300,6 +5605,53 @@
         ]
       }
     },
+    "/admin/bank-accounts/pending-count": {
+      "get": {
+        "description": "How many external bank accounts are `pending_verification`. Needs\n``cashout:read``.",
+        "operationId": "get_pending_bank_account_count",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Count bank accounts awaiting verification",
+        "tags": [
+          "admin.bank_accounts"
+        ]
+      }
+    },
     "/admin/bank-accounts/{bank_account_id}/reject": {
       "post": {
         "description": "Reject a user's bank account and record who rejected it and why.",
@@ -5565,6 +5917,53 @@
           }
         ],
         "summary": "List deposits awaiting manual matching",
+        "tags": [
+          "admin.deposits"
+        ]
+      }
+    },
+    "/admin/deposits/pending-count": {
+      "get": {
+        "description": "How many statement lines are still unmatched. Needs ``cashin:read``.",
+        "operationId": "get_pending_deposit_count",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Count deposits awaiting manual matching",
         "tags": [
           "admin.deposits"
         ]
@@ -6970,6 +7369,53 @@
         ]
       }
     },
+    "/admin/operations": {
+      "get": {
+        "description": "The last 30 UTC days of confirmed ZAR cash-in and token settlement,\ntransfers created each day by status, and how many settlements are failed\nnow. Needs ``transaction:read_any``.",
+        "operationId": "get_operations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read settlement volume and pipeline",
+        "tags": [
+          "admin.operations"
+        ]
+      }
+    },
     "/admin/platform-accounts": {
       "get": {
         "description": "RemitX's bank and fee revenue accounts per settlement country, the XRPL\ntreasury wallet, and the uctusd issuer, each with its ledger and available\nbalance. Bank accounts come first, then fee revenue, the treasury wallet\nand the issuer; ZAR leads within each. Needs ``platform_account:read``.",
@@ -7016,6 +7462,53 @@
           }
         ],
         "summary": "List RemitX's platform accounts",
+        "tags": [
+          "admin.accounts"
+        ]
+      }
+    },
+    "/admin/platform-accounts/coverage": {
+      "get": {
+        "description": "Token still available on the treasury wallet, and the token customers\nhold. Needs ``platform_account:read``.",
+        "operationId": "get_treasury_coverage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreasuryCoverageRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read treasury token coverage",
         "tags": [
           "admin.accounts"
         ]
@@ -8188,6 +8681,43 @@
         "summary": "Edit a beneficiary",
         "tags": [
           "beneficiaries"
+        ]
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "description": "Limit headroom, the last 30 UTC days of activity, in-flight transfers,\nand the people the caller has sent the most ZAR to.",
+        "operationId": "get_dashboard",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read the caller's account overview",
+        "tags": [
+          "dashboard"
         ]
       }
     },
@@ -9879,6 +10409,10 @@
       "name": "remittances"
     },
     {
+      "description": "The signed-in customer's account overview.",
+      "name": "dashboard"
+    },
+    {
       "description": "A caller's own currency account balances and history.",
       "name": "accounts"
     },
@@ -9909,6 +10443,10 @@
     {
       "description": "RemitX's own platform account balances.",
       "name": "admin.accounts"
+    },
+    {
+      "description": "Settlement volume and the transfer pipeline.",
+      "name": "admin.operations"
     },
     {
       "description": "ZAR cash-in reconciliation against bank statements.",

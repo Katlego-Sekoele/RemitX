@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.deposit import Deposit
@@ -47,6 +47,15 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
             .where(Transaction.status == STATUS_PENDING)
             .order_by(Transaction.created_at)
         ).all()
+
+    def count_pending_deposits(self) -> int:
+        """How many deposits are still unmatched, for the staff overview."""
+        count = db.session.scalar(
+            select(func.count(Deposit.deposit_id))
+            .join(Transaction, Deposit.tx_id == Transaction.tx_id)
+            .where(Transaction.status == STATUS_PENDING)
+        )
+        return int(count or 0)
 
     def link_deposit_to_user(
         self, deposit_id: uuid.UUID, user_id: uuid.UUID, confirmed_by: str

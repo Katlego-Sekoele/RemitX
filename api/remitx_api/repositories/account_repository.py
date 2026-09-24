@@ -198,6 +198,21 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             .values(account_balance=Account.account_balance - amount)
         )
 
+    def sum_user_balances(self, currency: str) -> Decimal:
+        """Ledger balances of every customer account in `currency`.
+
+        What customers are owed in that currency, for the treasury coverage
+        figure. In-flight legs are not subtracted: the ledger balance is the
+        amount already credited.
+        """
+        total = db.session.scalar(
+            select(func.coalesce(func.sum(Account.account_balance), 0)).where(
+                Account.type == TYPE_USER,
+                Account.account_currency == currency,
+            )
+        )
+        return Decimal(str(total))
+
     def get_available_balance(self, account_id: uuid.UUID) -> Decimal:
         """Raw balance minus this account's own still-in-flight outgoing
         transactions. A quote is only valid if the user has sufficient

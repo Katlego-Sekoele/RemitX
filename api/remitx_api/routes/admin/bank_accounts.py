@@ -17,6 +17,7 @@ from remitx_api.models.schemas.bank_account import (
     BankAccountRead,
     RejectBankAccountRequest,
 )
+from remitx_api.models.schemas.count import CountRead
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
 from remitx_api.services.bank_account_service import (
@@ -43,6 +44,17 @@ def list_pending_bank_accounts():
     because this is an admin endpoint, but the customer-facing endpoints mask
     it for security."""
     return [BankAccountRead.model_validate(view) for view in controller.list_pending()]
+
+
+@router.get(
+    "/pending-count",
+    response_model=CountRead,
+    summary="Count bank accounts awaiting verification",
+)
+def get_pending_bank_account_count():
+    """How many external bank accounts are `pending_verification`. Needs
+    ``cashout:read``."""
+    return CountRead(count=controller.pending_count())
 
 
 @router.post(

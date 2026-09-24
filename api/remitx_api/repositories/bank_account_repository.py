@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.bank_account import (
@@ -63,6 +63,15 @@ class BankAccountRepository(Repository[BankAccount, uuid.UUID]):
             .where(BankAccount.status == STATUS_PENDING_VERIFICATION)
             .order_by(BankAccount.created_at)
         ).all()
+
+    def count_pending_verification(self) -> int:
+        """How many bank accounts are waiting on a reviewer."""
+        count = db.session.scalar(
+            select(func.count(BankAccount.bank_account_id)).where(
+                BankAccount.status == STATUS_PENDING_VERIFICATION
+            )
+        )
+        return int(count or 0)
 
     def verify(
         self, bank_account_id: uuid.UUID, admin_id: uuid.UUID, verified_at: datetime

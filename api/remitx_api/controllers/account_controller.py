@@ -91,6 +91,14 @@ class UnknownAccountError(Exception):
 
 
 @dataclass(frozen=True)
+class TreasuryCoverageView:
+    """Token the house wallet can still spend, against token customers hold."""
+
+    token_available: Decimal
+    customer_token_balances: Decimal
+
+
+@dataclass(frozen=True)
 class AccountView:
     account_id: uuid.UUID
     currency: str
@@ -241,6 +249,31 @@ class AccountController:
             )
             for account in accounts
         ]
+
+    def get_treasury_coverage(self) -> TreasuryCoverageView:
+        """Available token on the treasury wallet against customer token balances.
+
+        Coverage is what settlement can still pay out. Customer balances are
+        ledger balances, including token already credited and not yet withdrawn.
+        """
+        wallets = [
+            account
+            for account in self._accounts.list_platform_accounts()
+            if account.type == TYPE_XRPL_WALLET
+            and account.account_currency == CURRENCY_TOKEN
+        ]
+        available = sum(
+            (
+                self._accounts.get_available_balance(wallet.account_id)
+                for wallet in wallets
+            ),
+            Decimal("0"),
+        )
+        owed = self._accounts.sum_user_balances(CURRENCY_TOKEN)
+        return TreasuryCoverageView(
+            token_available=_money(available),
+            customer_token_balances=_money(owed),
+        )
 
     def get_account_history(
         self,

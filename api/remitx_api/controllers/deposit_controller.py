@@ -8,6 +8,7 @@ from remitx_api.models.schemas.deposit import (
     SkippedStatementLineRead,
 )
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.deposit_repository import DepositRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
 
@@ -61,6 +62,10 @@ class DepositController:
                 AccountRepository().list_customer_references()
             )
         ]
+
+    def pending_count(self) -> int:
+        """Deposits still waiting to be matched."""
+        return DepositRepository().count_pending_deposits()
 
     def list_pending(self) -> list[dict]:
         """Pending deposits for the admin portal's manual-review queue."""

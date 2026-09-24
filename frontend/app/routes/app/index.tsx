@@ -8,6 +8,7 @@ import { Link } from "react-router"
 
 import { BalanceSummary } from "~/components/accounts/balance-summary"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { DashboardInsights } from "~/components/dashboard/dashboard-insights"
 import { ConnectedWorldIllustration } from "~/components/illustrations/connected-world"
 import { RecentTransfers } from "~/components/transfers/recent-transfers"
 import { Button } from "~/components/ui/button"
@@ -46,6 +47,7 @@ export default function AppHome() {
       <div className="flex flex-col gap-6">
         <Welcome verified={verified} loaded={onboarding.data !== undefined} />
         <BalanceSummary />
+        <DashboardInsights />
         {onboarding.data ? (
           <Card>
             <CardHeader>

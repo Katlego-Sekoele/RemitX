@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from remitx_api.models.orm.bank_account import BankAccount
+from remitx_api.repositories.bank_account_repository import BankAccountRepository
 from remitx_api.services import bank_account_service
 
 
@@ -71,6 +72,10 @@ class BankAccountController:
                 user_id, currency
             )
         ]
+
+    def pending_count(self) -> int:
+        """Bank accounts waiting on verification."""
+        return BankAccountRepository().count_pending_verification()
 
     def list_pending(self) -> list[BankAccountView]:
         """List all bank accounts that are pending verification."""
