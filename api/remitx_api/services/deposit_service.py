@@ -1,6 +1,7 @@
 import csv
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -20,6 +21,7 @@ from remitx_api.models.orm.transaction import (
     TYPE_DEPOSIT,
     Transaction,
 )
+from remitx_api.models.schemas.deposit import SkippedStatementLineReason
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.deposit_repository import DepositRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
@@ -29,6 +31,39 @@ logger = logging.getLogger(__name__)
 # Hand-seeded platform account every deposit's source leg debits from.
 REMITX_SA_BANK_ACCOUNT_LABEL = "RemitX SA Bank Account"
 _AMOUNT_QUANTUM = Decimal("0.01")
+
+_SKIP_MESSAGES: dict[SkippedStatementLineReason, str] = {
+    SkippedStatementLineReason.UNPARSEABLE_DATE: (
+        "Could not parse the date. Fix it (ISO 8601, e.g. 2026-09-10) and "
+        "upload the statement again — nothing was recorded for this line."
+    ),
+    SkippedStatementLineReason.NOT_INCOMING: (
+        "This line is not incoming money (amount must be positive). It was not "
+        "recorded as a deposit."
+    ),
+    SkippedStatementLineReason.ALREADY_RECONCILED: (
+        "This line was already reconciled on a previous run and was not "
+        "credited again."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class SkippedStatementLine:
+    reference: str | None
+    amount: Decimal
+    date: str | None
+    reason: SkippedStatementLineReason
+
+    @property
+    def message(self) -> str:
+        return _SKIP_MESSAGES[self.reason]
+
+
+@dataclass(frozen=True)
+class ProcessDepositsResult:
+    deposits: list[Deposit]
+    skipped: list[SkippedStatementLine]
 
 
 def statement_fingerprint(row: dict, *, statement_date: datetime) -> str:
@@ -59,7 +94,29 @@ def _try_parse_statement_datetime(value) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
+def _statement_date_cell(row: dict) -> str | None:
+    raw_date = row.get("date")
+    if raw_date in (None, ""):
+        return None
+    return str(raw_date)
+
+
+def _skipped_line(
+    row: dict,
+    *,
+    reference: str | None,
+    amount: Decimal,
+    reason: SkippedStatementLineReason,
+) -> SkippedStatementLine:
+    return SkippedStatementLine(
+        reference=reference,
+        amount=amount,
+        date=_statement_date_cell(row),
+        reason=reason,
+    )
+
+
+def process_deposits(bank_statement: str | list[dict]) -> ProcessDepositsResult:
     """The daily reconciliation job — simulated for this project through the
     admin pushing a button on the admin portal page that executes the job.
     """
@@ -67,14 +124,16 @@ def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
     transaction_repo = TransactionRepository()
     account_repo = AccountRepository()
 
-    # List of Deposit rows that were created or updated (pending->confirmed) by
-    # this run. A statement line that isn't money coming in yields no Deposit
-    # at all, so this can be shorter than the statement itself.
-    touched = []
+    touched: list[Deposit] = []
+    skipped: list[SkippedStatementLine] = []
     for row in _read_bank_statement(bank_statement):
-        deposit = _create_deposit(row, deposit_repo, transaction_repo, account_repo)
+        deposit, skip = _create_deposit(
+            row, deposit_repo, transaction_repo, account_repo
+        )
         if deposit is not None:
             touched.append(deposit)
+        elif skip is not None:
+            skipped.append(skip)
 
     # Anything that didn't match a user lands as a pending transaction and
     # stays that way — no automatic retry. get_pending_deposits() is what the
@@ -82,7 +141,7 @@ def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
     # approve_pending_deposit() is what it calls once an admin has picked
     # the right user for one.
     db.session.commit()
-    return touched
+    return ProcessDepositsResult(deposits=touched, skipped=skipped)
 
 
 def _create_deposit(
@@ -90,7 +149,7 @@ def _create_deposit(
     deposit_repo: DepositRepository,
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
-) -> Deposit | None:
+) -> tuple[Deposit | None, SkippedStatementLine | None]:
     """Match one bank statement line to an account and write its deposit + transaction.
 
     - Matched: transaction inserted `confirmed`, crediting the account
@@ -113,7 +172,12 @@ def _create_deposit(
             reference,
             amount,
         )
-        return None
+        return None, _skipped_line(
+            row,
+            reference=reference,
+            amount=amount,
+            reason=SkippedStatementLineReason.NOT_INCOMING,
+        )
 
     processed_at = datetime.now(UTC)
     raw_date = row.get("date")
@@ -123,7 +187,12 @@ def _create_deposit(
             reference,
             raw_date,
         )
-        return None
+        return None, _skipped_line(
+            row,
+            reference=reference,
+            amount=amount,
+            reason=SkippedStatementLineReason.UNPARSEABLE_DATE,
+        )
     statement_date = _parse_statement_date(raw_date, processed_at)
     fingerprint = statement_fingerprint(
         {**row, "reference": reference, "amount": amount},
@@ -131,7 +200,12 @@ def _create_deposit(
     )
     if deposit_repo.get_by_statement_fingerprint(fingerprint) is not None:
         logger.info("Skipping statement line already reconciled (%s)", fingerprint)
-        return None
+        return None, _skipped_line(
+            row,
+            reference=reference,
+            amount=amount,
+            reason=SkippedStatementLineReason.ALREADY_RECONCILED,
+        )
 
     # For now we only support ZAR deposits, so the bank account is always the same.
     remitx_bank_account = account_repo.get_platform_account_by_label(
@@ -142,21 +216,29 @@ def _create_deposit(
 
     try:
         with db.session.begin_nested():
-            return _insert_deposit(
-                reference,
-                amount,
-                fingerprint,
-                statement_date,
-                processed_at,
-                remitx_bank_account,
-                deposit_repo,
-                transaction_repo,
-                account_repo,
+            return (
+                _insert_deposit(
+                    reference,
+                    amount,
+                    fingerprint,
+                    statement_date,
+                    processed_at,
+                    remitx_bank_account,
+                    deposit_repo,
+                    transaction_repo,
+                    account_repo,
+                ),
+                None,
             )
     except IntegrityError:
         # A concurrent reconciliation inserted this fingerprint first.
         logger.info("Skipping statement line already reconciled (%s)", fingerprint)
-        return None
+        return None, _skipped_line(
+            row,
+            reference=reference,
+            amount=amount,
+            reason=SkippedStatementLineReason.ALREADY_RECONCILED,
+        )
 
 
 def _insert_deposit(

@@ -3584,6 +3584,30 @@
         "title": "ProcessDepositsRequest",
         "type": "object"
       },
+      "ProcessDepositsResponse": {
+        "properties": {
+          "processed": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessedDepositRead"
+            },
+            "title": "Processed",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedStatementLineRead"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "processed",
+          "skipped"
+        ],
+        "title": "ProcessDepositsResponse",
+        "type": "object"
+      },
       "ProcessedDepositRead": {
         "properties": {
           "amount": {
@@ -4166,6 +4190,63 @@
         "title": "RoleRevokeRequest",
         "type": "object"
       },
+      "SkippedStatementLineRead": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/SkippedStatementLineReason"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "reference",
+          "amount",
+          "date",
+          "reason",
+          "message"
+        ],
+        "title": "SkippedStatementLineRead",
+        "type": "object"
+      },
+      "SkippedStatementLineReason": {
+        "description": "Why a statement line produced no deposit on this run.",
+        "enum": [
+          "unparseable_date",
+          "not_incoming",
+          "already_reconciled"
+        ],
+        "title": "SkippedStatementLineReason",
+        "type": "string"
+      },
       "ToxicCombinationRead": {
         "description": "A pair of permissions the access page warns about before a grant.",
         "properties": {
@@ -4699,11 +4780,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ProcessedDepositRead"
-                  },
-                  "title": "Response Process Deposits",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ProcessDepositsResponse"
                 }
               }
             },

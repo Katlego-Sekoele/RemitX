@@ -45,6 +45,7 @@ import {
   type AccountReferenceRead,
   type DepositRow,
   type PendingDepositRead as PendingDeposit,
+  type SkippedStatementLineRead,
 } from "~/client"
 import {
   missingStatementColumns,
@@ -171,14 +172,23 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
   const [rows, setRows] = useState<CsvRow[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
+  const [skippedLines, setSkippedLines] = useState<SkippedStatementLineRead[]>(
+    [],
+  )
 
   const process = useMutation({
     ...api.admin.deposits.processDeposits(),
-    onSuccess: () => {
+    onSuccess: (data) => {
       onProcessed()
+      setSkippedLines(data.skipped ?? [])
       setCompleted(true)
-      setFile(null)
-      setRows([])
+      const needsFix = (data.skipped ?? []).some(
+        (line) => line.reason === "unparseable_date",
+      )
+      if (!needsFix) {
+        setFile(null)
+        setRows([])
+      }
     },
   })
 
@@ -187,6 +197,7 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
     setRows([])
     setParseError(null)
     setCompleted(false)
+    setSkippedLines([])
     process.reset()
   }
 
@@ -228,6 +239,33 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
           <Alert>
             <CheckCircleIcon />
             <AlertTitle>Simulation completed</AlertTitle>
+            {skippedLines.length > 0 && (
+              <AlertDescription>
+                {skippedLines.length} line
+                {skippedLines.length === 1 ? "" : "s"} were not imported. See
+                below to fix and run again.
+              </AlertDescription>
+            )}
+          </Alert>
+        )}
+
+        {skippedLines.length > 0 && (
+          <Alert variant="destructive">
+            <WarningIcon />
+            <AlertTitle>Lines not imported</AlertTitle>
+            <AlertDescription>
+              <ul className="mt-2 list-disc space-y-2 pl-5">
+                {skippedLines.map((line, index) => (
+                  <li key={`${line.reference ?? "line"}-${index}`}>
+                    <span className="font-medium">
+                      {line.reference ?? "—"} · {line.amount}
+                      {line.date ? ` · ${line.date}` : ""}
+                    </span>
+                    <span className="block text-sm">{line.message}</span>
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
           </Alert>
         )}
 

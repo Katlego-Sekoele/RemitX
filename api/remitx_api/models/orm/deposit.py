@@ -55,6 +55,8 @@ class Deposit(Base):
             f"({_CONFIRMED_BY_UUID_SHAPE})",
             name="deposits_confirmed_by_actor",
         ),
+        # Admin ids are also enforced in Postgres by
+        # validate_deposits_confirmed_by() (see Alembic migration).
     )
 
     deposit_id: Mapped[uuid.UUID] = mapped_column(

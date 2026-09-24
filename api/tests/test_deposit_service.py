@@ -1,4 +1,3 @@
-import uuid
 from decimal import Decimal
 
 from remitx_api.controllers.user_controller import UserController
@@ -9,6 +8,7 @@ from remitx_api.models.orm.account import (
     TYPE_PLATFORM_FIAT,
     Account,
 )
+from remitx_api.models.schemas.deposit import SkippedStatementLineReason
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import deposit_service
 
@@ -38,12 +38,12 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context):
     )
     zar_reference = f"{user.base_reference}-zar"
 
-    deposits = deposit_service.process_deposits(
+    result = deposit_service.process_deposits(
         [{"reference": zar_reference, "amount": "500.00", "date": "2026-09-10"}]
     )
 
-    assert len(deposits) == 1
-    assert deposits[0].user_id == user.id
+    assert len(result.deposits) == 1
+    assert result.deposits[0].user_id == user.id
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
     assert zar_account.account_balance == Decimal("500.00")
 
@@ -59,12 +59,12 @@ def test_token_reference_matches_its_own_account(app_context):
     )
     token_reference = f"{user.base_reference}-tok"
 
-    deposits = deposit_service.process_deposits(
+    result = deposit_service.process_deposits(
         [{"reference": token_reference, "amount": "500.00", "date": "2026-09-10"}]
     )
 
-    assert len(deposits) == 1
-    assert deposits[0].user_id == user.id
+    assert len(result.deposits) == 1
+    assert result.deposits[0].user_id == user.id
     token_account = AccountRepository().get_user_account(user.id, CURRENCY_TOKEN)
     assert token_account.account_balance == Decimal("500.00")
 
@@ -83,8 +83,9 @@ def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context)
     first = deposit_service.process_deposits([line])
     second = deposit_service.process_deposits([line, dict(line)])
 
-    assert len(first) == 1
-    assert second == []
+    assert len(first.deposits) == 1
+    assert second.deposits == []
+    assert len(second.skipped) == 2
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
     assert zar_account.account_balance == Decimal("500.00")
     assert len(deposit_service.get_deposits_for_user(user.id)) == 1
@@ -92,7 +93,7 @@ def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context)
     later = deposit_service.process_deposits(
         [{"reference": zar_reference, "amount": "10.00", "date": "2026-09-10"}]
     )
-    assert len(later) == 1
+    assert len(later.deposits) == 1
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
     assert zar_account.account_balance == Decimal("510.00")
 
@@ -102,9 +103,10 @@ def test_reprocessing_an_unmatched_line_does_not_queue_it_twice(app_context):
     line = {"reference": "not-a-person", "amount": "80.00", "date": "2026-09-09"}
 
     deposit_service.process_deposits([line])
-    deposit_service.process_deposits([line])
+    again = deposit_service.process_deposits([line])
 
     assert len(deposit_service.get_pending_deposits()) == 1
+    assert len(again.skipped) == 1
 
 
 def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
@@ -115,13 +117,16 @@ def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
     user = UserController().ensure_provisioned(
         "user_approve_tok", lambda: "approve-tok@example.com", lambda: "Tok"
     )
+    admin = UserController().ensure_provisioned(
+        "user_admin_approve", lambda: "admin-approve@example.com", lambda: "Adm"
+    )
     deposit_service.process_deposits(
         [{"reference": "not-a-person", "amount": "80.00", "date": "2026-09-11"}]
     )
     pending = deposit_service.get_pending_deposits()[0]
 
     deposit_service.approve_pending_deposit(
-        pending.deposit_id, f"{user.base_reference}-TOK", uuid.uuid4()
+        pending.deposit_id, f"{user.base_reference}-TOK", admin.id
     )
 
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
@@ -134,11 +139,13 @@ def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
 def test_unparseable_statement_date_is_skipped(app_context):
     _seed_bank_account()
 
-    deposits = deposit_service.process_deposits(
+    result = deposit_service.process_deposits(
         [{"reference": "remitx deposit", "amount": "80.00", "date": "not-a-date"}]
     )
 
-    assert deposits == []
+    assert result.deposits == []
+    assert len(result.skipped) == 1
+    assert result.skipped[0].reason == SkippedStatementLineReason.UNPARSEABLE_DATE
     assert deposit_service.get_pending_deposits() == []
 
 
@@ -153,14 +160,15 @@ def test_outgoing_lines_are_skipped_not_recorded_as_deposits(app_context):
     )
     zar_reference = f"{user.base_reference}-zar"
 
-    deposits = deposit_service.process_deposits(
+    result = deposit_service.process_deposits(
         [
             {"reference": "SALARY-SEP26", "amount": "-18500.00", "date": "2026-09-08"},
             {"reference": zar_reference, "amount": "500.00", "date": "2026-09-10"},
         ]
     )
 
-    assert len(deposits) == 1
-    assert deposits[0].user_id == user.id
+    assert len(result.deposits) == 1
+    assert result.deposits[0].user_id == user.id
+    assert len(result.skipped) == 1
     zar_account = AccountRepository().get_user_account(user.id, CURRENCY_ZAR)
     assert zar_account.account_balance == Decimal("500.00")
