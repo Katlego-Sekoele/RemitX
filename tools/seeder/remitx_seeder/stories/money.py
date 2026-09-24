@@ -212,6 +212,7 @@ class MoneyStory:
                 "date": line["moment"].isoformat(),
                 "reference": line["reference"],
                 "amount": str(line["amount"]),
+                "currency": "ZAR",
             }
             for line in lines
         ]
@@ -223,6 +224,7 @@ class MoneyStory:
                     "date": waking_time(self.ctx.rng, day).isoformat(),
                     "reference": "BANK CHARGES",
                     "amount": str(-Decimal(self.ctx.rng.randint(35, 180))),
+                    "currency": "ZAR",
                 }
             )
         result = deposit_service.process_deposits(rows)

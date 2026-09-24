@@ -76,18 +76,13 @@ def preflight() -> uuid.UUID | None:
     from remitx_api.models.orm.role import Role
     from remitx_api.models.orm.user_role import UserRole
     from remitx_api.repositories.account_repository import AccountRepository
-    from remitx_api.services.deposit_service import REMITX_SA_BANK_ACCOUNT_LABEL
     from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
     from sqlalchemy import select
 
     accounts = AccountRepository()
     missing = [
         label
-        for label in (
-            REMITX_SA_BANK_ACCOUNT_LABEL,
-            REMITX_TREASURY_WALLET_LABEL,
-            Config().UCTUSD_ISSUER_LABEL,
-        )
+        for label in (REMITX_TREASURY_WALLET_LABEL, Config().UCTUSD_ISSUER_LABEL)
         if accounts.get_platform_account_by_label(label) is None
     ]
     for currency in ("ZAR", "USD", "ZWL", "NAD"):

@@ -78,16 +78,24 @@ function formatDate(value: string) {
   })
 }
 
-/** Statement rows only ever carry reference/amount/date to `process_deposits`
- * — everything else in the CSV (description, ...) is for the admin's eyes
- * only. */
+/** Statement rows only ever carry reference/amount/currency/date to
+ * `process_deposits` — everything else in the CSV (description, ...) is for
+ * the admin's eyes only. */
 function toDepositRows(rows: CsvRow[]): DepositRow[] {
   return rows.map((row) => ({
     reference: row.reference?.trim() ? row.reference.trim() : null,
     amount: row.amount ?? "0",
+    currency: row.currency?.trim() ? row.currency.trim() : null,
     date: row.date?.trim() ? row.date.trim() : null,
   }))
 }
+
+// Lines the admin has to correct in the file and upload again. Anything else
+// skipped was already handled.
+const FIXABLE_SKIP_REASONS: readonly string[] = [
+  "unparseable_date",
+  "unknown_currency",
+]
 
 /**
  * Mirrors how the API gates this page (routes/admin/deposits.py), and the
@@ -143,9 +151,8 @@ function ProcessDepositsPage() {
           <CardDescription>
             Statement lines that didn&apos;t match an account. Search the
             customer on the row and confirm; the credit lands on the account you
-            pick, in its currency. Token accounts can&apos;t take deposits. Only
-            confirm once they have proven, off platform, that the payment is
-            theirs.
+            pick, which must be in the line&apos;s currency. Only confirm once
+            they have proven, off platform, that the payment is theirs.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -184,8 +191,8 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
       onProcessed()
       setSkippedLines(data.skipped ?? [])
       setCompleted(true)
-      const needsFix = (data.skipped ?? []).some(
-        (line) => line.reason === "unparseable_date"
+      const needsFix = (data.skipped ?? []).some((line) =>
+        FIXABLE_SKIP_REASONS.includes(line.reason)
       )
       if (!needsFix) {
         setFile(null)
@@ -210,7 +217,9 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
       const text = await selected.text()
       const parsed = parseStatementCsv(text)
       if (missingStatementColumns(parsed.headers).length > 0) {
-        setParseError('CSV must have "reference" and "amount" columns.')
+        setParseError(
+          'CSV must have "reference", "amount" and "currency" columns.'
+        )
         setFile(null)
         setRows([])
         return
@@ -325,7 +334,7 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
                 Drop a statement here, or click to browse
               </AttachmentTitle>
               <AttachmentDescription>
-                CSV with reference and amount columns.
+                CSV with reference, amount and currency columns.
               </AttachmentDescription>
             </AttachmentContent>
           </Attachment>
@@ -416,7 +425,9 @@ function PendingTable({
             <PendingDepositRow
               key={deposit.deposit_id}
               deposit={deposit}
-              accounts={accounts.data ?? []}
+              accounts={(accounts.data ?? []).filter(
+                (account) => account.currency === deposit.currency
+              )}
               onResolved={onResolved}
             />
           ) : (

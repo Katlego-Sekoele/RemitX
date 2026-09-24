@@ -4,15 +4,17 @@ Cash-in header (Transaction_Flow_Context.md Phase A).
 One row per bank statement line, written the instant it's seen — matched or
 not. `tx_id` always points at the one `transactions` row this deposit is:
 
-- Matched at import -> that row is `confirmed` immediately, `user_id` set,
-  `confirmed_by='system'`, in the currency of the fiat account the reference
-  names. A token account reference never matches.
-- Unmatched -> that row is inserted `pending` with `debit_account_id` NULL
-  (see models/orm/transaction.py), `user_id` NULL, `user_account_reference`
-  holding whatever the bank statement gave. An admin resolves it later
-  (see `DepositRepository.link_deposit_to_user` +
-  `TransactionRepository.confirm_pending_deposit_transaction`)
-  by confirming that *same* row, never a new one.
+- Matched at import -> the reference names the customer's account in the
+  line's currency. That row is `confirmed` immediately, `user_id` set,
+  `confirmed_by='system'`.
+- Unmatched (including a reference to an account in another currency, or a
+  token account) -> that row is inserted `pending`, still in the line's
+  currency, with `debit_account_id` NULL (see models/orm/transaction.py),
+  `user_id` NULL, `user_account_reference` holding whatever the bank
+  statement gave. An admin resolves it later, to an account in that same
+  currency (see `DepositRepository.link_deposit_to_user` +
+  `TransactionRepository.confirm_pending_deposit_transaction`), by
+  confirming that *same* row, never a new one.
 """
 
 import uuid

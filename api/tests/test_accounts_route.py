@@ -331,7 +331,12 @@ def _deposit(reference: str, *lines: tuple[str, str]) -> None:
     try:
         deposit_service.process_deposits(
             [
-                {"reference": reference, "amount": amount, "date": date}
+                {
+                    "reference": reference,
+                    "amount": amount,
+                    "currency": "ZAR",
+                    "date": date,
+                }
                 for amount, date in lines
             ]
         )

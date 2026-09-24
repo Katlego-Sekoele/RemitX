@@ -21,7 +21,6 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.platform_account_seed import PLATFORM_ACCOUNT_SEEDS
 from remitx_api.repositories.account_repository import AccountRepository
-from remitx_api.services.deposit_service import REMITX_SA_BANK_ACCOUNT_LABEL
 from remitx_api.services.remittance_service import (
     REMITX_TREASURY_WALLET_LABEL,
     TOKEN_ISSUER_LABEL,
@@ -85,11 +84,7 @@ def test_the_seed_has_every_platform_account_the_services_look_up(app_context):
     seed_platform_accounts()
     accounts = AccountRepository()
 
-    for label in (
-        REMITX_SA_BANK_ACCOUNT_LABEL,
-        REMITX_TREASURY_WALLET_LABEL,
-        TOKEN_ISSUER_LABEL,
-    ):
+    for label in (REMITX_TREASURY_WALLET_LABEL, TOKEN_ISSUER_LABEL):
         assert accounts.get_platform_account_by_label(label) is not None, label
     for currency in PAYOUT_CURRENCIES:
         for type_ in (TYPE_PLATFORM_FIAT, TYPE_PLATFORM_REVENUE):

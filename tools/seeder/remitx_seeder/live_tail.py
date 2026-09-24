@@ -75,6 +75,7 @@ def _ensure_balance(person: SeededPerson, amount: Decimal) -> None:
                     "date": datetime.now(UTC).isoformat(),
                     "reference": person.zar_reference,
                     "amount": str(amount + Decimal("100")),
+                    "currency": CURRENCY_ZAR,
                 }
             ]
         )

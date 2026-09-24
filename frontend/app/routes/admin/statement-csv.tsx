@@ -3,14 +3,16 @@ import {
   FileCsvIcon,
   PlusIcon,
   TrashIcon,
+  WarningIcon,
 } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { Link } from "react-router"
 
 import { AccountReferenceCombobox } from "~/components/admin/account-reference-combobox"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -30,6 +32,13 @@ import {
 import { DatePicker } from "~/components/ui/date-picker"
 import { Input } from "~/components/ui/input"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select"
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,10 +46,11 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table"
-import { api } from "~/client"
+import { api, PayoutCurrency } from "~/client"
 import { useHasPermission } from "~/hooks/use-permissions"
 import {
   STATEMENT_COLUMNS,
+  mismatchedAccountCurrency,
   statementToCsv,
   type StatementColumn,
   type StatementLine,
@@ -60,7 +70,15 @@ const COLUMN_LABEL: Record<StatementColumn, string> = {
   description: "Description",
   reference: "Reference",
   amount: "Amount",
+  currency: "Currency",
 }
+
+// RemitX has a bank account in every payout currency, so a statement line
+// can be in any of them.
+const CURRENCY_ITEMS = Object.values(PayoutCurrency).map((value) => ({
+  value,
+  label: value,
+}))
 
 export function meta(): Route.MetaDescriptors {
   return [
@@ -76,6 +94,7 @@ function blankLine(): DraftLine {
     description: "",
     reference: "",
     amount: "",
+    currency: PayoutCurrency.ZAR,
   }
 }
 
@@ -96,6 +115,10 @@ export default function StatementCsv() {
 function StatementCsvPage() {
   const [lines, setLines] = useState<DraftLine[]>([])
   const accounts = useQuery(api.admin.deposits.listAccountReferences())
+  const accountList = accounts.data ?? []
+  const mismatchOf = (line: DraftLine) =>
+    mismatchedAccountCurrency(line, accountList)
+  const hasMismatch = lines.some((line) => mismatchOf(line) !== null)
 
   function update(id: string, column: StatementColumn, value: string) {
     setLines((current) =>
@@ -132,7 +155,10 @@ function StatementCsvPage() {
               </Link>
             }
           />
-          <Button onClick={download} disabled={lines.length === 0}>
+          <Button
+            onClick={download}
+            disabled={lines.length === 0 || hasMismatch}
+          >
             <DownloadSimpleIcon data-icon="inline-start" />
             Download CSV
           </Button>
@@ -143,9 +169,11 @@ function StatementCsvPage() {
         <CardHeader>
           <CardTitle>Bank statement</CardTitle>
           <CardDescription>
-            Date, description, reference, and amount. A reference such as
-            sipho1-zar is what matching uses; a negative amount is outgoing and
-            skipped. Upload the file on Process deposits.
+            Date, description, reference, amount, and currency. The currency is
+            that of the RemitX bank account the money came into, and must match
+            the account the reference names. A reference such as sipho1-zar is
+            what matching uses; a negative amount is outgoing and skipped.
+            Upload the file on Process deposits.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -183,55 +211,109 @@ function StatementCsvPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lines.map((line, index) => (
-                  <TableRow key={line.id}>
-                    {STATEMENT_COLUMNS.map((column) => (
-                      <TableCell key={column}>
-                        {column === "reference" ? (
-                          <AccountReferenceCombobox
-                            accounts={accounts.data ?? []}
-                            value={line.reference}
-                            onChange={(reference) =>
-                              update(line.id, "reference", reference)
+                {lines.map((line, index) => {
+                  const mismatch = mismatchOf(line)
+                  return (
+                    <Fragment key={line.id}>
+                      <TableRow>
+                        {STATEMENT_COLUMNS.map((column) => (
+                          <TableCell key={column}>
+                            {column === "reference" ? (
+                              <AccountReferenceCombobox
+                                accounts={accountList}
+                                value={line.reference}
+                                onChange={(reference) =>
+                                  update(line.id, "reference", reference)
+                                }
+                                placeholder={`Reference on line ${index + 1}`}
+                              />
+                            ) : column === "date" ? (
+                              <DatePicker
+                                id={`${line.id}-date`}
+                                value={line.date}
+                                onChange={(value) =>
+                                  update(line.id, "date", value)
+                                }
+                              />
+                            ) : column === "currency" ? (
+                              <Select
+                                items={CURRENCY_ITEMS}
+                                value={line.currency}
+                                onValueChange={(next) => {
+                                  if (next) update(line.id, "currency", next)
+                                }}
+                              >
+                                <SelectTrigger
+                                  className="w-full"
+                                  aria-label={`Currency on line ${index + 1}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent alignItemWithTrigger={false}>
+                                  {CURRENCY_ITEMS.map((item) => (
+                                    <SelectItem
+                                      key={item.value}
+                                      value={item.value}
+                                    >
+                                      {item.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                value={line[column]}
+                                inputMode={
+                                  column === "amount" ? "decimal" : undefined
+                                }
+                                aria-label={`${COLUMN_LABEL[column]} on line ${index + 1}`}
+                                onChange={(event) =>
+                                  update(line.id, column, event.target.value)
+                                }
+                              />
+                            )}
+                          </TableCell>
+                        ))}
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove line ${index + 1}`}
+                            onClick={() =>
+                              setLines((current) =>
+                                current.filter((item) => item.id !== line.id)
+                              )
                             }
-                            placeholder={`Reference on line ${index + 1}`}
-                          />
-                        ) : column === "date" ? (
-                          <DatePicker
-                            id={`${line.id}-date`}
-                            value={line.date}
-                            onChange={(value) => update(line.id, "date", value)}
-                          />
-                        ) : (
-                          <Input
-                            value={line[column]}
-                            inputMode={
-                              column === "amount" ? "decimal" : undefined
-                            }
-                            aria-label={`${COLUMN_LABEL[column]} on line ${index + 1}`}
-                            onChange={(event) =>
-                              update(line.id, column, event.target.value)
-                            }
-                          />
-                        )}
-                      </TableCell>
-                    ))}
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Remove line ${index + 1}`}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.filter((item) => item.id !== line.id)
-                          )
-                        }
-                      >
-                        <TrashIcon />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          >
+                            <TrashIcon />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {mismatch && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={STATEMENT_COLUMNS.length + 1}
+                            className="whitespace-normal"
+                          >
+                            <Alert variant="destructive">
+                              <WarningIcon />
+                              <AlertTitle>
+                                Line {index + 1}: currency doesn&apos;t match
+                                the account
+                              </AlertTitle>
+                              <AlertDescription>
+                                {line.reference.trim()} is a {mismatch} account,
+                                but this line is in {line.currency}. Change the
+                                currency, or use the customer&apos;s{" "}
+                                {line.currency} reference.
+                              </AlertDescription>
+                            </Alert>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

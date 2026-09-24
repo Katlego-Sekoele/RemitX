@@ -3,6 +3,7 @@ import uuid
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
     CURRENCY_USD,
     CURRENCY_ZAR,
 )
@@ -82,7 +83,12 @@ def test_treasury_operator_confirms_a_matching_row(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": zar_reference, "amount": "500.00", "date": "2026-09-10"}
+                {
+                    "reference": zar_reference,
+                    "amount": "500.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -102,7 +108,12 @@ def test_treasury_operator_leaves_an_unmatched_row_pending(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-10"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -120,7 +131,12 @@ def test_pending_endpoint_lists_only_unmatched_deposits(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-10"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -145,7 +161,12 @@ def test_treasury_operator_approves_a_pending_deposit(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-10"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -176,7 +197,12 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-10"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -201,6 +227,7 @@ def test_process_reports_unparseable_dates_without_recording_them(treasury_clien
                 {
                     "reference": "remitx deposit",
                     "amount": "80.00",
+                    "currency": "ZAR",
                     "date": "not-a-date",
                 }
             ]
@@ -220,7 +247,12 @@ def test_process_without_a_platform_bank_account_is_refused(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "someone-zar", "amount": "10.00", "date": "2026-09-10"}
+                {
+                    "reference": "someone-zar",
+                    "amount": "10.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-10",
+                }
             ]
         },
     )
@@ -273,7 +305,12 @@ def test_approving_with_an_unknown_reference_is_a_400(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-11"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-11",
+                }
             ]
         },
     )
@@ -289,7 +326,9 @@ def test_approving_with_an_unknown_reference_is_a_400(treasury_client):
     assert treasury_client.get(PENDING).json() != []
 
 
-def test_approving_with_a_token_reference_is_a_400(treasury_client):
+def test_approving_with_a_reference_in_another_currency_is_a_400(treasury_client):
+    """A ZAR deposit lands on a ZAR account. The customer's token account is
+    in another currency like any other."""
     seed_platform_accounts()
     user = UserController().ensure_provisioned(
         "user_approve_tok_route", lambda: "tok-route@example.com", lambda: "Tok"
@@ -298,7 +337,12 @@ def test_approving_with_a_token_reference_is_a_400(treasury_client):
         PROCESS,
         json={
             "rows": [
-                {"reference": "remitx deposit", "amount": "80.00", "date": "2026-09-11"}
+                {
+                    "reference": "remitx deposit",
+                    "amount": "80.00",
+                    "currency": "ZAR",
+                    "date": "2026-09-11",
+                }
             ]
         },
     )
@@ -310,5 +354,24 @@ def test_approving_with_a_token_reference_is_a_400(treasury_client):
     )
 
     assert response.status_code == 400
-    assert "token account" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        f"This deposit is in ZAR, but that reference is a {CURRENCY_TOKEN} "
+        "account. Use the customer's ZAR account reference."
+    )
     assert treasury_client.get(PENDING).json() == [pending]
+
+
+def test_process_skips_a_row_without_a_currency(treasury_client):
+    seed_platform_accounts()
+
+    response = treasury_client.post(
+        PROCESS,
+        json={"rows": [{"reference": "remitx deposit", "amount": "80.00"}]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] == []
+    [skipped] = body["skipped"]
+    assert skipped["reason"] == "unknown_currency"
+    assert treasury_client.get(PENDING).json() == []
