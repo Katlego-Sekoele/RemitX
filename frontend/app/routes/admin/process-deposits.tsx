@@ -1,7 +1,6 @@
 import {
   CheckCircleIcon,
   FileCsvIcon,
-  PencilSimpleIcon,
   TrashIcon,
   UploadSimpleIcon,
   WarningIcon,
@@ -32,16 +31,6 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "~/components/ui/dialog"
-import { Label } from "~/components/ui/label"
-import {
   Table,
   TableBody,
   TableCell,
@@ -53,6 +42,7 @@ import type { Route } from "./+types/process-deposits"
 import { useHasPermission } from "~/hooks/use-permissions"
 import {
   api,
+  type AccountReferenceRead,
   type DepositRow,
   type PendingDepositRead as PendingDeposit,
 } from "~/client"
@@ -149,7 +139,10 @@ function ProcessDepositsPage() {
         <CardHeader>
           <CardTitle>Pending deposits</CardTitle>
           <CardDescription>
-            Statement lines that didn&apos;t match an account.
+            Statement lines that didn&apos;t match an account. Search the
+            customer on the row and confirm; the credit lands on their ZAR
+            account. Only confirm once they have proven, off platform, that the
+            payment is theirs.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -343,6 +336,11 @@ function PendingTable({
   onResolved: () => void
   canConfirm: boolean
 }) {
+  const accounts = useQuery({
+    ...api.admin.deposits.listAccountReferences(),
+    enabled: canConfirm,
+  })
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading…</p>
   }
@@ -368,119 +366,102 @@ function PendingTable({
           <TableHead>Date</TableHead>
           <TableHead>Amount</TableHead>
           <TableHead>Reference</TableHead>
-          <TableHead className="w-8" />
+          {canConfirm && <TableHead>Account</TableHead>}
+          {canConfirm && <TableHead />}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {deposits.map((deposit) => (
-          <TableRow key={deposit.deposit_id}>
-            <TableCell>{formatDate(deposit.created_at)}</TableCell>
-            <TableCell>
-              {deposit.amount} {deposit.currency}
-            </TableCell>
-            <TableCell>{deposit.reference ?? "—"}</TableCell>
-            <TableCell>
-              {canConfirm && (
-                <ApproveDialog deposit={deposit} onResolved={onResolved} />
-              )}
-            </TableCell>
-          </TableRow>
-        ))}
+        {deposits.map((deposit) =>
+          canConfirm ? (
+            <PendingDepositRow
+              key={deposit.deposit_id}
+              deposit={deposit}
+              accounts={accounts.data ?? []}
+              onResolved={onResolved}
+            />
+          ) : (
+            <TableRow key={deposit.deposit_id}>
+              <TableCell>{formatDate(deposit.created_at)}</TableCell>
+              <TableCell>
+                {deposit.amount} {deposit.currency}
+              </TableCell>
+              <TableCell>{deposit.reference ?? "—"}</TableCell>
+            </TableRow>
+          )
+        )}
       </TableBody>
     </Table>
   )
 }
 
-function ApproveDialog({
+/**
+ * Matching a pending line happens on the row. The amount and the statement
+ * reference are already beside the account search, so confirming does not
+ * open a dialog.
+ */
+function PendingDepositRow({
   deposit,
+  accounts,
   onResolved,
 }: {
   deposit: PendingDeposit
+  accounts: AccountReferenceRead[]
   onResolved: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [accountReference, setAccountReference] = useState("")
-  const accounts = useQuery({
-    ...api.admin.deposits.listAccountReferences(),
-    enabled: open,
-  })
 
   const approve = useMutation({
     ...api.admin.deposits.approveDeposit(),
     onSuccess: () => {
+      setAccountReference("")
       onResolved()
-      setOpen(false)
     },
   })
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) {
-          setAccountReference("")
-          approve.reset()
-        }
-      }}
-    >
-      <DialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
-        <PencilSimpleIcon />
-        <span className="sr-only">Resolve deposit</span>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirm deposit</DialogTitle>
-          <DialogDescription>
-            {deposit.amount} {deposit.currency} — statement reference &quot;
-            {deposit.reference ?? "none"}&quot;. Credit lands on that
-            customer&apos;s ZAR account. Only confirm once they have proven, off
-            platform, that the payment is theirs.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (accountReference.trim()) {
+    <>
+      <TableRow>
+        <TableCell>{formatDate(deposit.created_at)}</TableCell>
+        <TableCell>
+          {deposit.amount} {deposit.currency}
+        </TableCell>
+        <TableCell>{deposit.reference ?? "—"}</TableCell>
+        <TableCell className="min-w-64">
+          <AccountReferenceCombobox
+            accounts={accounts}
+            value={accountReference}
+            onChange={setAccountReference}
+            disabled={approve.isPending}
+            placeholder="Search accounts"
+          />
+        </TableCell>
+        <TableCell>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!accountReference.trim() || approve.isPending}
+            onClick={() =>
               approve.mutate({
                 path: { deposit_id: deposit.deposit_id },
                 body: { account_reference: accountReference.trim() },
               })
             }
-          }}
-        >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="deposit-account-reference">Account reference</Label>
-            <AccountReferenceCombobox
-              id="deposit-account-reference"
-              accounts={accounts.data ?? []}
-              value={accountReference}
-              onChange={setAccountReference}
-              disabled={approve.isPending}
-              placeholder="Search accounts"
-            />
-          </div>
-
-          {approve.isError && (
+          >
+            {approve.isPending ? "Confirming…" : "Confirm"}
+          </Button>
+        </TableCell>
+      </TableRow>
+      {approve.isError && (
+        <TableRow>
+          <TableCell colSpan={5} className="whitespace-normal">
             <Alert variant="destructive">
               <WarningIcon />
               <AlertTitle>Could not confirm</AlertTitle>
               <AlertDescription>{errorMessage(approve.error)}</AlertDescription>
             </Alert>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="submit"
-              disabled={!accountReference.trim() || approve.isPending}
-            >
-              {approve.isPending ? "Confirming…" : "Confirm deposit"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   )
 }
