@@ -1,0 +1,10 @@
+# Credentials for the QA target. Never commit.
+.env.qa
+# Run manifests and logs, per developer.
+runs/
+# Tool caches.
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/

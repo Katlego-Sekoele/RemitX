@@ -1,0 +1,22 @@
+{
+  "_about": "What senders do for a living, what they earn (ZAR per month) and how they are paid. `payday` is one of: 25th (the 25th, or the Friday before when it falls on a weekend), month_end (the last working day), weekly_friday. `source_of_funds` must be a KycSourceOfFunds value.",
+  "occupations": [
+    {"title": "Domestic worker", "weight": 14, "income": [3500, 6500], "payday": "month_end", "source_of_funds": "salary"},
+    {"title": "Security guard", "weight": 10, "income": [5000, 8500], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Construction labourer", "weight": 9, "income": [4500, 9000], "payday": "weekly_friday", "source_of_funds": "salary"},
+    {"title": "Waiter", "weight": 7, "income": [3000, 7000], "payday": "weekly_friday", "source_of_funds": "salary"},
+    {"title": "Retail cashier", "weight": 7, "income": [5500, 9000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Hairdresser", "weight": 5, "income": [4000, 12000], "payday": "weekly_friday", "source_of_funds": "business_income"},
+    {"title": "Taxi driver", "weight": 5, "income": [6000, 14000], "payday": "weekly_friday", "source_of_funds": "business_income"},
+    {"title": "Spaza shop owner", "weight": 5, "income": [7000, 22000], "payday": "month_end", "source_of_funds": "business_income"},
+    {"title": "Mechanic", "weight": 5, "income": [8000, 16000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Nurse", "weight": 5, "income": [18000, 32000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Teacher", "weight": 5, "income": [20000, 35000], "payday": "month_end", "source_of_funds": "salary"},
+    {"title": "Call centre agent", "weight": 5, "income": [8000, 13000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Software developer", "weight": 3, "income": [35000, 70000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Accountant", "weight": 3, "income": [30000, 60000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Mine worker", "weight": 4, "income": [11000, 19000], "payday": "25th", "source_of_funds": "salary"},
+    {"title": "Retired teacher", "weight": 2, "income": [9000, 16000], "payday": "month_end", "source_of_funds": "pension"},
+    {"title": "University student", "weight": 1, "income": [2000, 4000], "payday": "month_end", "source_of_funds": "gift"}
+  ]
+}

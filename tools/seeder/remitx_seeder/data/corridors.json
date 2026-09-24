@@ -1,0 +1,60 @@
+{
+  "_about": "Who sends money where. Each sender is drawn from one corridor, weighted. `sender_nationality` decides their name culture and ID: a South African identifies with a national ID, anyone else with their own passport. Every sender lives in South Africa: deposits are ZAR cash-in only. `recipient_country` and `payout_currency` shape their beneficiaries. `monthly_send_zar` is what they send per month in total; `sends_per_month` how many transfers that is split into.",
+  "corridors": [
+    {
+      "name": "Zimbabwean in SA supporting family at home",
+      "weight": 40,
+      "sender_nationality": "ZW",
+      "recipient_country": "ZW",
+      "payout_currencies": {"USD": 80, "ZWL": 20},
+      "relationships": {"parent": 40, "sibling": 20, "child": 20, "partner": 10, "relative": 10},
+      "beneficiaries": [1, 3],
+      "monthly_send_zar": [600, 2500],
+      "sends_per_month": [1, 3]
+    },
+    {
+      "name": "Namibian in SA supporting family at home",
+      "weight": 10,
+      "sender_nationality": "NA",
+      "recipient_country": "NA",
+      "payout_currencies": {"NAD": 100},
+      "relationships": {"parent": 50, "sibling": 20, "child": 20, "relative": 10},
+      "beneficiaries": [1, 2],
+      "monthly_send_zar": [800, 3000],
+      "sends_per_month": [1, 2]
+    },
+    {
+      "name": "South African paying family elsewhere in SA",
+      "weight": 30,
+      "sender_nationality": "ZA",
+      "recipient_country": "ZA",
+      "payout_currencies": {"ZAR": 100},
+      "relationships": {"parent": 35, "child": 25, "sibling": 15, "partner": 10, "friend": 10, "employee": 5},
+      "beneficiaries": [1, 3],
+      "monthly_send_zar": [400, 2800],
+      "sends_per_month": [1, 4]
+    },
+    {
+      "name": "South African supporting someone in the US",
+      "weight": 10,
+      "sender_nationality": "ZA",
+      "recipient_country": "US",
+      "payout_currencies": {"USD": 100},
+      "relationships": {"child": 50, "sibling": 25, "friend": 25},
+      "beneficiaries": [1, 1],
+      "monthly_send_zar": [1500, 2900],
+      "sends_per_month": [1, 1]
+    },
+    {
+      "name": "Zimbabwean in SA sending to a relative in Namibia",
+      "weight": 10,
+      "sender_nationality": "ZW",
+      "recipient_country": "NA",
+      "payout_currencies": {"NAD": 100},
+      "relationships": {"sibling": 40, "relative": 40, "friend": 20},
+      "beneficiaries": [1, 1],
+      "monthly_send_zar": [500, 1500],
+      "sends_per_month": [1, 1]
+    }
+  ]
+}

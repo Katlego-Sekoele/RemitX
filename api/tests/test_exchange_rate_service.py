@@ -118,3 +118,49 @@ def test_unsupported_currency_is_rejected_without_touching_repo_or_provider(
         exchange_rate_service.get_active_rate(
             base_currency=CURRENCY_USD, quote_currency="EUR"
         )
+
+
+class _FixedProvider:
+    def __init__(self, rate: Decimal) -> None:
+        self.rate = rate
+        self.calls: list[tuple[str, str]] = []
+
+    def get_rate(self, base_currency: str, quote_currency: str) -> Decimal:
+        self.calls.append((base_currency, quote_currency))
+        return self.rate
+
+
+def test_an_installed_provider_replaces_the_live_api(app_context, monkeypatch):
+    from remitx_api.services.exchange_rate_provider import use_rate_provider
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("the live API must not be called")
+
+    monkeypatch.setattr(
+        "remitx_api.services.exchange_rate_provider.ExchangeRateApiProvider.get_rate",
+        _fail,
+    )
+    provider = _FixedProvider(Decimal("17.25"))
+    use_rate_provider(provider)
+    try:
+        rate = exchange_rate_service.get_active_rate(
+            base_currency=CURRENCY_USD, quote_currency=CURRENCY_ZAR
+        )
+    finally:
+        use_rate_provider(None)
+
+    assert rate.rate == Decimal("17.25")
+    assert provider.calls == [(CURRENCY_USD, CURRENCY_ZAR)]
+
+
+def test_clearing_the_provider_goes_back_to_the_live_api(app_context, monkeypatch):
+    from remitx_api.services.exchange_rate_provider import (
+        ExchangeRateApiProvider,
+        rate_provider,
+        use_rate_provider,
+    )
+
+    use_rate_provider(_FixedProvider(Decimal("1")))
+    use_rate_provider(None)
+
+    assert isinstance(rate_provider(), ExchangeRateApiProvider)

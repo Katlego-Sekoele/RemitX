@@ -26,8 +26,8 @@ from remitx_api.models.orm.account import (
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.repositories.exchange_rate_repository import ExchangeRateRepository
 from remitx_api.services.exchange_rate_provider import (
-    ExchangeRateApiProvider,
     RateFetchError,
+    rate_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def get_active_rate(
 
     # If there is no valid rate, fetch a new one from the external API and store it
     try:
-        rate_value = ExchangeRateApiProvider().get_rate(base_currency, quote_currency)
+        rate_value = rate_provider().get_rate(base_currency, quote_currency)
     except RateFetchError:
         logger.warning(
             "live rate fetch failed; falling back to stored rate", exc_info=True

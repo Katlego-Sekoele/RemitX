@@ -1,2 +1,6 @@
 .env
+# Per-target credential files, e.g. tools/seeder/.env.qa. Templates stay.
+.env.*
+!.env.example
+!.env.*.example
 .DS_Store
