@@ -127,6 +127,22 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
       },
     ],
   },
+  {
+    label: "Treasury",
+    order: 25,
+    icon: "VaultIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/platform-accounts",
+          module: "routes/admin/platform-accounts.tsx",
+        },
+        label: "Platform accounts",
+        permission: "platform_account:read",
+        childItems: [],
+      },
+    ],
+  },
 ]
 
 export function getFlattenedAdminRoutes(

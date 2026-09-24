@@ -1,4 +1,5 @@
-"""Request/response schemas for the customer account endpoints."""
+"""Request/response schemas for the account endpoints: a customer's own, and
+RemitX's platform accounts for treasury staff."""
 
 import uuid
 from decimal import Decimal
@@ -22,6 +23,28 @@ class AccountRead(Schema):
     balance: Decimal
     # `balance` less this account's in-flight outgoing legs, 2 dp. The
     # difference is what's still pending.
+    available_balance: Decimal
+
+
+class PlatformAccountRead(Schema):
+    """One of RemitX's own accounts, or an external counterparty it settles
+    against. None has a reference: they are known by `label`."""
+
+    account_id: uuid.UUID
+    # e.g. "RemitX SA Bank Account", "RemitX XRPL Treasury Wallet".
+    label: str
+    # REMITX_FIAT: RemitX's bank account in one settlement country.
+    # REMITX_REVENUE: the fees it has earned in that currency.
+    # REMITX_XRPL_WALLET: the treasury wallet every transfer settles through.
+    # EXTERNAL: a counterparty RemitX doesn't hold, e.g. the uctusd issuer.
+    type: Literal["REMITX_FIAT", "REMITX_REVENUE", "REMITX_XRPL_WALLET", "EXTERNAL"]
+    currency: str
+    # `settlement` for the uctusd (RLUSD) accounts, `fiat` for everything else.
+    kind: Literal["fiat", "settlement"]
+    # The ledger balance, 2 dp. Negative for the issuer, which has paid out
+    # what the treasury wallet holds.
+    balance: Decimal
+    # `balance` less this account's in-flight outgoing legs, 2 dp.
     available_balance: Decimal
 
 

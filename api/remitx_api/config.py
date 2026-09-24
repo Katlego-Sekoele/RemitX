@@ -150,7 +150,7 @@ class Config:
         return os.getenv("UCTUSD_TOKEN_NAME", "uctusd")
 
     # Label of the platform account row representing the issuer (seeded by
-    # scripts/seed_platform_accounts.py, looked up by
+    # migration from models/orm/platform_account_seed.py, looked up by
     # services/remittance_service.py) — both read this same env var so the
     # seeded label and the lookup can't drift apart.
     @property

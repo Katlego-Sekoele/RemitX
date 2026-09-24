@@ -3568,6 +3568,63 @@
         "title": "PendingDepositRead",
         "type": "object"
       },
+      "PlatformAccountRead": {
+        "description": "One of RemitX's own accounts, or an external counterparty it settles\nagainst. None has a reference: they are known by `label`.",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "available_balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available Balance",
+            "type": "string"
+          },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fiat",
+              "settlement"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "REMITX_FIAT",
+              "REMITX_REVENUE",
+              "REMITX_XRPL_WALLET",
+              "EXTERNAL"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "label",
+          "type",
+          "currency",
+          "kind",
+          "balance",
+          "available_balance"
+        ],
+        "title": "PlatformAccountRead",
+        "type": "object"
+      },
       "ProcessDepositsRequest": {
         "properties": {
           "rows": {
@@ -6391,6 +6448,57 @@
         ]
       }
     },
+    "/admin/platform-accounts": {
+      "get": {
+        "description": "RemitX's bank and fee revenue accounts per settlement country, the XRPL\ntreasury wallet, and the uctusd issuer, each with its ledger and available\nbalance. Bank accounts come first, then fee revenue, the treasury wallet\nand the issuer; ZAR leads within each. Needs ``platform_account:read``.",
+        "operationId": "list_platform_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformAccountRead"
+                  },
+                  "title": "Response List Platform Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List RemitX's platform accounts",
+        "tags": [
+          "admin.accounts"
+        ]
+      }
+    },
     "/admin/roles": {
       "get": {
         "description": "Every role with the permissions it carries, as the server enforces them.",
@@ -8878,6 +8986,10 @@
     {
       "description": "Who holds which staff role, and granting and revoking them.",
       "name": "admin.users"
+    },
+    {
+      "description": "RemitX's own platform account balances.",
+      "name": "admin.accounts"
     },
     {
       "description": "ZAR cash-in reconciliation against bank statements.",

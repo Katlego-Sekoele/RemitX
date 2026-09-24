@@ -10,7 +10,7 @@ Phase C).
 
 Mirrors `platform_wallet/scripts/create_xprl_platform_wallet.py`'s
 submit/check/return-hash shape and its Fernet seed encryption — duplicated
-rather than imported, same rationale `api/scripts/seed_platform_accounts.py`
+rather than imported, same rationale `api/scripts/bootstrap.py`
 already gives for its own duplicate of that script's balance-read logic:
 keeps the standalone setup script and the app packages uncoupled.
 """

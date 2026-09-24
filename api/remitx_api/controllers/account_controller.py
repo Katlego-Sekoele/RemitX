@@ -6,7 +6,11 @@ from decimal import ROUND_HALF_UP, Decimal
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EXTERNAL,
+    TYPE_PLATFORM_FIAT,
+    TYPE_PLATFORM_REVENUE,
     TYPE_USER,
+    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.quote import Quote
@@ -59,6 +63,27 @@ def _display_order(account: Account) -> tuple[int, str]:
     return (1, account.account_currency)
 
 
+# Platform accounts read in the order money moves through them: bank accounts,
+# the fees earned against them, the treasury wallet, then the issuer it is
+# funded from and burns back to.
+_PLATFORM_TYPE_ORDER = (
+    TYPE_PLATFORM_FIAT,
+    TYPE_PLATFORM_REVENUE,
+    TYPE_XRPL_WALLET,
+    TYPE_EXTERNAL,
+)
+
+
+def _platform_display_order(account: Account) -> tuple[int, tuple[int, str], str]:
+    """By type (see `_PLATFORM_TYPE_ORDER`), then currency the same way as a
+    customer's accounts (ZAR first), then label."""
+    return (
+        _PLATFORM_TYPE_ORDER.index(account.type),
+        _display_order(account),
+        account.label,
+    )
+
+
 class UnknownAccountError(Exception):
     """`account_id` doesn't exist, or doesn't belong to this caller —
     collapsed into one outcome so a caller can't tell the two apart, same as
@@ -73,6 +98,19 @@ class AccountView:
     kind: str
     # The ledger balance. `available_balance` nets out this account's own
     # in-flight outgoing legs, so the difference is what's still pending.
+    balance: Decimal
+    available_balance: Decimal
+
+
+@dataclass(frozen=True)
+class PlatformAccountView:
+    account_id: uuid.UUID
+    label: str
+    type: str
+    currency: str
+    kind: str
+    # Platform balances can be negative: the issuer's is what it has paid in
+    # to the treasury wallet, net of burns.
     balance: Decimal
     available_balance: Decimal
 
@@ -183,6 +221,27 @@ class AccountController:
             for account in accounts
         ]
 
+    def get_platform_accounts(self) -> list[PlatformAccountView]:
+        """Every account RemitX holds or settles against, for treasury staff,
+        in display order (see `_platform_display_order`)."""
+        accounts = sorted(
+            self._accounts.list_platform_accounts(), key=_platform_display_order
+        )
+        return [
+            PlatformAccountView(
+                account_id=account.account_id,
+                label=account.label,
+                type=account.type,
+                currency=account.account_currency,
+                kind=account_kind(account.account_currency),
+                balance=_money(account.account_balance),
+                available_balance=_money(
+                    self._accounts.get_available_balance(account.account_id)
+                ),
+            )
+            for account in accounts
+        ]
+
     def get_account_history(
         self,
         user_id: uuid.UUID,
@@ -194,8 +253,6 @@ class AccountController:
         the owner's side. `before` is the previous page's last `created_at`.
         """
         account = self._accounts.get_by_id(account_id)
-        # Platform accounts are owned by an admin's user id too, so ownership
-        # alone doesn't make an account a customer's.
         if account is None or account.type != TYPE_USER or account.user_id != user_id:
             raise UnknownAccountError(str(account_id))
 

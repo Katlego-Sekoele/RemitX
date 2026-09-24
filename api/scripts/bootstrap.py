@@ -1,34 +1,32 @@
 """
-Seed RemitX's platform accounts, and the admin who owns them.
+One-off setup for a new environment: the two steps a migration can't do,
+because each needs a service outside the database. RemitX's platform accounts
+themselves come from `alembic upgrade head` (see
+remitx_api/models/orm/platform_account_seed.py), so run that first.
 
-Platform accounts (RemitX's per-country bank accounts, XRPL treasury wallet,
-fee revenue) need a real admin's user_id — but User rows are normally only
-created just-in-time
-on first Clerk login (see UserController.ensure_provisioned). This script
-provisions that admin User row directly, using the same provisioning path a
-real first login takes, so their eventual real login finds this row instead
-of creating a duplicate.
+1. The admin (needs ADMIN_CLERK_USER_ID and Clerk). User rows are normally
+   created just-in-time on first Clerk login (see
+   UserController.ensure_provisioned). This provisions the admin's row through
+   that same path, so their eventual real login finds it instead of creating a
+   duplicate, and grants it every staff role in the RBAC catalogue — which is
+   what opens the admin portal and its permission-gated routes.
 
-Also records the Treasury Wallet's real, pre-funded uctusd balance as a
-one-time `treasury_funding` transaction (see ECO5040W's clarifications: the
-lecturer funds the platform wallet directly on the testnet — RemitX never
-buys or mints tokens), so `accounts.account_balance` matches the real
-on-chain balance instead of silently starting at 0.
+2. Treasury funding (needs PLATFORM_WALLET_ADDRESS and network access to
+   XRPL_TESTNET_URL). Records the Treasury Wallet's real, pre-funded uctusd
+   balance as a one-time `treasury_funding` transaction (see ECO5040W's
+   clarifications: the lecturer funds the platform wallet directly on the
+   testnet — RemitX never buys or mints tokens), so
+   `accounts.account_balance` matches the real on-chain balance instead of
+   silently starting at 0.
 
 To Run:
     cd api && source .venv/bin/activate
-    python scripts/seed_platform_accounts.py
+    alembic upgrade head
+    python scripts/bootstrap.py
 
-Requires ADMIN_CLERK_USER_ID in .env (see .env.example) — the real Clerk
-`sub` claim of whoever will administer this system. That account is granted
-every staff role in the RBAC catalogue (`alembic upgrade head` seeds it), which
-is what actually opens the admin portal and its permission-gated routes.
-
-Recording the treasury funding additionally requires PLATFORM_WALLET_ADDRESS
-and network access to XRPL_TESTNET_URL — if either is unavailable, that one
-step is skipped with a warning rather than failing the whole run.
-
-Re-running skips whatever's already there instead of creating duplicates.
+A step whose settings are missing, or whose service can't be reached, is
+skipped with a warning rather than failing the whole run. Re-running skips
+whatever's already there instead of creating duplicates.
 """
 
 import os
@@ -40,17 +38,10 @@ from remitx_api.auth.clerk import fetch_user_email, fetch_user_first_name
 from remitx_api.config import Config
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import (
-    CURRENCY_NAD,
-    CURRENCY_TOKEN,
-    CURRENCY_USD,
-    CURRENCY_ZAR,
-    CURRENCY_ZWL,
-    TYPE_EXTERNAL,
-    TYPE_PLATFORM_FIAT,
-    TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
-    Account,
+from remitx_api.models.orm.account import CURRENCY_TOKEN
+from remitx_api.models.orm.platform_account_seed import (
+    ISSUER_LABEL,
+    TREASURY_WALLET_LABEL,
 )
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.transaction import (
@@ -64,59 +55,27 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from sqlalchemy import select
 
-# One real bank account per country RemitX settles fiat in, each in that
-# country's own currency. Every one of these gets a matching Fee Revenue
-# account in the same currency below — a ZAR fee can't be booked into a USD
-# revenue account any more than it could be booked into the USD bank account.
-COUNTRY_BANK_ACCOUNTS = (
-    ("RemitX SA", CURRENCY_ZAR),
-    ("RemitX US", CURRENCY_USD),
-    ("RemitX ZIM", CURRENCY_ZWL),
-    ("RemitX NAM", CURRENCY_NAD),
-)
-
-TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
-# The issuing address (ECO5040W clarifications) — the same account plays
-# both roles: source of the one-time pre-funding, destination of every
-# future withdrawal burn. Sourced from Config.UCTUSD_ISSUER_LABEL so this
-# seeded label can't drift from the one services/remittance_service.py
-# looks up.
-ISSUER_LABEL = Config().UCTUSD_ISSUER_LABEL
-
-PLATFORM_ACCOUNTS = (
-    *(
-        (f"{prefix} Bank Account", TYPE_PLATFORM_FIAT, currency)
-        for prefix, currency in COUNTRY_BANK_ACCOUNTS
-    ),
-    (TREASURY_WALLET_LABEL, TYPE_XRPL_WALLET, CURRENCY_TOKEN),
-    *(
-        (f"{prefix} Fee Revenue", TYPE_PLATFORM_REVENUE, currency)
-        for prefix, currency in COUNTRY_BANK_ACCOUNTS
-    ),
-    (ISSUER_LABEL, TYPE_EXTERNAL, CURRENCY_TOKEN),
-)
-
 
 def main() -> None:
-    admin_clerk_id = os.environ.get("ADMIN_CLERK_USER_ID")
-    if not admin_clerk_id:
-        print("ADMIN_CLERK_USER_ID is not set — see .env.example", file=sys.stderr)
-        sys.exit(1)
-
     config = Config()
     db.init(config.DATABASE_URL)
     token = db.open_session()
     try:
-        admin = _ensure_admin(admin_clerk_id, config)
-        accounts_by_label = _seed_platform_accounts(admin.id)
-        _seed_treasury_funding(
-            accounts_by_label[TREASURY_WALLET_LABEL], accounts_by_label[ISSUER_LABEL]
-        )
+        admin_clerk_id = os.environ.get("ADMIN_CLERK_USER_ID")
+        if admin_clerk_id:
+            _ensure_admin(admin_clerk_id, config)
+        else:
+            print(
+                "ADMIN_CLERK_USER_ID is not set — skipping the admin "
+                "(see .env.example)",
+                file=sys.stderr,
+            )
+        _seed_treasury_funding()
     finally:
         db.close_session(token)
 
 
-def _ensure_admin(clerk_user_id: str, config: Config) -> User:
+def _ensure_admin(clerk_user_id: str, config: Config) -> None:
     """Provision the admin's User row and grant it every staff role, idempotently."""
     admin = UserController().ensure_provisioned(
         clerk_user_id,
@@ -125,7 +84,6 @@ def _ensure_admin(clerk_user_id: str, config: Config) -> User:
     )
     _grant_every_staff_role(admin)
     print(f"Admin: {admin.id} ({admin.email or clerk_user_id})")
-    return admin
 
 
 def _grant_every_staff_role(admin: User) -> None:
@@ -163,38 +121,22 @@ def _grant_every_staff_role(admin: User) -> None:
         print("Skipped (already granted): every staff role")
 
 
-def _seed_platform_accounts(admin_id) -> dict[str, Account]:
-    """Create every platform/external account not already there.
-
-    EXTERNAL accounts (the issuer/exchange) have no admin owner — everything
-    else does. Returns every account by label, newly created or not, so the
-    caller always has a real Account to work with either way.
-    """
-    account_repo = AccountRepository()
-    accounts_by_label: dict[str, Account] = {}
-    for label, account_type, currency in PLATFORM_ACCOUNTS:
-        existing = account_repo.get_platform_account_by_label(label)
-        if existing is not None:
-            print(f"Skipped (already exists): {label}")
-            accounts_by_label[label] = existing
-            continue
-        account = Account(
-            user_id=None if account_type == TYPE_EXTERNAL else admin_id,
-            type=account_type,
-            account_currency=currency,
-            label=label,
-        )
-        accounts_by_label[label] = account_repo.save(account)
-        print(f"Created: {label}")
-    return accounts_by_label
-
-
-def _seed_treasury_funding(treasury_account: Account, issuer_account: Account) -> None:
+def _seed_treasury_funding() -> None:
     """Record the Treasury Wallet's real, pre-funded uctusd balance as a
     one-time `treasury_funding` transaction. Idempotent — skips if already
     recorded, and skips (rather than failing the whole script) if the
     on-chain balance can't be read right now.
     """
+    account_repo = AccountRepository()
+    treasury_account = account_repo.get_platform_account_by_label(TREASURY_WALLET_LABEL)
+    issuer_account = account_repo.get_platform_account_by_label(ISSUER_LABEL)
+    if treasury_account is None or issuer_account is None:
+        print(
+            "The platform accounts are missing — run `alembic upgrade head` first",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     transaction_repo = TransactionRepository()
     if (
         transaction_repo.get_by_transaction_type_and_debit_account(
@@ -239,7 +181,6 @@ def _seed_treasury_funding(treasury_account: Account, issuer_account: Account) -
             confirmed_at=datetime.now(UTC),
         )
     )
-    account_repo = AccountRepository()
     account_repo.decrease_balance(issuer_account.account_id, balance)
     account_repo.increase_balance(treasury_account.account_id, balance)
     db.session.commit()

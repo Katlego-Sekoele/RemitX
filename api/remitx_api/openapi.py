@@ -52,6 +52,7 @@ class Tag:
     KYC_DOCUMENTS = "kyc.documents"
     ADMIN_ROLES = "admin.roles"
     ADMIN_USERS = "admin.users"
+    ADMIN_ACCOUNTS = "admin.accounts"
     ADMIN_DEPOSITS = "admin.deposits"
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
@@ -92,6 +93,10 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_USERS,
         "description": "Who holds which staff role, and granting and revoking them.",
+    },
+    {
+        "name": Tag.ADMIN_ACCOUNTS,
+        "description": "RemitX's own platform account balances.",
     },
     {
         "name": Tag.ADMIN_DEPOSITS,

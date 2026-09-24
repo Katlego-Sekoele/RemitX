@@ -7,25 +7,16 @@ from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
-    CURRENCY_TOKEN,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
-    TYPE_EXTERNAL,
-    TYPE_PLATFORM_FIAT,
-    TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
-    Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import remittance_service
-from remitx_api.services.remittance_service import (
-    REMITX_TREASURY_WALLET_LABEL,
-    TOKEN_ISSUER_LABEL,
-)
 from remitx_worker import db as worker_db, tasks
 from sqlalchemy.orm import sessionmaker
+from tests.platform_account_helpers import seed_platform_accounts
 
 ENDPOINT = "/remittances"
 
@@ -65,44 +56,7 @@ def _seed(client, sender_id):
             ]
         )
 
-        admin = UserController().ensure_provisioned(
-            "user_admin_remit_route", lambda: "admin-remit@example.com", lambda: "Admin"
-        )
-        db.session.add_all(
-            [
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_FIAT,
-                    account_currency=CURRENCY_ZAR,
-                    label="RemitX SA Bank Account",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_REVENUE,
-                    account_currency=CURRENCY_ZAR,
-                    label="RemitX SA Fee Revenue",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_PLATFORM_FIAT,
-                    account_currency=CURRENCY_ZWL,
-                    label="RemitX ZIM Bank Account",
-                ),
-                Account(
-                    user_id=admin.id,
-                    type=TYPE_XRPL_WALLET,
-                    account_currency=CURRENCY_TOKEN,
-                    label=REMITX_TREASURY_WALLET_LABEL,
-                ),
-                Account(
-                    user_id=None,
-                    type=TYPE_EXTERNAL,
-                    account_currency=CURRENCY_TOKEN,
-                    label=TOKEN_ISSUER_LABEL,
-                ),
-            ]
-        )
-        db.session.commit()
+        seed_platform_accounts()
 
         recipient = UserController().ensure_provisioned(
             "user_remit_route_recipient",

@@ -26,17 +26,24 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         super().__init__(Account)
 
     def get_platform_account_by_label(self, label: str) -> Account | None:
-        """Look up a hand-seeded platform/external account by its label."""
+        """Look up a platform/external account by its label."""
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
+    def list_platform_accounts(self) -> list[Account]:
+        """Every account that isn't a customer's: RemitX's own, and the
+        external counterparties it settles against."""
+        return db.session.scalars(
+            select(Account).where(Account.type != TYPE_USER)
+        ).all()
+
     def get_platform_account(self, type_: str, currency: str) -> Account | None:
-        """A hand-seeded platform account by `type` and currency — e.g. the
+        """A platform account by `type` and currency — e.g. the
         `REMITX_REVENUE` account for whatever currency a leg is actually in,
-        rather than a fixed label. `scripts/seed_platform_accounts.py` seeds
-        exactly one per (type, currency) pair (Transaction_Flow_Context.md
-        §1: "a fee earned on a ZAR transaction can no more land in a USD
-        revenue account than a ZAR deposit could land in the USD bank
-        account"), so this is always unique.
+        rather than a fixed label. `platform_account_seed.py` seeds exactly
+        one per (type, currency) pair (Transaction_Flow_Context.md §1: "a fee
+        earned on a ZAR transaction can no more land in a USD revenue account
+        than a ZAR deposit could land in the USD bank account"), so this is
+        always unique.
         """
         return db.session.scalars(
             select(Account).where(

@@ -2,15 +2,12 @@ import uuid
 
 import pytest
 from remitx_api.controllers.user_controller import UserController
-from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
-    TYPE_PLATFORM_FIAT,
-    Account,
 )
 from remitx_api.models.orm.permission import PermissionCode
-from remitx_api.services import deposit_service
+from tests.platform_account_helpers import seed_platform_accounts
 from tests.rbac_helpers import make_user, rbac_client
 
 PROCESS = "/admin/deposits/process"
@@ -27,21 +24,6 @@ def treasury_client():
     """The caller `treasury_operator` exists for: cash-in read *and* confirm."""
     with rbac_client(make_user("treasury"), roles=("treasury_operator",)) as client:
         yield client
-
-
-def _seed_bank_account() -> Account:
-    admin = UserController().ensure_provisioned(
-        "user_admin_seed", lambda: "admin@example.com", lambda: "Admin"
-    )
-    account = Account(
-        user_id=admin.id,
-        type=TYPE_PLATFORM_FIAT,
-        account_currency=CURRENCY_ZAR,
-        label=deposit_service.REMITX_SA_BANK_ACCOUNT_LABEL,
-    )
-    db.session.add(account)
-    db.session.commit()
-    return account
 
 
 def test_caller_without_cashin_permission_is_rejected(client):
@@ -88,7 +70,7 @@ def test_reading_the_queue_does_not_grant_confirming_it():
 
 
 def test_treasury_operator_confirms_a_matching_row(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
     user = UserController().ensure_provisioned(
         "user_dep_route", lambda: "dep@example.com", lambda: "Dep"
     )
@@ -113,7 +95,7 @@ def test_treasury_operator_confirms_a_matching_row(treasury_client):
 
 
 def test_treasury_operator_leaves_an_unmatched_row_pending(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
 
     response = treasury_client.post(
         PROCESS,
@@ -131,7 +113,7 @@ def test_treasury_operator_leaves_an_unmatched_row_pending(treasury_client):
 
 
 def test_pending_endpoint_lists_only_unmatched_deposits(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
 
     treasury_client.post(
         PROCESS,
@@ -152,7 +134,7 @@ def test_pending_endpoint_lists_only_unmatched_deposits(treasury_client):
 
 
 def test_treasury_operator_approves_a_pending_deposit(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
     user = UserController().ensure_provisioned(
         "user_approve_route", lambda: "approve@example.com", lambda: "App"
     )
@@ -184,7 +166,7 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
     """`confirmed_by` is the caller's own id — the route still needs the
     authenticated user for the audit trail, just not to decide access.
     """
-    _seed_bank_account()
+    seed_platform_accounts()
     user = UserController().ensure_provisioned(
         "user_approve_audit", lambda: "audit@example.com", lambda: "Aud"
     )
@@ -209,7 +191,7 @@ def test_approval_records_the_operator_who_confirmed_it(treasury_client):
 
 
 def test_process_reports_unparseable_dates_without_recording_them(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
 
     response = treasury_client.post(
         PROCESS,
@@ -250,17 +232,9 @@ def test_treasury_lists_customer_account_references_only(treasury_client):
     user = UserController().ensure_provisioned(
         "user_refs", lambda: "sian@example.com", lambda: "Sian"
     )
-    # A platform account shares the customer's user id but has no reference
-    # and must not show up as something a statement line can match.
-    db.session.add(
-        Account(
-            user_id=user.id,
-            type=TYPE_PLATFORM_FIAT,
-            account_currency=CURRENCY_ZAR,
-            label=deposit_service.REMITX_SA_BANK_ACCOUNT_LABEL,
-        )
-    )
-    db.session.commit()
+    # Platform accounts have no reference, so a statement line can never
+    # match one.
+    seed_platform_accounts()
     base = user.base_reference
 
     response = treasury_client.get(REFERENCES)
@@ -291,7 +265,7 @@ def test_approving_an_unknown_deposit_is_a_400(treasury_client):
 
 
 def test_approving_with_an_unknown_reference_is_a_400(treasury_client):
-    _seed_bank_account()
+    seed_platform_accounts()
     treasury_client.post(
         PROCESS,
         json={
