@@ -77,7 +77,7 @@ export default function SendPage() {
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
-      <div className="flex max-w-2xl flex-col gap-6">
+      <div className="flex w-full max-w-2xl flex-col gap-6">
         <PageHeader>
           <PageHeaderTitle>Send money</PageHeaderTitle>
           <PageHeaderDescription>

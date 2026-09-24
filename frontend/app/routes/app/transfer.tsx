@@ -72,7 +72,7 @@ export default function TransferPage({ params }: Route.ComponentProps) {
       title="Transfer"
       parents={[{ label: "Transfers", href: TRANSFERS_PATH }]}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <div className="flex w-full max-w-2xl flex-col gap-6">
         {query.isPending ? (
           <Skeleton className="h-64 w-full" />
         ) : query.isError ? (
