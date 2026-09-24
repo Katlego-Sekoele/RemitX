@@ -128,6 +128,25 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     ],
   },
   {
+    label: "Withdrawals",
+    order: 22,
+    icon: "ArrowCircleUpIcon",
+    // The cash-out role's pages. Reading the queue needs `cashout:read`;
+    // verifying needs `cashout:approve` and rejecting `cashout:fail` on top,
+    // on the page and on the API.
+    childItems: [
+      {
+        route: {
+          path: "admin/bank-accounts",
+          module: "routes/admin/bank-accounts.tsx",
+        },
+        label: "Bank accounts",
+        permission: "cashout:read",
+        childItems: [],
+      },
+    ],
+  },
+  {
     label: "Treasury",
     order: 25,
     icon: "VaultIcon",
