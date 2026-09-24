@@ -8,15 +8,14 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.exc import IntegrityError
 
 from remitx_api.errors.deposits import (
+    DepositCurrencyMismatchError,
     DepositNotPendingError,
     PlatformBankAccountMissingError,
-    TokenAccountDepositError,
     UnknownDepositReferenceError,
 )
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
-    CURRENCY_TOKEN,
-    CURRENCY_ZAR,
+    PAYOUT_CURRENCIES,
     TYPE_PLATFORM_FIAT,
     Account,
 )
@@ -34,10 +33,9 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 
 logger = logging.getLogger(__name__)
 
-# The bank account whose statement is reconciled. A line no reference matches
-# is recorded against it, in ZAR, until an admin names the account it
-# belongs to.
-REMITX_SA_BANK_ACCOUNT_LABEL = "RemitX SA Bank Account"
+# RemitX holds one bank account per fiat currency (platform_account_seed.py),
+# so a statement line can be in any of them. Never the token.
+STATEMENT_CURRENCIES = PAYOUT_CURRENCIES
 _AMOUNT_QUANTUM = Decimal("0.01")
 
 _SKIP_MESSAGES: dict[SkippedStatementLineReason, str] = {
@@ -48,6 +46,11 @@ _SKIP_MESSAGES: dict[SkippedStatementLineReason, str] = {
     SkippedStatementLineReason.NOT_INCOMING: (
         "This line is not incoming money (amount must be positive). It was not "
         "recorded as a deposit."
+    ),
+    SkippedStatementLineReason.UNKNOWN_CURRENCY: (
+        "The currency is missing or is not one RemitX banks in (ZAR, USD, ZWL "
+        "or NAD). Fix it and upload the statement again — nothing was "
+        "recorded for this line."
     ),
     SkippedStatementLineReason.ALREADY_RECONCILED: (
         "This line was already reconciled on a previous run and was not credited again."
@@ -77,16 +80,24 @@ def statement_fingerprint(row: dict, *, statement_date: datetime) -> str:
     """Stable identity of one bank-statement line.
 
     UTC calendar day of the line (same instant used for the transaction's
-    ``created_at``), the reference as written, and the amount at 2dp. The
-    same CSV uploaded twice, or an overlapping date range, produces the same
-    fingerprint and is not credited again.
+    ``created_at``), the reference as written, the amount at 2dp, and the
+    currency. The same CSV uploaded twice, or an overlapping date range,
+    produces the same fingerprint and is not credited again. The same
+    reference and amount on the same day in two currencies are two lines.
     """
     reference = (row.get("reference") or "").strip()
     amount = Decimal(str(row.get("amount"))).quantize(
         _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
     )
+    currency = (row.get("currency") or "").strip().upper()
     calendar_day = statement_date.astimezone(UTC).date().isoformat()
-    return f"{calendar_day}|{reference}|{format(amount, 'f')}"
+    return f"{calendar_day}|{reference}|{format(amount, 'f')}|{currency}"
+
+
+def _statement_currency(row: dict) -> str | None:
+    """The line's currency, if RemitX has a bank account in it."""
+    currency = (row.get("currency") or "").strip().upper()
+    return currency if currency in STATEMENT_CURRENCIES else None
 
 
 def _try_parse_statement_datetime(value) -> datetime | None:
@@ -159,11 +170,18 @@ def _create_deposit(
 ) -> tuple[Deposit | None, SkippedStatementLine | None]:
     """Match one bank statement line to an account and write its deposit + transaction.
 
-    - Matched: transaction inserted `confirmed`, crediting the account
+    The line's currency is that of the RemitX bank account it came into, and
+    the transaction is recorded in it, out of that bank account.
+
+    - Matched: the reference names the customer's account in the line's
+      currency. Transaction inserted `confirmed`, crediting the account
       immediately.
-    - Unmatched: transaction inserted `pending` with no destination account
-      yet, keeping the statement's own reference so an admin can resolve it
-      manually — see `get_pending_deposits` / `approve_pending_deposit`.
+    - Unmatched: no such account, including a reference to one of the
+      customer's other currencies or their token account. Transaction
+      inserted `pending` with no destination account yet, keeping the
+      statement's own reference so an admin can resolve it manually — see
+      `get_pending_deposits` / `approve_pending_deposit`.
+    - No currency, or one RemitX doesn't bank in: skipped, nothing written.
     - Not incoming money at all (amount <= 0): returns None without writing
       anything. A real bank statement mixes RemitX's own outgoing payments in
       with sender deposits, and `transactions.amount` is never negative
@@ -200,9 +218,22 @@ def _create_deposit(
             amount=amount,
             reason=SkippedStatementLineReason.UNPARSEABLE_DATE,
         )
+    currency = _statement_currency(row)
+    if currency is None:
+        logger.warning(
+            "Skipping statement line with unknown currency (reference=%s, currency=%r)",
+            reference,
+            row.get("currency"),
+        )
+        return None, _skipped_line(
+            row,
+            reference=reference,
+            amount=amount,
+            reason=SkippedStatementLineReason.UNKNOWN_CURRENCY,
+        )
     statement_date = _parse_statement_date(raw_date, processed_at)
     fingerprint = statement_fingerprint(
-        {**row, "reference": reference, "amount": amount},
+        {**row, "reference": reference, "amount": amount, "currency": currency},
         statement_date=statement_date,
     )
     if deposit_repo.get_by_statement_fingerprint(fingerprint) is not None:
@@ -214,11 +245,7 @@ def _create_deposit(
             reason=SkippedStatementLineReason.ALREADY_RECONCILED,
         )
 
-    remitx_bank_account = account_repo.get_platform_account_by_label(
-        REMITX_SA_BANK_ACCOUNT_LABEL
-    )
-    if remitx_bank_account is None:
-        raise PlatformBankAccountMissingError(CURRENCY_ZAR)
+    remitx_bank_account = _bank_account(currency, account_repo)
 
     try:
         with db.session.begin_nested():
@@ -226,6 +253,7 @@ def _create_deposit(
                 _insert_deposit(
                     reference,
                     amount,
+                    currency,
                     fingerprint,
                     statement_date,
                     processed_at,
@@ -250,6 +278,7 @@ def _create_deposit(
 def _insert_deposit(
     reference: str | None,
     amount: Decimal,
+    currency: str,
     fingerprint: str,
     statement_date: datetime,
     processed_at: datetime,
@@ -258,7 +287,7 @@ def _insert_deposit(
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
 ) -> Deposit:
-    account = _find_account(reference, account_repo)
+    account = _find_account(reference, currency, account_repo)
     # If no account matches the reference, create a pending transaction and deposit
     if account is None:
         logger.info(
@@ -272,7 +301,7 @@ def _insert_deposit(
                 credit_account_id=remitx_bank_account.account_id,
                 debit_account_id=None,
                 amount=amount,
-                currency=remitx_bank_account.account_currency,
+                currency=currency,
                 status=STATUS_PENDING,
                 created_at=statement_date,
                 processed_at=processed_at,
@@ -286,23 +315,21 @@ def _insert_deposit(
             )
         )
 
-    # Else we have a user account, so create a confirmed transaction and
-    # deposit in that account's currency, out of RemitX's bank account in it.
-    source = _bank_account(account.account_currency, account_repo)
+    # Else we have a user account, so create a confirmed transaction and deposit
     transaction = transaction_repo.add(
         Transaction(
             type=TYPE_DEPOSIT,
-            credit_account_id=source.account_id,
+            credit_account_id=remitx_bank_account.account_id,
             debit_account_id=account.account_id,
             amount=amount,
-            currency=account.account_currency,
+            currency=currency,
             status=STATUS_CONFIRMED,
             created_at=statement_date,
             processed_at=processed_at,
             confirmed_at=processed_at,
         )
     )
-    account_repo.decrease_balance(source.account_id, amount)
+    account_repo.decrease_balance(remitx_bank_account.account_id, amount)
     account_repo.increase_balance(account.account_id, amount)
     return deposit_repo.add(
         Deposit(
@@ -328,16 +355,25 @@ def _parse_statement_date(value, processed_at: datetime) -> datetime:
 
 
 def _find_account(
-    reference: str | None, account_repo: AccountRepository
+    reference: str | None, currency: str, account_repo: AccountRepository
 ) -> Account | None:
-    """The account a bank-statement deposit reference names, if a deposit may
-    land on it. Any fiat account may. The token account may not, so a line
-    quoting a token reference waits for an admin like any unmatched line.
+    """The account a bank-statement line credits: the one its reference
+    names, if that account is in the line's currency. A reference to the
+    customer's account in another currency, or to their token account, never
+    is, and the line waits for an admin like any unmatched line.
     """
     if not reference:
         return None
     account = account_repo.get_user_account_by_reference(reference)
-    if account is None or account.account_currency == CURRENCY_TOKEN:
+    if account is None:
+        return None
+    if account.account_currency != currency:
+        logger.info(
+            "Reference %s names a %s account but the line is in %s",
+            reference,
+            account.account_currency,
+            currency,
+        )
         return None
     return account
 
@@ -384,10 +420,9 @@ def approve_pending_deposit(
     `_create_deposit` — used when a bank statement line's reference didn't
     match anyone at import time (e.g. a typo, or an unregistered sender) and
     an admin has since worked out which customer it belongs to. They name the
-    account by its reference (``sipho1-zar``, ``sipho1-usd``, …). The credit
-    lands on that account, in its currency, out of RemitX's bank account in
-    the same currency. A token reference is refused: no deposit lands on a
-    token account.
+    account by its reference (``sipho1-zar``, ``sipho1-usd``, …), which must
+    be in the deposit's currency: a ZAR deposit lands on a ZAR account, never
+    on a USD or token one.
 
     Raises if the deposit isn't pending (already confirmed, or doesn't exist)
     — the guarded transition on its transaction is what stops two admins from
@@ -406,21 +441,18 @@ def approve_pending_deposit(
     matched = account_repo.get_user_account_by_reference(reference)
     if matched is None:
         raise UnknownDepositReferenceError()
-    if matched.account_currency == CURRENCY_TOKEN:
-        raise TokenAccountDepositError()
-    source = _bank_account(matched.account_currency, account_repo)
+    if matched.account_currency != transaction.currency:
+        raise DepositCurrencyMismatchError(
+            transaction.currency, matched.account_currency
+        )
 
     confirmed_at = datetime.now(UTC)
     if not transaction_repo.confirm_pending_deposit_transaction(
-        deposit.tx_id,
-        credit_account_id=source.account_id,
-        debit_account_id=matched.account_id,
-        currency=matched.account_currency,
-        confirmed_at=confirmed_at,
+        deposit.tx_id, matched.account_id, confirmed_at
     ):
         raise DepositNotPendingError()
 
-    account_repo.decrease_balance(source.account_id, transaction.amount)
+    account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
     account_repo.increase_balance(matched.account_id, transaction.amount)
     deposit_repo.link_deposit_to_user(deposit_id, matched.user_id, str(admin_id))
 

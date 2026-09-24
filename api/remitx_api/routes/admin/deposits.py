@@ -38,9 +38,11 @@ controller = DepositController()
     responses=error_responses(409),
 )
 def process_deposits(payload: ProcessDepositsRequest):
-    """Rows whose reference names a customer's fiat account are confirmed and
-    credited in that account's currency. The rest, token references included,
-    wait in the pending queue for manual matching. Needs ``cashin:confirm``."""
+    """Each row carries the currency of the RemitX bank account it came into.
+    Rows whose reference names the customer's account in that currency are
+    confirmed and credited. The rest, including references to an account in
+    another currency, wait in the pending queue for manual matching. Rows
+    with no currency RemitX banks in are skipped. Needs ``cashin:confirm``."""
     rows = [row.model_dump() for row in payload.rows]
     return controller.process_deposits(rows)
 
@@ -72,7 +74,7 @@ def list_pending_deposits():
     response_model=ProcessedDepositRead,
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
     summary="Match a pending deposit to a user",
-    responses=error_responses(400, 409),
+    responses=error_responses(400),
 )
 def approve_deposit(
     deposit_id: uuid.UUID,
@@ -80,6 +82,5 @@ def approve_deposit(
     operator: User = Depends(get_current_user),
 ):
     """Confirms the deposit against the account ``account_reference`` names,
-    in that account's currency. A token account reference is refused. Needs
-    ``cashin:confirm``."""
+    which must be in the deposit's currency. Needs ``cashin:confirm``."""
     return controller.approve(deposit_id, payload.account_reference, operator.id)

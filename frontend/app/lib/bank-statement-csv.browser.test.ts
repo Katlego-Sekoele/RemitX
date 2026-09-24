@@ -38,6 +38,7 @@ test("statement csv evaluates in a browser without Node Buffer", async () => {
           description: string
           reference: string
           amount: string
+          currency: string
         }[]
       ) => string
     }
@@ -51,6 +52,7 @@ test("statement csv evaluates in a browser without Node Buffer", async () => {
       description: 'EFT Received, "salary"',
       reference: "sipho1-zar",
       amount: "42.00",
+      currency: "ZAR",
     },
   ])
   const parsed = sandbox.statementCsv!.parseStatementCsv(csv)

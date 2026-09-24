@@ -257,7 +257,7 @@
         "type": "object"
       },
       "ApproveDepositRequest": {
-        "description": "The customer's account reference, for example ``sipho1-zar``.\n\nThe deposit lands on the account that reference names, in its currency.\nAny fiat account (ZAR, USD, ZWL, NAD) can take one. A token account\nreference is refused.",
+        "description": "The customer's account reference, for example ``sipho1-zar``.\n\nIt must name an account in the deposit's currency: a ZAR deposit lands\non a ZAR account, never on a USD or token one.",
         "properties": {
           "account_reference": {
             "title": "Account Reference",
@@ -673,7 +673,7 @@
         "type": "object"
       },
       "DepositRow": {
-        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.",
+        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.\n\n``currency`` is that of the RemitX bank account the money came into: ZAR,\nUSD, ZWL or NAD. A line without one RemitX banks in is skipped.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -686,6 +686,17 @@
               }
             ],
             "title": "Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "date": {
             "anyOf": [
@@ -4446,6 +4457,7 @@
         "description": "Why a statement line produced no deposit on this run.",
         "enum": [
           "unparseable_date",
+          "unknown_currency",
           "not_incoming",
           "already_reconciled"
         ],
@@ -5534,7 +5546,7 @@
     },
     "/admin/deposits/process": {
       "post": {
-        "description": "Rows whose reference names a customer's fiat account are confirmed and\ncredited in that account's currency. The rest, token references included,\nwait in the pending queue for manual matching. Needs ``cashin:confirm``.",
+        "description": "Each row carries the currency of the RemitX bank account it came into.\nRows whose reference names the customer's account in that currency are\nconfirmed and credited. The rest, including references to an account in\nanother currency, wait in the pending queue for manual matching. Rows\nwith no currency RemitX banks in are skipped. Needs ``cashin:confirm``.",
         "operationId": "process_deposits",
         "requestBody": {
           "content": {
@@ -5611,7 +5623,7 @@
     },
     "/admin/deposits/{deposit_id}/approve": {
       "post": {
-        "description": "Confirms the deposit against the account ``account_reference`` names,\nin that account's currency. A token account reference is refused. Needs\n``cashin:confirm``.",
+        "description": "Confirms the deposit against the account ``account_reference`` names,\nwhich must be in the deposit's currency. Needs ``cashin:confirm``.",
         "operationId": "approve_deposit",
         "parameters": [
           {
@@ -5675,16 +5687,6 @@
               }
             },
             "description": "The caller lacks the required permission."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The current state refuses the request."
           },
           "422": {
             "content": {

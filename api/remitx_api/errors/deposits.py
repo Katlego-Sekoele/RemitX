@@ -19,13 +19,14 @@ class UnknownDepositReferenceError(DomainError):
         super().__init__("No RemitX account has that reference.")
 
 
-class TokenAccountDepositError(DomainError):
-    """The reference names a token account, which no deposit lands on."""
+class DepositCurrencyMismatchError(DomainError):
+    """The reference names an account in another currency than the deposit."""
 
-    def __init__(self) -> None:
+    def __init__(self, deposit_currency: str, account_currency: str) -> None:
         super().__init__(
-            "Deposits cannot land on a token account. Use one of the "
-            "customer's fiat account references instead."
+            f"This deposit is in {deposit_currency}, but that reference is a "
+            f"{account_currency} account. Use the customer's {deposit_currency} "
+            "account reference."
         )
 
 
