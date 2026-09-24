@@ -7,16 +7,14 @@ In order:
    next sign-in, through just-in-time provisioning.
 2. Empty the target's KYC document bucket.
 3. Drop the `public` schema and recreate it.
-4. `alembic upgrade head`: the schema, and every reference row the migrations
-   own (countries, KYC rules, roles and permissions).
-5. `api/scripts/seed_platform_accounts.py`: the admin (ADMIN_CLERK_USER_ID,
-   granted every staff role), the platform accounts, and the treasury funding
-   record.
+4. `alembic upgrade head`: the schema, and every row the migrations own
+   (countries, KYC rules, roles and permissions, the platform accounts).
 
-Role grants for anyone other than ADMIN_CLERK_USER_ID are not restored.
+Role grants are not restored: grant your testers theirs again on the Access
+page.
 
-Steps 4 and 5 run the API's own tooling as subprocesses from `api/`, exactly as
-a developer would, so a reset can never build a different schema than a deploy.
+Step 4 runs the API's own Alembic as a subprocess from `api/`, exactly as a
+developer would, so a reset can never build a different schema than a deploy.
 """
 
 from __future__ import annotations
@@ -128,13 +126,7 @@ def _run(command: list[str], emit: Emit) -> None:
 
 
 def rebuild(emit: Emit) -> None:
-    if not os.environ.get("ADMIN_CLERK_USER_ID"):
-        raise RuntimeError(
-            "ADMIN_CLERK_USER_ID is not set for this target: Reset needs it to "
-            "recreate the admin and the platform accounts."
-        )
     _run([sys.executable, "-m", "alembic", "upgrade", "head"], emit)
-    _run([sys.executable, "scripts/seed_platform_accounts.py"], emit)
 
 
 def reset(

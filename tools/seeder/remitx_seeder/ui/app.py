@@ -552,10 +552,10 @@ def reset_section() -> None:
     ui.markdown(
         "1. deletes the Clerk users the seeder made (your own accounts stay)\n"
         "2. empties the KYC document bucket\n"
-        "3. drops and recreates the database schema, then `alembic upgrade head`\n"
-        "4. runs `api/scripts/seed_platform_accounts.py` (admin, platform accounts)\n\n"
-        "Staff roles granted to anyone other than `ADMIN_CLERK_USER_ID` are "
-        "**not** restored."
+        "3. drops and recreates the database schema, then `alembic upgrade head`"
+        " (which also creates the platform accounts)\n\n"
+        "Staff roles are **not** restored: grant your testers theirs again on "
+        "the Access page."
     )
     phrase = ui.input(label="Type the confirmation phrase").classes("w-72")
     hint = ui.label("").classes("text-sm text-gray-500")

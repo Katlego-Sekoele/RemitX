@@ -7,8 +7,9 @@ their base reference and opens their ZAR and uctusd accounts. Most then add a
 contact mobile on their profile page, through `ProfileController`.
 
 Staff are people too. Their roles are granted through `UserRoleController.grant`
-by the administrator `seed_platform_accounts.py` provisioned, with a reason, the
-way the IAM screen does it — so separation-of-duties checks apply.
+with a reason, the way the IAM screen does it — so separation-of-duties checks
+apply — as the target's IAM admin, or with no granter when it has none (see
+`engine.preflight`).
 """
 
 from __future__ import annotations

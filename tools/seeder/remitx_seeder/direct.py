@@ -57,8 +57,8 @@ def record_treasury_top_up(amount: Decimal) -> Transaction | None:
     treasury's ledger balance without any tokens leaving the chain, so the
     ledger would read less than the real wallet holds. One `treasury_funding`
     row per seed run (issuer -> treasury, confirmed) restores the match. The
-    run manifest records its id, so it can always be told apart from the one
-    `scripts/seed_platform_accounts.py` records.
+    run manifest records its id, so it can always be told apart from any
+    other funding row.
     """
     if amount <= 0:
         return None
@@ -67,8 +67,8 @@ def record_treasury_top_up(amount: Decimal) -> Transaction | None:
     issuer = accounts.get_platform_account_by_label(Config().UCTUSD_ISSUER_LABEL)
     if treasury is None or issuer is None:
         raise RuntimeError(
-            "Treasury or issuer account missing: run api/scripts/"
-            "seed_platform_accounts.py (or Reset) first"
+            "Treasury or issuer account missing: run `alembic upgrade head` "
+            "(or Reset) first"
         )
     transaction = Transaction(
         type=TYPE_TREASURY_FUNDING,
