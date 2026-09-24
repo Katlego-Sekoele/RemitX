@@ -102,6 +102,27 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         )
         return result.rowcount == 1
 
+    def confirm_pending_transactions(
+        self, tx_ids: list[uuid.UUID], confirmed_at: datetime
+    ) -> bool:
+        """Guarded pending -> confirmed on several rows in one UPDATE. Returns
+        True iff every one of them changed. On False, any that *were* still
+        pending have been confirmed in this session, so the caller must roll
+        back rather than commit."""
+        result = db.session.execute(
+            update(Transaction)
+            .where(
+                Transaction.tx_id.in_(tx_ids),
+                Transaction.status == STATUS_PENDING,
+            )
+            .values(
+                status=STATUS_CONFIRMED,
+                confirmed_at=confirmed_at,
+                processed_at=confirmed_at,
+            )
+        )
+        return result.rowcount == len(tx_ids)
+
     def fail_pending_transaction(self, tx_id: uuid.UUID) -> bool:
         """Guarded pending -> failed. Returns True iff a row changed."""
         result = db.session.execute(

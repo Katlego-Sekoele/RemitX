@@ -29,13 +29,12 @@ def request_withdrawal(
     payload: WithdrawalCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """The destination bank account must already be verified — see
-    `GET /bank-accounts/withdrawable` for the set of accounts that qualify.
-    Settles immediately, synchronously, in this same call."""
+    """Make a withdrawal request from the user's fiat account to a bank account. 
+    The bank account must be verified and match the currency of the withdrawal."""
     try:
         view = controller.request(
             user.id, payload.bank_account_id, payload.currency, payload.amount
-        )
+        )# get the view model for the withdrawal request
     except (BankAccountNotFoundError, CurrencyMismatchError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)

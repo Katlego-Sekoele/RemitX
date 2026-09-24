@@ -96,6 +96,37 @@ def test_confirm_pending_transaction_is_one_shot(app_context):
     assert tx.processed_at is not None
 
 
+def test_confirm_pending_transactions_is_all_or_nothing(app_context):
+    _, zar, platform, _ = _setup()
+    first = _pending_tx(zar, platform, "10")
+    second = _pending_tx(zar, platform, "10")
+    transactions = TransactionRepository()
+    now = datetime.now(UTC)
+
+    assert (
+        transactions.confirm_pending_transactions([first.tx_id, second.tx_id], now)
+        is True
+    )
+    db.session.commit()
+    # Both already confirmed: a second attempt changes nothing.
+    assert (
+        transactions.confirm_pending_transactions([first.tx_id, second.tx_id], now)
+        is False
+    )
+
+    # One pending, one not: reports False even though it confirmed the
+    # pending one, which is why the caller rolls back.
+    third = _pending_tx(zar, platform, "10")
+    db.session.commit()
+    assert (
+        transactions.confirm_pending_transactions([first.tx_id, third.tx_id], now)
+        is False
+    )
+    db.session.rollback()
+    db.session.refresh(third)
+    assert third.status == STATUS_PENDING
+
+
 def test_fail_pending_transaction_only_fails_pending_rows(app_context):
     _, zar, platform, _ = _setup()
     pending = _pending_tx(zar, platform, "10")
