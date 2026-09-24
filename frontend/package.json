@@ -32,6 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.2.6",
+    "csv": "^6.6.3",
     "date-fns": "^4.4.0",
     "isbot": "^5",
     "motion": "^13.1.0",

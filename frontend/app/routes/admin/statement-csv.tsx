@@ -39,12 +39,12 @@ import {
 import { api } from "~/client"
 import { useHasPermission } from "~/hooks/use-permissions"
 import {
-  SAMPLE_STATEMENT_LINES,
   STATEMENT_COLUMNS,
   statementToCsv,
   type StatementColumn,
   type StatementLine,
 } from "~/lib/bank-statement-csv"
+import { SAMPLE_STATEMENT_LINES } from "~/lib/sample-statement-lines"
 import { PERMISSIONS } from "~/lib/permissions"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/statement-csv"

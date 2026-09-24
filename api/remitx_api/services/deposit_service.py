@@ -6,9 +6,9 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.exc import IntegrityError
 
-from remitx_api.errors.base import ConflictError
 from remitx_api.errors.deposits import (
     DepositNotPendingError,
+    PlatformBankAccountMissingError,
     UnknownDepositReferenceError,
 )
 from remitx_api.extensions import db
@@ -31,44 +31,32 @@ REMITX_SA_BANK_ACCOUNT_LABEL = "RemitX SA Bank Account"
 _AMOUNT_QUANTUM = Decimal("0.01")
 
 
-class PlatformBankAccountMissingError(ConflictError):
-    """Reconciliation has nowhere to take the money from."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "RemitX SA Bank Account is not set up, so deposits cannot be "
-            "reconciled. Seed the platform accounts and try again."
-        )
-
-
-def statement_fingerprint(row: dict) -> str:
+def statement_fingerprint(row: dict, *, statement_date: datetime) -> str:
     """Stable identity of one bank-statement line.
 
-    Date (UTC calendar day), the reference as written, and the amount at
-    2dp. The same CSV uploaded twice, or an overlapping date range, produces
-    the same fingerprint and is not credited again. Two different amounts,
-    dates, or references are two deposits.
+    UTC calendar day of the line (same instant used for the transaction's
+    ``created_at``), the reference as written, and the amount at 2dp. The
+    same CSV uploaded twice, or an overlapping date range, produces the same
+    fingerprint and is not credited again.
     """
     reference = (row.get("reference") or "").strip()
     amount = Decimal(str(row.get("amount"))).quantize(
         _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
     )
-    return f"{_fingerprint_date(row.get('date'))}|{reference}|{format(amount, 'f')}"
+    calendar_day = statement_date.astimezone(UTC).date().isoformat()
+    return f"{calendar_day}|{reference}|{format(amount, 'f')}"
 
 
-def _fingerprint_date(value) -> str:
+def _try_parse_statement_datetime(value) -> datetime | None:
     if not value:
-        return ""
+        return None
     if isinstance(value, datetime):
-        parsed = value
-    else:
-        try:
-            parsed = datetime.fromisoformat(str(value))
-        except ValueError:
-            return ""
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(UTC)
-    return parsed.date().isoformat()
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def process_deposits(bank_statement: str | list[dict]) -> list[Deposit]:
@@ -126,15 +114,25 @@ def _create_deposit(
             amount,
         )
         return None
+
+    processed_at = datetime.now(UTC)
+    raw_date = row.get("date")
+    if raw_date not in (None, "") and _try_parse_statement_datetime(raw_date) is None:
+        logger.warning(
+            "Skipping statement line with unparseable date (reference=%s, date=%r)",
+            reference,
+            raw_date,
+        )
+        return None
+    statement_date = _parse_statement_date(raw_date, processed_at)
     fingerprint = statement_fingerprint(
-        {**row, "reference": reference, "amount": amount}
+        {**row, "reference": reference, "amount": amount},
+        statement_date=statement_date,
     )
     if deposit_repo.get_by_statement_fingerprint(fingerprint) is not None:
         logger.info("Skipping statement line already reconciled (%s)", fingerprint)
         return None
 
-    processed_at = datetime.now(UTC)
-    statement_date = _parse_statement_date(row.get("date"), processed_at)
     # For now we only support ZAR deposits, so the bank account is always the same.
     remitx_bank_account = account_repo.get_platform_account_by_label(
         REMITX_SA_BANK_ACCOUNT_LABEL
@@ -233,20 +231,10 @@ def _parse_statement_date(value, processed_at: datetime) -> datetime:
     so a deposit is ordered, and reported on, by when the money actually
     moved.
 
-    Falls back to `processed_at` when the row didn't carry a date, or it
-    can't be parsed — one bad or missing value shouldn't fail the import.
+    Falls back to `processed_at` when the row didn't carry a date.
     """
-    if not value:
-        return processed_at
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        try:
-            parsed = datetime.fromisoformat(str(value))
-        except ValueError:
-            logger.warning("Unparseable statement date %r; using processed_at", value)
-            return processed_at
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    parsed = _try_parse_statement_datetime(value)
+    return parsed if parsed is not None else processed_at
 
 
 def _find_account(

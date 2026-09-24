@@ -324,7 +324,7 @@ CREATE TABLE deposits (
     user_id                UUID REFERENCES users(id),   -- NULL until matched
     user_account_reference TEXT,                          -- raw reference string from the bank statement
     payment_method         VARCHAR(16) NOT NULL,          -- cash, bank_transfer, card
-    confirmed_by           TEXT,                          -- admin id, or 'system' if matched at import
+    confirmed_by           TEXT CHECK (confirmed_by IS NULL OR confirmed_by = 'system' OR (length(confirmed_by) = 36 AND confirmed_by ~ '^[0-9a-f-]{36}$')),  -- admin id, or 'system'
     statement_fingerprint  TEXT NOT NULL UNIQUE           -- UTC date, reference and amount; blocks re-import
 );
 
