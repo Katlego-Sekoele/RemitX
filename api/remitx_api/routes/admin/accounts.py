@@ -9,7 +9,7 @@ a transfer or a burn.
 from fastapi import APIRouter
 from remitx_api.controllers.account_controller import AccountController
 from remitx_api.models.orm.permission import PermissionCode
-from remitx_api.models.schemas.account import PlatformAccountRead
+from remitx_api.models.schemas.account import PlatformAccountRead, TreasuryCoverageRead
 from remitx_api.openapi import Tag
 from remitx_api.routes.routers import create_admin_router
 
@@ -43,3 +43,18 @@ def list_platform_accounts():
         )
         for view in controller.get_platform_accounts()
     ]
+
+
+@router.get(
+    "/coverage",
+    response_model=TreasuryCoverageRead,
+    summary="Read treasury token coverage",
+)
+def get_treasury_coverage():
+    """Token still available on the treasury wallet, and the token customers
+    hold. Needs ``platform_account:read``."""
+    view = controller.get_treasury_coverage()
+    return TreasuryCoverageRead(
+        token_available=view.token_available,
+        customer_token_balances=view.customer_token_balances,
+    )

@@ -47,6 +47,7 @@ class Tag:
     BENEFICIARIES = "beneficiaries"
     QUOTES = "quotes"
     REMITTANCES = "remittances"
+    DASHBOARD = "dashboard"
     ACCOUNTS = "accounts"
     BANK_ACCOUNTS = "bank_accounts"
     WITHDRAWALS = "withdrawals"
@@ -55,6 +56,7 @@ class Tag:
     ADMIN_ROLES = "admin.roles"
     ADMIN_USERS = "admin.users"
     ADMIN_ACCOUNTS = "admin.accounts"
+    ADMIN_OPERATIONS = "admin.operations"
     ADMIN_DEPOSITS = "admin.deposits"
     ADMIN_BANK_ACCOUNTS = "admin.bank_accounts"
     ADMIN_WITHDRAWALS = "admin.withdrawals"
@@ -80,6 +82,10 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.REMITTANCES,
         "description": "Confirming a quote, then following the transfer as it settles.",
+    },
+    {
+        "name": Tag.DASHBOARD,
+        "description": "The signed-in customer's account overview.",
     },
     {
         "name": Tag.ACCOUNTS,
@@ -109,6 +115,10 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_ACCOUNTS,
         "description": "RemitX's own platform account balances.",
+    },
+    {
+        "name": Tag.ADMIN_OPERATIONS,
+        "description": "Settlement volume and the transfer pipeline.",
     },
     {
         "name": Tag.ADMIN_DEPOSITS,

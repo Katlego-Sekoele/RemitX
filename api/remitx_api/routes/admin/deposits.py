@@ -11,6 +11,7 @@ from remitx_api.auth.permissions import RequirePermission
 from remitx_api.controllers.deposit_controller import DepositController
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.user import User
+from remitx_api.models.schemas.count import CountRead
 from remitx_api.models.schemas.deposit import (
     AccountReferenceRead,
     ApproveDepositRequest,
@@ -67,6 +68,16 @@ def list_account_references():
 def list_pending_deposits():
     """Deposits whose reference matched no user."""
     return controller.list_pending()
+
+
+@router.get(
+    "/pending-count",
+    response_model=CountRead,
+    summary="Count deposits awaiting manual matching",
+)
+def get_pending_deposit_count():
+    """How many statement lines are still unmatched. Needs ``cashin:read``."""
+    return CountRead(count=controller.pending_count())
 
 
 @router.post(
