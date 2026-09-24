@@ -503,10 +503,23 @@
             },
             "title": "Payout Currencies",
             "type": "array"
+          },
+          "profile_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Profile image URL when available (resolved server-side).",
+            "title": "Profile Image Url"
           }
         },
         "required": [
           "linked_user_id",
+          "profile_image_url",
           "first_name",
           "display_name",
           "country",
@@ -609,6 +622,18 @@
           "payout_currency": {
             "$ref": "#/components/schemas/PayoutCurrency"
           },
+          "profile_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Profile image URL from the identity provider's CDN (img.clerk.com), including a default avatar when they have not uploaded one. Resolved server-side; Clerk user ids are not exposed.",
+            "title": "Profile Image Url"
+          },
           "relationship": {
             "$ref": "#/components/schemas/BeneficiaryRelationship"
           }
@@ -616,6 +641,7 @@
         "required": [
           "beneficiary_id",
           "linked_user_id",
+          "profile_image_url",
           "full_name",
           "country",
           "country_name",

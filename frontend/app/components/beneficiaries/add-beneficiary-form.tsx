@@ -16,6 +16,7 @@ import {
   PayoutCurrencyField,
   RelationshipField,
 } from "~/components/beneficiaries/beneficiary-fields"
+import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import { Alert, AlertDescription } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -38,6 +39,7 @@ import {
   Item,
   ItemContent,
   ItemDescription,
+  ItemMedia,
   ItemTitle,
 } from "~/components/ui/item"
 import { errorMessage } from "~/hooks/use-onboarding"
@@ -238,6 +240,14 @@ function ConfirmStep({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Item variant="muted">
+            <ItemMedia>
+              <BeneficiaryAvatar
+                beneficiary={{
+                  full_name: found.display_name ?? found.first_name,
+                  profile_image_url: found.profile_image_url,
+                }}
+              />
+            </ItemMedia>
             <ItemContent>
               <ItemTitle>{who}</ItemTitle>
               {found.country_name ? null : (

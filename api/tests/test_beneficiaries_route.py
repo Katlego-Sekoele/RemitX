@@ -171,6 +171,7 @@ def test_lookup_shows_a_short_verified_name_country_and_currency_only(
     assert response.status_code == 200
     assert response.json() == {
         "linked_user_id": str(linked_id),
+        "profile_image_url": None,
         "first_name": "Tendai",
         "display_name": "Tendai M.",
         "country": "ZW",

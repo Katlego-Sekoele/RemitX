@@ -140,6 +140,32 @@ def fetch_user_email(clerk_user_id: str, config: Config) -> str | None:
         return None
 
 
+@lru_cache(maxsize=512)
+def fetch_user_image_url(clerk_user_id: str, secret_key: str) -> str | None:
+    """Return a Clerk-hosted profile image URL for a user.
+
+    Includes Clerk's generated avatar when the person has not uploaded a
+    photo. Cached in-process so beneficiary lists do not hammer Clerk for
+    the same people on every poll.
+
+    Returns None rather than raising: a missing image must not break the
+    beneficiaries list.
+    """
+    if not secret_key:
+        return None
+    try:
+        user = _sdk(secret_key).users.get(user_id=clerk_user_id)
+        image_url = getattr(user, "image_url", None)
+        return image_url or None
+    except Exception as exc:
+        logger.warning(
+            "fetch_user_image_url failed for clerk_user_id=%s: %s",
+            clerk_user_id,
+            type(exc).__name__,
+        )
+        return None
+
+
 def fetch_user_first_name(clerk_user_id: str, config: Config) -> str | None:
     """Look up a user's first name via Clerk's Backend API.
 
