@@ -119,6 +119,7 @@ export type AppRouteContext = {
 }
 
 export function appRouteContext(module: string): AppRouteContext | undefined {
+  if (!module) return undefined
   const match = APP_ROUTE_INDEX.find((node) => node.route.module === module)
   return match ? { title: match.label } : undefined
 }
