@@ -11,7 +11,7 @@ Every party that can hold money — a real user, or RemitX itself, or an externa
 ```sql
 CREATE TABLE accounts (
     account_id       UUID PRIMARY KEY,
-    user_id          UUID REFERENCES users(id),   -- NULL only for type='EXTERNAL'
+    user_id          UUID REFERENCES users(id),   -- the customer; type='USER' only, NULL otherwise
     type             VARCHAR(24) NOT NULL,          -- USER, REMITX_FIAT, REMITX_XRPL_WALLET,
                                                      -- REMITX_REVENUE, EXTERNAL
     reference        TEXT UNIQUE,                   -- e.g. "sian1-zar" — USER rows only
@@ -23,7 +23,7 @@ CREATE TABLE accounts (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT ck_account_owner CHECK (
-        (type <> 'EXTERNAL' AND user_id IS NOT NULL) OR (type = 'EXTERNAL' AND user_id IS NULL)
+        (type = 'USER' AND user_id IS NOT NULL) OR (type <> 'USER' AND user_id IS NULL)
     ),
     CONSTRAINT ck_account_reference CHECK (
         (type = 'USER' AND reference IS NOT NULL) OR (type <> 'USER' AND reference IS NULL)
@@ -214,7 +214,7 @@ No manual admin-approval gate — holding a customer's own money hostage behind 
 
 ```mermaid
 erDiagram
-    USERS ||--o| ACCOUNTS : "user_id (NULL only for type=EXTERNAL)"
+    USERS ||--o| ACCOUNTS : "user_id (type=USER only)"
     USERS ||--o| DEPOSITS : "user_id (nullable, until matched)"
     USERS ||--o{ BENEFICIARIES : "sender_user_id"
     USERS ||--o{ BENEFICIARIES : "linked_user_id"
@@ -249,7 +249,7 @@ erDiagram
     }
     ACCOUNTS {
         uuid account_id PK
-        uuid user_id FK "NULL only for type=EXTERNAL"
+        uuid user_id FK "USER rows only, NULL otherwise"
         enum type
         string reference "nullable, USER rows only"
         string label
@@ -518,7 +518,8 @@ A freshly migrated database (`alembic upgrade head`) has the schema, the RBAC ca
 2. **Set `ADMIN_CLERK_USER_ID`** in `.env` to your own Clerk user id (Clerk dashboard → Users). This is who `scripts/bootstrap.py` provisions and grants every staff role in the RBAC catalogue (`treasury_operator`, `compliance_officer`, `iam_admin`, …) — sign in with this same Clerk account and the admin portal opens with no manual DB edit needed. Access is decided by those roles' permissions, checked per route by `RequirePermission` (`api/remitx_api/auth/permissions.py`) — there is no staff flag on the `users` row to set.
 3. **Run `python scripts/bootstrap.py`** (from `api/`, venv active). Idempotent — safe to re-run. Creates:
    - If `ADMIN_CLERK_USER_ID` is set: the admin `User` row (or reuses one that already exists from a prior sign-in), with every `is_admin` role in the catalogue granted to it through `user_roles`.
-   - If `PLATFORM_WALLET_ADDRESS` is also set and the XRPL testnet is reachable: a one-time `treasury_funding` transaction recording the wallet's real on-chain `uctusd` balance. Skipped with a warning, not a failure, if either is missing.
+   - If `PLATFORM_WALLET_ADDRESS` is set and the XRPL testnet is reachable: a one-time `treasury_funding` transaction recording the wallet's real on-chain `uctusd` balance. Skipped with a warning, not a failure, if either is missing.
 4. **Sign in via the frontend at least once**, any account (`/sign-in`). First login eagerly creates that user's ZAR + `uctusd` accounts (§2, Phase A) via `ensure_provisioned` — there's no one to deposit against until at least one real user exists this way.
 5. **Point a bank-statement CSV at real references.** `api/scripts/sample_bank_statement.csv`'s references (`sian1-zar`, `thabo2-zar`, `amahle1-zar`, …) are placeholders — swap them for the actual `base_reference` of users created in step 4 (`SELECT id, base_reference FROM users;`), or every line lands `pending` instead of matching.
 6. **Run the reconciliation job** — via the `/admin/process-deposits` frontend page (needs `cashin:read` to see the queue and `cashin:confirm` to run the job or resolve a line — the `treasury_operator` role carries both), or directly: `deposit_service.process_deposits("scripts/sample_bank_statement.csv")`.
+7. **Check the platform balances** on the `/admin/platform-accounts` page (Treasury → Platform accounts; needs `platform_account:read`, which the `treasury_operator` role carries). Each reconciled deposit shows up against `RemitX SA Bank Account`, and after step 3 the treasury wallet shows its recorded `uctusd` balance.
