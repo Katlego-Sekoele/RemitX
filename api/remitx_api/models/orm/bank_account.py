@@ -6,7 +6,7 @@ A user's external bank account — the destination for a withdrawal.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.clock import utcnow
@@ -48,7 +48,10 @@ class BankAccount(Base):
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     country: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
-        Text, nullable=False, default=STATUS_PENDING_VERIFICATION
+        Text,
+        nullable=False,
+        default=STATUS_PENDING_VERIFICATION,
+        server_default=STATUS_PENDING_VERIFICATION,
     )
     verified_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True
@@ -59,5 +62,8 @@ class BankAccount(Base):
     # Set only on rejection — the reason an admin gave, shown back to the user.
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=text("now()"),
     )
