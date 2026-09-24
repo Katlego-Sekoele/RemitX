@@ -16,7 +16,7 @@ not. `tx_id` always points at the one `transactions` row this deposit is:
 
 import uuid
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, ForeignKey, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -33,6 +33,13 @@ PAYMENT_METHODS = (
 
 CONFIRMED_BY_SYSTEM = "system"
 
+# UUID text from ``str(admin_id)`` when an admin confirms a pending line.
+_CONFIRMED_BY_UUID_SHAPE = (
+    "length(confirmed_by) = 36 AND substr(confirmed_by, 9, 1) = '-' "
+    "AND substr(confirmed_by, 14, 1) = '-' AND substr(confirmed_by, 19, 1) = '-' "
+    "AND substr(confirmed_by, 24, 1) = '-'"
+)
+
 
 class Deposit(Base):
     __tablename__ = "deposits"
@@ -42,6 +49,11 @@ class Deposit(Base):
         UniqueConstraint(
             "statement_fingerprint",
             name="uq_deposits_statement_fingerprint",
+        ),
+        CheckConstraint(
+            f"confirmed_by IS NULL OR confirmed_by = '{CONFIRMED_BY_SYSTEM}' OR "
+            f"({_CONFIRMED_BY_UUID_SHAPE})",
+            name="deposits_confirmed_by_actor",
         ),
     )
 

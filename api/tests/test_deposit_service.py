@@ -131,6 +131,17 @@ def test_approving_by_settlement_reference_credits_the_zar_account(app_context):
     assert deposit_service.get_pending_deposits() == []
 
 
+def test_unparseable_statement_date_is_skipped(app_context):
+    _seed_bank_account()
+
+    deposits = deposit_service.process_deposits(
+        [{"reference": "remitx deposit", "amount": "80.00", "date": "not-a-date"}]
+    )
+
+    assert deposits == []
+    assert deposit_service.get_pending_deposits() == []
+
+
 def test_outgoing_lines_are_skipped_not_recorded_as_deposits(app_context):
     """A real statement mixes RemitX's own outgoing payments in with sender
     deposits — a negative amount was never a deposit and must not become one
