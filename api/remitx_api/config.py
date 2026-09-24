@@ -173,6 +173,9 @@ class Config:
     PERCENTAGE_FEE_RATE = Decimal(os.getenv("PERCENTAGE_FEE_RATE", "0.005"))
     FX_MARGIN_RATE = Decimal(os.getenv("FX_MARGIN_RATE", "0.01"))
     CASH_OUT_FEE_RATE = Decimal(os.getenv("CASH_OUT_FEE_RATE", "0.0075"))
+    # Floor on the cash-out fee — every withdrawal has a fee leg and amounts
+    # must be positive, so this must stay >= 0.01 (services/withdrawal_service.py).
+    MIN_CASH_OUT_FEE = Decimal(os.getenv("MIN_CASH_OUT_FEE", "0.01"))
     DAILY_LIMIT_ZAR_UNVERIFIED = Decimal(os.getenv("DAILY_LIMIT_ZAR_UNVERIFIED", "0"))
     MONTHLY_LIMIT_ZAR_UNVERIFIED = Decimal(
         os.getenv("MONTHLY_LIMIT_ZAR_UNVERIFIED", "0")

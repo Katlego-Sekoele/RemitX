@@ -82,7 +82,7 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     )
 
     # Check the sender's available balance covers the quote's sender amount
-    available = accounts.get_available_balance(sender_account.account_id)
+    available = accounts.get_available_balance_locked(sender_account.account_id)
     if available < quote.sender_amount:
         # Revert the quote status back to ACTIVE if the balance is insufficient
         db.session.rollback()

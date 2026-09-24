@@ -8,6 +8,7 @@ from remitx_api.models.orm.account import TYPE_USER, Account
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
+    STATUS_FAILED,
     STATUS_PENDING,
     TYPE_TOKEN_BURN,
     Transaction,
@@ -139,5 +140,32 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
                 status=STATUS_CONFIRMED,
                 confirmed_at=confirmed_at,
             )
+        )
+        return result.rowcount == 1
+
+    def confirm_pending_transaction(
+        self, tx_id: uuid.UUID, confirmed_at: datetime
+    ) -> bool:
+        """Guarded pending -> confirmed on a row whose accounts are already
+        both known (unlike `confirm_pending_deposit_transaction`, which also
+        fills in a previously-unknown destination). Returns True iff a row
+        changed."""
+        result = db.session.execute(
+            update(Transaction)
+            .where(Transaction.tx_id == tx_id, Transaction.status == STATUS_PENDING)
+            .values(
+                status=STATUS_CONFIRMED,
+                confirmed_at=confirmed_at,
+                processed_at=confirmed_at,
+            )
+        )
+        return result.rowcount == 1
+
+    def fail_pending_transaction(self, tx_id: uuid.UUID) -> bool:
+        """Guarded pending -> failed. Returns True iff a row changed."""
+        result = db.session.execute(
+            update(Transaction)
+            .where(Transaction.tx_id == tx_id, Transaction.status == STATUS_PENDING)
+            .values(status=STATUS_FAILED)
         )
         return result.rowcount == 1

@@ -48,12 +48,16 @@ class Tag:
     QUOTES = "quotes"
     REMITTANCES = "remittances"
     ACCOUNTS = "accounts"
+    BANK_ACCOUNTS = "bank_accounts"
+    WITHDRAWALS = "withdrawals"
     KYC_ONBOARDING = "kyc.onboarding"
     KYC_DOCUMENTS = "kyc.documents"
     ADMIN_ROLES = "admin.roles"
     ADMIN_USERS = "admin.users"
     ADMIN_ACCOUNTS = "admin.accounts"
     ADMIN_DEPOSITS = "admin.deposits"
+    ADMIN_BANK_ACCOUNTS = "admin.bank_accounts"
+    ADMIN_WITHDRAWALS = "admin.withdrawals"
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
 
@@ -82,6 +86,14 @@ TAGS: list[dict[str, str]] = [
         "description": "A caller's own currency account balances and history.",
     },
     {
+        "name": Tag.BANK_ACCOUNTS,
+        "description": "A caller's own external bank accounts for withdrawals.",
+    },
+    {
+        "name": Tag.WITHDRAWALS,
+        "description": "Requesting a withdrawal from a fiat account to a bank account.",
+    },
+    {
         "name": Tag.KYC_ONBOARDING,
         "description": "The applicant's resumable KYC application.",
     },
@@ -101,6 +113,14 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_DEPOSITS,
         "description": "ZAR cash-in reconciliation against bank statements.",
+    },
+    {
+        "name": Tag.ADMIN_BANK_ACCOUNTS,
+        "description": "Verifying or rejecting a customer's external bank account.",
+    },
+    {
+        "name": Tag.ADMIN_WITHDRAWALS,
+        "description": "Read-only withdrawal history; withdrawals settle on request.",
     },
     {
         "name": Tag.ADMIN_KYC_APPLICATIONS,
