@@ -114,7 +114,7 @@ def cmd_status(target: str, env: dict[str, str], args) -> dict:
 
             preflight()
             status["ready"] = True
-            status["ready_detail"] = "Platform accounts and an IAM admin are in place."
+            status["ready_detail"] = "The platform accounts are in place."
         except Exception as exc:  # noqa: BLE001
             status["ready"] = False
             status["ready_detail"] = str(exc)

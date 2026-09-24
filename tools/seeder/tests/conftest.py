@@ -80,34 +80,13 @@ def pytest_unconfigure(config) -> None:
         drop_database(name)
 
 
-def _load_platform_seed_script():
-    import importlib.util
-
-    path = REPO_ROOT / "api" / "scripts" / "seed_platform_accounts.py"
-    spec = importlib.util.spec_from_file_location("seed_platform_accounts", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 @pytest.fixture(scope="session")
 def database():
-    """The migrated test database with what seed_platform_accounts.py makes:
-    an admin holding every staff role, and the platform accounts."""
+    """The migrated test database: the migrations create the platform
+    accounts, which is all a run needs, the same as after a Reset."""
     from remitx_api.config import Config
-    from remitx_api.controllers.user_controller import UserController
     from remitx_api.extensions import db
 
     if db.engine is None:
         db.init(Config.DATABASE_URL)
-    script = _load_platform_seed_script()
-    token = db.open_session()
-    try:
-        admin = UserController().ensure_provisioned(
-            "user_test_admin", lambda: "admin@example.com", lambda: "Admin"
-        )
-        script._grant_every_staff_role(admin)
-        script._seed_platform_accounts(admin.id)
-    finally:
-        db.close_session(token)
     return db

@@ -15,10 +15,8 @@ Why it exists and why it works the way it does:
 ## Quick start (local)
 
 Prerequisites: the dev stack running (`docker compose -f docker-compose.dev.yml
-up`), which migrates Postgres and creates the MinIO bucket, and the platform
-accounts seeded once (`cd api && python scripts/seed_platform_accounts.py`, see
-[Transaction_Flow_Context.md §9](../../Transaction_Flow_Context.md)). The
-seeder's Reset does both for you if you prefer.
+up`), which migrates Postgres — creating the platform accounts — and creates
+the MinIO bucket.
 
 ```bash
 cd tools/seeder
@@ -143,10 +141,9 @@ Change those to change the population; no code needed.
 - **Runs** lists the manifest each run writes to `runs/` (gitignored): scenario,
   seed, git commit, counts, refusals and the verify report.
 - **Reset** deletes the seeded Clerk users, empties the bucket, drops and
-  recreates the schema, runs `alembic upgrade head` and
-  `api/scripts/seed_platform_accounts.py`. Type `reset <target>` to confirm.
-  Staff roles granted to anyone other than `ADMIN_CLERK_USER_ID` are not
-  restored.
+  recreates the schema and runs `alembic upgrade head`, which also creates the
+  platform accounts. Type `reset <target>` to confirm. Staff roles are not
+  restored: grant your testers theirs again on the Access page.
 
 ## Keeping it working while the backend changes
 

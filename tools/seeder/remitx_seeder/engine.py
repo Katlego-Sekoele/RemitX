@@ -1,8 +1,9 @@
 """One seed run, start to finish.
 
-1. **Preflight.** The platform accounts and an IAM admin must exist: they are
-   what `api/scripts/seed_platform_accounts.py` (or Reset) creates, and every
-   deposit, fee and role grant needs them.
+1. **Preflight.** The platform accounts must exist — `alembic upgrade head`
+   creates them — since every deposit and fee needs them. Staff roles are
+   granted as the target's IAM admin if it has one, and with no granter
+   otherwise.
 2. **Plan.** Build the people from the scenario and the data files, decide
    who gets a Clerk account (staff first, then senders, then recipients, up
    to the cap), and put their sign-ups on the timeline.
@@ -61,9 +62,11 @@ class PreflightError(RuntimeError):
     """The target is not ready to be seeded."""
 
 
-def preflight() -> uuid.UUID:
-    """The IAM admin who grants staff roles. Raises when the platform accounts
-    or that admin are missing."""
+def preflight() -> uuid.UUID | None:
+    """Who staff roles are granted as: the target's IAM admin, or None when it
+    has none — a freshly migrated or Reset target — in which case the grants
+    record no granter, as the migrations' own catalogue grants do. Raises when
+    the platform accounts are missing."""
     from remitx_api.config import Config
     from remitx_api.extensions import db
     from remitx_api.models.orm.account import (
@@ -98,12 +101,11 @@ def preflight() -> uuid.UUID:
         .where(Role.name == "iam_admin", UserRole.revoked_at.is_(None))
         .limit(1)
     )
-    if missing or admin is None:
-        problems = missing + ([] if admin else ["an iam_admin to grant staff roles"])
+    if missing:
         raise PreflightError(
             "The target is missing: "
-            + ", ".join(problems)
-            + ". Run api/scripts/seed_platform_accounts.py, or Reset."
+            + ", ".join(missing)
+            + ". Run `alembic upgrade head`, or Reset."
         )
     return admin
 

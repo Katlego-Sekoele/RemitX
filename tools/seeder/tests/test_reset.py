@@ -29,7 +29,6 @@ def test_reset_rebuilds_an_empty_ready_database(monkeypatch):
             connection.execute(text("CREATE TABLE leftover (id int)"))
         events: list[dict] = []
         monkeypatch.setenv("DATABASE_URL", url)
-        monkeypatch.setenv("ADMIN_CLERK_USER_ID", "user_reset_admin")
         monkeypatch.setenv("CLERK_SECRET_KEY", "")
         recreate_schema(url, events.append)
         rebuild(events.append)
@@ -42,15 +41,8 @@ def test_reset_rebuilds_an_empty_ready_database(monkeypatch):
             labels = set(
                 connection.execute(text("SELECT label FROM accounts")).scalars()
             )
-            admins = connection.execute(
-                text(
-                    "SELECT count(*) FROM user_roles ur JOIN roles r USING (role_id) "
-                    "WHERE r.name = 'iam_admin'"
-                )
-            ).scalar()
         engine.dispose()
         assert "leftover" not in tables and "users" in tables
         assert {"RemitX SA Bank Account", "RemitX XRPL Treasury Wallet"} <= labels
-        assert admins == 1
     finally:
         drop_database(name)
