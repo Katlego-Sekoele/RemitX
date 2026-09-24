@@ -55,12 +55,13 @@ import {
 import { PERMISSIONS } from "~/lib/permissions"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 
-const moduleName = import.meta.filename
-const pageRoutingContextByModuleName = adminRouteContext(moduleName)
+// The literal path, not `import.meta.filename` — see routes/admin/access.tsx.
+const ROUTE_MODULE = "routes/admin/process-deposits.tsx"
+const pageRoutingContext = adminRouteContext(ROUTE_MODULE)
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: `${pageRoutingContextByModuleName?.title} — RemitX` },
+    { title: `${pageRoutingContext?.title} — RemitX` },
     { name: "robots", content: "noindex" },
   ]
 }
@@ -115,11 +116,11 @@ function ProcessDepositsPage() {
     })
 
   return (
-    <AdminPageFrame module={moduleName}>
+    <AdminPageFrame module={ROUTE_MODULE}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
-            {pageRoutingContextByModuleName?.title}
+            {pageRoutingContext?.title}
           </h1>
         </div>
         <Button

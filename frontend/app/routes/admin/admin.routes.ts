@@ -160,6 +160,8 @@ function findRouteContextByModule(
   nodes: readonly AdminRouteIndex[] = ADMIN_ROUTE_INDEX,
   parent?: AdminRouteIndex
 ): AdminRouteContext | undefined {
+  if (!module) return undefined
+
   for (const node of nodes) {
     if (node.route?.module === module) {
       return {
