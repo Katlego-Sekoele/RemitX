@@ -257,7 +257,7 @@
         "type": "object"
       },
       "ApproveDepositRequest": {
-        "description": "The customer's account reference, for example ``sipho1-zar``.\n\nDeposits always credit that customer's ZAR account. A reference for one\nof their other currencies still identifies them.",
+        "description": "The customer's account reference, for example ``sipho1-zar``.\n\nThe deposit lands on the account that reference names, in its currency.\nAny fiat account (ZAR, USD, ZWL, NAD) can take one. A token account\nreference is refused.",
         "properties": {
           "account_reference": {
             "title": "Account Reference",
@@ -5432,7 +5432,7 @@
     },
     "/admin/deposits/account-references": {
       "get": {
-        "description": "References a statement line can match, for the cash-in editor.\nNeeds ``cashin:read``. Names are display names, not email addresses.",
+        "description": "References a deposit can land on, for the cash-in editor: every\ncustomer fiat account, never a token account. Needs ``cashin:read``.\nNames are display names, not email addresses.",
         "operationId": "list_account_references",
         "responses": {
           "200": {
@@ -5534,7 +5534,7 @@
     },
     "/admin/deposits/process": {
       "post": {
-        "description": "Rows whose reference matches a user are confirmed and credited; the rest\nwait in the pending queue for manual matching. Needs ``cashin:confirm``.",
+        "description": "Rows whose reference names a customer's fiat account are confirmed and\ncredited in that account's currency. The rest, token references included,\nwait in the pending queue for manual matching. Needs ``cashin:confirm``.",
         "operationId": "process_deposits",
         "requestBody": {
           "content": {
@@ -5577,6 +5577,16 @@
             },
             "description": "The caller lacks the required permission."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5601,7 +5611,7 @@
     },
     "/admin/deposits/{deposit_id}/approve": {
       "post": {
-        "description": "Confirms the deposit against the customer who holds\n``account_reference``. The credit lands on their ZAR account. Needs\n``cashin:confirm``.",
+        "description": "Confirms the deposit against the account ``account_reference`` names,\nin that account's currency. A token account reference is refused. Needs\n``cashin:confirm``.",
         "operationId": "approve_deposit",
         "parameters": [
           {
@@ -5665,6 +5675,16 @@
               }
             },
             "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
           },
           "422": {
             "content": {

@@ -1,11 +1,12 @@
 """
-ZAR cash-in header (Transaction_Flow_Context.md Phase A).
+Cash-in header (Transaction_Flow_Context.md Phase A).
 
 One row per bank statement line, written the instant it's seen — matched or
 not. `tx_id` always points at the one `transactions` row this deposit is:
 
 - Matched at import -> that row is `confirmed` immediately, `user_id` set,
-  `confirmed_by='system'`.
+  `confirmed_by='system'`, in the currency of the fiat account the reference
+  names. A token account reference never matches.
 - Unmatched -> that row is inserted `pending` with `debit_account_id` NULL
   (see models/orm/transaction.py), `user_id` NULL, `user_account_reference`
   holding whatever the bank statement gave. An admin resolves it later

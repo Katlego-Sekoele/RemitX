@@ -10,10 +10,16 @@ from sqlalchemy.exc import IntegrityError
 from remitx_api.errors.deposits import (
     DepositNotPendingError,
     PlatformBankAccountMissingError,
+    TokenAccountDepositError,
     UnknownDepositReferenceError,
 )
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import Account
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_PLATFORM_FIAT,
+    Account,
+)
 from remitx_api.models.orm.deposit import CONFIRMED_BY_SYSTEM, Deposit
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
@@ -28,7 +34,9 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 
 logger = logging.getLogger(__name__)
 
-# Hand-seeded platform account every deposit's source leg debits from.
+# The bank account whose statement is reconciled. A line no reference matches
+# is recorded against it, in ZAR, until an admin names the account it
+# belongs to.
 REMITX_SA_BANK_ACCOUNT_LABEL = "RemitX SA Bank Account"
 _AMOUNT_QUANTUM = Decimal("0.01")
 
@@ -207,12 +215,11 @@ def _create_deposit(
             reason=SkippedStatementLineReason.ALREADY_RECONCILED,
         )
 
-    # For now we only support ZAR deposits, so the bank account is always the same.
     remitx_bank_account = account_repo.get_platform_account_by_label(
         REMITX_SA_BANK_ACCOUNT_LABEL
     )
     if remitx_bank_account is None:
-        raise PlatformBankAccountMissingError()
+        raise PlatformBankAccountMissingError(CURRENCY_ZAR)
 
     try:
         with db.session.begin_nested():
@@ -256,7 +263,7 @@ def _insert_deposit(
     # If no account matches the reference, create a pending transaction and deposit
     if account is None:
         logger.info(
-            "No account found for reference %s (amount=%s): recording as pending",
+            "No deposit account for reference %s (amount=%s): recording as pending",
             reference,
             amount,
         )
@@ -280,21 +287,23 @@ def _insert_deposit(
             )
         )
 
-    # Else we have a user account, so create a confirmed transaction and deposit
+    # Else we have a user account, so create a confirmed transaction and
+    # deposit in that account's currency, out of RemitX's bank account in it.
+    source = _bank_account(account.account_currency, account_repo)
     transaction = transaction_repo.add(
         Transaction(
             type=TYPE_DEPOSIT,
-            credit_account_id=remitx_bank_account.account_id,
+            credit_account_id=source.account_id,
             debit_account_id=account.account_id,
             amount=amount,
-            currency=remitx_bank_account.account_currency,
+            currency=account.account_currency,
             status=STATUS_CONFIRMED,
             created_at=statement_date,
             processed_at=processed_at,
             confirmed_at=processed_at,
         )
     )
-    account_repo.decrease_balance(remitx_bank_account.account_id, amount)
+    account_repo.decrease_balance(source.account_id, amount)
     account_repo.increase_balance(account.account_id, amount)
     return deposit_repo.add(
         Deposit(
@@ -322,10 +331,25 @@ def _parse_statement_date(value, processed_at: datetime) -> datetime:
 def _find_account(
     reference: str | None, account_repo: AccountRepository
 ) -> Account | None:
-    """Look up the account a bank-statement deposit reference belongs to."""
+    """The account a bank-statement deposit reference names, if a deposit may
+    land on it. Any fiat account may. The token account may not, so a line
+    quoting a token reference waits for an admin like any unmatched line.
+    """
     if not reference:
         return None
-    return account_repo.get_user_account_by_reference(reference)
+    account = account_repo.get_user_account_by_reference(reference)
+    if account is None or account.account_currency == CURRENCY_TOKEN:
+        return None
+    return account
+
+
+def _bank_account(currency: str, account_repo: AccountRepository) -> Account:
+    """RemitX's bank account in `currency`: where a deposit in that currency
+    comes in, and so the source leg of its transaction."""
+    bank_account = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, currency)
+    if bank_account is None:
+        raise PlatformBankAccountMissingError(currency)
+    return bank_account
 
 
 def _read_bank_statement(bank_statement: str | list[dict]) -> list[dict]:
@@ -360,9 +384,11 @@ def approve_pending_deposit(
     The admin-triggered counterpart to automatic matching in
     `_create_deposit` — used when a bank statement line's reference didn't
     match anyone at import time (e.g. a typo, or an unregistered sender) and
-    an admin has since worked out which customer it belongs to. They identify
-    that customer by an account reference (``sipho1-zar``, ``sipho1-tok``, …).
-    The credit lands on whichever account that reference identifies.
+    an admin has since worked out which customer it belongs to. They name the
+    account by its reference (``sipho1-zar``, ``sipho1-usd``, …). The credit
+    lands on that account, in its currency, out of RemitX's bank account in
+    the same currency. A token reference is refused: no deposit lands on a
+    token account.
 
     Raises if the deposit isn't pending (already confirmed, or doesn't exist)
     — the guarded transition on its transaction is what stops two admins from
@@ -381,14 +407,21 @@ def approve_pending_deposit(
     matched = account_repo.get_user_account_by_reference(reference)
     if matched is None:
         raise UnknownDepositReferenceError()
+    if matched.account_currency == CURRENCY_TOKEN:
+        raise TokenAccountDepositError()
+    source = _bank_account(matched.account_currency, account_repo)
 
     confirmed_at = datetime.now(UTC)
     if not transaction_repo.confirm_pending_deposit_transaction(
-        deposit.tx_id, matched.account_id, confirmed_at
+        deposit.tx_id,
+        credit_account_id=source.account_id,
+        debit_account_id=matched.account_id,
+        currency=matched.account_currency,
+        confirmed_at=confirmed_at,
     ):
         raise DepositNotPendingError()
 
-    account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
+    account_repo.decrease_balance(source.account_id, transaction.amount)
     account_repo.increase_balance(matched.account_id, transaction.amount)
     deposit_repo.link_deposit_to_user(deposit_id, matched.user_id, str(admin_id))
 

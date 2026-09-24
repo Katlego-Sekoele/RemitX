@@ -35,9 +35,11 @@ controller = DepositController()
     response_model=ProcessDepositsResponse,
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
     summary="Reconcile bank-statement rows into deposits",
+    responses=error_responses(409),
 )
 def process_deposits(payload: ProcessDepositsRequest):
-    """Rows whose reference matches a user are confirmed and credited; the rest
+    """Rows whose reference names a customer's fiat account are confirmed and
+    credited in that account's currency. The rest, token references included,
     wait in the pending queue for manual matching. Needs ``cashin:confirm``."""
     rows = [row.model_dump() for row in payload.rows]
     return controller.process_deposits(rows)
@@ -49,8 +51,9 @@ def process_deposits(payload: ProcessDepositsRequest):
     summary="List customer account references",
 )
 def list_account_references():
-    """References a statement line can match, for the cash-in editor.
-    Needs ``cashin:read``. Names are display names, not email addresses."""
+    """References a deposit can land on, for the cash-in editor: every
+    customer fiat account, never a token account. Needs ``cashin:read``.
+    Names are display names, not email addresses."""
     return controller.list_account_references()
 
 
@@ -69,14 +72,14 @@ def list_pending_deposits():
     response_model=ProcessedDepositRead,
     dependencies=[Depends(RequirePermission(PermissionCode.CASHIN_CONFIRM))],
     summary="Match a pending deposit to a user",
-    responses=error_responses(400),
+    responses=error_responses(400, 409),
 )
 def approve_deposit(
     deposit_id: uuid.UUID,
     payload: ApproveDepositRequest,
     operator: User = Depends(get_current_user),
 ):
-    """Confirms the deposit against the customer who holds
-    ``account_reference``. The credit lands on their ZAR account. Needs
+    """Confirms the deposit against the account ``account_reference`` names,
+    in that account's currency. A token account reference is refused. Needs
     ``cashin:confirm``."""
     return controller.approve(deposit_id, payload.account_reference, operator.id)
