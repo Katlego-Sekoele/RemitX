@@ -63,11 +63,11 @@ def published(monkeypatch):
 def pinged(monkeypatch):
     """Capture pings, recording what had been published by the time each ran."""
     opened = []
-    monkeypatch.setattr(
-        queue_service.urllib.request,
-        "urlopen",
-        lambda url, timeout=None: opened.append((url, timeout)),
-    )
+
+    def record(url, timeout):
+        opened.append((url, timeout))
+
+    monkeypatch.setattr(queue_service, "_http_get", record)
     return opened
 
 
@@ -119,9 +119,9 @@ def test_wake_error_does_not_fail_enqueue(monkeypatch, published, drain):
     """A 502 from a booting instance is the normal case, not a failure."""
     monkeypatch.setenv("WORKER_WAKE_URL", "https://worker.example/health")
     monkeypatch.setattr(
-        queue_service.urllib.request,
-        "urlopen",
-        MagicMock(side_effect=TimeoutError("cold start")),
+        queue_service,
+        "_http_get",
+        MagicMock(side_effect=queue_service.httpx.TimeoutException("cold start")),
     )
 
     queue_service.enqueue_integration_message("msg-1")  # must not raise
@@ -143,12 +143,12 @@ def test_enqueue_does_not_wait_for_the_ping(monkeypatch, published):
     started = threading.Event()
     release = threading.Event()
 
-    def blocking_ping(url, timeout=None):
+    def blocking_ping(url, timeout):
         started.set()
         release.wait(10)
 
     monkeypatch.setenv("WORKER_WAKE_URL", "https://worker.example/health")
-    monkeypatch.setattr(queue_service.urllib.request, "urlopen", blocking_ping)
+    monkeypatch.setattr(queue_service, "_http_get", blocking_ping)
 
     began = time.monotonic()
     queue_service.enqueue_integration_message("msg-1")
@@ -168,13 +168,13 @@ def test_concurrent_wakes_collapse_into_one(monkeypatch, published):
     started = threading.Event()
     calls = []
 
-    def slow_ping(url, timeout=None):
+    def slow_ping(url, timeout):
         calls.append(url)
         started.set()
         release.wait(10)
 
     monkeypatch.setenv("WORKER_WAKE_URL", "https://worker.example/health")
-    monkeypatch.setattr(queue_service.urllib.request, "urlopen", slow_ping)
+    monkeypatch.setattr(queue_service, "_http_get", slow_ping)
 
     first = queue_service.wake_worker()
     assert started.wait(5), "ping never started"
