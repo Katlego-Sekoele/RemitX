@@ -15,6 +15,8 @@ import uuid
 
 from pydantic import ConfigDict, Field, model_validator
 
+from remitx_api.auth.clerk import fetch_user_image_url
+from remitx_api.config import Config
 from remitx_api.controllers.beneficiary_controller import ReferenceLookup
 from remitx_api.models.orm.account import PayoutCurrency
 from remitx_api.models.orm.beneficiary import BeneficiaryRelationship
@@ -74,6 +76,12 @@ class BeneficiaryRead(Schema):
 
     beneficiary_id: uuid.UUID
     linked_user_id: uuid.UUID
+    profile_image_url: str | None = Field(
+        default=None,
+        description="Profile image URL from the identity provider's CDN "
+        "(img.clerk.com), including a default avatar when they have not "
+        "uploaded one. Resolved server-side; Clerk user ids are not exposed.",
+    )
     full_name: str | None = Field(
         description=(
             "The verified name from their approved KYC application, or the "
@@ -99,9 +107,13 @@ class BeneficiaryRead(Schema):
     @classmethod
     def from_row(cls, row: BeneficiaryRow) -> "BeneficiaryRead":
         beneficiary, user, country = row.beneficiary, row.user, row.country
+        config = Config()
         return cls(
             beneficiary_id=beneficiary.beneficiary_id,
             linked_user_id=beneficiary.linked_user_id,
+            profile_image_url=fetch_user_image_url(
+                user.clerk_user_id, config.CLERK_SECRET_KEY
+            ),
             full_name=user.full_name or user.first_name,
             country=user.country,
             country_name=None if country is None else country.name,
@@ -125,6 +137,10 @@ class BeneficiaryLookupResponse(Schema):
     """
 
     linked_user_id: uuid.UUID
+    profile_image_url: str | None = Field(
+        default=None,
+        description="Profile image URL when available (resolved server-side).",
+    )
     first_name: str | None
     display_name: str | None = Field(
         description="First name and last initial, e.g. Tendai M.",
@@ -151,8 +167,12 @@ class BeneficiaryLookupResponse(Schema):
     @classmethod
     def from_lookup(cls, lookup: ReferenceLookup) -> "BeneficiaryLookupResponse":
         user = lookup.user
+        config = Config()
         return cls(
             linked_user_id=user.id,
+            profile_image_url=fetch_user_image_url(
+                user.clerk_user_id, config.CLERK_SECRET_KEY
+            ),
             first_name=user.first_name,
             display_name=short_display_name(user),
             country=user.country,

@@ -3,7 +3,12 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from remitx_api.auth import clerk as clerk_module
-from remitx_api.auth.clerk import ClerkClaims, fetch_user_email, verify_request
+from remitx_api.auth.clerk import (
+    ClerkClaims,
+    fetch_user_email,
+    fetch_user_image_url,
+    verify_request,
+)
 from remitx_api.config import TestConfig
 
 
@@ -114,6 +119,27 @@ def test_fetch_user_email_reads_the_primary_address(monkeypatch):
     monkeypatch.setattr(clerk_module, "_sdk", lambda secret_key: sdk)
 
     assert fetch_user_email("user_abc", TestConfig()) == "primary@example.com"
+
+
+def test_fetch_user_image_url_reads_clerk_image_url(monkeypatch):
+    user = SimpleNamespace(image_url="https://img.clerk.com/eyJ0eXBlIjoidXNlciJ9")
+    sdk = SimpleNamespace(users=SimpleNamespace(get=lambda user_id: user))
+    monkeypatch.setattr(clerk_module, "_sdk", lambda secret_key: sdk)
+
+    assert (
+        fetch_user_image_url("user_abc", "sk_test_x")
+        == "https://img.clerk.com/eyJ0eXBlIjoidXNlciJ9"
+    )
+
+
+def test_fetch_user_image_url_returns_none_when_lookup_fails(monkeypatch):
+    def explode(user_id):
+        raise RuntimeError("clerk is down")
+
+    sdk = SimpleNamespace(users=SimpleNamespace(get=explode))
+    monkeypatch.setattr(clerk_module, "_sdk", lambda secret_key: sdk)
+
+    assert fetch_user_image_url("user_no_image", "sk_test_x") is None
 
 
 def test_fetch_user_email_returns_none_when_lookup_fails(monkeypatch):

@@ -3,6 +3,7 @@ import { useState } from "react"
 
 import type { BeneficiaryRead as Beneficiary } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
+import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -33,6 +34,7 @@ import {
   Item,
   ItemContent,
   ItemDescription,
+  ItemMedia,
   ItemTitle,
 } from "~/components/ui/item"
 import { Skeleton } from "~/components/ui/skeleton"
@@ -168,6 +170,12 @@ export function RecipientStep({
                       value={beneficiary}
                     >
                       <Item size="xs" className="p-0">
+                        <ItemMedia>
+                          <BeneficiaryAvatar
+                            beneficiary={beneficiary}
+                            size="sm"
+                          />
+                        </ItemMedia>
                         <ItemContent>
                           <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
                           <ItemDescription>
@@ -193,6 +201,9 @@ export function RecipientStep({
         </Field>
         {selected ? (
           <Item variant="outline">
+            <ItemMedia>
+              <BeneficiaryAvatar beneficiary={selected} />
+            </ItemMedia>
             <ItemContent>
               <ItemTitle>{beneficiaryName(selected)}</ItemTitle>
               <ItemDescription>{describe(selected)}</ItemDescription>

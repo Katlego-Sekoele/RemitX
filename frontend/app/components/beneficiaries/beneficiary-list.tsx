@@ -8,9 +8,9 @@ import { useState } from "react"
 import { Link } from "react-router"
 
 import type { BeneficiaryRead } from "~/client"
+import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import { EditBeneficiaryForm } from "~/components/beneficiaries/edit-beneficiary-form"
 import { RemoveBeneficiaryDialog } from "~/components/beneficiaries/remove-beneficiary-dialog"
-import { Avatar, AvatarFallback } from "~/components/ui/avatar"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
@@ -31,7 +31,6 @@ import {
 } from "~/components/ui/item"
 import { Skeleton } from "~/components/ui/skeleton"
 import {
-  beneficiaryInitials,
   beneficiaryName,
   maskedContact,
   relationshipLabel,
@@ -74,9 +73,7 @@ function BeneficiaryRow({ beneficiary }: { beneficiary: BeneficiaryRead }) {
     <>
       <Item variant="outline" role="listitem">
         <ItemMedia>
-          <Avatar>
-            <AvatarFallback>{beneficiaryInitials(beneficiary)}</AvatarFallback>
-          </Avatar>
+          <BeneficiaryAvatar beneficiary={beneficiary} />
         </ItemMedia>
         <ItemContent className="min-w-0">
           <ItemTitle>{name}</ItemTitle>

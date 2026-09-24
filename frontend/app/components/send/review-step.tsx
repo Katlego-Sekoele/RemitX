@@ -5,6 +5,7 @@ import { useNavigate } from "react-router"
 import { toast } from "sonner"
 
 import { api, sdk, type BeneficiaryRead as Beneficiary } from "~/client"
+import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import {
   Alert,
   AlertAction,
@@ -27,6 +28,7 @@ import {
   ItemActions,
   ItemContent,
   ItemDescription,
+  ItemMedia,
   ItemTitle,
 } from "~/components/ui/item"
 import { Skeleton } from "~/components/ui/skeleton"
@@ -199,6 +201,9 @@ export function ReviewStep({
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <Item variant="outline">
+          <ItemMedia>
+            <BeneficiaryAvatar beneficiary={beneficiary} />
+          </ItemMedia>
           <ItemContent>
             <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
             <ItemDescription>

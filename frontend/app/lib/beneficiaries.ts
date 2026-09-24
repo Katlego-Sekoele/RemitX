@@ -9,14 +9,20 @@ export const BENEFICIARY_SORT_LABELS: Record<BeneficiarySort, string> = {
   alphabetical: "A–Z",
 }
 
+export type BeneficiaryNameSource = {
+  full_name?: string | null
+}
+
 /** What to call a beneficiary: their verified name, or their sign-up first
  * name until they are verified. */
-export function beneficiaryName(beneficiary: BeneficiaryRead): string {
+export function beneficiaryName(beneficiary: BeneficiaryNameSource): string {
   return beneficiary.full_name?.trim() || "Unnamed recipient"
 }
 
 /** First name and last initial, e.g. "Tendai M.", for confirmations. */
-export function beneficiaryShortName(beneficiary: BeneficiaryRead): string {
+export function beneficiaryShortName(
+  beneficiary: BeneficiaryNameSource
+): string {
   const words = (beneficiary.full_name ?? "").trim().split(/\s+/)
   if (words.length >= 2) {
     return `${words[0]} ${words[words.length - 1][0].toUpperCase()}.`
@@ -25,7 +31,9 @@ export function beneficiaryShortName(beneficiary: BeneficiaryRead): string {
 }
 
 /** Up to two initials, from the first and last words of the name. */
-export function beneficiaryInitials(beneficiary: BeneficiaryRead): string {
+export function beneficiaryInitials(
+  beneficiary: BeneficiaryNameSource
+): string {
   const words = (beneficiary.full_name ?? "").trim().split(/\s+/)
   const first = words[0]?.[0] ?? ""
   const last = words.length > 1 ? (words[words.length - 1]?.[0] ?? "") : ""
