@@ -71,6 +71,12 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     kycAttention: true,
   },
   {
+    route: { path: "app/withdraw", module: "routes/app/withdraw.tsx" },
+    label: "Withdraw",
+    order: 15,
+    icon: "ArrowCircleUpIcon",
+  },
+  {
     // A transfer's own page, app/transfers/:remittanceId, is in routes.ts.
     route: { path: "app/transfers", module: "routes/app/transfers.tsx" },
     label: "Transfers",
@@ -85,6 +91,15 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     label: "Beneficiaries",
     order: 20,
     icon: "UsersThreeIcon",
+  },
+  {
+    route: {
+      path: "app/bank-accounts",
+      module: "routes/app/bank-accounts.tsx",
+    },
+    label: "Bank accounts",
+    order: 25,
+    icon: "BankIcon",
   },
   {
     route: { path: "app/profile", module: "routes/app/profile.tsx" },
