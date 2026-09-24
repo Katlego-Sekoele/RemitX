@@ -7,7 +7,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Navigate, useNavigate } from "react-router"
 
-import { PersonalInformationIllustration } from "~/components/illustrations/personal-information"
+import { SecurityOnIllustration } from "~/components/illustrations/security-on"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -111,7 +111,7 @@ function StartCard() {
         <CardDescription>Takes about five minutes.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <PersonalInformationIllustration className="mx-auto h-auto w-full max-w-xs" />
+        <SecurityOnIllustration className="mx-auto h-auto w-full max-w-xs" />
         <div className="flex flex-col gap-2">
           <p>Why we ask for your details:</p>
           <ItemGroup>

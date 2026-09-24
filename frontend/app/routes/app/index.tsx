@@ -8,7 +8,7 @@ import { Link } from "react-router"
 
 import { BalanceSummary } from "~/components/accounts/balance-summary"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
-import { WorldIllustration } from "~/components/illustrations/world"
+import { ConnectedWorldIllustration } from "~/components/illustrations/connected-world"
 import { RecentTransfers } from "~/components/transfers/recent-transfers"
 import { Button } from "~/components/ui/button"
 import {
@@ -117,7 +117,7 @@ function Welcome({ verified, loaded }: { verified: boolean; loaded: boolean }) {
             </Button>
           )}
         </div>
-        <WorldIllustration className="h-auto w-full max-w-60 shrink-0" />
+        <ConnectedWorldIllustration className="h-auto w-full max-w-60 shrink-0" />
       </CardContent>
     </Card>
   )
