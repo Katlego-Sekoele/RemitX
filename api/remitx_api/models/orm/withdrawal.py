@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Numeric, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.clock import utcnow
@@ -47,5 +47,8 @@ class Withdrawal(Base):
     # Always 'system': withdrawals settle on request, never by an admin
     confirmed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=text("now()"),
     )
