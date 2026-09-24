@@ -8,6 +8,9 @@
 export const PERMISSIONS = {
   cashinRead: "cashin:read",
   cashinConfirm: "cashin:confirm",
+  cashoutRead: "cashout:read",
+  cashoutApprove: "cashout:approve",
+  cashoutFail: "cashout:fail",
   kycApplicationRead: "kyc:application:read",
   kycApplicationReadPii: "kyc:application:read_pii",
   kycApplicationDecide: "kyc:application:decide",
