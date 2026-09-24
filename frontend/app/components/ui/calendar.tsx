@@ -79,7 +79,7 @@ function Calendar({
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
-          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
+          "relative flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
           defaultClassNames.dropdowns
         ),
         caption_label: cn(
@@ -164,7 +164,11 @@ function Calendar({
   )
 }
 
-/** Month and year navigation through our Select instead of a native one. */
+/**
+ * Month and year navigation through our Select instead of a native one:
+ * DayPicker's native `<select>` doesn't open reliably inside the base-ui
+ * Popover the DatePicker renders it in.
+ */
 function CalendarDropdown({
   options = [],
   value,
@@ -181,6 +185,7 @@ function CalendarDropdown({
       value={Number(value)}
       disabled={disabled}
       onValueChange={(next) => {
+        if (next === null) return
         // DayPicker reads the choice from a native select's change event.
         onChange?.({
           target: { value: String(next) },
