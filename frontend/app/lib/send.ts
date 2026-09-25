@@ -251,6 +251,7 @@ export type PricedQuote = {
   fiat_exchange_rate: string
   token_amount: string
   token_name: string
+  receiver_amount: string
   receiver_currency: string
   receiver_payout_fee: string
   receiver_payout_estimate: string
@@ -305,11 +306,15 @@ export function quoteLines(quote: PricedQuote): QuoteLine[] {
       value: formatMoney(quote.token_amount, quote.token_name),
     },
     {
-      label: "Cash-out fee",
+      label: paid ? "Recipient gets" : "Received",
+      value: formatMoney(quote.receiver_amount, receiver),
+    },
+    {
+      label: "Recipient cash-out fee",
       value: formatMoney(quote.receiver_payout_fee, receiver),
     },
     {
-      label: paid ? "Recipient gets" : "Received",
+      label: "Estimated payout if recipient withdraws",
       value: formatMoney(quote.receiver_payout_estimate, receiver),
     },
   ]

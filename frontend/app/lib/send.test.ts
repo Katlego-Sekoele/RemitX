@@ -195,8 +195,9 @@ describe("quoteLines", () => {
       "Amount converted",
       "Exchange rate",
       "RLUSD sent",
-      "Cash-out fee",
       "Recipient gets",
+      "Recipient withdraw cash-out fee",
+      "Estimated payout if recipient withdraws",
     ])
   })
 
@@ -208,6 +209,7 @@ describe("quoteLines", () => {
       "R 970.00",
       "1 USD = R 18.5000",
       "RLUSD 52.43",
+      "ZWL 15,733.40",
       "ZWL 118.00",
       "ZWL 15,615.40",
     ])
@@ -229,8 +231,9 @@ describe("quoteLines", () => {
     expect(received).toEqual([
       "Exchange rate",
       "RLUSD sent",
-      "Cash-out fee",
       "Received",
+      "Recipient cash-out fee",
+      "Estimated payout if recipient withdraws",
     ])
   })
 })
