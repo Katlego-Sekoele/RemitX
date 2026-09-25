@@ -222,7 +222,12 @@ def check_quote_pricing(session) -> Finding:
         fee = (Config.FIXED_FEE_ZAR + Config.PERCENTAGE_FEE_RATE * amount).quantize(
             CENT, rounding=ROUND_HALF_UP
         )
-        margin = (Config.FX_MARGIN_RATE * amount).quantize(CENT, rounding=ROUND_HALF_UP)
+        # A same-currency send carries no FX margin.
+        margin = (
+            Decimal("0.00")
+            if quote.receiver_currency == quote.sender_currency
+            else (Config.FX_MARGIN_RATE * amount).quantize(CENT, rounding=ROUND_HALF_UP)
+        )
         if fee != Decimal(quote.sender_transaction_fee) or margin != Decimal(
             quote.exchange_rate_margin
         ):

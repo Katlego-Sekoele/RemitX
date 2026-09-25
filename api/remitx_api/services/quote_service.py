@@ -177,7 +177,13 @@ def price_remittance(
         Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
     )
     fee = round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
-    margin = round_amount(Config.FX_MARGIN_RATE * sender_amount)
+    # The FX margin is a charge for converting currency, so a send that stays
+    # in one currency (e.g. ZAR -> ZAR) carries none.
+    margin = (
+        Decimal("0.00")
+        if sender_currency == receiver_payout_currency
+        else round_amount(Config.FX_MARGIN_RATE * sender_amount)
+    )
     net = sender_amount - fee - margin
     if net <= 0:
         raise ValueError("sender_amount is too small to cover fees")
