@@ -196,7 +196,7 @@ describe("quoteLines", () => {
       "Exchange rate",
       "RLUSD sent",
       "Recipient gets",
-      "Recipient withdraw cash-out fee",
+      "Recipient cash-out fee",
       "Estimated payout if recipient withdraws",
     ])
   })
