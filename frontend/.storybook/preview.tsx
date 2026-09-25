@@ -74,7 +74,10 @@ const preview: Preview = {
     },
     docs: {
       // Storybook's default page, plus where the component is used in the
-      // product (living-docs/blocks/product-context.tsx).
+      // product (living-docs/blocks/product-context.tsx). Stories leaves out
+      // the primary story shown above it: a second copy repeats its element
+      // ids, and an autofocused field (add-beneficiary-form) takes focus in
+      // that copy, below the fold.
       page: () => (
         <>
           <Title />
@@ -82,7 +85,7 @@ const preview: Preview = {
           <Description />
           <Primary />
           <Controls />
-          <Stories />
+          <Stories includePrimary={false} />
           <ProductContext />
         </>
       ),
