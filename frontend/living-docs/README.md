@@ -76,6 +76,17 @@ in a cascade layer, so it beats Tailwind's utilities (which are) on every
 `.sb-unstyled`; prose an author wrote inside a `Step` must not, or it loses the
 docs typography.
 
+## Deployed
+
+`npm run build:site` builds the app and then Storybook into
+`build/client/storybook/`, and the Render static site runs it, so the docs
+ship with every frontend deploy at `/storybook/`. The admin app's **Docs** page
+([app/routes/admin/docs.tsx](../app/routes/admin/docs.tsx), `/admin/docs`)
+embeds them; `/admin/docs?path=/docs/overview--docs` opens a given page. Links
+inside the docs use `./index.html?path=…` and target the Storybook frame, so
+they work at a sub-path and inside the admin app alike. The files themselves
+are public static assets; see docs/DEPLOYMENT.md.
+
 ## CLI and CI
 
 ```bash
@@ -89,7 +100,7 @@ Node >= 22.18 runs the TypeScript directly (type stripping), which is why
 this folder imports with `.ts` extensions and tsconfig sets
 `erasableSyntaxOnly`. The `docs` job in `.github/workflows/ci.yml` checks the
 OpenAPI spec and the DBML are current, runs `check`, posts `impact` on pull
-requests, and builds Storybook.
+requests, and runs `build:site` as Render does.
 
 Tests (`npm test`) build graphs from [__fixtures__/shop](__fixtures__/shop),
 a small checkout product laid out like this repo.

@@ -20,6 +20,13 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 | Secrets | Render env vars via Terraform | same |
 | Region | Frankfurt | Frankfurt |
 
+The frontend static site builds with `npm run build:site`: the app, plus the
+Storybook product docs at `/storybook/`, which the admin app's **Docs** page
+(`/admin/docs`) embeds. The admin page is for signed-in staff, but the files
+under `/storybook/` are static, so anyone with the URL can read them: the API
+spec (already public at the API's `/openapi.json`), the database schema and the
+journeys. `robots.txt` keeps them out of search engines.
+
 Hobby limits that shape this stack: no free background worker (the worker is a
 web service), one free Key Value per workspace, two included custom domains
 (Production `remitx.tech`, QA `qa.remitx.tech`). Neon is kept because free Render Postgres expires

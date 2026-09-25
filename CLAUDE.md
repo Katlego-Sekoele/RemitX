@@ -91,6 +91,7 @@ npx shadcn@latest add <component>
 
 npm run storybook        # living product docs on http://localhost:6006
 npm run build-storybook  # static build into storybook-static/
+npm run build:site       # what Render deploys: the app + Storybook at /storybook/ (admin: /admin/docs)
 npm run docs:check       # every reference in docs/ resolves (CI and pre-commit)
 npm run docs:impact -- --base origin/main   # what API/schema changes touch in the docs
 ```

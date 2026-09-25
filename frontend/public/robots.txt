@@ -5,3 +5,4 @@ Allow: /
 Disallow: /protected
 Disallow: /internal
 Disallow: /integration-test
+Disallow: /storybook/

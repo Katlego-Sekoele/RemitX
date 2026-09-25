@@ -37,8 +37,10 @@ export function DocLink({
   const path = "story" in to ? `/story/${to.story}` : `/docs/${to.docs}`
   return (
     <a
-      href={`./?path=${path}`}
-      target="_top"
+      // index.html by name: a static host need not serve a directory index.
+      // _parent is Storybook's manager, even when the admin app embeds it.
+      href={`./index.html?path=${path}`}
+      target="_parent"
       className={classes}
       title={title}
       onClick={(event) => {

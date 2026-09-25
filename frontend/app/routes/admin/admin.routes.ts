@@ -162,6 +162,23 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
       },
     ],
   },
+  {
+    label: "Docs",
+    order: 30,
+    icon: "BookOpenIcon",
+    // Static docs built with the site (Storybook), so no API permission
+    // stands behind the page: every staff member can read it.
+    childItems: [
+      {
+        route: {
+          path: "admin/docs",
+          module: "routes/admin/docs.tsx",
+        },
+        label: "Product docs",
+        childItems: [],
+      },
+    ],
+  },
 ]
 
 export function getFlattenedAdminRoutes(

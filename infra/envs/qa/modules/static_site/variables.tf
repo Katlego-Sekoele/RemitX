@@ -19,9 +19,11 @@ variable "root_directory" {
   default = "frontend"
 }
 
+# build:site adds the Storybook product docs at /storybook/, which the admin
+# app's Docs page (/admin/docs) embeds.
 variable "build_command" {
   type    = string
-  default = "npm ci && npm run build"
+  default = "npm ci && npm run build:site"
 }
 
 variable "publish_path" {

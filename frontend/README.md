@@ -89,7 +89,9 @@ Storybook documents the product end to end: component stories (write them
 next to the component as `*.stories.tsx`), journeys written in
 [../docs/journeys](../docs/journeys/README.md), and pages generated for every
 API operation and database table. Each links to the others, and CI fails on a
-link that no longer points at real code. How it works:
+link that no longer points at real code. The deployed site carries it at
+`/storybook/` (`npm run build:site`), shown to staff at `/admin/docs`; locally
+that page shows `npm run storybook`. How it works:
 [living-docs/README.md](living-docs/README.md).
 
 ## Routes
