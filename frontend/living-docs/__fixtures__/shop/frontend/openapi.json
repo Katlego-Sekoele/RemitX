@@ -1,0 +1,109 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Shop API", "version": "1.0.0" },
+  "security": [{ "Session": [] }],
+  "tags": [
+    { "name": "cart", "description": "The shopper's cart." },
+    { "name": "shipping" },
+    { "name": "payments", "description": "Paying for an order." },
+    { "name": "orders" },
+    { "name": "system" }
+  ],
+  "paths": {
+    "/cart": {
+      "get": {
+        "operationId": "get_cart",
+        "tags": ["cart"],
+        "summary": "Read the cart",
+        "responses": {
+          "200": {
+            "description": "The cart.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartRead" } } }
+          },
+          "401": { "description": "No valid session." }
+        }
+      }
+    },
+    "/shipping/address": {
+      "post": {
+        "operationId": "create_shipping_address",
+        "tags": ["shipping"],
+        "summary": "Set where the order ships",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddressCreate" } } }
+        },
+        "responses": { "201": { "description": "Saved." } }
+      }
+    },
+    "/payments": {
+      "post": {
+        "operationId": "create_payment",
+        "tags": ["payments"],
+        "summary": "Pay for an order",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentCreate" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "The payment.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentRead" } } }
+          },
+          "409": { "description": "The order is already paid." }
+        }
+      }
+    },
+    "/orders/{order_id}": {
+      "parameters": [
+        { "name": "order_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "get_order",
+        "tags": ["orders"],
+        "summary": "Read an order",
+        "responses": { "200": { "description": "The order." } }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "tags": ["system"],
+        "summary": "Liveness probe",
+        "security": [],
+        "responses": { "200": { "description": "OK." } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CartRead": {
+        "type": "object",
+        "required": ["items"],
+        "properties": { "items": { "type": "array", "items": { "type": "string" } } }
+      },
+      "AddressCreate": {
+        "type": "object",
+        "required": ["line1"],
+        "properties": { "line1": { "type": "string" }, "city": { "type": "string" } }
+      },
+      "PaymentCreate": {
+        "type": "object",
+        "required": ["order_id", "method"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "method": { "$ref": "#/components/schemas/PaymentMethod" }
+        }
+      },
+      "PaymentMethod": { "type": "string", "enum": ["card", "eft"] },
+      "PaymentRead": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["pending", "paid"] }
+        }
+      }
+    }
+  }
+}

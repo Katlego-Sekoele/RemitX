@@ -5,7 +5,7 @@
     "**/.client/**/*",
     ".react-router/types/**/*"
   ],
-  "exclude": ["**/*.test.ts"],
+  "exclude": ["**/*.test.ts", "living-docs/__fixtures__"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022", "ES2023.Intl"],
     "types": ["node", "vite/client"],
@@ -19,6 +19,10 @@
     },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
+    // living-docs/cli.ts runs under Node's type stripping, which needs
+    // `.ts` import specifiers and TypeScript that erases to plain JS.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,

@@ -1,0 +1,32 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+import { Api, Branch, Database, Decision, Journey, RelatedFeature, Step } from "@living-docs"
+import { Cart } from "~/components/cart"
+import OrderConfirmation from "~/components/order-confirmation"
+import { ShippingForm } from "../../frontend/app/components/shipping"
+import * as PaymentScreenStories from "../../frontend/app/components/payment-screen.stories"
+
+<Meta title="Checkout" />
+
+<Journey title="Checkout" description="A shopper buys what is in their cart.">
+  <Step title="Cart" component={Cart} api="cart.getCart">
+    The shopper reviews their cart.
+  </Step>
+
+  <Step title="Shipping" component={ShippingForm} api="createShippingAddress" />
+
+  <Step title="Payment" story={PaymentScreenStories.Card} tables={["payments", "orders.total"]}>
+    Paying calls <Api operation="payments.create_payment" tables={["payments"]} />.
+  </Step>
+
+  <Decision title="Did the payment go through?">
+    <Branch label="Yes" step="Confirmation" />
+    <Branch label="No" step="Payment" />
+  </Decision>
+
+  <Step title="Confirmation" component={OrderConfirmation} api="orders.getOrder">
+    The order is kept in <Database table="orders" />.
+  </Step>
+</Journey>
+
+<RelatedFeature concept="Billing" />

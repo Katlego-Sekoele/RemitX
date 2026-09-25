@@ -111,3 +111,78 @@ jobs:
         env:
           SEEDER_TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
         run: pytest
+
+  # The living product docs (frontend/living-docs/README.md). The brief's
+  # pipeline in order: the generated sources are current, every reference the
+  # docs make resolves against them, and Storybook builds. On a PR, the job
+  # summary also lists what its API and schema changes touch in the docs.
+  docs:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    defaults:
+      run:
+        # Explicit, so a pipe into the job summary keeps the check's exit code.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The impact report compares against the PR's base branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the API and the frontend
+        run: |
+          pip install -e api
+          npm ci --prefix frontend
+
+      - name: OpenAPI spec is current
+        working-directory: api
+        run: python scripts/export_openapi.py --check
+
+      # Migrates a throwaway database on the service and reads it with the
+      # dbdiagram CLI. A migration without a regenerated schema fails here.
+      - name: DBML schema is current
+        env:
+          DBML_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+        run: scripts/generate-dbml.sh --check
+
+      - name: Every docs reference resolves
+        working-directory: frontend
+        run: npm run --silent docs:check -- --format markdown | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: What this PR's API and schema changes touch
+        if: github.event_name == 'pull_request'
+        working-directory: frontend
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npm run --silent docs:impact -- --base "origin/$BASE_REF" --format markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build Storybook
+        working-directory: frontend
+        run: npm run build-storybook -- --quiet
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storybook
+          path: frontend/storybook-static
+          retention-days: 7

@@ -27,6 +27,9 @@ Monorepo with two apps sharing one env file:
 - [infra/](infra/) — Terraform (Render). Azure destroy roots: [infra/legacy-azure/](infra/legacy-azure/)
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
+- [frontend/living-docs/](frontend/living-docs/) — the living product docs: a Storybook addon (config in [frontend/.storybook/](frontend/.storybook/)) linking journeys → components → API → tables, and the `docs:check` that fails CI on a broken link. See its [README](frontend/living-docs/README.md)
+- [docs/journeys/](docs/journeys/) and `docs/concepts/` — journey and concept pages (MDX) for those docs; how to write one: [docs/journeys/README.md](docs/journeys/README.md)
+- [docs/database/schema.dbml](docs/database/schema.dbml) — the Postgres schema as DBML, generated from the migrations by `scripts/generate-dbml.sh`; never hand-edited
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [tools/seeder/](tools/seeder/) — local-only QA test-data seeder (NiceGUI). Never deployed; drives the backend's own controllers, services and worker tasks. See its [README](tools/seeder/README.md) and [ADR 0001](docs/adr/0001-qa-seeder-drives-the-service-layer.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
@@ -82,9 +85,23 @@ npm run dev          # vite dev server on 5173
 npm run lint         # typecheck + prettier --check
 npm run generate:api # Hey API client from openapi.json (dev/build/typecheck run it)
 npm run typecheck    # generate:api && react-router typegen && tsc
-npm test             # vitest: unit tests for app/lib (*.test.ts)
+npm test             # vitest: unit tests for app/lib and living-docs (*.test.ts)
 npm run format       # prettier --write
 npx shadcn@latest add <component>
+
+npm run storybook        # living product docs on http://localhost:6006
+npm run build-storybook  # static build into storybook-static/
+npm run docs:check       # every reference in docs/ resolves (CI and pre-commit)
+npm run docs:impact -- --base origin/main   # what API/schema changes touch in the docs
+```
+
+After a migration, regenerate the schema the docs read and commit it with the
+migration (CI's `docs` job fails on a stale one). It migrates a throwaway
+database on `DBML_DATABASE_URL`, else `DATABASE_URL` (the compose Postgres works):
+
+```bash
+scripts/generate-dbml.sh            # rewrite docs/database/schema.dbml
+scripts/generate-dbml.sh --check    # exit 1 if stale
 ```
 
 ### Seeder (local only)
@@ -105,7 +122,7 @@ A backend change that breaks the seeder fails its CI job: update the story in `t
 python3 -m pre_commit run --all-files
 ```
 
-Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
+Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, prettier + `npm run typecheck` on the frontend, and `npm run docs:check` when docs, the spec or components change. Hooks re-`git add` files they auto-fix.
 
 ## API architecture
 
@@ -150,6 +167,7 @@ React Router v7 in **SPA mode** ([frontend/react-router.config.ts](frontend/reac
 - API calls go through the Hey API client generated into `app/client/` (gitignored), namespaced by OpenAPI tag: `useQuery(api.admin.roles.listRoles())`, `useMutation(api.admin.users.grantUserRole())`, raw requests via `sdk.*`, types from `~/client`. Don't import the flat `sdk.gen` / `react-query.gen` modules. Never hand-write request functions or response types. See [frontend/README.md](frontend/README.md#calling-the-api).
 - API base URL reaches the client via `VITE_API_URL`.
 - Theme: `next-themes` in [frontend/app/components/theme-provider.tsx](frontend/app/components/theme-provider.tsx); light / dark / auto toggle in [frontend/app/components/theme-toggle.tsx](frontend/app/components/theme-toggle.tsx). Palette tokens live in `app.css` (`:root` and `.dark`).
+- Storybook is the living product docs. Component stories go next to their component (`app/components/**/*.stories.tsx`, under **Components**) and get a docs page listing the journeys that use them. **APIs** and **Database** pages are generated from `openapi.json` and `schema.dbml`; journeys link to them by operation (`quotes.createQuote`) and table name. Tables are tied to operations only where a page declares it (`<Api operation tables>`), never inferred. A docs page that embeds a story (`story={X.Default}`) must import the stories file with a relative path. `living-docs/` runs under Node's type stripping: import with `.ts` extensions, and no TypeScript-only runtime syntax (tsconfig's `erasableSyntaxOnly` enforces it).
 
 ### UI component standard
 

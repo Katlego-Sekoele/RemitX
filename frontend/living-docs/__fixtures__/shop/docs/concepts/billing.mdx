@@ -1,0 +1,12 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+import { Api, Database, RelatedFeature } from "@living-docs"
+
+<Meta title="Billing" />
+
+# Billing
+
+<Api operation="createPayment" tables={["payments", "orders"]} /> records a payment
+against <Database table="orders" column="id" />.
+
+<RelatedFeature journey="Checkout" />

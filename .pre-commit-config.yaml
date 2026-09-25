@@ -44,3 +44,12 @@ repos:
         language: script
         pass_filenames: false
         always_run: true
+
+      # After api-openapi, which may just have regenerated the spec it reads.
+      # The DBML schema needs Postgres to regenerate, so CI checks that one.
+      - id: living-docs
+        name: living docs (every docs reference resolves)
+        entry: scripts/hooks/run-living-docs.sh
+        language: script
+        files: ^(docs/|api/remitx_api/|frontend/(openapi\.json|living-docs/|app/components/))
+        pass_filenames: false

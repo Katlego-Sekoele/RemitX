@@ -1,0 +1,28 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+import { Coverage, Health, JourneyIndex } from "@living-docs"
+
+<Meta title="Overview" />
+
+# RemitX product map
+
+How RemitX works end to end: the journeys people take, the screens they see,
+the API those screens call and the tables behind it. Every page links to the
+others, both ways, and CI fails when a link no longer points at real code.
+
+- **Journeys**: written in `docs/journeys`, one page per journey
+  ([how to write one](https://github.com/Katlego-Sekoele/RemitX/blob/main/docs/journeys/README.md)).
+- **Concepts**: ideas that span journeys, in `docs/concepts`.
+- **Components**: the app's stories, from `frontend/app/components`.
+- **APIs**: one page per operation, generated from `frontend/openapi.json`.
+- **Database**: one page per table, generated from `docs/database/schema.dbml`.
+
+<Coverage />
+
+## Journeys
+
+<JourneyIndex />
+
+## Reference health
+
+<Health />

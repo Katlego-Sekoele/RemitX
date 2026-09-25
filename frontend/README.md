@@ -78,6 +78,20 @@ Use `@phosphor-icons/react` (configured in `components.json`).
 </GridBackground>
 ```
 
+## Storybook: the living product docs
+
+```bash
+npm run storybook       # http://localhost:6006
+npm run docs:check      # every reference in docs/ resolves
+```
+
+Storybook documents the product end to end: component stories (write them
+next to the component as `*.stories.tsx`), journeys written in
+[../docs/journeys](../docs/journeys/README.md), and pages generated for every
+API operation and database table. Each links to the others, and CI fails on a
+link that no longer points at real code. How it works:
+[living-docs/README.md](living-docs/README.md).
+
 ## Routes
 
 Declare routes in [app/routes.ts](app/routes.ts). Run `npm run typecheck` after adding a route.

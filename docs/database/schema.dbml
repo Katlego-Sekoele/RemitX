@@ -1,0 +1,673 @@
+Table "alembic_version" {
+  "version_num" varchar(32) [pk, not null]
+}
+
+Table "integration_messages" {
+  "id" uuid [pk, not null]
+  "body" text [not null, check: `(length(body) >= 1) AND (length(body) <= 280)`]
+  "status" text [not null, check: `status = ANY (ARRAY['PENDING'::text, 'PROCESSED'::text])`]
+  "created_at" timestamptz [not null]
+  "processed_at" timestamptz
+
+  Indexes {
+    created_at [type: btree, name: "idx_integration_messages_created_at"]
+  }
+}
+
+Table "users" {
+  "id" uuid [pk, not null]
+  "clerk_user_id" text [unique, not null]
+  "email" text
+  "created_at" timestamptz [not null]
+  "updated_at" timestamptz [not null]
+  "first_name" text
+  "base_reference" text [unique, not null]
+  "suspended_at" timestamptz
+  "last_name" text
+  "mobile_number" text
+  "country" text
+  "full_name" text
+}
+
+Table "permissions" {
+  "permission_id" uuid [pk, not null]
+  "permission" text [unique, not null, check: `permission = ANY (ARRAY['kyc:application:read'::text, 'kyc:application:read_pii'::text, 'kyc:document:read'::text, 'kyc:application:decide'::text, 'kyc:application:request_info'::text, 'kyc:risk:write'::text, 'user:read'::text, 'user:read_pii'::text, 'user:suspend'::text, 'role:read'::text, 'role:grant'::text, 'role:revoke'::text, 'cashin:read'::text, 'cashin:confirm'::text, 'cashin:cancel'::text, 'cashout:read'::text, 'cashout:approve'::text, 'cashout:complete'::text, 'cashout:fail'::text, 'transaction:read_any'::text, 'platform_account:read'::text, 'config:fees:write'::text, 'config:limits:write'::text, 'config:fx:write'::text, 'audit:read'::text])`]
+  "description" text [not null]
+}
+
+Table "roles" {
+  "role_id" uuid [pk, not null]
+  "name" text [unique, not null]
+  "role_display_name" text [not null]
+  "description" text [not null]
+  "is_admin" bool [not null]
+  "is_grantable" bool [not null]
+  "protect_last_holder" bool [not null]
+}
+
+Table "role_permissions" {
+  "role_permission_id" uuid [pk, not null]
+  "role_id" uuid [not null]
+  "permission_id" uuid [not null]
+  "granted_by" uuid
+  "granted_at" timestamptz [not null]
+  "revoked_at" timestamptz
+
+  Indexes {
+    (role_id, permission_id) [type: btree, unique, name: "uq_role_permissions_active"]
+    permission_id [type: btree, name: "ix_role_permissions_permission_id"]
+    role_id [type: btree, name: "ix_role_permissions_role_id"]
+  }
+}
+
+Table "user_roles" {
+  "user_role_id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "role_id" uuid [not null]
+  "granted_by" uuid
+  "granted_at" timestamptz [not null]
+  "revoked_at" timestamptz
+  "grant_reason" text
+  "self_granted" bool [not null]
+  "toxic_combination_acknowledged" bool [not null]
+  "revoked_by" uuid
+  "revoke_reason" text
+
+  Indexes {
+    (user_id, role_id) [type: btree, unique, name: "uq_user_roles_active"]
+    role_id [type: btree, name: "ix_user_roles_role_id"]
+    user_id [type: btree, name: "ix_user_roles_user_id"]
+  }
+}
+
+Table "accounts" {
+  "account_id" uuid [pk, not null]
+  "user_id" uuid
+  "type" text [not null, check: `type = ANY (ARRAY['USER'::text, 'REMITX_FIAT'::text, 'REMITX_XRPL_WALLET'::text, 'REMITX_REVENUE'::text, 'EXTERNAL'::text])`]
+  "reference" text [unique]
+  "label" text [not null]
+  "account_currency" text [not null]
+  "account_balance" numeric(20,8) [not null]
+  "created_at" timestamptz [not null]
+
+  Checks {
+    `((type = 'USER'::text) AND (user_id IS NOT NULL)) OR ((type <> 'USER'::text) AND (user_id IS NULL))` [name: 'accounts_owner_matches_type']
+    `((type = 'USER'::text) AND (reference IS NOT NULL)) OR ((type <> 'USER'::text) AND (reference IS NULL))` [name: 'accounts_reference_matches_type']
+    `(type <> 'USER'::text) OR (account_balance >= (0)::numeric)` [name: 'accounts_user_balance_nonneg']
+  }
+
+  Indexes {
+    (user_id, account_currency) [type: btree, unique, name: "ix_accounts_user_currency"]
+  }
+}
+
+Table "transactions" {
+  "tx_id" uuid [pk, not null]
+  "type" text [not null, check: `type = ANY (ARRAY['deposit'::text, 'treasury_funding'::text, 'remittance'::text, 'fee'::text, 'withdrawal'::text, 'token_burn'::text, 'beneficiary_payout'::text])`]
+  "debit_account_id" uuid
+  "credit_account_id" uuid [not null]
+  "amount" numeric(20,8) [not null, check: `amount > (0)::numeric`]
+  "currency" text [not null]
+  "status" text [not null, check: `status = ANY (ARRAY['pending'::text, 'processing'::text, 'confirmed'::text, 'failed'::text])`]
+  "quote_id" uuid
+  "created_at" timestamptz [not null]
+  "processed_at" timestamptz
+  "confirmed_at" timestamptz
+  "xrpl_tx_hash" text [unique]
+}
+
+Table "deposits" {
+  "deposit_id" uuid [pk, not null]
+  "tx_id" uuid [not null]
+  "user_id" uuid
+  "user_account_reference" text
+  "payment_method" text [not null]
+  "confirmed_by" text [check: `(confirmed_by IS NULL) OR (confirmed_by = 'system'::text) OR ((length(confirmed_by) = 36) AND (substr(confirmed_by, 9, 1) = '-'::text) AND (substr(confirmed_by, 14, 1) = '-'::text) AND (substr(confirmed_by, 19, 1) = '-'::text) AND (substr(confirmed_by, 24, 1) = '-'::text))`]
+  "statement_fingerprint" text [unique, not null]
+
+  Indexes {
+    user_id [type: btree, name: "ix_deposits_user_id"]
+  }
+}
+
+Table "kyc_applications" {
+  "application_id" uuid [pk, not null]
+  "user_id" uuid [unique, not null]
+  "status" text [not null, default: 'in_progress']
+  "full_name" text
+  "date_of_birth" date
+  "nationality" text
+  "id_type" text [check: `(id_type IS NULL) OR (id_type = ANY (ARRAY['national_id'::text, 'passport'::text]))`]
+  "issuing_country" text
+  "id_number" text
+  "mobile_number" text
+  "email" text
+  "source_of_funds" text [check: `(source_of_funds IS NULL) OR (source_of_funds = ANY (ARRAY['salary'::text, 'business_income'::text, 'savings'::text, 'investment'::text, 'gift'::text, 'pension'::text, 'other'::text]))`]
+  "residential_line1" text
+  "residential_line2" text
+  "residential_city" text
+  "residential_postal_code" text
+  "residential_country" text
+  "submitted_at" timestamptz
+  "risk_rating" text
+  "tier_granted" int2 [check: `(tier_granted IS NULL) OR (tier_granted >= 0)`]
+  "next_review_at" timestamptz
+  "version" int4 [not null, check: `version >= 1`, default: 1]
+  "created_at" timestamptz [not null]
+  "updated_at" timestamptz [not null]
+  "source_of_funds_detail" text
+  "expected_monthly_volume_zar" numeric(18,2) [check: `(expected_monthly_volume_zar IS NULL) OR (expected_monthly_volume_zar >= (0)::numeric)`]
+  "is_domestic_prominent_influential_person" bool
+  "is_foreign_prominent_public_official" bool
+  "is_pep_family_or_close_associate" bool
+  "pep_relationship" text
+  "pep_position" text
+  "pep_country" text
+  "pep_details" text
+  "source_of_wealth" text
+  "risk_score" int2 [check: `(risk_score IS NULL) OR ((risk_score >= 0) AND (risk_score <= 100))`]
+  "risk_rating_override" text
+  "risk_rating_override_reason" text
+  "risk_rating_overridden_by_user_id" uuid
+  "risk_rating_overridden_at" timestamptz
+  "id_expiry_date" date
+  "processing_consented_at" timestamptz
+
+  Checks {
+    `((risk_rating_override IS NULL) AND (risk_rating_override_reason IS NULL) AND (risk_rating_overridden_by_user_id IS NULL) AND (risk_rating_overridden_at IS NULL)) OR ((risk_rating_override IS NOT NULL) AND (risk_rating_override_reason IS NOT NULL) AND (risk_rating_overridden_by_user_id IS NOT NULL) AND (risk_rating_overridden_at IS NOT NULL))` [name: 'kyc_applications_risk_override_complete']
+  }
+
+  Indexes {
+    (status, submitted_at) [type: btree, name: "idx_kyc_applications_status_submitted_at"]
+    user_id [type: btree, name: "ix_kyc_applications_user_id"]
+  }
+}
+
+Table "kyc_documents" {
+  "document_id" uuid [pk, not null]
+  "application_id" uuid [not null]
+  "document_type" text [not null, check: `document_type = ANY (ARRAY['id_document'::text, 'proof_of_address'::text, 'selfie'::text, 'source_of_funds'::text])`]
+  "storage_path" text [unique, not null]
+  "content_type" text [not null, check: `content_type = ANY (ARRAY['image/jpeg'::text, 'image/png'::text, 'image/webp'::text, 'application/pdf'::text])`]
+  "size_bytes" int8 [not null, check: `(size_bytes > 0) AND (size_bytes <= 10485760)`]
+  "sha256" text [check: `(sha256 IS NULL) OR (length(sha256) = 64)`]
+  "uploaded_by_user_id" uuid [not null]
+  "uploaded_at" timestamptz [not null]
+  "status" text [not null, check: `status = ANY (ARRAY['pending'::text, 'stored'::text])`, default: 'pending']
+  "stored_at" timestamptz
+
+  Checks {
+    `(status <> 'stored'::text) OR ((sha256 IS NOT NULL) AND (stored_at IS NOT NULL))` [name: 'kyc_documents_stored_has_digest']
+  }
+
+  Indexes {
+    (application_id, sha256) [type: btree, unique, name: "uq_kyc_documents_application_sha256"]
+    application_id [type: btree, name: "ix_kyc_documents_application_id"]
+  }
+}
+
+Table "kyc_decisions" {
+  "decision_id" uuid [pk, not null]
+  "application_id" uuid [not null]
+  "decision" text [not null]
+  "from_status" text [not null]
+  "reason_code" text
+  "reason_text" text
+  "decided_by_user_id" uuid
+  "decided_at" timestamptz [not null]
+
+  Indexes {
+    (application_id, decided_at) [type: btree, name: "idx_kyc_decisions_application_decided_at"]
+    application_id [type: btree, name: "ix_kyc_decisions_application_id"]
+  }
+}
+
+Table "toxic_combinations" {
+  "toxic_combination_id" uuid [pk, not null]
+  "permission_a_id" uuid [not null]
+  "permission_b_id" uuid [not null]
+  "explanation" text [not null]
+
+  Checks {
+    `permission_a_id <> permission_b_id` [name: 'toxic_combinations_distinct_permissions']
+  }
+
+  Indexes {
+    (permission_a_id, permission_b_id) [type: btree, unique, name: "uq_toxic_combinations_pair"]
+    permission_a_id [type: btree, name: "ix_toxic_combinations_permission_a_id"]
+    permission_b_id [type: btree, name: "ix_toxic_combinations_permission_b_id"]
+  }
+}
+
+Table "kyc_reason_codes" {
+  "reason_code" text [pk, not null]
+  "description" text [not null]
+}
+
+Table "kyc_application_status_progressions" {
+  "progression_id" uuid [pk, not null]
+  "from_status" text [not null]
+  "to_status" text [not null]
+
+  Indexes {
+    (from_status, to_status) [type: btree, unique, name: "uq_kyc_application_status_progressions_from_to"]
+  }
+}
+
+Table "kyc_decision_history" {
+  "history_id" uuid [pk, not null]
+  "application_id" uuid [not null]
+  "status" text [not null]
+  "reason_code" text
+  "reason_text" text
+  "made_by_user_id" uuid
+  "made_at" timestamptz [not null]
+
+  Indexes {
+    (application_id, made_at) [type: btree, name: "idx_kyc_decision_history_application_made_at"]
+    application_id [type: btree, name: "ix_kyc_decision_history_application_id"]
+  }
+}
+
+Table "kyc_application_statuses" {
+  "status" text [pk, not null]
+  "description" text [not null]
+  "is_open" bool [not null]
+  "is_terminal" bool [not null]
+}
+
+Table "kyc_application_history" {
+  "history_id" uuid [pk, not null]
+  "application_id" uuid [not null]
+  "status" text [not null]
+  "version_after" int4 [not null]
+  "risk_rating" text
+  "tier_granted" int2
+  "submitted_at" timestamptz
+  "reason_code" text
+  "reason_text" text
+  "changed_by_user_id" uuid
+  "changed_at" timestamptz [not null]
+
+  Indexes {
+    (application_id, changed_at) [type: btree, name: "idx_kyc_application_history_application_changed_at"]
+    application_id [type: btree, name: "ix_kyc_application_history_application_id"]
+  }
+}
+
+Table "kyc_tiers" {
+  "tier" int2 [pk, not null, check: `tier >= 0`]
+  "name" text [not null]
+  "description" text [not null]
+  "daily_limit_zar" numeric(18,2) [not null]
+  "monthly_limit_zar" numeric(18,2) [not null]
+  "requires_source_of_wealth" bool [not null]
+
+  Checks {
+    `(daily_limit_zar >= (0)::numeric) AND (monthly_limit_zar >= daily_limit_zar)` [name: 'kyc_tiers_limits_valid']
+  }
+}
+
+Table "kyc_risk_ratings" {
+  "rating" text [pk, not null]
+  "description" text [not null]
+  "min_score" int2 [not null]
+  "max_score" int2 [not null]
+  "severity" int2 [unique, not null]
+  "max_tier" int2 [not null, check: `max_tier >= 1`]
+  "limit_percent" int2 [not null, check: `(limit_percent > 0) AND (limit_percent <= 100)`]
+  "review_interval_days" int4 [not null, check: `review_interval_days > 0`]
+  "requires_senior_approval" bool [not null]
+
+  Checks {
+    `(min_score >= 0) AND (max_score <= 100) AND (min_score <= max_score)` [name: 'kyc_risk_ratings_score_band_valid']
+  }
+}
+
+Table "kyc_risk_signals" {
+  "signal" text [pk, not null]
+  "description" text [not null]
+  "score_effect" int2 [not null, check: `(score_effect >= 0) AND (score_effect <= 100)`]
+  "is_active" bool [not null]
+}
+
+Table "kyc_pep_relationships" {
+  "relationship" text [pk, not null]
+  "description" text [not null]
+}
+
+Table "kyc_assessment_audit" {
+  "audit_id" uuid [pk, not null]
+  "application_id" uuid [not null]
+  "computed_risk_rating" text
+  "final_risk_rating" text
+  "risk_score" int2
+  "computed_tier" int2
+  "final_tier" int2
+  "reason" text
+  "actor_user_id" uuid
+  "recorded_at" timestamptz [not null]
+
+  Checks {
+    `(final_risk_rating IS NULL) <> (final_tier IS NULL)` [name: 'kyc_assessment_audit_one_subject']
+    `(reason IS NOT NULL) OR (((final_risk_rating IS NULL) OR ((computed_risk_rating IS NOT NULL) AND (computed_risk_rating = final_risk_rating))) AND ((final_tier IS NULL) OR ((computed_tier IS NOT NULL) AND (computed_tier = final_tier))))` [name: 'kyc_assessment_audit_reason_when_overridden']
+  }
+
+  Indexes {
+    (application_id, recorded_at) [type: btree, name: "idx_kyc_assessment_audit_application_recorded_at"]
+    application_id [type: btree, name: "ix_kyc_assessment_audit_application_id"]
+  }
+}
+
+Table "kyc_assessment_audit_signals" {
+  "audit_id" uuid [not null]
+  "signal" text [not null]
+  "score_effect" int2 [not null]
+
+  Indexes {
+    (audit_id, signal) [pk, type: btree, name: "kyc_assessment_audit_signals_pkey"]
+  }
+}
+
+Table "audit_log" {
+  "audit_id" uuid [pk, not null]
+  "actor_user_id" uuid [not null]
+  "action" text [not null]
+  "subject_type" text [not null]
+  "subject_id" uuid [not null]
+  "before" jsonb
+  "after" jsonb
+  "reason" text
+  "request_id" text
+  "created_at" timestamptz [not null]
+
+  Indexes {
+    (actor_user_id, created_at) [type: btree, name: "idx_audit_log_actor_created_at"]
+    created_at [type: btree, name: "idx_audit_log_created_at"]
+    (subject_type, subject_id) [type: btree, name: "idx_audit_log_subject"]
+  }
+}
+
+Table "kyc_onboarding_steps" {
+  "step" text [pk, not null]
+  "position" int2 [unique, not null, check: `"position" >= 0`]
+  "role" text [not null, check: `role = ANY (ARRAY['entry'::text, 'collect'::text, 'review'::text, 'outcome'::text])`]
+  "description" text [not null]
+}
+
+Table "kyc_onboarding_requirements" {
+  "step" text [not null]
+  "name" text [not null]
+  "kind" text [not null, check: `kind = ANY (ARRAY['field'::text, 'document'::text])`]
+  "required_when" text [not null, check: `required_when = ANY (ARRAY['always'::text, 'declares_pep'::text, 'source_of_funds_other'::text, 'id_requires_expiry'::text, 'never'::text])`]
+  "copy_on_resubmit" bool [not null]
+
+  Indexes {
+    (step, name, kind) [pk, type: btree, name: "kyc_onboarding_requirements_pkey"]
+  }
+}
+
+Table "kyc_onboarding_editable_statuses" {
+  "status" text [pk, not null]
+}
+
+Table "countries" {
+  "code" text [pk, not null, check: `(length(code) = 2) AND (code = upper(code))`]
+  "name" text [not null]
+  "operates_in" bool [not null]
+}
+
+Table "kyc_identity_schemes" {
+  "scheme" text [pk, not null]
+  "country" text
+  "id_type" text [unique, not null, check: `id_type = ANY (ARRAY['national_id'::text, 'passport'::text])`]
+  "label" text [not null]
+  "validator" text [not null]
+  "requires_expiry" bool [not null]
+  "input_mode" text [not null, check: `input_mode = ANY (ARRAY['numeric'::text, 'text'::text])`]
+  "number_hint" text [not null]
+  "document_hint" text [not null]
+
+  Indexes {
+    (country, id_type) [type: btree, unique, name: "uq_kyc_identity_schemes_country_id_type"]
+  }
+}
+
+Table "beneficiaries" {
+  "beneficiary_id" uuid [pk, not null]
+  "sender_user_id" uuid [not null]
+  "linked_user_id" uuid [not null]
+  "payout_currency" text [not null, check: `payout_currency = ANY (ARRAY['ZAR'::text, 'USD'::text, 'ZWL'::text, 'NAD'::text])`]
+  "relationship" text [not null, check: `relationship = ANY (ARRAY['partner'::text, 'parent'::text, 'child'::text, 'sibling'::text, 'relative'::text, 'friend'::text, 'employee'::text, 'other'::text])`]
+  "created_at" timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (sender_user_id, linked_user_id) [type: btree, unique, name: "uq_beneficiaries_sender_user_id_linked_user_id"]
+    sender_user_id [type: btree, name: "ix_beneficiaries_sender_user_id"]
+  }
+}
+
+Table "exchange_rates" {
+  "id" uuid [pk, not null]
+  "base_currency" text [not null]
+  "quote_currency" text [not null]
+  "rate" numeric(20,8) [not null]
+  "fetched_at" timestamptz [not null, default: `now()`]
+  "valid_until" timestamptz [not null]
+
+  Indexes {
+    valid_until [type: btree, name: "ix_exchange_rates_valid_until"]
+  }
+}
+
+Table "quotes" {
+  "quote_id" uuid [pk, not null]
+  "sender_amount" numeric(20,8) [not null, check: `sender_amount > (0)::numeric`]
+  "sender_currency" text [not null]
+  "sender_transaction_fee" numeric(20,8) [not null]
+  "token_amount" numeric(20,8) [not null]
+  "token_name" text [not null]
+  "fiat_to_token_exchange_rate_id" uuid
+  "fiat_to_token_exchange_rate" numeric(20,8) [not null]
+  "fiat_exchange_rate_id" uuid [not null]
+  "fiat_exchange_rate" numeric(20,8) [not null]
+  "exchange_rate_margin" numeric(20,8) [not null]
+  "receiver_amount" numeric(20,8) [not null]
+  "receiver_currency" text [not null]
+  "receiver_payout_fee" numeric(20,8) [not null]
+  "receiver_payout_estimate" numeric(20,8) [not null]
+  "created_at" timestamptz [not null, default: `now()`]
+  "expires_at" timestamptz [not null]
+  "status" text [not null, check: `status = ANY (ARRAY['ACTIVE'::text, 'USED'::text, 'EXPIRED'::text])`, default: 'ACTIVE']
+  "sender_user_id" uuid [not null]
+  "beneficiary_user_id" uuid [not null]
+
+  Indexes {
+    sender_user_id [type: btree, name: "ix_quotes_sender_user_id"]
+  }
+}
+
+Table "remittances" {
+  "remittance_id" uuid [pk, not null]
+  "quote_id" uuid [unique, not null]
+  "tx_id" uuid [not null]
+  "created_at" timestamptz [not null, default: `now()`]
+}
+
+Table "bank_accounts" {
+  "bank_account_id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "account_holder_name" text [not null]
+  "bank_name" text [not null]
+  "account_number" text [not null]
+  "branch_code" text
+  "currency" text [not null]
+  "country" text
+  "status" text [not null, check: `status = ANY (ARRAY['pending_verification'::text, 'verified'::text, 'rejected'::text])`, default: 'pending_verification']
+  "verified_by_admin_id" uuid
+  "verified_at" timestamptz
+  "rejection_reason" text
+  "created_at" timestamptz [not null, default: `now()`]
+
+  Indexes {
+    user_id [type: btree, name: "ix_bank_accounts_user_id"]
+  }
+}
+
+Table "withdrawals" {
+  "withdrawal_id" uuid [pk, not null]
+  "tx_id" uuid [not null]
+  "fee_tx_id" uuid [not null]
+  "user_id" uuid [not null]
+  "bank_account_id" uuid [not null]
+  "gross_amount" numeric(20,8) [not null]
+  "fee_amount" numeric(20,8) [not null]
+  "net_amount" numeric(20,8) [not null]
+  "currency" text [not null]
+  "confirmed_by" text
+  "created_at" timestamptz [not null, default: `now()`]
+
+  Indexes {
+    user_id [type: btree, name: "ix_withdrawals_user_id"]
+  }
+}
+
+Ref "accounts_user_id_fkey":"users"."id" ?<? "accounts"."user_id"
+
+Ref "audit_log_actor_user_id_fkey":"users"."id" <? "audit_log"."actor_user_id" [delete: restrict]
+
+Ref "bank_accounts_user_id_fkey":"users"."id" <? "bank_accounts"."user_id"
+
+Ref "bank_accounts_verified_by_admin_id_fkey":"users"."id" ?<? "bank_accounts"."verified_by_admin_id"
+
+Ref "beneficiaries_linked_user_id_fkey":"users"."id" <? "beneficiaries"."linked_user_id"
+
+Ref "beneficiaries_sender_user_id_fkey":"users"."id" <? "beneficiaries"."sender_user_id"
+
+Ref "deposits_tx_id_fkey":"transactions"."tx_id" <? "deposits"."tx_id"
+
+Ref "deposits_user_id_fkey":"users"."id" ?<? "deposits"."user_id"
+
+Ref "fk_quotes_beneficiary_user_id_users":"users"."id" <? "quotes"."beneficiary_user_id"
+
+Ref "fk_quotes_sender_user_id_users":"users"."id" <? "quotes"."sender_user_id"
+
+Ref "fk_transactions_quote_id_quotes":"quotes"."quote_id" ?<? "transactions"."quote_id"
+
+Ref "fk_user_roles_revoked_by_users":"users"."id" ?<? "user_roles"."revoked_by" [delete: set null]
+
+Ref "kyc_application_history_application_id_fkey":"kyc_applications"."application_id" <? "kyc_application_history"."application_id" [delete: cascade]
+
+Ref "kyc_application_history_changed_by_user_id_fkey":"users"."id" ?<? "kyc_application_history"."changed_by_user_id" [delete: restrict]
+
+Ref "kyc_application_history_reason_code_fkey":"kyc_reason_codes"."reason_code" ?<? "kyc_application_history"."reason_code" [delete: restrict]
+
+Ref "kyc_application_history_status_fkey":"kyc_application_statuses"."status" <? "kyc_application_history"."status" [delete: restrict]
+
+Ref "kyc_application_status_progressions_from_status_fkey":"kyc_application_statuses"."status" <? "kyc_application_status_progressions"."from_status" [delete: restrict]
+
+Ref "kyc_application_status_progressions_to_status_fkey":"kyc_application_statuses"."status" <? "kyc_application_status_progressions"."to_status" [delete: restrict]
+
+Ref "kyc_applications_issuing_country_fkey":"countries"."code" ?<? "kyc_applications"."issuing_country" [delete: restrict]
+
+Ref "kyc_applications_nationality_fkey":"countries"."code" ?<? "kyc_applications"."nationality" [delete: restrict]
+
+Ref "kyc_applications_pep_country_fkey":"countries"."code" ?<? "kyc_applications"."pep_country" [delete: restrict]
+
+Ref "kyc_applications_pep_relationship_fkey":"kyc_pep_relationships"."relationship" ?<? "kyc_applications"."pep_relationship" [delete: restrict]
+
+Ref "kyc_applications_residential_country_fkey":"countries"."code" ?<? "kyc_applications"."residential_country" [delete: restrict]
+
+Ref "kyc_applications_risk_rating_fkey":"kyc_risk_ratings"."rating" ?<? "kyc_applications"."risk_rating" [delete: restrict]
+
+Ref "kyc_applications_risk_rating_overridden_by_user_id_fkey":"users"."id" ?<? "kyc_applications"."risk_rating_overridden_by_user_id" [delete: restrict]
+
+Ref "kyc_applications_risk_rating_override_fkey":"kyc_risk_ratings"."rating" ?<? "kyc_applications"."risk_rating_override" [delete: restrict]
+
+Ref "kyc_applications_status_fkey":"kyc_application_statuses"."status" <? "kyc_applications"."status" [delete: restrict]
+
+Ref "kyc_applications_tier_granted_fkey":"kyc_tiers"."tier" ?<? "kyc_applications"."tier_granted" [delete: restrict]
+
+Ref "kyc_applications_user_id_fkey":"users"."id" <? "kyc_applications"."user_id" [delete: cascade]
+
+Ref "kyc_assessment_audit_actor_user_id_fkey":"users"."id" ?<? "kyc_assessment_audit"."actor_user_id" [delete: restrict]
+
+Ref "kyc_assessment_audit_application_id_fkey":"kyc_applications"."application_id" <? "kyc_assessment_audit"."application_id" [delete: cascade]
+
+Ref "kyc_assessment_audit_computed_risk_rating_fkey":"kyc_risk_ratings"."rating" ?<? "kyc_assessment_audit"."computed_risk_rating" [delete: restrict]
+
+Ref "kyc_assessment_audit_computed_tier_fkey":"kyc_tiers"."tier" ?<? "kyc_assessment_audit"."computed_tier" [delete: restrict]
+
+Ref "kyc_assessment_audit_final_risk_rating_fkey":"kyc_risk_ratings"."rating" ?<? "kyc_assessment_audit"."final_risk_rating" [delete: restrict]
+
+Ref "kyc_assessment_audit_final_tier_fkey":"kyc_tiers"."tier" ?<? "kyc_assessment_audit"."final_tier" [delete: restrict]
+
+Ref "kyc_assessment_audit_signals_audit_id_fkey":"kyc_assessment_audit"."audit_id" <? "kyc_assessment_audit_signals"."audit_id" [delete: cascade]
+
+Ref "kyc_assessment_audit_signals_signal_fkey":"kyc_risk_signals"."signal" <? "kyc_assessment_audit_signals"."signal" [delete: restrict]
+
+Ref "kyc_decision_history_application_id_fkey":"kyc_applications"."application_id" <? "kyc_decision_history"."application_id" [delete: cascade]
+
+Ref "kyc_decision_history_made_by_user_id_fkey":"users"."id" ?<? "kyc_decision_history"."made_by_user_id" [delete: restrict]
+
+Ref "kyc_decision_history_reason_code_fkey":"kyc_reason_codes"."reason_code" ?<? "kyc_decision_history"."reason_code" [delete: restrict]
+
+Ref "kyc_decision_history_status_fkey":"kyc_application_statuses"."status" <? "kyc_decision_history"."status" [delete: restrict]
+
+Ref "kyc_decisions_application_id_fkey":"kyc_applications"."application_id" <? "kyc_decisions"."application_id" [delete: cascade]
+
+Ref "kyc_decisions_decided_by_user_id_fkey":"users"."id" ?<? "kyc_decisions"."decided_by_user_id" [delete: restrict]
+
+Ref "kyc_decisions_decision_fkey":"kyc_application_statuses"."status" <? "kyc_decisions"."decision" [delete: restrict]
+
+Ref "kyc_decisions_from_status_fkey":"kyc_application_statuses"."status" <? "kyc_decisions"."from_status" [delete: restrict]
+
+Ref "kyc_decisions_reason_code_fkey":"kyc_reason_codes"."reason_code" ?<? "kyc_decisions"."reason_code" [delete: restrict]
+
+Ref "kyc_documents_application_id_fkey":"kyc_applications"."application_id" <? "kyc_documents"."application_id" [delete: cascade]
+
+Ref "kyc_documents_uploaded_by_user_id_fkey":"users"."id" <? "kyc_documents"."uploaded_by_user_id" [delete: restrict]
+
+Ref "kyc_identity_schemes_country_fkey":"countries"."code" ?<? "kyc_identity_schemes"."country" [delete: restrict]
+
+Ref "kyc_onboarding_editable_statuses_status_fkey":"kyc_application_statuses"."status" <? "kyc_onboarding_editable_statuses"."status" [delete: cascade]
+
+Ref "kyc_onboarding_requirements_step_fkey":"kyc_onboarding_steps"."step" <? "kyc_onboarding_requirements"."step" [delete: cascade]
+
+Ref "kyc_risk_ratings_max_tier_fkey":"kyc_tiers"."tier" <? "kyc_risk_ratings"."max_tier" [delete: restrict]
+
+Ref "quotes_fiat_exchange_rate_id_fkey":"exchange_rates"."id" <? "quotes"."fiat_exchange_rate_id"
+
+Ref "quotes_fiat_to_token_exchange_rate_id_fkey":"exchange_rates"."id" ?<? "quotes"."fiat_to_token_exchange_rate_id"
+
+Ref "remittances_quote_id_fkey":"quotes"."quote_id" <? "remittances"."quote_id"
+
+Ref "remittances_tx_id_fkey":"transactions"."tx_id" <? "remittances"."tx_id"
+
+Ref "role_permissions_granted_by_fkey":"users"."id" ?<? "role_permissions"."granted_by" [delete: set null]
+
+Ref "role_permissions_permission_id_fkey":"permissions"."permission_id" <? "role_permissions"."permission_id" [delete: cascade]
+
+Ref "role_permissions_role_id_fkey":"roles"."role_id" <? "role_permissions"."role_id" [delete: cascade]
+
+Ref "toxic_combinations_permission_a_id_fkey":"permissions"."permission_id" <? "toxic_combinations"."permission_a_id" [delete: cascade]
+
+Ref "toxic_combinations_permission_b_id_fkey":"permissions"."permission_id" <? "toxic_combinations"."permission_b_id" [delete: cascade]
+
+Ref "transactions_credit_account_id_fkey":"accounts"."account_id" <? "transactions"."credit_account_id"
+
+Ref "transactions_debit_account_id_fkey":"accounts"."account_id" ?<? "transactions"."debit_account_id"
+
+Ref "user_roles_granted_by_fkey":"users"."id" ?<? "user_roles"."granted_by" [delete: set null]
+
+Ref "user_roles_role_id_fkey":"roles"."role_id" <? "user_roles"."role_id" [delete: cascade]
+
+Ref "user_roles_user_id_fkey":"users"."id" <? "user_roles"."user_id" [delete: cascade]
+
+Ref "withdrawals_bank_account_id_fkey":"bank_accounts"."bank_account_id" <? "withdrawals"."bank_account_id"
+
+Ref "withdrawals_fee_tx_id_fkey":"transactions"."tx_id" <? "withdrawals"."fee_tx_id"
+
+Ref "withdrawals_tx_id_fkey":"transactions"."tx_id" <? "withdrawals"."tx_id"
+
+Ref "withdrawals_user_id_fkey":"users"."id" <? "withdrawals"."user_id"
