@@ -127,7 +127,8 @@ and fails on:
 
 It warns about a referenced component with no stories and a prop no
 primitive takes (usually a typo). In Storybook, a broken reference shows as
-a red chip, and the journey lists its broken references at the top.
+a red chip, and the journey lists its broken references, then its warnings,
+at the top.
 
 When the API or the schema changes, `npm run docs:impact -- --base
 origin/main` lists the journeys, steps and screens that use what changed;

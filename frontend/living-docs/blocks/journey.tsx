@@ -4,6 +4,7 @@ import {
   GitForkIcon,
   MapTrifoldIcon,
   WarningCircleIcon,
+  XCircleIcon,
 } from "@phosphor-icons/react"
 import {
   createContext,
@@ -29,6 +30,7 @@ import {
   resolveStep,
   resolveTable,
   slugify,
+  type Diagnostic,
   type Doc,
   type NodeKey,
 } from "../model.ts"
@@ -110,6 +112,8 @@ export function Journey({
   const problems = doc
     ? graph.diagnostics.filter((d) => d.location?.file === doc.file)
     : []
+  const errors = problems.filter((d) => d.severity === "error")
+  const warnings = problems.filter((d) => d.severity === "warning")
   return (
     <JourneyContext.Provider value={doc}>
       <section className="my-6 flex flex-col gap-4">
@@ -141,29 +145,48 @@ export function Journey({
             </CardContent>
           )}
           {problems.length > 0 && (
-            <CardContent>
-              <Alert variant="destructive">
-                <WarningCircleIcon aria-hidden />
-                <AlertTitle>
-                  {problems.length} broken reference
-                  {problems.length === 1 ? "" : "s"} on this page
-                </AlertTitle>
-                <AlertDescription>
-                  {problems.slice(0, 5).map((d) => (
-                    <div key={`${d.location?.line}:${d.code}:${d.message}`}>
-                      {d.location?.line ? `Line ${d.location.line}: ` : ""}
-                      {d.message}
-                    </div>
-                  ))}
-                  <div>Run npm run docs:check for the full report.</div>
-                </AlertDescription>
-              </Alert>
+            <CardContent className="flex flex-col gap-2">
+              {errors.length > 0 && (
+                <Alert variant="destructive">
+                  <XCircleIcon aria-hidden />
+                  <AlertTitle>
+                    {errors.length} broken reference
+                    {errors.length === 1 ? "" : "s"} on this page
+                  </AlertTitle>
+                  <PageProblems diagnostics={errors} />
+                </Alert>
+              )}
+              {warnings.length > 0 && (
+                <Alert>
+                  <WarningCircleIcon aria-hidden />
+                  <AlertTitle>
+                    {warnings.length} warning
+                    {warnings.length === 1 ? "" : "s"} on this page
+                  </AlertTitle>
+                  <PageProblems diagnostics={warnings} />
+                </Alert>
+              )}
             </CardContent>
           )}
         </Card>
         {children}
       </section>
     </JourneyContext.Provider>
+  )
+}
+
+/** A page's own diagnostics, first few: `docs:check` has the rest. */
+function PageProblems({ diagnostics }: { diagnostics: Diagnostic[] }) {
+  return (
+    <AlertDescription>
+      {diagnostics.slice(0, 5).map((d) => (
+        <div key={`${d.location?.line}:${d.code}:${d.message}`}>
+          {d.location?.line ? `Line ${d.location.line}: ` : ""}
+          {d.message}
+        </div>
+      ))}
+      <div>Run npm run docs:check for the full report.</div>
+    </AlertDescription>
   )
 }
 
