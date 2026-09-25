@@ -73,13 +73,13 @@ export function headlineAmount(transfer: {
   direction: string
   sender_amount: string | null
   sender_currency: string
-  receiver_payout_estimate: string
+  receiver_amount: string
   receiver_currency: string
 }): { amount: string; currency: string } {
   return transfer.direction === "sent" && transfer.sender_amount !== null
     ? { amount: transfer.sender_amount, currency: transfer.sender_currency }
     : {
-        amount: transfer.receiver_payout_estimate,
+        amount: transfer.receiver_amount,
         currency: transfer.receiver_currency,
       }
 }

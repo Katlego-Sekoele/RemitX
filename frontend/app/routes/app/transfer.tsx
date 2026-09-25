@@ -102,11 +102,8 @@ function TransferDetail({ transfer }: { transfer: Transfer }) {
             : `From ${transfer.counterparty_name ?? "a sender"}`}
         </PageHeaderTitle>
         <PageHeaderDescription>
-          {formatMoney(
-            transfer.receiver_payout_estimate,
-            transfer.receiver_currency
-          )}{" "}
-          · {formatWhen(transfer.created_at)}
+          {formatMoney(transfer.receiver_amount, transfer.receiver_currency)} ·{" "}
+          {formatWhen(transfer.created_at)}
         </PageHeaderDescription>
       </PageHeader>
 

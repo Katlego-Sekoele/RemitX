@@ -234,7 +234,7 @@ export function AmountStep({
                     <DescriptionDetails>
                       ≈{" "}
                       {formatMoney(
-                        preview.data.receiver_payout_estimate,
+                        preview.data.receiver_amount,
                         preview.data.receiver_payout_currency
                       )}
                     </DescriptionDetails>
