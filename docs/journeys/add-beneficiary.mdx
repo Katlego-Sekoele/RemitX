@@ -1,0 +1,63 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+import { Api, Branch, Decision, Journey, Step } from "@living-docs"
+import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
+import { BeneficiaryList } from "~/components/beneficiaries/beneficiary-list"
+
+<Meta title="Add a beneficiary" />
+
+<Journey
+  title="Add a beneficiary"
+  description="A sender saves someone they pay, using the account reference that person gave them."
+>
+  <Step
+    title="Beneficiaries"
+    component={BeneficiaryList}
+    api="beneficiaries.listMyBeneficiaries"
+  >
+    The sender opens **Beneficiaries**, which lists the people they already
+    pay, and presses **Add beneficiary**.
+  </Step>
+
+  <Step
+    title="Find them"
+    component={AddBeneficiaryForm}
+    api="beneficiaries.lookupBeneficiaryByReference"
+    tables={["accounts.reference"]}
+  >
+    The recipient shares an account reference off-platform, such as
+    `tendai1-zwl` from their Accounts page. The sender enters it, and the
+    lookup shows who it belongs to: a short name and profile photo, their
+    country and the currencies they can be paid in. Never their email or
+    mobile: references are guessable, so the lookup must not work as a
+    directory.
+
+    An unknown reference, a settlement (`-tok`) reference or one of the
+    sender's own is refused, with a message written for the sender.
+  </Step>
+
+  <Decision title="Is this who they meant?">
+    <Branch label="Yes" step="Confirm and save" />
+    <Branch label="No, go back" step="Find them" />
+  </Decision>
+
+  <Step
+    title="Confirm and save"
+    component={AddBeneficiaryForm}
+    api="beneficiaries.createBeneficiary"
+    tables={["beneficiaries"]}
+  >
+    The sender picks a payout currency, pre-filled with the reference's
+    currency, and their relationship to the recipient, then saves. The new
+    beneficiary joins the list.
+
+    Saving is refused for someone who is already a beneficiary or has no
+    email or mobile on file, and for a currency they hold no account in.
+  </Step>
+</Journey>
+
+## What each call reads and writes
+
+- <Api operation="beneficiaries.listMyBeneficiaries" tables={["beneficiaries", "users", "countries", "accounts"]} />
+- <Api operation="beneficiaries.lookupBeneficiaryByReference" tables={["accounts", "users", "countries"]} />
+- <Api operation="beneficiaries.createBeneficiary" tables={["beneficiaries", "users", "countries", "accounts"]} />
