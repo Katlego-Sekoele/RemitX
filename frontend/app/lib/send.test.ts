@@ -218,6 +218,21 @@ describe("quoteLines", () => {
     expect(lines.some((line) => line.label.includes("%"))).toBe(false)
   })
 
+  it("shows a zero FX margin on a same-currency send", () => {
+    const sameCurrency = quoteLines({
+      ...QUOTE,
+      exchange_rate_margin: "0.00",
+      fiat_exchange_rate: "1.00000000",
+      receiver_currency: "ZAR",
+    }).map((line) => ({ label: line.label, value: plain(line.value) }))
+
+    expect(sameCurrency).toContainEqual({ label: "FX margin", value: "R 0.00" })
+    expect(sameCurrency).toContainEqual({
+      label: "Amount converted",
+      value: "R 980.00",
+    })
+  })
+
   it("hides the sender's fees on a received transfer", () => {
     const received = quoteLines({
       ...QUOTE,

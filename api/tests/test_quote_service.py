@@ -199,8 +199,7 @@ def test_fixed_fee_converts_into_a_non_zar_sender_currency(app_context):
         Decimal("15") * zar_rate / fiat_to_token_exchange_rate
     )
     expected_fee = _round_amount(expected_fixed_fee + Decimal("0.005") * Decimal("100"))
-    margin = _round_amount(Decimal("0.01") * Decimal("100"))
-    net = Decimal("100") - expected_fee - margin
+    net = Decimal("100") - expected_fee  # USD -> USD: no FX margin
     expected_token_amount = _round_amount(net * fiat_to_token_exchange_rate)
 
     assert pricing.sender_transaction_fee == expected_fee
@@ -217,14 +216,80 @@ def test_fee_and_margin_round_half_up_at_an_exact_cent_boundary(app_context):
     a bare `.quantize()` with no explicit rounding mode.
     """
     _store_rate("18.50")  # USD -> ZAR, needed for token math
-    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")  # direct leg
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")  # direct leg
 
-    pricing = quote_service.preview_quote(Decimal("212.50"), CURRENCY_ZAR, CURRENCY_ZAR)
+    # Cross-currency, so the FX margin applies (a same-currency send has none).
+    pricing = quote_service.preview_quote(Decimal("212.50"), CURRENCY_ZAR, "ZWL")
 
     # fee = 15 + 0.005*212.50 = 16.0625 -> 16.06 (not a tie, same either mode)
     assert pricing.sender_transaction_fee == Decimal("16.06")
     # margin = 0.01*212.50 = 2.125 -> 2.13 under ROUND_HALF_UP
     assert pricing.exchange_rate_margin == Decimal("2.13")
+
+
+def test_same_currency_preview_carries_no_fx_margin(app_context):
+    """The FX margin is a charge for converting currency — ZAR -> ZAR
+    converts nothing, so none is taken and it all reaches the net."""
+    _store_rate("18.50")  # USD -> ZAR, needed for token math
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")  # direct leg
+
+    pricing = quote_service.preview_quote(Decimal("1000"), CURRENCY_ZAR, CURRENCY_ZAR)
+
+    fee = Decimal("15") + Decimal("0.005") * Decimal("1000")  # 20
+    net = Decimal("1000") - fee  # 980, no margin taken
+    expected_receiver_amount = _round_amount(net * Decimal("1"))
+    expected_payout_fee = _round_amount(Decimal("0.0075") * expected_receiver_amount)
+
+    assert pricing.exchange_rate_margin == Decimal("0")
+    assert pricing.sender_transaction_fee == fee
+    assert pricing.receiver_amount == expected_receiver_amount
+    # The transfer and cash-out fees still apply — only the FX margin goes.
+    assert pricing.receiver_payout_fee == expected_payout_fee
+    assert (
+        pricing.receiver_payout_estimate
+        == expected_receiver_amount - expected_payout_fee
+    )
+
+
+def test_same_currency_quote_to_a_zar_beneficiary_carries_no_fx_margin(
+    app_context,
+):
+    _store_rate("18.50")
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")
+    sender = _approve(
+        UserController().ensure_provisioned(
+            "user_quote_sender", lambda: "sender@example.com", lambda: "Sender"
+        )
+    )
+    recipient = UserController().ensure_provisioned(
+        "user_quote_recipient", lambda: "recipient@example.com", lambda: "Recipient"
+    )
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency=CURRENCY_ZAR,
+            relationship="sibling",
+        )
+        .beneficiary
+    )
+    _fund(sender, "1000")
+
+    quote = quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("1000"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency=CURRENCY_ZAR,
+    )
+
+    fee = Decimal("15") + Decimal("0.005") * Decimal("1000")
+    expected_rate = (Decimal("1") / Decimal("18.50")).quantize(Decimal("0.00000001"))
+    assert quote.exchange_rate_margin == Decimal("0")
+    assert quote.sender_transaction_fee == fee
+    assert quote.token_amount == _round_amount((Decimal("1000") - fee) * expected_rate)
+    assert quote.receiver_amount == Decimal("1000") - fee
 
 
 def test_sender_amount_is_rounded_to_two_decimals_on_entry(app_context):
