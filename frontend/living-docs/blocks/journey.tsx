@@ -248,7 +248,8 @@ export function Step({
           </dl>
         )}
         {children && <div>{children}</div>}
-        {story !== undefined && <Canvas of={story} />}
+        {/* A journey shows the screen; its code is on the component's page. */}
+        {story !== undefined && <Canvas of={story} sourceState="none" />}
       </CardContent>
     </Card>
   )

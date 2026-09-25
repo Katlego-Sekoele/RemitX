@@ -24,7 +24,8 @@ export function Screen({
           <ComponentRef component={component} />
         </span>
       )}
-      {story !== undefined && <Canvas of={story} />}
+      {/* Docs show the screen; its code is on the component's page. */}
+      {story !== undefined && <Canvas of={story} sourceState="none" />}
     </>
   )
 }
