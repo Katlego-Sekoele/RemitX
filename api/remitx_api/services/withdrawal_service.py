@@ -9,7 +9,9 @@ revenue account (`REMITX_REVENUE`) for the withdrawal's currency — the same
 kind of account a remittance fee lands in — while the net payout transaction
 goes to the RemitX fiat bank account in that currency.
 
-The destination bank account must already be `verified`.
+The destination bank account must already be `verified`. KYC standing and
+account suspension are deliberately not checked: a withdrawal only pays out a
+balance the user already holds (Transaction_Flow_Context.md §7).
 
 Possible evolution: if a real payment-gateway call is ever added to the
 payout transaction, settlement should move to the same async pattern
@@ -136,7 +138,7 @@ def request_withdrawal(
             f"Bank account is denominated in {bank_account.currency}, not {currency}"
         )
 
-    # Get the user's platform fiat account in the requested withdrawalcurrency
+    # Get the user's platform fiat account in the requested withdrawal currency
     user_fiat_account = accounts.get_user_account(user_id, currency)
     if user_fiat_account is None:
         logger.warning(
