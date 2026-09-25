@@ -76,6 +76,13 @@ in a cascade layer, so it beats Tailwind's utilities (which are) on every
 `.sb-unstyled`; prose an author wrote inside a `Step` must not, or it loses the
 docs typography.
 
+The docs and the product share one design system, so they are kept apart by
+shape: a journey is text on a numbered line, never cards, and the product's
+own UI appears only inside a `ScreenFrame`
+([blocks/screen-frame.tsx](blocks/screen-frame.tsx)), a window over the
+Aceternity grid. Any block that shows product UI should render it through
+`ScreenFrame`.
+
 ## Deployed
 
 `npm run build:site` builds the app and then Storybook into

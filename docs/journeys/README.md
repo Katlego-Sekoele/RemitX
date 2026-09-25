@@ -89,9 +89,10 @@ from its file. Aliased (`~/components/...`) and relative imports both work,
 barrel files included. A component with stories links to them; one without
 is a warning.
 
-**Live stories.** `story={Stories.Default}` renders the story in the page.
-Storybook can only find a stories file a page imports **with a relative
-path**:
+**Live stories.** `story={Stories.Default}` renders the story in the page, in
+a window that names the component and links to its story, so the product
+never reads as part of the docs. Storybook can only find a stories file a
+page imports **with a relative path**:
 
 ```mdx
 import * as AmountStepStories from "../../frontend/app/components/send/amount-step.stories"

@@ -1,13 +1,11 @@
-import { Canvas } from "@storybook/addon-docs/blocks"
 import { ArrowRightIcon, LinkSimpleIcon } from "@phosphor-icons/react"
-import type { ComponentProps, ReactNode } from "react"
+import type { ReactNode } from "react"
 
 import { resolveDoc } from "../model.ts"
 import { DocChip, Unresolved } from "./chips.tsx"
 import { graph } from "./graph.ts"
 import { ComponentRef, OperationRef, TableRef } from "./journey.tsx"
-
-type StoryExport = ComponentProps<typeof Canvas>["of"]
+import { ScreenFrame, type StoryExport } from "./screen-frame.tsx"
 
 /** A component, linked to its stories; with `story`, rendered live too. */
 export function Screen({
@@ -24,8 +22,7 @@ export function Screen({
           <ComponentRef component={component} />
         </span>
       )}
-      {/* Docs show the screen; its code is on the component's page. */}
-      {story !== undefined && <Canvas of={story} sourceState="none" />}
+      {story !== undefined && <ScreenFrame of={story} />}
     </>
   )
 }

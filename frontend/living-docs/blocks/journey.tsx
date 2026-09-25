@@ -1,4 +1,3 @@
-import { Canvas } from "@storybook/addon-docs/blocks"
 import {
   ArrowRightIcon,
   GitForkIcon,
@@ -6,23 +5,12 @@ import {
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react"
-import {
-  createContext,
-  useContext,
-  type ComponentProps,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, type ReactNode } from "react"
 import { componentKey } from "virtual:living-docs/components"
 
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card"
+import { Separator } from "~/components/ui/separator"
 import {
   nodeKey,
   resolveDoc,
@@ -43,11 +31,9 @@ import {
 } from "./chips.tsx"
 import { graph, journeyByTitle } from "./graph.ts"
 import { DocLink } from "./link.tsx"
+import { ScreenFrame, type StoryExport } from "./screen-frame.tsx"
 
 const JourneyContext = createContext<Doc | undefined>(undefined)
-
-/** Story exports, as `import * as Stories from "./x.stories"` gives them. */
-type StoryExport = ComponentProps<typeof Canvas>["of"]
 
 const list = (value: string | string[] | undefined) =>
   value === undefined ? [] : Array.isArray(value) ? value : [value]
@@ -116,36 +102,32 @@ export function Journey({
   const warnings = problems.filter((d) => d.severity === "warning")
   return (
     <JourneyContext.Provider value={doc}>
-      <section className="my-6 flex flex-col gap-4">
-        <Card className="sb-unstyled">
-          <CardHeader>
-            <CardDescription className="flex items-center gap-1">
-              <MapTrifoldIcon aria-hidden /> Journey
-            </CardDescription>
-            <CardTitle className="font-heading text-xl">{title}</CardTitle>
-            {description && (
-              <CardDescription className="text-sm">
-                {description}
-              </CardDescription>
-            )}
-          </CardHeader>
+      {/* Docs chrome is text and lines, never a card: cards on this page are
+          the product's own, inside a ScreenFrame. */}
+      <section className="my-6 flex flex-col gap-8">
+        <header className="sb-unstyled flex flex-col gap-3">
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapTrifoldIcon aria-hidden /> Journey
+          </p>
+          <h1 className="font-heading text-2xl font-medium">{title}</h1>
+          {description && (
+            <p className="text-sm text-muted-foreground">{description}</p>
+          )}
           {doc && doc.steps.length > 0 && (
-            <CardContent>
-              <ol className="flex flex-wrap items-center gap-2">
-                {doc.steps.map((step, i) => (
-                  <li key={step.key} className="flex items-center gap-2">
-                    {i > 0 && <ArrowRightIcon aria-hidden />}
-                    <DocLink to={{ anchor: slugify(step.title) }}>
-                      <Badge variant="outline">{step.number}</Badge>
-                      {step.title}
-                    </DocLink>
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
+            <ol className="flex flex-wrap items-center gap-2 text-xs">
+              {doc.steps.map((step, i) => (
+                <li key={step.key} className="flex items-center gap-2">
+                  {i > 0 && <ArrowRightIcon aria-hidden />}
+                  <DocLink to={{ anchor: slugify(step.title) }}>
+                    <Badge variant="outline">{step.number}</Badge>
+                    {step.title}
+                  </DocLink>
+                </li>
+              ))}
+            </ol>
           )}
           {problems.length > 0 && (
-            <CardContent className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {errors.length > 0 && (
                 <Alert variant="destructive">
                   <XCircleIcon aria-hidden />
@@ -166,10 +148,10 @@ export function Journey({
                   <PageProblems diagnostics={warnings} />
                 </Alert>
               )}
-            </CardContent>
+            </div>
           )}
-        </Card>
-        {children}
+        </header>
+        <div className="flex flex-col">{children}</div>
       </section>
     </JourneyContext.Provider>
   )
@@ -227,31 +209,62 @@ export function Step({
     ])
   }
   return (
-    // Only the step's own chrome opts out of the docs styles: its prose
-    // (children) reads like the rest of the page.
-    <Card id={slugify(title)} className="scroll-mt-4">
-      <CardHeader className="sb-unstyled">
-        <CardTitle className="flex items-center gap-2 font-heading text-base">
-          <Badge variant="outline">{step?.number ?? "–"}</Badge>
+    <FlowItem
+      id={slugify(title)}
+      node={<Badge variant="outline">{step?.number ?? "–"}</Badge>}
+      title={title}
+    >
+      {rows.length > 0 && (
+        <dl className="sb-unstyled grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+          {rows.map(([term, details]) => (
+            <div key={term} className="contents">
+              <dt className="text-xs text-muted-foreground">{term}</dt>
+              <dd className="flex flex-wrap items-center gap-3">{details}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {children && <div>{children}</div>}
+      {story !== undefined && <ScreenFrame of={story} />}
+    </FlowItem>
+  )
+}
+
+/**
+ * One stop on the journey's line: a node, and a rule down to the next stop.
+ * Only the chrome opts out of the docs styles: prose an author wrote inside
+ * a step (children) reads like the rest of the page.
+ */
+function FlowItem({
+  id,
+  node,
+  title,
+  children,
+}: {
+  id?: string
+  node: ReactNode
+  title: string
+  children?: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      className="group/flow grid scroll-mt-4 grid-cols-[auto_minmax(0,1fr)] gap-x-4"
+    >
+      <div className="sb-unstyled flex flex-col items-center gap-2">
+        {node}
+        <Separator
+          orientation="vertical"
+          className="flex-1 group-last/flow:hidden"
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-3 pb-10 group-last/flow:pb-0">
+        <h2 className="sb-unstyled font-heading text-base font-medium">
           {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {rows.length > 0 && (
-          <dl className="sb-unstyled grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
-            {rows.map(([term, details]) => (
-              <div key={term} className="contents">
-                <dt className="text-xs text-muted-foreground">{term}</dt>
-                <dd className="flex flex-wrap items-center gap-3">{details}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        {children && <div>{children}</div>}
-        {/* A journey shows the screen; its code is on the component's page. */}
-        {story !== undefined && <Canvas of={story} sourceState="none" />}
-      </CardContent>
-    </Card>
+        </h2>
+        {children}
+      </div>
+    </section>
   )
 }
 
@@ -264,17 +277,16 @@ export function Decision({
   children?: ReactNode
 }) {
   return (
-    <Card size="sm" className="sb-unstyled">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 font-heading text-base">
-          <GitForkIcon aria-hidden />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="flex flex-col gap-2">{children}</ul>
-      </CardContent>
-    </Card>
+    <FlowItem
+      node={
+        <Badge variant="secondary">
+          <GitForkIcon aria-label="Decision" />
+        </Badge>
+      }
+      title={title}
+    >
+      <ul className="sb-unstyled flex flex-col gap-2">{children}</ul>
+    </FlowItem>
   )
 }
 
