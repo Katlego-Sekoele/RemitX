@@ -3,6 +3,8 @@ import { Meta } from "@storybook/addon-docs/blocks"
 import { Api, Branch, Decision, Journey, Step } from "@living-docs"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
 import { BeneficiaryList } from "~/components/beneficiaries/beneficiary-list"
+import * as AddBeneficiaryFormStories from "../../frontend/app/components/beneficiaries/add-beneficiary-form.stories"
+import * as BeneficiaryListStories from "../../frontend/app/components/beneficiaries/beneficiary-list.stories"
 
 <Meta title="Add a beneficiary" />
 
@@ -14,6 +16,7 @@ import { BeneficiaryList } from "~/components/beneficiaries/beneficiary-list"
     title="Beneficiaries"
     component={BeneficiaryList}
     api="beneficiaries.listMyBeneficiaries"
+    story={BeneficiaryListStories.Default}
   >
     The sender opens **Beneficiaries**, which lists the people they already
     pay, and presses **Add beneficiary**.
@@ -24,6 +27,7 @@ import { BeneficiaryList } from "~/components/beneficiaries/beneficiary-list"
     component={AddBeneficiaryForm}
     api="beneficiaries.lookupBeneficiaryByReference"
     tables={["accounts.reference"]}
+    story={AddBeneficiaryFormStories.Default}
   >
     The recipient shares an account reference off-platform, such as
     `tendai1-zwl` from their Accounts page. The sender enters it, and the
@@ -46,6 +50,7 @@ import { BeneficiaryList } from "~/components/beneficiaries/beneficiary-list"
     component={AddBeneficiaryForm}
     api="beneficiaries.createBeneficiary"
     tables={["beneficiaries"]}
+    story={AddBeneficiaryFormStories.Confirm}
   >
     The sender picks a payout currency, pre-filled with the reference's
     currency, and their relationship to the recipient, then saves. The new

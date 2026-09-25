@@ -187,7 +187,11 @@ function initialPayoutCurrency(found: Found): PayoutCurrency | null {
   return held.length === 1 ? held[0] : null
 }
 
-function ConfirmStep({
+/**
+ * The second step: who the reference belongs to, and how they're paid.
+ * Exported so Storybook can show it without a lookup.
+ */
+export function ConfirmStep({
   found,
   onBack,
   onCancel,
