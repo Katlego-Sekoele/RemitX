@@ -3,7 +3,7 @@ import type { VariantProps } from "class-variance-authority"
 
 import { api, type AccountRead, type BankAccountRead } from "~/client"
 import type { badgeVariants } from "~/components/ui/badge"
-import { amountToCents, toCents } from "~/lib/money"
+import { amountToCents, MAX_AMOUNT_CENTS, toCents } from "~/lib/money"
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>
 
@@ -79,6 +79,7 @@ export function withdrawalAmountError(
   const cents = toCents(amount)
   if (cents === null) return "Enter an amount with up to two decimal places."
   if (cents === 0n) return "Enter an amount above zero."
+  if (cents > MAX_AMOUNT_CENTS) return "That amount is too large."
   if (cents > amountToCents(available)) {
     return "That's more than your available balance."
   }

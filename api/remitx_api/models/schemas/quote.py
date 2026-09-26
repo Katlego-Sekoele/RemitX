@@ -6,12 +6,12 @@ from decimal import Decimal
 from pydantic import ConfigDict
 
 from remitx_api.models.orm.account import PayoutCurrency
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import Amount, Schema, UtcDateTime
 
 
 class QuoteCreateRequest(Schema):
     beneficiary_id: uuid.UUID
-    sender_amount: Decimal
+    sender_amount: Amount
     sender_currency: str
     receiver_payout_currency: PayoutCurrency
 
@@ -40,7 +40,7 @@ class QuoteRead(Schema):
 
 
 class QuotePreviewRequest(Schema):
-    sender_amount: Decimal
+    sender_amount: Amount
     sender_currency: str
     receiver_payout_currency: PayoutCurrency
 
