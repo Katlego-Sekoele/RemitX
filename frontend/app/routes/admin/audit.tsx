@@ -1,6 +1,6 @@
 import { ScrollIcon } from "@phosphor-icons/react"
-import { useQuery } from "@tanstack/react-query"
-import { useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useState } from "react"
 
 import { api, type AuditLogRead } from "~/client"
 import { QueryError } from "~/components/accounts/query-error"
@@ -96,22 +96,53 @@ function isSelfGrant(entry: AuditLogRead): boolean {
   )
 }
 
+function listQueryOptions(actionFilter: string) {
+  return api.admin.audit.listAuditLog({
+    query: {
+      limit: PAGE_SIZE,
+      ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
+    },
+  })
+}
+
 function AuditLogPageContent() {
+  const queryClient = useQueryClient()
   const [actionFilter, setActionFilter] = useState(ALL_ACTIONS)
+  const [rows, setRows] = useState<AuditLogRead[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  const query = useQuery(
-    api.admin.audit.listAuditLog({
-      query: {
-        limit: PAGE_SIZE,
-        ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
-      },
-    })
-  )
+  const query = useQuery(listQueryOptions(actionFilter))
 
-  const rows = useMemo(() => query.data ?? [], [query.data])
+  useEffect(() => {
+    if (query.data === undefined) return
+    setRows(query.data)
+    setHasMore(query.data.length >= PAGE_SIZE)
+  }, [query.data])
 
   const resetFilters = () => {
     setActionFilter(ALL_ACTIONS)
+  }
+
+  const loadOlder = async () => {
+    const last = rows.at(-1)
+    if (!last || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await queryClient.fetchQuery(
+        api.admin.audit.listAuditLog({
+          query: {
+            limit: PAGE_SIZE,
+            before: last.created_at,
+            ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
+          },
+        })
+      )
+      setRows((prev) => [...prev, ...page])
+      setHasMore(page.length >= PAGE_SIZE)
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   return (
@@ -142,6 +173,8 @@ function AuditLogPageContent() {
                 value={actionFilter}
                 onValueChange={(value) => {
                   setActionFilter(value ?? ALL_ACTIONS)
+                  setRows([])
+                  setHasMore(false)
                 }}
               >
                 <SelectTrigger>
@@ -167,7 +200,7 @@ function AuditLogPageContent() {
             <CardTitle>Entries</CardTitle>
           </CardHeader>
           <CardContent>
-            {query.isPending ? (
+            {query.isPending && rows.length === 0 ? (
               <Skeleton className="h-48 w-full" />
             ) : query.isError ? (
               <QueryError
@@ -227,6 +260,18 @@ function AuditLogPageContent() {
                     )}
                   </TableBody>
                 </Table>
+                {hasMore ? (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={loadingMore}
+                      onClick={loadOlder}
+                    >
+                      {loadingMore ? "Loading…" : "Load older entries"}
+                    </Button>
+                  </div>
+                ) : null}
               </>
             )}
           </CardContent>

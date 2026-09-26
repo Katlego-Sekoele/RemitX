@@ -377,8 +377,11 @@ def test_an_officer_can_approve_in_one_transaction():
             entry.actor_user_id,
             entry.after["status"],
         )
+        audit_blob = str(entry.before) + str(entry.after)
 
     assert response.status_code == 200
+    assert ID_NUMBER not in audit_blob
+    assert "Thandiwe" not in audit_blob
     body = response.json()
     assert body["status"] == "approved"
     assert body["tier_granted"] == 1
