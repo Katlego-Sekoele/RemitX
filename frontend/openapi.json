@@ -4420,6 +4420,12 @@
             "title": "Receiver Payout Fee",
             "type": "string"
           },
+          "sender_amount_zar": {
+            "description": "The send in rand at these rates, to check against what is left of the sending limits. The quote locks its own.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Sender Amount Zar",
+            "type": "string"
+          },
           "sender_currency": {
             "title": "Sender Currency",
             "type": "string"
@@ -4439,6 +4445,7 @@
         },
         "required": [
           "sender_currency",
+          "sender_amount_zar",
           "fiat_to_token_exchange_rate",
           "fiat_exchange_rate",
           "sender_transaction_fee",
@@ -4536,6 +4543,12 @@
             "title": "Sender Amount",
             "type": "string"
           },
+          "sender_amount_zar": {
+            "description": "The send in rand at this quote's rates: what it counts as against the sending limits, which are in rand from any account.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Sender Amount Zar",
+            "type": "string"
+          },
           "sender_currency": {
             "title": "Sender Currency",
             "type": "string"
@@ -4568,6 +4581,7 @@
           "beneficiary_user_id",
           "sender_amount",
           "sender_currency",
+          "sender_amount_zar",
           "token_amount",
           "token_name",
           "sender_transaction_fee",

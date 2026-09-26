@@ -5,7 +5,6 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.transaction import (
     STATUS_FAILED,
     STATUS_PENDING,
@@ -65,14 +64,15 @@ class DashboardController:
         for fact in facts:
             sent = fact.sender_user_id == user_id
             counts = fact.status != STATUS_FAILED
-            if sent and counts and fact.sender_currency == CURRENCY_ZAR:
+            # Every currency's sends, at the rand value each quote locked.
+            if sent and counts:
                 if fact.created_at >= window_start:
-                    sent_by_day[fact.created_at.date()] += fact.sender_amount
+                    sent_by_day[fact.created_at.date()] += fact.sender_amount_zar
                 name = fact.beneficiary_name or "Unnamed"
                 current = paid.get(fact.beneficiary_user_id)
                 paid[fact.beneficiary_user_id] = (
                     name,
-                    (current[1] if current else Decimal("0")) + fact.sender_amount,
+                    (current[1] if current else Decimal("0")) + fact.sender_amount_zar,
                 )
             if not sent and counts and fact.created_at >= window_start:
                 received_by_day[fact.created_at.date()] += fact.receiver_amount
