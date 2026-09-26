@@ -1,13 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
 
 import { api } from "~/client"
 import { AccountCard } from "~/components/accounts/account-card"
 import { AddMoneyPanel } from "~/components/accounts/add-money-panel"
-import {
-  OpenAccountForm,
-  OpenAccountHeaderAction,
-} from "~/components/accounts/open-account-form"
+import { OpenAccountCard } from "~/components/accounts/open-account-form"
 import { QueryError } from "~/components/accounts/query-error"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { Collapsible, CollapsibleContent } from "~/components/ui/collapsible"
@@ -17,7 +13,7 @@ import {
   PageHeaderTitle,
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
-import { acceptsDeposits, openablePayoutCurrencies } from "~/lib/accounts"
+import { acceptsDeposits } from "~/lib/accounts"
 import { isKycVerified } from "~/lib/kyc-onboarding"
 import type { Route } from "./+types/accounts"
 
@@ -31,7 +27,6 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export default function AccountsPage() {
-  const [opening, setOpening] = useState(false)
   const accounts = useQuery(api.accounts.getAccounts())
   const profile = useQuery(api.me.getMyProfile())
   const zar = accounts.data?.find(acceptsDeposits)
@@ -40,34 +35,21 @@ export default function AccountsPage() {
       (account) => account.currency
     ) ?? []
   const verified = isKycVerified(profile.data?.kyc.status)
-  const canOpen =
-    verified && openablePayoutCurrencies(heldFiat).length > 0
+
+  const fiatAccounts =
+    accounts.data?.filter((account) => account.kind === "fiat") ?? []
+  const settlementAccounts =
+    accounts.data?.filter((account) => account.kind === "settlement") ?? []
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
       <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <PageHeader>
-            <PageHeaderTitle>Accounts</PageHeaderTitle>
-            <PageHeaderDescription>
-              Your balances, and the reference that identifies each account.
-            </PageHeaderDescription>
-          </PageHeader>
-          <OpenAccountHeaderAction
-            verified={verified}
-            heldCurrencies={heldFiat}
-            opening={opening}
-            onOpen={() => setOpening(true)}
-          />
-        </div>
-
-        {opening && canOpen && !accounts.isPending && !accounts.isError ? (
-          <OpenAccountForm
-            heldCurrencies={heldFiat}
-            onCancel={() => setOpening(false)}
-            onOpened={() => setOpening(false)}
-          />
-        ) : null}
+        <PageHeader>
+          <PageHeaderTitle>Accounts</PageHeaderTitle>
+          <PageHeaderDescription>
+            Your balances, and the reference that identifies each account.
+          </PageHeaderDescription>
+        </PageHeader>
 
         {accounts.isPending ? (
           <div className="grid gap-4 md:grid-cols-2">
@@ -85,7 +67,14 @@ export default function AccountsPage() {
           // while paying from a banking app, and nothing in it is final.
           <Collapsible className="flex flex-col gap-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {accounts.data.map((account) => (
+              {fiatAccounts.map((account) => (
+                <AccountCard key={account.account_id} account={account} />
+              ))}
+              <OpenAccountCard
+                verified={verified}
+                heldCurrencies={heldFiat}
+              />
+              {settlementAccounts.map((account) => (
                 <AccountCard key={account.account_id} account={account} />
               ))}
             </div>
