@@ -7,6 +7,7 @@ import {
   amountIssueMessage,
   canPreview,
   confirmRefusal,
+  estimateInCurrency,
   formatCountdown,
   quoteLines,
   quoteRefusal,
@@ -26,14 +27,23 @@ const plain = (value: string) => value.replace(/\s/g, " ")
 describe("search params", () => {
   it("reads what the URL holds", () => {
     const search = readSendSearch(
-      new URLSearchParams("beneficiary=b1&amount=250&currency=NAD&step=review")
+      new URLSearchParams(
+        "beneficiary=b1&amount=250&currency=NAD&from=USD&step=review"
+      )
     )
     expect(search).toEqual({
       beneficiaryId: "b1",
       amount: "250",
       currency: "NAD",
+      from: "USD",
       step: "review",
     })
+  })
+
+  it("defaults from to null, meaning ZAR", () => {
+    expect(
+      readSendSearch(new URLSearchParams("beneficiary=b1")).from
+    ).toBeNull()
   })
 
   it("ignores a currency or step it doesn't know", () => {
@@ -47,6 +57,13 @@ describe("search params", () => {
     const next = writeSendSearch(current, { amount: "", step: "amount" })
     expect(next.toString()).toBe("beneficiary=b1&step=amount")
     expect(readSendSearch(next)).toEqual({ ...current, step: "amount" })
+  })
+
+  it("round-trips a chosen from-account", () => {
+    const current = readSendSearch(new URLSearchParams("beneficiary=b1"))
+    const next = writeSendSearch(current, { from: "USD" })
+    expect(next.toString()).toBe("beneficiary=b1&from=USD")
+    expect(readSendSearch(next).from).toBe("USD")
   })
 })
 
@@ -97,6 +114,9 @@ describe("amountIssue", () => {
     dailyRemaining: "800.00",
     monthlyRemaining: "600.00",
   }
+  // A ZAR send is its own rand value — no conversion, no waiting on a preview.
+  const zar = (amount: string, lims = limits) =>
+    amountIssue(amount, lims, amount)
 
   it.each<[string, AmountIssue | null]>([
     ["", "empty"],
@@ -112,20 +132,36 @@ describe("amountIssue", () => {
     ["600.00", null],
     ["0.01", null],
   ])("%s → %s", (amount, issue) => {
-    expect(amountIssue(amount, limits)).toBe(issue)
+    expect(zar(amount)).toBe(issue)
   })
 
   it("skips a limit that hasn't loaded", () => {
-    expect(amountIssue("5000", {})).toBeNull()
+    expect(amountIssue("5000", {}, "5000")).toBeNull()
   })
 
   it("allows up to the largest amount the ledger holds", () => {
-    expect(amountIssue("999999999999.99", {})).toBeNull()
-    expect(amountIssue("1000000000000.00", {})).toBe("too_large")
+    expect(amountIssue("999999999999.99", {}, "999999999999.99")).toBeNull()
+    expect(amountIssue("1000000000000.00", {}, "1000000000000.00")).toBe(
+      "too_large"
+    )
   })
 
   it("doesn't preview an amount too large to price", () => {
-    expect(canPreview(amountIssue("1000000000000", limits))).toBe(false)
+    expect(canPreview(zar("1000000000000"))).toBe(false)
+  })
+
+  it("skips the daily/monthly check until the rand value is known", () => {
+    // 800.01 native would be over_daily_limit if it were rand, but its rand
+    // value hasn't priced yet, so only the balance (also native) is checked.
+    expect(amountIssue("800.01", limits)).toBeNull()
+    // 1000.01 still breaks the balance either way — that's native, not rand.
+    expect(amountIssue("1000.01", limits)).toBe("over_balance")
+  })
+
+  it("checks the daily/monthly limits against the priced rand value, not the typed amount", () => {
+    // USD 100 priced at R1,850 (over the R800 left today); the raw "100" on
+    // its own would pass every check.
+    expect(amountIssue("100", limits, "1850.00")).toBe("over_daily_limit")
   })
 
   it("gives every issue its own message", () => {
@@ -146,12 +182,43 @@ describe("amountIssue", () => {
     )
   })
 
+  it("names the balance in whatever currency was sent from", () => {
+    expect(plain(amountIssueMessage("over_balance", limits, "USD"))).toBe(
+      "That's more than your available balance of USD 1,000.00."
+    )
+  })
+
+  it("adds the other currency's estimate to a limit message, rand first", () => {
+    const message = plain(
+      amountIssueMessage("over_daily_limit", limits, "USD", {
+        amount: "97.29",
+        currency: "USD",
+      })
+    )
+    expect(message).toBe(
+      "That would exceed your daily limit. You can send up to R 800.00 (about USD 97.29) today."
+    )
+  })
+
   it("previews amounts that only break the balance or a limit", () => {
     expect(canPreview(null)).toBe(true)
     expect(canPreview("over_balance")).toBe(true)
     expect(canPreview("over_monthly_limit")).toBe(true)
     expect(canPreview("zero")).toBe(false)
     expect(canPreview("invalid")).toBe(false)
+  })
+})
+
+describe("estimateInCurrency", () => {
+  it("converts what's left at the rate a priced send implies", () => {
+    // USD 100 priced at R1,850: R18.50 to the dollar.
+    expect(estimateInCurrency("800.00", "100", "1850.00")).toBe("43.24")
+  })
+
+  it("rounds down, so the estimate itself would still fit", () => {
+    // 43.243... rand-per-dollar would round to 43.25 by ordinary rounding;
+    // down keeps the shown estimate inside what's actually left.
+    expect(estimateInCurrency("1000.00", "97.29", "1799.87")).toBe("54.05")
   })
 })
 

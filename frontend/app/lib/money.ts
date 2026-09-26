@@ -35,6 +35,12 @@ const CURRENCY_NAMES: Record<string, string> = {
 // USD and NAD both write "$", so they keep their codes.
 const SYMBOLS: Record<string, string> = { ZAR: "R" }
 
+/** "R" for rand, otherwise the currency's own code (`formatMoney`'s prefix,
+ * for a line that builds its own string rather than calling it). */
+export function currencySymbol(currency: string): string {
+  return SYMBOLS[currency] ?? currency
+}
+
 type Sign = "auto" | "always" | "exceptZero" | "never"
 
 const AMOUNT_PATTERN = /^\d+(\.\d{0,2})?$/
