@@ -121,18 +121,19 @@ class UserRoleController:
         assignment.toxic_combination_acknowledged = bool(warnings) and (
             request.toxic_combination_acknowledged
         )
-        record_audit(
-            actor_user_id=actor_id,
-            subject_type=AuditSubject.USER_ROLE,
-            subject_id=assignment.user_role_id,
-            action=AuditAction.ROLE_GRANTED,
-            after={
-                "role": role.name,
-                "user_id": str(user.id),
-                "self_granted": assignment.self_granted,
-            },
-            reason=assignment.grant_reason,
-        )
+        if actor_id is not None:
+            record_audit(
+                actor_user_id=actor_id,
+                subject_type=AuditSubject.USER_ROLE,
+                subject_id=assignment.user_role_id,
+                action=AuditAction.ROLE_GRANTED,
+                after={
+                    "role": role.name,
+                    "user_id": str(user.id),
+                    "self_granted": assignment.self_granted,
+                },
+                reason=assignment.grant_reason,
+            )
         return RoleGrantResult(
             grant=_to_user_role_read(assignment, role),
             created=True,
@@ -169,14 +170,15 @@ class UserRoleController:
         assignment.revoked_at = utcnow()
         assignment.revoked_by = actor_id
         assignment.revoke_reason = reason.strip()
-        record_audit(
-            actor_user_id=actor_id,
-            action=AuditAction.ROLE_REVOKED,
-            subject_type=AuditSubject.USER_ROLE,
-            subject_id=assignment.user_role_id,
-            before={"role": role.name, "user_id": str(user.id)},
-            reason=assignment.revoke_reason,
-        )
+        if actor_id is not None:
+            record_audit(
+                actor_user_id=actor_id,
+                action=AuditAction.ROLE_REVOKED,
+                subject_type=AuditSubject.USER_ROLE,
+                subject_id=assignment.user_role_id,
+                before={"role": role.name, "user_id": str(user.id)},
+                reason=assignment.revoke_reason,
+            )
 
         return _to_user_role_read(assignment, role)
 
