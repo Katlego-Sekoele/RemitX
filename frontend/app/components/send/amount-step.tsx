@@ -44,7 +44,7 @@ import { Skeleton } from "~/components/ui/skeleton"
 import { useDebouncedValue } from "~/hooks/use-debounced-value"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
-import { formatMoney, invertRate } from "~/lib/money"
+import { formatFiatToTokenExchangeRate, formatMoney } from "~/lib/money"
 import {
   amountIssue,
   amountIssueMessage,
@@ -242,8 +242,11 @@ export function AmountStep({
                   <DescriptionItem>
                     <DescriptionTerm>Exchange rate</DescriptionTerm>
                     <DescriptionDetails>
-                      1 USD = R{" "}
-                      {invertRate(preview.data.fiat_to_token_exchange_rate)}
+                      {formatFiatToTokenExchangeRate(
+                        preview.data.fiat_to_token_exchange_rate,
+                        preview.data.sender_currency,
+                        preview.data.token_name
+                      )}
                     </DescriptionDetails>
                   </DescriptionItem>
                   <DescriptionItem>

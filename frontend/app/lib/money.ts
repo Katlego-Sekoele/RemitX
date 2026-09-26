@@ -194,3 +194,18 @@ export function invertRate(rate: string, dp: number = RATE_DP): string {
   const digits = quotient.toString().padStart(dp + 1, "0")
   return dp === 0 ? digits : `${digits.slice(0, -dp)}.${digits.slice(-dp)}`
 }
+
+/**
+ * How many units of `senderCurrency` buy one settlement token. The API's
+ * `fiat_to_token_exchange_rate` is token per sender unit; people read the
+ * inverse, with the quote's token label and sender currency.
+ */
+export function formatFiatToTokenExchangeRate(
+  fiatToTokenExchangeRate: string,
+  senderCurrency: string,
+  tokenName: string
+): string {
+  const token = currencyLabel(tokenName, "settlement")
+  const sender = SYMBOLS[senderCurrency] ?? senderCurrency
+  return `1 ${token} = ${sender} ${formatRate(invertRate(fiatToTokenExchangeRate))}`
+}
