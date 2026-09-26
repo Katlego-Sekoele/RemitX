@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "~/components/ui/skeleton"
 import { useHasPermission } from "~/hooks/use-permissions"
 import { PERMISSIONS } from "~/lib/permissions"
+import { STUCK_SETTLEMENTS_PATH } from "~/lib/settlement-recovery"
 
 /** Counts that link into the queues a staff member is allowed to open. */
 export function QueueCards() {
@@ -80,8 +81,8 @@ export function QueueCards() {
           description: "Need attention",
           count: operations.data?.failed_settlements,
           pending: operations.isPending,
-          href: null,
-          action: null,
+          href: STUCK_SETTLEMENTS_PATH,
+          action: "Review",
         }
       : null,
   ].filter((card) => card !== null)
