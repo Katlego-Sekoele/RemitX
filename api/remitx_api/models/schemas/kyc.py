@@ -27,6 +27,7 @@ from pydantic import (
     model_validator,
 )
 
+from remitx_api.models.orm.kyc_lifecycle import KycStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 MASK_CHARACTER = "•"
@@ -109,7 +110,9 @@ class _ApplicationBase(Schema):
     user_id: uuid.UUID
     # Read from `KycApplication.effective_status`, so an approval past its
     # review date reports `review_due` — see `kyc_lifecycle.effective_status`.
-    status: str = Field(validation_alias=AliasChoices("effective_status", "status"))
+    status: KycStatus = Field(
+        validation_alias=AliasChoices("effective_status", "status")
+    )
     nationality: str | None = None
     id_type: str | None = None
     issuing_country: str | None = None
@@ -315,7 +318,7 @@ class KycStandingRead(Schema):
 
     model_config = ConfigDict(from_attributes=True)
 
-    status: str
+    status: KycStatus
     is_verified: bool
     tier: int
     application_id: uuid.UUID | None = None

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from pydantic import ConfigDict
 
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Amount, Schema, UtcDateTime
 
 
@@ -24,7 +25,7 @@ class WithdrawalRead(Schema):
     withdrawal_id: uuid.UUID
     tx_id: uuid.UUID
     bank_account_id: uuid.UUID
-    status: str
+    status: TransactionStatus
     # Requested amount that leaves the user's RemitX account (fee + net).
     gross_amount: Decimal
     fee_amount: Decimal

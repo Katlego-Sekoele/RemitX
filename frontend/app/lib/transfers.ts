@@ -3,6 +3,8 @@
  * built here.
  */
 
+import { TransactionStatus } from "~/client"
+
 export const TRANSFERS_PATH = "/app/transfers"
 
 /** A transfer's own page. */
@@ -33,29 +35,38 @@ type BadgeVariant = "default" | "secondary" | "outline" | "destructive"
 type StatusCopy = { label: string; badge: BadgeVariant }
 
 /** The settlement leg's status, as the UI names it. */
-const STATUS_COPY: Record<string, StatusCopy> = {
-  pending: { label: "Queued", badge: "secondary" },
-  processing: { label: "Settling on XRPL", badge: "outline" },
-  confirmed: { label: "Completed", badge: "default" },
-  failed: { label: "Failed", badge: "destructive" },
+const STATUS_COPY: Record<TransactionStatus, StatusCopy> = {
+  [TransactionStatus.PENDING]: { label: "Queued", badge: "secondary" },
+  [TransactionStatus.PROCESSING]: {
+    label: "Settling on XRPL",
+    badge: "outline",
+  },
+  [TransactionStatus.CONFIRMED]: { label: "Completed", badge: "default" },
+  [TransactionStatus.FAILED]: { label: "Failed", badge: "destructive" },
 }
 
-export function statusCopy(status: string): StatusCopy {
+export function statusCopy(status: TransactionStatus): StatusCopy {
   return STATUS_COPY[status] ?? { label: status, badge: "outline" }
 }
 
 /** Still moving: poll until this is false. */
-export function isInFlight(status: string): boolean {
-  return status === "pending" || status === "processing"
+export function isInFlight(status: TransactionStatus): boolean {
+  return (
+    status === TransactionStatus.PENDING ||
+    status === TransactionStatus.PROCESSING
+  )
 }
 
 /** Queued for longer than a warm worker would take. */
 export function isSlowToStart(
-  status: string,
+  status: TransactionStatus,
   createdAt: string,
   now: number
 ): boolean {
-  return status === "pending" && now - Date.parse(createdAt) > SLOW_QUEUE_MS
+  return (
+    status === TransactionStatus.PENDING &&
+    now - Date.parse(createdAt) > SLOW_QUEUE_MS
+  )
 }
 
 /** `A1B2…9F0E`. */

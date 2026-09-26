@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { TransactionStatus } from "~/client"
 import {
   explorerUrl,
   headlineAmount,
@@ -12,18 +13,20 @@ import {
 
 describe("status", () => {
   it("names each settlement status", () => {
-    expect(statusCopy("pending").label).toBe("Queued")
-    expect(statusCopy("processing").label).toBe("Settling on XRPL")
-    expect(statusCopy("confirmed").label).toBe("Completed")
-    expect(statusCopy("failed").label).toBe("Failed")
-    expect(statusCopy("failed").badge).toBe("destructive")
+    expect(statusCopy(TransactionStatus.PENDING).label).toBe("Queued")
+    expect(statusCopy(TransactionStatus.PROCESSING).label).toBe(
+      "Settling on XRPL"
+    )
+    expect(statusCopy(TransactionStatus.CONFIRMED).label).toBe("Completed")
+    expect(statusCopy(TransactionStatus.FAILED).label).toBe("Failed")
+    expect(statusCopy(TransactionStatus.FAILED).badge).toBe("destructive")
   })
 
   it("polls only while in flight", () => {
-    expect(isInFlight("pending")).toBe(true)
-    expect(isInFlight("processing")).toBe(true)
-    expect(isInFlight("confirmed")).toBe(false)
-    expect(isInFlight("failed")).toBe(false)
+    expect(isInFlight(TransactionStatus.PENDING)).toBe(true)
+    expect(isInFlight(TransactionStatus.PROCESSING)).toBe(true)
+    expect(isInFlight(TransactionStatus.CONFIRMED)).toBe(false)
+    expect(isInFlight(TransactionStatus.FAILED)).toBe(false)
   })
 })
 
@@ -32,12 +35,16 @@ describe("isSlowToStart", () => {
   const at = (seconds: number) => Date.parse(created) + seconds * 1000
 
   it("warns once queued for more than a minute", () => {
-    expect(isSlowToStart("pending", created, at(59))).toBe(false)
-    expect(isSlowToStart("pending", created, at(61))).toBe(true)
+    expect(isSlowToStart(TransactionStatus.PENDING, created, at(59))).toBe(
+      false
+    )
+    expect(isSlowToStart(TransactionStatus.PENDING, created, at(61))).toBe(true)
   })
 
   it("never warns once settlement has started", () => {
-    expect(isSlowToStart("processing", created, at(600))).toBe(false)
+    expect(isSlowToStart(TransactionStatus.PROCESSING, created, at(600))).toBe(
+      false
+    )
   })
 })
 
