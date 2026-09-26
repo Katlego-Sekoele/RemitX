@@ -67,3 +67,6 @@ extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "postgres: needs a real, migrated Postgres (TEST_DATABASE_URL); skipped when it is unset",
+]
