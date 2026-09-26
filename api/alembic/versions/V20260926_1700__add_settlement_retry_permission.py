@@ -4,7 +4,7 @@
 settlement when every leg is still ``pending``.
 
 Revision ID: a8c3e1f42b90
-Revises: b3a8c1d4e5f6
+Revises: 808c8537c67b
 Create Date: 2026-09-26 17:00:00.000000+00:00
 
 """
@@ -22,7 +22,7 @@ from remitx_api.models.orm.rbac_seed import (
 )
 
 revision: str = "a8c3e1f42b90"
-down_revision: str | None = "b3a8c1d4e5f6"
+down_revision: str | None = "808c8537c67b"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
