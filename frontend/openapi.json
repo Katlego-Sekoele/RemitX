@@ -10290,7 +10290,7 @@
     },
     "/quotes/create-quote": {
       "post": {
-        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, a `sender_currency` other than ZAR or with no account, an\namount over what is left of today's or this month's allowance (tier\nlimits scaled by the risk rating, less what was already sent), the\navailable balance, or one too small to cover the fees; 503 when no\nexchange rate is available. A limit refusal names the limit and what is\nleft of it.",
+        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, a payout currency the beneficiary has no account for, a\n`sender_currency` with no account, an\namount over what is left of today's or this month's allowance (tier\nlimits scaled by the risk rating, less what was already sent), the\navailable balance, or one too small to cover the fees; 503 when no\nexchange rate is available. A limit refusal names the limit and what is\nleft of it.",
         "operationId": "create_quote",
         "requestBody": {
           "content": {
@@ -10517,7 +10517,7 @@
         ]
       },
       "post": {
-        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.\n\nRefusals: 403 if the caller is no longer KYC-verified; 400 for an unknown\nquote, or one that no longer fits the available balance or what is left\nof today's or this month's allowance (the refusal names the limit and\nwhat is left of it); 409 if the quote was already used or has expired.\nA refused quote stays active.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.\n\nRefusals: 403 if the caller is no longer KYC-verified; 400 for an unknown\nquote, a beneficiary with no fiat account in the quote's payout currency,\nor one that no longer fits the available balance or what is left of\ntoday's or this month's allowance (the refusal names the limit and what\nis left of it); 409 if the quote was already used or has expired. A\nrefused quote stays active.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {

@@ -149,7 +149,11 @@ function AddMoney({ currency }: { currency: string }) {
   )
 }
 
-function NoPayoutAccount({ beneficiaryName: name }: { beneficiaryName: string }) {
+function NoPayoutAccount({
+  beneficiaryName: name,
+}: {
+  beneficiaryName: string
+}) {
   return (
     <Card>
       <CardHeader>
