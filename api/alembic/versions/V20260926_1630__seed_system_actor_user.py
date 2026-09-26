@@ -42,6 +42,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text("DELETE FROM users WHERE id = :id").bindparams(id=_SYSTEM_ID)
-    )
+    op.execute(sa.text("DELETE FROM users WHERE id = :id").bindparams(id=_SYSTEM_ID))
