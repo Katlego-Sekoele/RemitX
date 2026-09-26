@@ -103,11 +103,14 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
 
     # Checked again, not trusted from the quote: standing can change after a
     # quote is issued, and several quotes can be issued against one allowance.
+    # The send counts at the rand value the quote locked, so a rate move since
+    # changes nothing.
     try:
         require_can_send(
             KycApplicationRepository().get_standing(sender_user_id),
-            quote.sender_amount,
-            quote.sender_currency,
+            quote.value_zar,
+            amount=quote.sender_amount,
+            currency=quote.sender_currency,
         )
     except DomainError as exc:
         # Revert the quote status back to ACTIVE, as for a short balance below

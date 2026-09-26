@@ -40,6 +40,8 @@ class TransferFact:
     sender_currency: str
     receiver_amount: Decimal
     receiver_currency: str
+    # The send in rand, as its quote locked it (`Quote.value_zar`).
+    sender_amount_zar: Decimal
     token_amount: Decimal
     token_name: str
     sender_name: str | None
@@ -160,6 +162,7 @@ class OverviewRepository:
                 Quote.sender_currency,
                 Quote.receiver_amount,
                 Quote.receiver_currency,
+                Quote.value_zar,
                 Quote.token_amount,
                 Quote.token_name,
                 sender.full_name,
@@ -188,6 +191,7 @@ def _fact(row) -> TransferFact:
         sender_currency,
         receiver_amount,
         receiver_currency,
+        sender_amount_zar,
         token_amount,
         token_name,
         sender_full_name,
@@ -208,6 +212,7 @@ def _fact(row) -> TransferFact:
         sender_currency=sender_currency,
         receiver_amount=_decimal(receiver_amount),
         receiver_currency=receiver_currency,
+        sender_amount_zar=_decimal(sender_amount_zar),
         token_amount=_decimal(token_amount),
         token_name=token_name,
         sender_name=_person_name(sender_full_name, sender_first_name, sender_last_name),

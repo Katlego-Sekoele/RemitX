@@ -30,19 +30,6 @@ class KycNotApprovedError(ForbiddenError):
         )
 
 
-class UnsupportedSenderCurrencyError(DomainError):
-    """Sending is from the ZAR account only (decision 2 on #103). The limits
-    are in ZAR and nothing converts another currency's amount into them, so
-    an account in any other currency receives money but can't send it."""
-
-    def __init__(self, currency: str) -> None:
-        super().__init__(
-            f"Transfers are sent from your ZAR account. Your {currency} "
-            "account can receive money but can't send it yet."
-        )
-        self.currency = currency
-
-
 LIMIT_DAILY = "daily"
 LIMIT_MONTHLY = "monthly"
 
@@ -53,9 +40,10 @@ _PERIOD_WORDS = {
 }
 
 
-def _format_zar(amount: Decimal) -> str:
-    """`R 1,800.00`, as the customer UI writes it."""
-    return f"R {amount:,.2f}"
+def _format_money(amount: Decimal, currency: str) -> str:
+    """`R 1,800.00` or `USD 97.29`, as the customer UI writes them."""
+    prefix = "R" if currency == "ZAR" else currency
+    return f"{prefix} {amount:,.2f}"
 
 
 class LimitExceededError(DomainError):
@@ -63,18 +51,30 @@ class LimitExceededError(DomainError):
     sender's allowance (the tier's limits scaled by their risk rating).
 
     Names the limit that binds and what is left of it, so the sender knows
-    what they can still send and when that changes.
+    what they can still send and when that changes. What is left is in rand,
+    as the limits are; for a send from another currency, `estimate` is that
+    figure in the send's own currency too, as (amount, currency).
     """
 
-    def __init__(self, limit: str, remaining: Decimal) -> None:
+    def __init__(
+        self,
+        limit: str,
+        remaining: Decimal,
+        *,
+        estimate: tuple[Decimal, str] | None = None,
+    ) -> None:
         now, later = _PERIOD_WORDS[limit]
         if remaining > 0:
+            left = _format_money(remaining, "ZAR")
+            if estimate is not None:
+                left += f" (about {_format_money(*estimate)})"
             detail = (
                 f"This would exceed your {limit} limit. You can send up to "
-                f"{_format_zar(remaining)} {now}."
+                f"{left} {now}."
             )
         else:
             detail = f"You've reached your {limit} limit. You can send again {later}."
         super().__init__(detail)
         self.limit = limit
         self.remaining = remaining
+        self.estimate = estimate

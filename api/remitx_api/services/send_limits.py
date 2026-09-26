@@ -10,6 +10,10 @@ transfer whose settlement leg failed gives its amount back.
 The day and the month are South African. Both reset at midnight SAST, not
 midnight UTC, which would reset the daily limit at 02:00 local time.
 
+Everything is pinned to rand, as the fees are. Any fiat account can send, and
+a send counts against the limits at its value in rand, worked out at its
+quote's rates and locked on the quote (`Quote.sender_amount_zar`).
+
 `KycApplicationRepository.get_standing` reports the usage alongside the
 limits, and `require_can_send` is the one rule `create_quote` (early, so the
 sender hears it before committing) and `confirm_remittance` (the real gate,
@@ -20,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from remitx_api.errors.remittances import (
@@ -28,12 +32,13 @@ from remitx_api.errors.remittances import (
     LIMIT_MONTHLY,
     KycNotApprovedError,
     LimitExceededError,
-    UnsupportedSenderCurrencyError,
 )
 from remitx_api.models.orm.account import CURRENCY_ZAR
 
 if TYPE_CHECKING:
     from remitx_api.repositories.kyc_application_repository import KycStanding
+
+CENTS = Decimal("0.01")
 
 # South Africa Standard Time. There is no daylight saving, so a fixed offset
 # is exact; tools/seeder/remitx_seeder/stories/timing.py uses the same one.
@@ -68,23 +73,42 @@ def limit_windows(now: datetime) -> LimitWindows:
     )
 
 
-def require_can_send(standing: KycStanding, amount: Decimal, currency: str) -> None:
-    """Refuse a send of `amount` in `currency` that this standing can't cover.
-
-    An unverified sender is refused outright. Otherwise the amount must fit
-    what is left of both the day and the month; when it doesn't, the refusal
-    names whichever leaves less, and the month on a tie, since a new day
-    wouldn't help.
-    """
+def require_verified(standing: KycStanding) -> None:
+    """Brief: only approved users may send. Refused outright, never limited."""
     if not standing.is_verified:
         raise KycNotApprovedError()
-    if currency != CURRENCY_ZAR:
-        raise UnsupportedSenderCurrencyError(currency)
 
+
+def require_within_limits(
+    standing: KycStanding, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> None:
+    """Refuse a send worth `amount_zar` in rand that doesn't fit what is left
+    of both the day and the month.
+
+    The refusal names whichever leaves less, and the month on a tie, since a
+    new day wouldn't help. For a send of `amount` in another `currency`, it
+    also estimates what is left in that currency at the send's own rate.
+    """
     daily = standing.daily_remaining_zar
     monthly = standing.monthly_remaining_zar
-    if amount <= min(daily, monthly):
+    if amount_zar <= min(daily, monthly):
         return
-    if monthly <= daily:
-        raise LimitExceededError(LIMIT_MONTHLY, monthly)
-    raise LimitExceededError(LIMIT_DAILY, daily)
+    limit, remaining = (
+        (LIMIT_MONTHLY, monthly) if monthly <= daily else (LIMIT_DAILY, daily)
+    )
+    estimate = None
+    if currency != CURRENCY_ZAR:
+        # Rounded down, so sending the estimate itself would fit.
+        estimate = (
+            (remaining * amount / amount_zar).quantize(CENTS, rounding=ROUND_DOWN),
+            currency,
+        )
+    raise LimitExceededError(limit, remaining, estimate=estimate)
+
+
+def require_can_send(
+    standing: KycStanding, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> None:
+    """Both of the above: the check confirming a quote repeats in full."""
+    require_verified(standing)
+    require_within_limits(standing, amount_zar, amount=amount, currency=currency)

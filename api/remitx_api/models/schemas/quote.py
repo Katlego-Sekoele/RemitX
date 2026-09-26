@@ -2,7 +2,7 @@
 
 import uuid
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from remitx_api.models.orm.account import PayoutCurrency
 from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
@@ -23,6 +23,10 @@ class QuoteRead(Schema):
     beneficiary_user_id: uuid.UUID
     sender_amount: LedgerDecimal
     sender_currency: str
+    sender_amount_zar: LedgerDecimal = Field(
+        description="The send in rand at this quote's rates: what it counts as "
+        "against the sending limits, which are in rand from any account."
+    )
     token_amount: LedgerDecimal
     token_name: str
     sender_transaction_fee: LedgerDecimal
@@ -52,6 +56,10 @@ class QuotePreviewRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     sender_currency: str
+    sender_amount_zar: LedgerDecimal = Field(
+        description="The send in rand at these rates, to check against what is "
+        "left of the sending limits. The quote locks its own."
+    )
     fiat_to_token_exchange_rate: LedgerDecimal
     fiat_exchange_rate: LedgerDecimal
     sender_transaction_fee: LedgerDecimal
