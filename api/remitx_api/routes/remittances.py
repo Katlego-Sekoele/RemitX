@@ -59,7 +59,7 @@ def _read(view: RemittanceView) -> RemittanceRead:
     "",
     response_model=RemittanceRead,
     summary="Confirm a quote and start settlement",
-    responses=error_responses(400, 409),
+    responses=error_responses(400, 403, 409),
 )
 def confirm_remittance(
     payload: RemittanceConfirmRequest,
@@ -69,6 +69,12 @@ def confirm_remittance(
     queues the settlement worker task. The RLUSD/uctusd transfer does not
     start until this call has committed — see Transaction_Flow_Context.md
     §2 Phase B2/C.
+
+    Refusals: 403 if the caller is no longer KYC-verified; 400 for an unknown
+    quote, or one that no longer fits the available balance or what is left
+    of today's or this month's allowance (the refusal names the limit and
+    what is left of it); 409 if the quote was already used or has expired.
+    A refused quote stays active.
     """
     try:
         view = controller.confirm(user.id, payload.quote_id)

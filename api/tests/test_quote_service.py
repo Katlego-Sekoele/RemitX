@@ -2,14 +2,21 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
+import time_machine
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
+from remitx_api.errors.remittances import (
+    KycNotApprovedError,
+    LimitExceededError,
+    UnsupportedSenderCurrencyError,
+)
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.transaction import (
+    STATUS_FAILED,
     STATUS_PENDING,
     TYPE_REMITTANCE,
     Transaction,
@@ -17,8 +24,10 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import exchange_rate_service, quote_service
 from remitx_api.services.exchange_rate_provider import RateFetchError
+from remitx_api.services.send_limits import SAST
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
+from tests.send_helpers import record_transfer
 
 
 def _round_amount(value: Decimal) -> Decimal:
@@ -383,7 +392,7 @@ def test_unverified_sender_is_rejected(app_context):
         .beneficiary
     )
 
-    with pytest.raises(quote_service.KycNotApprovedError):
+    with pytest.raises(KycNotApprovedError):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -399,9 +408,7 @@ def test_amount_over_the_daily_ceiling_is_rejected(app_context):
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     _fund(sender, "6000")
 
-    with pytest.raises(
-        quote_service.LimitExceededError, match="daily limit of 3000.00"
-    ):
+    with pytest.raises(LimitExceededError, match=r"up to R 3,000\.00 today"):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -429,9 +436,7 @@ def test_high_risk_rating_scales_the_daily_ceiling(app_context):
     )
     assert quote.sender_amount == Decimal("1500.00")
 
-    with pytest.raises(
-        quote_service.LimitExceededError, match="daily limit of 1500.00"
-    ):
+    with pytest.raises(LimitExceededError, match=r"up to R 1,500\.00 today"):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -458,6 +463,126 @@ def test_low_risk_enhanced_tier_allows_above_the_standard_ceiling(app_context):
         receiver_payout_currency="ZWL",
     )
     assert quote.sender_amount == Decimal("5000.00")
+
+
+def _quote_zar(sender, beneficiary, amount: str):
+    return quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal(amount),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+
+
+def test_what_was_sent_today_counts_against_the_day(app_context):
+    """A running total, not a ceiling per send: exactly what is left of the
+    R3,000 passes, and one cent more is refused with what is left."""
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    _fund(sender, "10000")
+    record_transfer(sender, recipient, sender_amount=Decimal("2000"))
+    db.session.commit()
+
+    assert _quote_zar(sender, beneficiary, "1000").sender_amount == Decimal("1000.00")
+    with pytest.raises(LimitExceededError) as refused:
+        _quote_zar(sender, beneficiary, "1000.01")
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,000.00 today."
+    )
+
+
+def test_a_failed_transfer_gives_its_amount_back(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    _fund(sender, "10000")
+    record_transfer(
+        sender, recipient, sender_amount=Decimal("3000"), status=STATUS_FAILED
+    )
+    db.session.commit()
+
+    assert _quote_zar(sender, beneficiary, "3000").sender_amount == Decimal("3000.00")
+
+
+def test_earlier_days_count_against_the_month(app_context):
+    """R3,000 on each of the first eight days leaves R1,000 of the month,
+    less than a fresh day's R3,000, so the month is the limit that binds."""
+    with time_machine.travel(datetime(2025, 6, 20, 10, tzinfo=SAST), tick=False):
+        _store_rate("18.50")
+        _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+        sender, recipient, beneficiary = _make_sender_and_beneficiary()
+        _fund(sender, "10000")
+        for day in range(1, 9):
+            record_transfer(
+                sender,
+                recipient,
+                sender_amount=Decimal("3000"),
+                at=datetime(2025, 6, day, 12, tzinfo=SAST),
+            )
+        db.session.commit()
+
+        assert _quote_zar(sender, beneficiary, "1000").sender_amount == Decimal(
+            "1000.00"
+        )
+        with pytest.raises(LimitExceededError) as refused:
+            _quote_zar(sender, beneficiary, "1000.01")
+
+    assert refused.value.detail == (
+        "This would exceed your monthly limit. You can send up to R 1,000.00 "
+        "this month."
+    )
+
+
+def test_the_allowance_comes_back_at_midnight_sast(app_context):
+    """23:50 on the 14th and 00:10 on the 15th in South Africa are the same
+    UTC day. Only a SAST day gives the sender a fresh allowance at their own
+    midnight."""
+    with time_machine.travel(datetime(2025, 6, 14, 23, 50, tzinfo=SAST), tick=False):
+        _store_rate("18.50")
+        _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+        sender, recipient, beneficiary = _make_sender_and_beneficiary()
+        _fund(sender, "10000")
+        record_transfer(
+            sender,
+            recipient,
+            sender_amount=Decimal("3000"),
+            at=datetime(2025, 6, 14, 23, 0, tzinfo=SAST),
+        )
+        db.session.commit()
+
+        with pytest.raises(LimitExceededError) as refused:
+            _quote_zar(sender, beneficiary, "100")
+
+    assert refused.value.detail == (
+        "You've reached your daily limit. You can send again tomorrow."
+    )
+    with time_machine.travel(datetime(2025, 6, 15, 0, 10, tzinfo=SAST), tick=False):
+        assert _quote_zar(sender, beneficiary, "3000").sender_amount == Decimal(
+            "3000.00"
+        )
+
+
+def test_only_the_zar_account_sends(app_context):
+    """Decision 2 on #103. The limits are in ZAR, so a balance in another
+    currency could otherwise be sent without counting against them."""
+    _store_rate("18.50")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    accounts = AccountRepository()
+    usd = accounts.get_or_create_user_account(sender.id, sender.base_reference, "USD")
+    accounts.increase_balance(usd.account_id, Decimal("500"))
+    db.session.commit()
+
+    with pytest.raises(UnsupportedSenderCurrencyError):
+        quote_service.create_quote(
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("100"),
+            sender_currency="USD",
+            receiver_payout_currency="ZWL",
+        )
 
 
 def test_beneficiary_not_owned_by_caller_is_rejected(app_context):

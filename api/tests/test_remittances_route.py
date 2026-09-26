@@ -11,11 +11,13 @@ from remitx_api.models.orm.account import (
     CURRENCY_ZWL,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
+from remitx_api.models.orm.kyc_lifecycle import KycStatus
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import remittance_service
 from remitx_worker import db as worker_db, tasks
 from sqlalchemy.orm import sessionmaker
+from tests.kyc_helpers import insert_application
 from tests.platform_account_helpers import seed_platform_accounts
 
 ENDPOINT = "/remittances"
@@ -30,7 +32,7 @@ def no_real_enqueue(monkeypatch):
     )
 
 
-def _seed(client, sender_id):
+def _seed(client, sender_id, balance="1000"):
     """Rate data, platform accounts, a funded sender, and a beneficiary —
     everything `POST /remittances` needs, mirroring test_quotes_route.py's
     `_seed`."""
@@ -68,7 +70,7 @@ def _seed(client, sender_id):
         )
 
         sender_zar = AccountRepository().get_user_account(sender_id, CURRENCY_ZAR)
-        AccountRepository().increase_balance(sender_zar.account_id, Decimal("1000"))
+        AccountRepository().increase_balance(sender_zar.account_id, Decimal(balance))
         db.session.commit()
 
         return recipient.id
@@ -116,6 +118,42 @@ def test_anonymous_caller_is_rejected(anonymous_client):
     response = anonymous_client.post(ENDPOINT, json={"quote_id": str(uuid.uuid4())})
 
     assert response.status_code == 401
+
+
+def test_confirming_over_what_is_left_today_is_a_400(verified_client):
+    """Two quotes fit the R3,000 day on their own. Once the first is sent,
+    the second is refused, naming what is left."""
+    client, sender = verified_client
+    recipient_id = _seed(client, sender.id, balance="10000")
+    first = _create_quote(client, recipient_id, amount="2000")
+    second = _create_quote(client, recipient_id, amount="2000")
+    assert client.post(ENDPOINT, json={"quote_id": first}).status_code == 200
+
+    response = client.post(ENDPOINT, json={"quote_id": second})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "This would exceed your daily limit. You can send up to R 1,000.00 today."
+    )
+
+
+def test_confirming_after_losing_verified_standing_is_a_403(verified_client):
+    client, sender = verified_client
+    recipient_id = _seed(client, sender.id)
+    quote_id = _create_quote(client, recipient_id, amount="500")
+    token = db.open_session()
+    try:
+        insert_application(
+            sender.id,
+            status=KycStatus.REJECTED,
+            created_at=datetime.now(UTC) + timedelta(seconds=1),
+        )
+    finally:
+        db.close_session(token)
+
+    response = client.post(ENDPOINT, json={"quote_id": quote_id})
+
+    assert response.status_code == 403
 
 
 def test_confirm_end_to_end(verified_client):

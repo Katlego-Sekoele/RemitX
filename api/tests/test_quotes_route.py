@@ -12,6 +12,10 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.user_repository import UserRepository
+from tests.kyc_helpers import seed_kyc_reference_data
+from tests.rbac_helpers import make_user, rbac_client
+from tests.send_helpers import record_transfer
 
 ENDPOINT = "/quotes"
 
@@ -132,6 +136,66 @@ def test_insufficient_balance_is_a_400(verified_client):
     )
 
     assert response.status_code == 400
+
+
+def test_unverified_caller_is_a_403():
+    user = make_user("quote-unverified")
+    with rbac_client(user) as client:
+        seed_kyc_reference_data()
+        response = client.post(
+            f"{ENDPOINT}/create-quote",
+            json={
+                "beneficiary_id": str(uuid.uuid4()),
+                "sender_amount": "100",
+                "sender_currency": "ZAR",
+                "receiver_payout_currency": "ZWL",
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Only verified customers can send money. Finish verification to start sending."
+    )
+
+
+def test_an_amount_over_what_is_left_today_is_a_400(verified_client):
+    client, sender = verified_client
+    recipient_id = _seed(client)
+    beneficiary_id = client.post(
+        "/beneficiaries/create-beneficiary",
+        json={
+            "linked_user_id": str(recipient_id),
+            "payout_currency": "ZWL",
+            "relationship": "sibling",
+        },
+    ).json()["beneficiary_id"]
+    token = db.open_session()
+    try:
+        sender_zar = AccountRepository().get_user_account(sender.id, CURRENCY_ZAR)
+        AccountRepository().increase_balance(sender_zar.account_id, Decimal("5000"))
+        record_transfer(
+            sender,
+            UserRepository().require_by_id(recipient_id),
+            sender_amount=Decimal("2500"),
+        )
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+    response = client.post(
+        f"{ENDPOINT}/create-quote",
+        json={
+            "beneficiary_id": beneficiary_id,
+            "sender_amount": "600",
+            "sender_currency": "ZAR",
+            "receiver_payout_currency": "ZWL",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "This would exceed your daily limit. You can send up to R 500.00 today."
+    )
 
 
 def test_caller_not_in_the_database_is_a_400(client):
