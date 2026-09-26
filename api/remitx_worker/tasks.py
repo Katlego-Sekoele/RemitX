@@ -40,6 +40,7 @@ def ping():
 def reclaim_stuck_settlements() -> str:
     """Periodic reclaim for settlement groups lost off the broker."""
     from remitx_api.config import Config
+
     from remitx_worker.reclaim import (
         log_stale_processing_settlements,
         reclaim_pending_settlements,
