@@ -12,8 +12,13 @@ export type AccountKind = AccountRead["kind"]
 /** What the UI calls the settlement token, whatever the API names it. */
 export const SETTLEMENT_TOKEN_LABEL = "RLUSD"
 
-/** The token's API name. Quote lines still carry this code. */
-export const TOKEN_CURRENCY = "uctusd"
+/**
+ * The token's ledger currency code (`UCTUSD_TOKEN_NAME` on the API). Quote
+ * lines carry the same value in `token_name`; this default is for charts and
+ * other UI that never sees a quote row.
+ */
+export const TOKEN_CURRENCY =
+  import.meta.env.VITE_UCTUSD_TOKEN_NAME?.trim() || "uctusd"
 
 /** Quote lines use these names for the same token label and note. */
 export const TOKEN_LABEL = SETTLEMENT_TOKEN_LABEL
