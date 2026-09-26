@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
+from remitx_api.errors.accounts import KycNotApprovedToOpenAccountError
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
@@ -25,7 +26,6 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import short_display_name
-from remitx_api.errors.accounts import KycNotApprovedToOpenAccountError
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
 from remitx_api.repositories.quote_repository import QuoteRepository

@@ -1,9 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 
 import { api } from "~/client"
 import { AccountCard } from "~/components/accounts/account-card"
 import { AddMoneyPanel } from "~/components/accounts/add-money-panel"
-import { OpenAccountButton } from "~/components/accounts/open-account-dialog"
+import {
+  OpenAccountForm,
+  OpenAccountHeaderAction,
+} from "~/components/accounts/open-account-form"
 import { QueryError } from "~/components/accounts/query-error"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { Collapsible, CollapsibleContent } from "~/components/ui/collapsible"
@@ -13,7 +17,7 @@ import {
   PageHeaderTitle,
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
-import { acceptsDeposits } from "~/lib/accounts"
+import { acceptsDeposits, openablePayoutCurrencies } from "~/lib/accounts"
 import { isKycVerified } from "~/lib/kyc-onboarding"
 import type { Route } from "./+types/accounts"
 
@@ -27,6 +31,7 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export default function AccountsPage() {
+  const [opening, setOpening] = useState(false)
   const accounts = useQuery(api.accounts.getAccounts())
   const profile = useQuery(api.me.getMyProfile())
   const zar = accounts.data?.find(acceptsDeposits)
@@ -35,6 +40,8 @@ export default function AccountsPage() {
       (account) => account.currency
     ) ?? []
   const verified = isKycVerified(profile.data?.kyc.status)
+  const canOpen =
+    verified && openablePayoutCurrencies(heldFiat).length > 0
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
@@ -46,10 +53,21 @@ export default function AccountsPage() {
               Your balances, and the reference that identifies each account.
             </PageHeaderDescription>
           </PageHeader>
-          <div className="flex max-w-sm flex-col items-end gap-2">
-            <OpenAccountButton verified={verified} heldCurrencies={heldFiat} />
-          </div>
+          <OpenAccountHeaderAction
+            verified={verified}
+            heldCurrencies={heldFiat}
+            opening={opening}
+            onOpen={() => setOpening(true)}
+          />
         </div>
+
+        {opening && canOpen && !accounts.isPending && !accounts.isError ? (
+          <OpenAccountForm
+            heldCurrencies={heldFiat}
+            onCancel={() => setOpening(false)}
+            onOpened={() => setOpening(false)}
+          />
+        ) : null}
 
         {accounts.isPending ? (
           <div className="grid gap-4 md:grid-cols-2">
