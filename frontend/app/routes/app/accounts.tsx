@@ -34,7 +34,7 @@ export default function AccountsPage() {
     accounts.data?.filter((account) => account.kind === "fiat").map(
       (account) => account.currency
     ) ?? []
-  const verified = isKycVerified(profile.data?.kyc.status)
+  const verified = isKycVerified(profile.data?.kyc)
 
   const fiatAccounts =
     accounts.data?.filter((account) => account.kind === "fiat") ?? []
