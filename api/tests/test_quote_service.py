@@ -286,7 +286,10 @@ def test_small_payout_cash_out_fee_uses_minimum(app_context):
     assert expected_payout_fee == Config.MIN_CASH_OUT_FEE
     assert pricing.receiver_amount == expected_receiver_amount
     assert pricing.receiver_payout_fee == expected_payout_fee
-    assert pricing.receiver_payout_estimate == expected_receiver_amount - expected_payout_fee
+    assert (
+        pricing.receiver_payout_estimate
+        == expected_receiver_amount - expected_payout_fee
+    )
 
 
 def test_same_currency_quote_to_a_zar_beneficiary_carries_no_fx_margin(
