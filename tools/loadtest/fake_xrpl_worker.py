@@ -33,8 +33,8 @@ def _setting(name: str, default: str) -> float:
 
 
 # Placeholders until QA's numbers are in (see qa_xrpl_timings.sql).
-BURN_P50_S = _setting("LOADTEST_BURN_P50_S", "4.0")
-BURN_P95_S = _setting("LOADTEST_BURN_P95_S", "8.0")
+BURN_P50_S = _setting("LOADTEST_BURN_P50_S", "8.61")
+BURN_P95_S = _setting("LOADTEST_BURN_P95_S", "10.24")
 # Share of burns that fail the way a rejected Payment does. Zero by default so
 # the report measures the happy path; raise it to see failures under load.
 FAILURE_RATE = _setting("LOADTEST_BURN_FAILURE_RATE", "0")
