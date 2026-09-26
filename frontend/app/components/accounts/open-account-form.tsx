@@ -1,6 +1,6 @@
 import { PlusIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
 
@@ -26,6 +26,7 @@ import { errorMessage } from "~/hooks/use-onboarding"
 import { invalidateAccounts, openablePayoutCurrencies } from "~/lib/accounts"
 import { verificationPath } from "~/lib/kyc-onboarding"
 import { currencyName } from "~/lib/money"
+import { cn } from "~/lib/utils"
 
 const CAN_DO = [
   "Receive transfers paid out in that currency",
@@ -38,39 +39,75 @@ const CANNOT_DO = [
   "Withdraw to a bank account",
 ]
 
-export function OpenAccountButton({
-  label = "Open account",
-  variant,
-  disabled,
-  title,
-  onClick,
+/**
+ * A dashed placeholder in the accounts grid. Clicking it expands the same
+ * card into the open-account form — no header button and no dialog.
+ */
+export function OpenAccountCard({
+  verified,
+  heldCurrencies,
 }: {
-  label?: ReactNode
-  variant?: "default" | "outline" | "secondary" | "ghost"
-  disabled?: boolean
-  title?: string
-  onClick: () => void
+  verified: boolean
+  heldCurrencies: readonly string[]
 }) {
+  const [active, setActive] = useState(false)
+  const options = useMemo(
+    () => openablePayoutCurrencies(heldCurrencies),
+    [heldCurrencies]
+  )
+
+  if (verified && options.length === 0) {
+    return null
+  }
+
+  if (!active) {
+    return (
+      <Card
+        className={cn(
+          "min-h-64 justify-center bg-transparent ring-foreground/20 ring-dashed"
+        )}
+      >
+        <button
+          type="button"
+          className="flex min-h-64 flex-col items-stretch text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={() => setActive(true)}
+        >
+          <CardHeader>
+            <CardTitle>Open account</CardTitle>
+            <CardDescription>
+              {verified
+                ? "Add a payout currency you do not hold yet."
+                : "Verify your identity to open accounts in other currencies."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+            <PlusIcon className="size-8" aria-hidden="true" />
+            <span className="text-sm">
+              {verified ? "Choose a currency" : "Verify to continue"}
+            </span>
+          </CardContent>
+        </button>
+      </Card>
+    )
+  }
+
   return (
-    <Button
-      variant={variant ?? "outline"}
-      disabled={disabled}
-      aria-disabled={disabled}
-      title={title}
-      onClick={onClick}
-    >
-      <PlusIcon data-icon="inline-start" />
-      {label}
-    </Button>
+    <OpenAccountCardForm
+      verified={verified}
+      heldCurrencies={heldCurrencies}
+      onCancel={() => setActive(false)}
+      onOpened={() => setActive(false)}
+    />
   )
 }
 
-/** Open a payout account on the page — same pattern as adding a beneficiary. */
-export function OpenAccountForm({
+function OpenAccountCardForm({
+  verified,
   heldCurrencies,
   onCancel,
   onOpened,
 }: {
+  verified: boolean
   heldCurrencies: readonly string[]
   onCancel: () => void
   onOpened?: () => void
@@ -102,21 +139,51 @@ export function OpenAccountForm({
     label: currencyName(value),
   }))
 
-  return (
-    <form
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!currency) return
-        openAccount.mutate({ body: { currency } })
-      }}
-    >
-      <Card>
+  if (!verified) {
+    return (
+      <Card className="min-h-64 ring-foreground/20 ring-dashed">
         <CardHeader>
-          <CardTitle>Open a currency account</CardTitle>
+          <CardTitle>Verification required</CardTitle>
           <CardDescription>
-            Choose a payout currency you do not hold yet. You get a reference
-            to share straight away.
+            Only verified customers can open a currency account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            <Link
+              to={verificationPath()}
+              className="underline underline-offset-4"
+            >
+              Finish verification
+            </Link>{" "}
+            to choose a payout currency and get a reference to share.
+          </p>
+        </CardContent>
+        <CardFooter className="justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Close
+          </Button>
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="min-h-64 ring-foreground/20 ring-dashed">
+      <form
+        noValidate
+        className="flex flex-col gap-(--card-spacing)"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!currency) return
+          openAccount.mutate({ body: { currency } })
+        }}
+      >
+        <CardHeader>
+          <CardTitle>Open account</CardTitle>
+          <CardDescription>
+            Choose a payout currency. You get a reference to share straight
+            away.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -180,45 +247,7 @@ export function OpenAccountForm({
             {openAccount.isPending ? "Opening…" : "Open"}
           </Button>
         </CardFooter>
-      </Card>
-    </form>
-  )
-}
-
-export function OpenAccountHeaderAction({
-  verified,
-  heldCurrencies,
-  opening,
-  onOpen,
-}: {
-  verified: boolean
-  heldCurrencies: readonly string[]
-  opening: boolean
-  onOpen: () => void
-}) {
-  const options = openablePayoutCurrencies(heldCurrencies)
-  const disabled = !verified || options.length === 0 || opening
-  const title = !verified
-    ? "Finish verification to open another currency account."
-    : options.length === 0
-      ? "You already hold every payout currency."
-      : undefined
-
-  return (
-    <div className="flex max-w-sm flex-col items-end gap-2">
-      <OpenAccountButton
-        disabled={disabled}
-        title={title}
-        onClick={onOpen}
-      />
-      {!verified ? (
-        <p className="text-sm text-muted-foreground">
-          <Link to={verificationPath()} className="underline underline-offset-4">
-            Verify your identity
-          </Link>{" "}
-          to open accounts in other currencies.
-        </p>
-      ) : null}
-    </div>
+      </form>
+    </Card>
   )
 }
