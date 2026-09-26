@@ -18,6 +18,7 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import User
+from remitx_api.errors.accounts import AccountAlreadyHeldError
 from remitx_api.repositories.repository import Repository
 
 
@@ -136,6 +137,17 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_USER,
             )
         ).all()
+
+    def open_user_account(
+        self, user_id: uuid.UUID, base_reference: str, currency: str
+    ) -> Account:
+        """Create a payout account the user does not hold yet. ZAR and the
+        settlement wallet are created at sign-up; everything else is opened
+        here or lazily on first payout."""
+        existing = self.get_user_account(user_id, currency)
+        if existing is not None:
+            raise AccountAlreadyHeldError(currency)
+        return self.save(self._build_account(user_id, base_reference, currency))
 
     def get_or_create_user_account(
         self, user_id: uuid.UUID, base_reference: str, currency: str

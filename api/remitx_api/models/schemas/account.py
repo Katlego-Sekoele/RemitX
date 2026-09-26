@@ -5,8 +5,15 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
+from remitx_api.models.orm.account import PayoutCurrency
 from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
+
+
+class AccountOpenRequest(Schema):
+    """A fiat payout currency the caller does not hold yet."""
+
+    currency: PayoutCurrency
 
 
 class AccountRead(Schema):

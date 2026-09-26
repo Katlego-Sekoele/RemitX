@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AccountOpenRequest": {
+        "description": "A fiat payout currency the caller does not hold yet.",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "AccountOpenRequest",
+        "type": "object"
+      },
       "AccountRead": {
         "description": "A read-only representation of a customer currency account.\nCan be used to display the account's current balance and currency.",
         "properties": {
@@ -5593,6 +5606,81 @@
           }
         ],
         "summary": "List the caller's currency accounts",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "post": {
+        "description": "Open a fiat payout account the caller does not hold yet. The settlement\nwallet is created at sign-up and cannot be opened here.\n\nRefusals: 403 if the caller is not KYC-verified; 409 if they already hold\nthat currency; 422 for an unsupported currency.",
+        "operationId": "open_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountOpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Open a currency account",
         "tags": [
           "accounts"
         ]
