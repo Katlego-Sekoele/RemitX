@@ -2,11 +2,10 @@
 RemitX's platform accounts for treasury staff."""
 
 import uuid
-from decimal import Decimal
 from typing import Literal
 
 from remitx_api.models.orm.transaction import TransactionStatus
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 
 
 class AccountRead(Schema):
@@ -21,10 +20,10 @@ class AccountRead(Schema):
     # `settlement` for the uctusd (RLUSD) wallet, `fiat` for everything else.
     kind: Literal["fiat", "settlement"]
     # The ledger balance, 2 dp.
-    balance: Decimal
+    balance: LedgerDecimal
     # `balance` less this account's in-flight outgoing legs, 2 dp. The
     # difference is what's still pending.
-    available_balance: Decimal
+    available_balance: LedgerDecimal
 
 
 class PlatformAccountRead(Schema):
@@ -44,16 +43,16 @@ class PlatformAccountRead(Schema):
     kind: Literal["fiat", "settlement"]
     # The ledger balance, 2 dp. Negative for the issuer, which has paid out
     # what the treasury wallet holds.
-    balance: Decimal
+    balance: LedgerDecimal
     # `balance` less this account's in-flight outgoing legs, 2 dp.
-    available_balance: Decimal
+    available_balance: LedgerDecimal
 
 
 class TreasuryCoverageRead(Schema):
     """Token the treasury wallet can still spend, and token customers hold."""
 
-    token_available: Decimal
-    customer_token_balances: Decimal
+    token_available: LedgerDecimal
+    customer_token_balances: LedgerDecimal
 
 
 class AccountTransactionRead(Schema):
@@ -62,7 +61,7 @@ class AccountTransactionRead(Schema):
     tx_id: uuid.UUID
     type: str
     direction: str
-    amount: Decimal
+    amount: LedgerDecimal
     currency: str
     status: TransactionStatus
     created_at: UtcDateTime

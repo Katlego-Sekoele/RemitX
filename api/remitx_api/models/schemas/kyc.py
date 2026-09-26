@@ -18,7 +18,6 @@ skimming a queue needs to tell two applications apart, and "the one ending
 
 import uuid
 from datetime import date
-from decimal import Decimal
 
 from pydantic import (
     AliasChoices,
@@ -28,7 +27,7 @@ from pydantic import (
 )
 
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 
 MASK_CHARACTER = "•"
 # Enough to disambiguate two rows, not enough to identify anyone. A South
@@ -125,7 +124,7 @@ class _ApplicationBase(Schema):
     # not identifying on its own.
     residential_city: str | None = None
     residential_country: str | None = None
-    expected_monthly_volume_zar: Decimal | None = None
+    expected_monthly_volume_zar: LedgerDecimal | None = None
     # The PEP answers and the country are not masked: whether someone declared
     # themselves politically exposed is what routes the application, and a
     # country is not identifying. The position and details are, and are masked.
@@ -326,20 +325,20 @@ class KycStandingRead(Schema):
     # they were rated is internal assessment data (and, for a high rating, a
     # tipping-off risk). The limits already carry its effect.
     limit_percent: int
-    daily_limit_zar: Decimal
-    monthly_limit_zar: Decimal
-    daily_used_zar: Decimal = Field(
+    daily_limit_zar: LedgerDecimal
+    monthly_limit_zar: LedgerDecimal
+    daily_used_zar: LedgerDecimal = Field(
         description="ZAR sent today (SAST), counting transfers still settling "
         "and leaving out failed ones."
     )
-    monthly_used_zar: Decimal = Field(
+    monthly_used_zar: LedgerDecimal = Field(
         description="ZAR sent this calendar month (SAST), counted the same way."
     )
-    daily_remaining_zar: Decimal = Field(
+    daily_remaining_zar: LedgerDecimal = Field(
         description="What can still be sent today: the daily limit less what "
         "was used, never below zero."
     )
-    monthly_remaining_zar: Decimal = Field(
+    monthly_remaining_zar: LedgerDecimal = Field(
         description="What can still be sent this month, counted the same way. "
         "A send must fit both this and daily_remaining_zar."
     )
@@ -377,8 +376,8 @@ class KycTierRead(Schema):
     tier: int
     name: str
     description: str
-    daily_limit_zar: Decimal
-    monthly_limit_zar: Decimal
+    daily_limit_zar: LedgerDecimal
+    monthly_limit_zar: LedgerDecimal
     requires_source_of_wealth: bool
 
 

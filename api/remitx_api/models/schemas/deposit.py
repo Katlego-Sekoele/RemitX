@@ -1,10 +1,9 @@
 """Request/response schemas for the admin deposit-reconciliation endpoints."""
 
 import uuid
-from decimal import Decimal
 from enum import StrEnum
 
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 
 
 class DepositRow(Schema):
@@ -15,7 +14,7 @@ class DepositRow(Schema):
     """
 
     reference: str | None = None
-    amount: Decimal
+    amount: LedgerDecimal
     currency: str | None = None
     date: str | None = None
 
@@ -27,7 +26,7 @@ class ProcessDepositsRequest(Schema):
 class ProcessedDepositRead(Schema):
     deposit_id: uuid.UUID
     reference: str | None
-    amount: Decimal
+    amount: LedgerDecimal
     currency: str
     status: str
     user_id: uuid.UUID | None
@@ -45,7 +44,7 @@ class SkippedStatementLineReason(StrEnum):
 
 class SkippedStatementLineRead(Schema):
     reference: str | None
-    amount: Decimal
+    amount: LedgerDecimal
     date: str | None
     reason: SkippedStatementLineReason
     message: str
@@ -59,7 +58,7 @@ class ProcessDepositsResponse(Schema):
 class PendingDepositRead(Schema):
     deposit_id: uuid.UUID
     reference: str | None
-    amount: Decimal
+    amount: LedgerDecimal
     currency: str
     created_at: UtcDateTime
 

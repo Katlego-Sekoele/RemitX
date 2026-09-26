@@ -1,13 +1,12 @@
 """Request/response schemas for confirming a quote and reading the transfer."""
 
 import uuid
-from decimal import Decimal
 from typing import Literal
 
 from pydantic import ConfigDict, Field
 
 from remitx_api.models.orm.transaction import TransactionStatus
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 
 
 class RemittanceConfirmRequest(Schema):
@@ -25,11 +24,11 @@ class RemittanceRead(Schema):
     quote_id: uuid.UUID
     tx_id: uuid.UUID
     status: TransactionStatus
-    sender_amount: Decimal
+    sender_amount: LedgerDecimal
     sender_currency: str
-    token_amount: Decimal
+    token_amount: LedgerDecimal
     token_name: str
-    receiver_amount: Decimal
+    receiver_amount: LedgerDecimal
     receiver_currency: str
     created_at: UtcDateTime
 
@@ -71,20 +70,20 @@ class TransferRead(Schema):
         description="When the transfer confirmed; null until it has."
     )
     xrpl_tx_hash: str | None
-    sender_amount: Decimal | None = Field(
+    sender_amount: LedgerDecimal | None = Field(
         description="Null on a received transfer, like the sender's fees."
     )
     sender_currency: str
-    sender_transaction_fee: Decimal | None
-    exchange_rate_margin: Decimal | None
-    fiat_to_token_exchange_rate: Decimal
-    fiat_exchange_rate: Decimal
-    token_amount: Decimal
+    sender_transaction_fee: LedgerDecimal | None
+    exchange_rate_margin: LedgerDecimal | None
+    fiat_to_token_exchange_rate: LedgerDecimal
+    fiat_exchange_rate: LedgerDecimal
+    token_amount: LedgerDecimal
     token_name: str
-    receiver_amount: Decimal
+    receiver_amount: LedgerDecimal
     receiver_currency: str
-    receiver_payout_fee: Decimal
-    receiver_payout_estimate: Decimal
+    receiver_payout_fee: LedgerDecimal
+    receiver_payout_estimate: LedgerDecimal
     timeline_step: int = Field(
         ge=1,
         le=4,

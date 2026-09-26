@@ -1,12 +1,11 @@
 """Request/response schemas for the customer quote endpoints."""
 
 import uuid
-from decimal import Decimal
 
 from pydantic import ConfigDict
 
 from remitx_api.models.orm.account import PayoutCurrency
-from remitx_api.models.schemas.base import Amount, Schema, UtcDateTime
+from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
 
 
 class QuoteCreateRequest(Schema):
@@ -22,18 +21,18 @@ class QuoteRead(Schema):
     quote_id: uuid.UUID
     sender_user_id: uuid.UUID
     beneficiary_user_id: uuid.UUID
-    sender_amount: Decimal
+    sender_amount: LedgerDecimal
     sender_currency: str
-    token_amount: Decimal
+    token_amount: LedgerDecimal
     token_name: str
-    sender_transaction_fee: Decimal
-    fiat_to_token_exchange_rate: Decimal
-    fiat_exchange_rate: Decimal
-    exchange_rate_margin: Decimal
-    receiver_amount: Decimal
+    sender_transaction_fee: LedgerDecimal
+    fiat_to_token_exchange_rate: LedgerDecimal
+    fiat_exchange_rate: LedgerDecimal
+    exchange_rate_margin: LedgerDecimal
+    receiver_amount: LedgerDecimal
     receiver_currency: str
-    receiver_payout_fee: Decimal
-    receiver_payout_estimate: Decimal
+    receiver_payout_fee: LedgerDecimal
+    receiver_payout_estimate: LedgerDecimal
     created_at: UtcDateTime
     expires_at: UtcDateTime
     status: str
@@ -53,13 +52,13 @@ class QuotePreviewRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     sender_currency: str
-    fiat_to_token_exchange_rate: Decimal
-    fiat_exchange_rate: Decimal
-    sender_transaction_fee: Decimal
-    exchange_rate_margin: Decimal
-    token_amount: Decimal
+    fiat_to_token_exchange_rate: LedgerDecimal
+    fiat_exchange_rate: LedgerDecimal
+    sender_transaction_fee: LedgerDecimal
+    exchange_rate_margin: LedgerDecimal
+    token_amount: LedgerDecimal
     token_name: str
     receiver_payout_currency: str
-    receiver_amount: Decimal
-    receiver_payout_fee: Decimal
-    receiver_payout_estimate: Decimal
+    receiver_amount: LedgerDecimal
+    receiver_payout_fee: LedgerDecimal
+    receiver_payout_estimate: LedgerDecimal

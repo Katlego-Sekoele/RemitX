@@ -37,6 +37,21 @@ def _utc_isoformat(value: datetime) -> str:
 # a required one, instead of every field sharing one serializer's signature.
 UtcDateTime = Annotated[datetime, PlainSerializer(_utc_isoformat, return_type=str)]
 
+
+def _decimal_plain_str(value: Decimal) -> str:
+    """Never emit scientific notation (e.g. ``0E-8`` from Numeric(20,8)).
+
+    Pydantic's default ``Decimal`` JSON encoding uses ``str()``, which keeps
+    Postgres/SQLAlchemy's exponent form and breaks the frontend's string money
+    helpers.
+    """
+    return format(value, "f")
+
+
+LedgerDecimal = Annotated[
+    Decimal, PlainSerializer(_decimal_plain_str, return_type=str)
+]
+
 # A money amount a client asks to move, bounded to what the ledger's
 # Numeric(20,8) columns hold. Without the bound, an amount like 1e30
 # overflows Decimal's 28-digit context when `round_amount` quantizes it to

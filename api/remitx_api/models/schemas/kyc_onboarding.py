@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from decimal import Decimal
 from typing import Literal
 
 from pydantic import AliasChoices, ConfigDict, Field
 
 from remitx_api.models.orm.kyc_lifecycle import KycStatus
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 from remitx_api.models.schemas.kyc import (
     KycPepRelationshipRead,
     KycStandingRead,
@@ -58,7 +57,7 @@ class KycApplicationPatch(Schema):
     residential_city: str | None = None
     residential_postal_code: str | None = None
     residential_country: str | None = None
-    expected_monthly_volume_zar: Decimal | None = None
+    expected_monthly_volume_zar: LedgerDecimal | None = None
     is_domestic_prominent_influential_person: bool | None = None
     is_foreign_prominent_public_official: bool | None = None
     is_pep_family_or_close_associate: bool | None = None
@@ -119,7 +118,7 @@ class KycApplicantApplicationRead(Schema):
     residential_country: str | None = None
     source_of_funds: str | None = None
     source_of_funds_detail: str | None = None
-    expected_monthly_volume_zar: Decimal | None = None
+    expected_monthly_volume_zar: LedgerDecimal | None = None
     is_domestic_prominent_influential_person: bool | None = None
     is_foreign_prominent_public_official: bool | None = None
     is_pep_family_or_close_associate: bool | None = None
