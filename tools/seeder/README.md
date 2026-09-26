@@ -57,9 +57,14 @@ from `.env.qa` are blanked, not filled from the repo-root `.env`.
 
 ## The loadtest target
 
-`loadtest` seeds the throwaway stack named in the committed
-`tools/loadtest/loadtest.env`: that file's database host and bucket, and no
-Clerk key, so everyone it creates is database-only. Run it with
+`loadtest` belongs to the load test ([tools/loadtest](../loadtest/README.md)) and seeds the throwaway stack:
+`make loadtest` runs the seeder inside that throwaway stack with the
+`loadtest` scenario. Its settings come from the committed
+`tools/loadtest/loadtest.env`, which names only that stack's own database and
+bucket and no Clerk key, so everyone it seeds is database-only. It is not
+meant for the UI.
+
+Run it with
 `python -m remitx_seeder seed --target loadtest --scenario loadtest` from
 inside that stack. It is not meant for the UI.
 
