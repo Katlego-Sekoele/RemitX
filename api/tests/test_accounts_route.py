@@ -4,10 +4,10 @@ from decimal import Decimal
 
 import pytest
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.config import TestConfig
 from remitx_api.controllers.account_controller import describe_leg
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.config import TestConfig
 from remitx_api.models.orm.account import (
     CURRENCY_NAD,
     CURRENCY_TOKEN,

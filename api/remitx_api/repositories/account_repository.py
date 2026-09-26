@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select, update
 
+from remitx_api.errors.accounts import AccountAlreadyHeldError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -18,7 +19,6 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import User
-from remitx_api.errors.accounts import AccountAlreadyHeldError
 from remitx_api.repositories.repository import Repository
 
 

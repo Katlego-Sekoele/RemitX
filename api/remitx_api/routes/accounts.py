@@ -51,9 +51,7 @@ def open_account(
 
     Refusals: 403 if the caller is not KYC-verified; 409 if they already hold
     that currency; 422 for an unsupported currency."""
-    return _account_read(
-        controller.open_account(user.id, payload.currency.value)
-    )
+    return _account_read(controller.open_account(user.id, payload.currency.value))
 
 
 @router.get(

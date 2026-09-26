@@ -1,19 +1,19 @@
 import { PlusIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
 
 import { api, PayoutCurrency } from "~/client"
 import { Button } from "~/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog"
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card"
 import { Field, FieldError, FieldLabel } from "~/components/ui/field"
 import {
   Select,
@@ -38,14 +38,42 @@ const CANNOT_DO = [
   "Withdraw to a bank account",
 ]
 
-export function OpenAccountDialog({
-  open,
-  onOpenChange,
-  heldCurrencies,
+export function OpenAccountButton({
+  label = "Open account",
+  variant,
+  disabled,
+  title,
+  onClick,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  label?: ReactNode
+  variant?: "default" | "outline" | "secondary" | "ghost"
+  disabled?: boolean
+  title?: string
+  onClick: () => void
+}) {
+  return (
+    <Button
+      variant={variant ?? "outline"}
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={title}
+      onClick={onClick}
+    >
+      <PlusIcon data-icon="inline-start" />
+      {label}
+    </Button>
+  )
+}
+
+/** Open a payout account on the page — same pattern as adding a beneficiary. */
+export function OpenAccountForm({
+  heldCurrencies,
+  onCancel,
+  onOpened,
+}: {
   heldCurrencies: readonly string[]
+  onCancel: () => void
+  onOpened?: () => void
 }) {
   const queryClient = useQueryClient()
   const options = useMemo(
@@ -56,12 +84,16 @@ export function OpenAccountDialog({
     options[0] ?? null
   )
 
+  useEffect(() => {
+    setCurrency(options[0] ?? null)
+  }, [options])
+
   const openAccount = useMutation({
     ...api.accounts.openAccount(),
     onSuccess: async (account) => {
-      onOpenChange(false)
       await invalidateAccounts(queryClient)
       toast.success(`${currencyName(account.currency)} account opened`)
+      onOpened?.()
     },
   })
 
@@ -71,27 +103,24 @@ export function OpenAccountDialog({
   }))
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next)
-        if (!next) {
-          openAccount.reset()
-          setCurrency(options[0] ?? null)
-        }
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!currency) return
+        openAccount.mutate({ body: { currency } })
       }}
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Open a currency account</DialogTitle>
-          <DialogDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle>Open a currency account</CardTitle>
+          <CardDescription>
             Choose a payout currency you do not hold yet. You get a reference
             to share straight away.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-4">
-          <Field>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Field data-invalid={openAccount.isError}>
             <FieldLabel htmlFor="open-account-currency">Currency</FieldLabel>
             <Select
               items={items}
@@ -111,6 +140,9 @@ export function OpenAccountDialog({
                 ))}
               </SelectContent>
             </Select>
+            {openAccount.isError ? (
+              <FieldError>{errorMessage(openAccount.error)}</FieldError>
+            ) : null}
           </Field>
 
           <div className="grid gap-3 text-sm">
@@ -131,45 +163,41 @@ export function OpenAccountDialog({
               </ul>
             </div>
           </div>
-
-          {openAccount.isError ? (
-            <FieldError>{errorMessage(openAccount.error)}</FieldError>
-          ) : null}
-        </div>
-
-        <DialogFooter>
+        </CardContent>
+        <CardFooter className="flex-wrap justify-end gap-2">
           <Button
+            type="button"
             variant="outline"
             disabled={openAccount.isPending}
-            onClick={() => onOpenChange(false)}
+            onClick={onCancel}
           >
             Cancel
           </Button>
           <Button
+            type="submit"
             disabled={!currency || openAccount.isPending}
-            onClick={() => {
-              if (!currency) return
-              openAccount.mutate({ body: { currency } })
-            }}
           >
             {openAccount.isPending ? "Opening…" : "Open"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </CardFooter>
+      </Card>
+    </form>
   )
 }
 
-export function OpenAccountButton({
+export function OpenAccountHeaderAction({
   verified,
   heldCurrencies,
+  opening,
+  onOpen,
 }: {
   verified: boolean
   heldCurrencies: readonly string[]
+  opening: boolean
+  onOpen: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const options = openablePayoutCurrencies(heldCurrencies)
-  const disabled = !verified || options.length === 0
+  const disabled = !verified || options.length === 0 || opening
   const title = !verified
     ? "Finish verification to open another currency account."
     : options.length === 0
@@ -177,17 +205,12 @@ export function OpenAccountButton({
       : undefined
 
   return (
-    <>
-      <Button
-        variant="outline"
+    <div className="flex max-w-sm flex-col items-end gap-2">
+      <OpenAccountButton
         disabled={disabled}
-        aria-disabled={disabled}
         title={title}
-        onClick={() => setOpen(true)}
-      >
-        <PlusIcon data-icon="inline-start" />
-        Open account
-      </Button>
+        onClick={onOpen}
+      />
       {!verified ? (
         <p className="text-sm text-muted-foreground">
           <Link to={verificationPath()} className="underline underline-offset-4">
@@ -196,13 +219,6 @@ export function OpenAccountButton({
           to open accounts in other currencies.
         </p>
       ) : null}
-      {verified && options.length > 0 ? (
-        <OpenAccountDialog
-          open={open}
-          onOpenChange={setOpen}
-          heldCurrencies={heldCurrencies}
-        />
-      ) : null}
-    </>
+    </div>
   )
 }
