@@ -93,7 +93,8 @@ class RemittancePricing:
     receiver_payout_currency: str
     # The real cash-out estimate, in receiver_payout_currency: net converted
     # directly via fiat_exchange_rate (not routed through the token leg),
-    # then Config.CASH_OUT_FEE_RATE applied. No real cash-out flow exists yet (see
+    # then the same cash-out fee as withdrawals (rate with a minimum). No real
+    # cash-out flow exists yet (see
     # models/orm/quote.py) — this is a display estimate only.
     receiver_amount: Decimal
     receiver_payout_fee: Decimal
@@ -193,10 +194,14 @@ def price_remittance(
 
     # Real cash-out estimate, in receiver_payout_currency: net (post-fee,
     # pre-token-conversion) converted directly via fiat_exchange_rate — not
-    # routed through the token/USD leg — then Config.CASH_OUT_FEE_RATE applied. No
-    # real redemption happens at quote time, so this is a display estimate.
+    # routed through the token/USD leg — then the same cash-out fee as
+    # withdrawal_service (rate with a minimum). No real redemption happens at
+    # quote time, so this is a display estimate.
     receiver_amount = round_amount(net * fiat_exchange_rate)
-    payout_fee = round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
+    payout_fee = max(
+        round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount),
+        Config.MIN_CASH_OUT_FEE,
+    )
     payout_estimate = receiver_amount - payout_fee
 
     return RemittancePricing(

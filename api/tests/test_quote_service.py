@@ -3,6 +3,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 import time_machine
+from remitx_api.config import Config
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.errors.remittances import (
@@ -35,6 +36,14 @@ def _round_amount(value: Decimal) -> Decimal:
     amount (not rate) is 2dp now, see Transaction_Flow_Context.md Open
     Question #10."""
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _cash_out_payout_fee(receiver_amount: Decimal) -> Decimal:
+    """Mirrors withdrawal_service and quote_service.price_remittance."""
+    return max(
+        _round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount),
+        Config.MIN_CASH_OUT_FEE,
+    )
 
 
 def _approve(user):
@@ -138,7 +147,7 @@ def test_create_quote_computes_every_field(app_context):
     # currency (ZWL), converted directly from `net` via fiat_exchange_rate —
     # not routed through the token/USD leg.
     expected_receiver_amount = _round_amount(net * Decimal("16.22"))
-    expected_payout_fee = _round_amount(Decimal("0.0075") * expected_receiver_amount)
+    expected_payout_fee = _cash_out_payout_fee(expected_receiver_amount)
     expected_payout_estimate = expected_receiver_amount - expected_payout_fee
 
     assert quote.sender_amount == Decimal("1000")
@@ -247,7 +256,7 @@ def test_same_currency_preview_carries_no_fx_margin(app_context):
     fee = Decimal("15") + Decimal("0.005") * Decimal("1000")  # 20
     net = Decimal("1000") - fee  # 980, no margin taken
     expected_receiver_amount = _round_amount(net * Decimal("1"))
-    expected_payout_fee = _round_amount(Decimal("0.0075") * expected_receiver_amount)
+    expected_payout_fee = _cash_out_payout_fee(expected_receiver_amount)
 
     assert pricing.exchange_rate_margin == Decimal("0")
     assert pricing.sender_transaction_fee == fee
@@ -258,6 +267,26 @@ def test_same_currency_preview_carries_no_fx_margin(app_context):
         pricing.receiver_payout_estimate
         == expected_receiver_amount - expected_payout_fee
     )
+
+
+def test_small_payout_cash_out_fee_uses_minimum(app_context):
+    """Quotes must apply MIN_CASH_OUT_FEE like withdrawals — rate-only math
+    would round the fee to zero on tiny receiver amounts."""
+    _store_rate("18.50")
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")
+
+    pricing = quote_service.preview_quote(Decimal("15.09"), CURRENCY_ZAR, CURRENCY_ZAR)
+
+    fee = _round_amount(Decimal("15") + Decimal("0.005") * Decimal("15.09"))
+    net = Decimal("15.09") - fee
+    expected_receiver_amount = _round_amount(net * Decimal("1"))
+    expected_payout_fee = _cash_out_payout_fee(expected_receiver_amount)
+
+    assert expected_receiver_amount == Decimal("0.01")
+    assert expected_payout_fee == Config.MIN_CASH_OUT_FEE
+    assert pricing.receiver_amount == expected_receiver_amount
+    assert pricing.receiver_payout_fee == expected_payout_fee
+    assert pricing.receiver_payout_estimate == expected_receiver_amount - expected_payout_fee
 
 
 def test_same_currency_quote_to_a_zar_beneficiary_carries_no_fx_margin(
