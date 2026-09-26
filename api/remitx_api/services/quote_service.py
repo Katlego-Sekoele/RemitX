@@ -12,6 +12,7 @@ Two entry points share one pricing helper, `price_remittance`:
   browsing rates before picking (or without) a beneficiary contact.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -28,6 +29,8 @@ from remitx_api.repositories.kyc_application_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
+
+logger = logging.getLogger(__name__)
 
 # Every monetary *amount* is quantized to this before it's stored or returned,
 # so SQLite/Postgres can't disagree on the value and every leg agrees on
@@ -247,15 +250,31 @@ def create_quote(
         raise ValueError(f"User {sender_user_id} does not exist")
     standing = KycApplicationRepository().get_standing(sender_user_id)
     if not standing.is_verified:
+        logger.info(
+            "create_quote: sender %s is not KYC-verified, quote refused",
+            sender_user_id,
+        )
         raise KycNotApprovedError(str(sender_user_id))
 
     # Score-scaled ceilings — see LimitExceededError. Daily is the tighter
     # of the two while monthly stays at least the daily figure.
     if sender_amount > standing.daily_limit_zar:
+        logger.info(
+            "create_quote: sender %s amount %s exceeds daily limit %s",
+            sender_user_id,
+            sender_amount,
+            standing.daily_limit_zar,
+        )
         raise LimitExceededError(
             f"{sender_amount} exceeds the daily limit of {standing.daily_limit_zar}"
         )
     if sender_amount > standing.monthly_limit_zar:
+        logger.info(
+            "create_quote: sender %s amount %s exceeds monthly limit %s",
+            sender_user_id,
+            sender_amount,
+            standing.monthly_limit_zar,
+        )
         raise LimitExceededError(
             f"{sender_amount} exceeds the monthly limit of {standing.monthly_limit_zar}"
         )
@@ -263,10 +282,20 @@ def create_quote(
     # beneficiary's linked_user_id is the one who will receive the remittance.
     beneficiary = beneficiaries.get_by_id(beneficiary_id)
     if beneficiary is None or beneficiary.sender_user_id != sender_user_id:
+        logger.info(
+            "create_quote: beneficiary %s not found for sender %s",
+            beneficiary_id,
+            sender_user_id,
+        )
         raise UnknownBeneficiaryError(str(beneficiary_id))
 
     sender_account = accounts.get_user_account(sender_user_id, sender_currency)
     if sender_account is None:
+        logger.info(
+            "create_quote: sender %s has no %s account",
+            sender_user_id,
+            sender_currency,
+        )
         raise UnknownSenderAccountError(
             f"sender {sender_user_id} has no account in {sender_currency}"
         )
@@ -280,11 +309,24 @@ def create_quote(
         # Should never happen post-eager-creation — defensive, not a normal
         # path. Unlike sender_account above, every user gets a uctusd
         # account at signup regardless of sender_currency.
+        logger.error(
+            "create_quote: beneficiary %s (linked_user_id=%s) has no uctusd "
+            "account — expected to exist from signup",
+            beneficiary_id,
+            beneficiary.linked_user_id,
+        )
         raise ValueError("beneficiary is missing their uctusd account")
 
     # Check the sender's available balance
     available = accounts.get_available_balance(sender_account.account_id)
     if available < sender_amount:
+        logger.info(
+            "create_quote: sender %s available balance %s < requested %s %s",
+            sender_user_id,
+            available,
+            sender_amount,
+            sender_currency,
+        )
         raise InsufficientBalanceError(
             f"available balance {available} is less than {sender_amount}"
         )

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,6 +30,8 @@ from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
+
+logger = logging.getLogger(__name__)
 
 DIRECTION_IN = "in"
 DIRECTION_OUT = "out"
@@ -287,6 +290,12 @@ class AccountController:
         """
         account = self._accounts.get_by_id(account_id)
         if account is None or account.type != TYPE_USER or account.user_id != user_id:
+            logger.warning(
+                "get_account_history: account %s not found or not owned by "
+                "user %s",
+                account_id,
+                user_id,
+            )
             raise UnknownAccountError(str(account_id))
 
         if before is not None:
