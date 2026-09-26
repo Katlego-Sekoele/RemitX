@@ -63,6 +63,12 @@ class UnknownSenderAccountError(Exception):
     this is a real, reachable outcome, not a defensive check."""
 
 
+class UnknownBeneficiaryPayoutAccountError(Exception):
+    """Beneficiary has no fiat account in `receiver_payout_currency`. Payout
+    only credits accounts the recipient has opened — never provisioned at
+    send time."""
+
+
 class InsufficientBalanceError(Exception):
     """Sender's *available* balance (raw minus their own pending outgoing
     legs — Open Question #5) can't cover `sender_amount`."""
@@ -317,6 +323,20 @@ def create_quote(
             beneficiary.linked_user_id,
         )
         raise ValueError("beneficiary is missing their uctusd account")
+
+    beneficiary_fiat_account = accounts.get_user_account(
+        beneficiary.linked_user_id, receiver_payout_currency
+    )
+    if beneficiary_fiat_account is None:
+        logger.info(
+            "create_quote: beneficiary %s (linked_user_id=%s) has no %s account",
+            beneficiary_id,
+            beneficiary.linked_user_id,
+            receiver_payout_currency,
+        )
+        raise UnknownBeneficiaryPayoutAccountError(
+            f"beneficiary has no account in {receiver_payout_currency}"
+        )
 
     # Check the sender's available balance
     available = accounts.get_available_balance(sender_account.account_id)

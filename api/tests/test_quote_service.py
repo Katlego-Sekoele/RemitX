@@ -114,6 +114,43 @@ def _make_sender_and_beneficiary():
     return sender, recipient, beneficiary
 
 
+def test_create_quote_refuses_when_beneficiary_lacks_payout_account(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender = _approve(
+        UserController().ensure_provisioned(
+            "user_quote_sender_zar_only",
+            lambda: "zar-only-sender@example.com",
+            lambda: "Sender",
+        )
+    )
+    recipient = UserController().ensure_provisioned(
+        "user_quote_recipient_zar_only",
+        lambda: "zar-only-recipient@example.com",
+        lambda: "Recipient",
+    )
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency="ZAR",
+            relationship="sibling",
+        )
+        .beneficiary
+    )
+    _fund(sender, "1000")
+
+    with pytest.raises(quote_service.UnknownBeneficiaryPayoutAccountError):
+        quote_service.create_quote(
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("1000"),
+            sender_currency=CURRENCY_ZAR,
+            receiver_payout_currency="ZWL",
+        )
+
+
 def test_create_quote_computes_every_field(app_context):
     _store_rate("18.50")  # sender leg: USD -> ZAR, needed for token math
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")  # direct cross leg
