@@ -48,6 +48,10 @@ describe("amountToCents", () => {
     expect(amountToCents("12.50000000")).toBe(1250n)
   })
 
+  it("accepts scientific notation for zero from the API", () => {
+    expect(amountToCents("0E-8")).toBe(0n)
+  })
+
   it("refuses a value that would lose a cent", () => {
     expect(() => amountToCents("12.505")).toThrow()
   })

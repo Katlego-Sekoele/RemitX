@@ -236,7 +236,7 @@ describe("quoteLines", () => {
   it("shows a zero FX margin on a same-currency send", () => {
     const sameCurrency = quoteLines({
       ...QUOTE,
-      exchange_rate_margin: "0.00",
+      exchange_rate_margin: "0E-8",
       fiat_exchange_rate: "1.00000000",
       receiver_currency: "ZAR",
     }).map((line) => ({ label: line.label, value: plain(line.value) }))
