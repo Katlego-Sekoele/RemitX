@@ -63,7 +63,9 @@ def record_transfer(
         fiat_exchange_rate_id=rate.id,
         fiat_exchange_rate=Decimal("1"),
         exchange_rate_margin=Decimal("0"),
-        receiver_amount=receiver_amount if receiver_amount is not None else sender_amount,
+        receiver_amount=(
+            receiver_amount if receiver_amount is not None else sender_amount
+        ),
         receiver_currency=receiver_currency or sender_currency,
         receiver_payout_fee=Decimal("0"),
         receiver_payout_estimate=sender_amount,
