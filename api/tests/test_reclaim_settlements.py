@@ -11,7 +11,7 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.repositories.remittance_repository import RemittanceRepository
-from remitx_api.services import remittance_service
+from remitx_api.services import queue_service, remittance_service
 from remitx_worker import db as worker_db
 from remitx_worker.reclaim import (
     SETTLE_REMITTANCE,
@@ -25,8 +25,18 @@ from tests.test_remittance_service import (
     _fund_and_quote,
     _make_sender_and_beneficiary,
     _store_rate,
-    enqueued,
 )
+
+
+@pytest.fixture
+def settle_enqueue_calls(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        queue_service,
+        "enqueue_settle_remittance",
+        calls.append,
+    )
+    return calls
 
 
 @pytest.fixture
@@ -36,22 +46,22 @@ def worker_on_app_db(app_context):
     worker_db.configure(None)
 
 
-def _confirm_quote(enqueued):
+def _confirm_quote(enqueue_calls):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
     seed_platform_accounts()
     sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
     remittance_service.confirm_remittance(sender.id, quote.quote_id)
-    assert enqueued == [str(quote.quote_id)]
-    enqueued.clear()
+    assert enqueue_calls == [str(quote.quote_id)]
+    enqueue_calls.clear()
     return quote.quote_id
 
 
 def test_reclaim_enqueues_fully_pending_group(
-    app_context, worker_on_app_db, enqueued, monkeypatch
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch
 ):
-    quote_id = _confirm_quote(enqueued)
+    quote_id = _confirm_quote(settle_enqueue_calls)
 
     sent = []
     monkeypatch.setattr(
@@ -64,9 +74,9 @@ def test_reclaim_enqueues_fully_pending_group(
 
 
 def test_reclaim_skips_processing_group(
-    app_context, worker_on_app_db, enqueued, monkeypatch
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch
 ):
-    quote_id = _confirm_quote(enqueued)
+    quote_id = _confirm_quote(settle_enqueue_calls)
     now = datetime.now(UTC)
     db.session.execute(
         update(Transaction)
@@ -86,9 +96,9 @@ def test_reclaim_skips_processing_group(
 
 
 def test_reclaim_skips_confirmed_group(
-    app_context, worker_on_app_db, enqueued, monkeypatch
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch
 ):
-    quote_id = _confirm_quote(enqueued)
+    quote_id = _confirm_quote(settle_enqueue_calls)
     db.session.execute(
         update(Transaction)
         .where(Transaction.quote_id == quote_id)
@@ -107,7 +117,7 @@ def test_reclaim_skips_confirmed_group(
 
 
 def test_reclaim_respects_min_age(
-    app_context, worker_on_app_db, enqueued, monkeypatch
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch
 ):
     _store_rate("18.50")
     _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
@@ -115,7 +125,7 @@ def test_reclaim_respects_min_age(
     sender, _recipient, beneficiary = _make_sender_and_beneficiary()
     old_quote = _fund_and_quote(sender, beneficiary, Decimal("1000")).quote_id
     remittance_service.confirm_remittance(sender.id, old_quote)
-    enqueued.clear()
+    settle_enqueue_calls.clear()
 
     old_when = datetime.now(UTC) - timedelta(minutes=10)
     remittance = RemittanceRepository().get_by_quote_id(old_quote)
@@ -136,9 +146,9 @@ def test_reclaim_respects_min_age(
 
 
 def test_stale_processing_is_logged_not_enqueued(
-    app_context, worker_on_app_db, enqueued, monkeypatch, caplog
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch, caplog
 ):
-    quote_id = _confirm_quote(enqueued)
+    quote_id = _confirm_quote(settle_enqueue_calls)
     stale = datetime.now(UTC) - timedelta(minutes=30)
     db.session.execute(
         update(Transaction)
