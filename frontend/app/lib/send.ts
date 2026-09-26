@@ -11,6 +11,7 @@ import {
   formatRate,
   fromCents,
   invertRate,
+  MAX_AMOUNT_CENTS,
   subtractAmounts,
   toCents,
   TOKEN_LABEL,
@@ -130,6 +131,7 @@ export type AmountIssue =
   | "empty"
   | "invalid"
   | "zero"
+  | "too_large"
   | "too_small_for_fees"
   | "over_balance"
   | "over_daily_limit"
@@ -157,6 +159,7 @@ export function amountIssue(
   const cents = toCents(amount)
   if (cents === null) return "invalid"
   if (cents <= 0n) return "zero"
+  if (cents > MAX_AMOUNT_CENTS) return "too_large"
   const over = (limit: string | undefined) => {
     const limitCents = limit === undefined ? null : toCents(limit)
     return limitCents !== null && cents > limitCents
@@ -194,6 +197,8 @@ export function amountIssueMessage(
       return "Enter an amount in rand, like 500 or 500.50."
     case "zero":
       return "Enter an amount more than R 0.00."
+    case "too_large":
+      return "That amount is too large."
     case "too_small_for_fees":
       return "That's too small to cover the fees. Try a larger amount."
     case "over_balance":

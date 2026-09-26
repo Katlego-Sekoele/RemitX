@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
 
 class Schema(BaseModel):
@@ -35,3 +36,10 @@ def _utc_isoformat(value: datetime) -> str:
 # ``UtcDateTime | None`` is described as a nullable string, ``UtcDateTime`` as
 # a required one, instead of every field sharing one serializer's signature.
 UtcDateTime = Annotated[datetime, PlainSerializer(_utc_isoformat, return_type=str)]
+
+# A money amount a client asks to move, bounded to what the ledger's
+# Numeric(20,8) columns hold. Without the bound, an amount like 1e30
+# overflows Decimal's 28-digit context when `round_amount` quantizes it to
+# cents and surfaces as a 500 (InvalidOperation) instead of a refusal.
+# Positive too, so zero and negative amounts never reach a service.
+Amount = Annotated[Decimal, Field(gt=0, max_digits=20, decimal_places=8)]

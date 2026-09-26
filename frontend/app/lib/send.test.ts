@@ -103,6 +103,9 @@ describe("amountIssue", () => {
     ["1.234", "invalid"],
     ["0", "zero"],
     ["0.00", "zero"],
+    // Too large beats over-balance: it's the reason the preview won't run.
+    ["1000000000000", "too_large"],
+    ["1" + "0".repeat(27), "too_large"],
     ["1000.01", "over_balance"],
     ["800.01", "over_daily_limit"],
     ["600.01", "over_monthly_limit"],
@@ -116,11 +119,21 @@ describe("amountIssue", () => {
     expect(amountIssue("5000", {})).toBeNull()
   })
 
+  it("allows up to the largest amount the ledger holds", () => {
+    expect(amountIssue("999999999999.99", {})).toBeNull()
+    expect(amountIssue("1000000000000.00", {})).toBe("too_large")
+  })
+
+  it("doesn't preview an amount too large to price", () => {
+    expect(canPreview(amountIssue("1000000000000", limits))).toBe(false)
+  })
+
   it("gives every issue its own message", () => {
     const issues: AmountIssue[] = [
       "empty",
       "invalid",
       "zero",
+      "too_large",
       "too_small_for_fees",
       "over_balance",
       "over_daily_limit",
