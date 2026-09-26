@@ -206,7 +206,9 @@ def price_remittance(
     # routed through the token/USD leg — then Config.CASH_OUT_FEE_RATE applied. No
     # real redemption happens at quote time, so this is a display estimate.
     receiver_amount = round_amount(net * fiat_exchange_rate)
-    payout_fee = round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
+    payout_fee = max(
+        round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount), Config.MIN_CASH_OUT_FEE
+    )
     payout_estimate = receiver_amount - payout_fee
 
     return RemittancePricing(
