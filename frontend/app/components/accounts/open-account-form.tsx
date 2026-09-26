@@ -64,7 +64,7 @@ export function OpenAccountCard({
     return (
       <Card
         className={cn(
-          "min-h-64 justify-center bg-transparent ring-foreground/20 ring-dashed"
+          "ring-dashed min-h-64 justify-center bg-transparent ring-foreground/20"
         )}
       >
         <button
@@ -141,7 +141,7 @@ function OpenAccountCardForm({
 
   if (!verified) {
     return (
-      <Card className="min-h-64 ring-foreground/20 ring-dashed">
+      <Card className="ring-dashed min-h-64 ring-foreground/20">
         <CardHeader>
           <CardTitle>Verification required</CardTitle>
           <CardDescription>
@@ -169,7 +169,7 @@ function OpenAccountCardForm({
   }
 
   return (
-    <Card className="min-h-64 ring-foreground/20 ring-dashed">
+    <Card className="ring-dashed min-h-64 ring-foreground/20">
       <form
         noValidate
         className="flex flex-col gap-(--card-spacing)"
@@ -240,10 +240,7 @@ function OpenAccountCardForm({
           >
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={!currency || openAccount.isPending}
-          >
+          <Button type="submit" disabled={!currency || openAccount.isPending}>
             {openAccount.isPending ? "Opening…" : "Open"}
           </Button>
         </CardFooter>

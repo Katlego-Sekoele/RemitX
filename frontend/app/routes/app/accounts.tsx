@@ -31,9 +31,9 @@ export default function AccountsPage() {
   const profile = useQuery(api.me.getMyProfile())
   const zar = accounts.data?.find(acceptsDeposits)
   const heldFiat =
-    accounts.data?.filter((account) => account.kind === "fiat").map(
-      (account) => account.currency
-    ) ?? []
+    accounts.data
+      ?.filter((account) => account.kind === "fiat")
+      .map((account) => account.currency) ?? []
   const verified = isKycVerified(profile.data?.kyc)
 
   const fiatAccounts =
@@ -70,10 +70,7 @@ export default function AccountsPage() {
               {fiatAccounts.map((account) => (
                 <AccountCard key={account.account_id} account={account} />
               ))}
-              <OpenAccountCard
-                verified={verified}
-                heldCurrencies={heldFiat}
-              />
+              <OpenAccountCard verified={verified} heldCurrencies={heldFiat} />
               {settlementAccounts.map((account) => (
                 <AccountCard key={account.account_id} account={account} />
               ))}
