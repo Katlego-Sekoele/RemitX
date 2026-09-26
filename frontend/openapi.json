@@ -1,19 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AccountOpenRequest": {
-        "description": "A fiat payout currency the caller does not hold yet.",
-        "properties": {
-          "currency": {
-            "$ref": "#/components/schemas/PayoutCurrency"
-          }
-        },
-        "required": [
-          "currency"
-        ],
-        "title": "AccountOpenRequest",
-        "type": "object"
-      },
       "AccountRead": {
         "description": "A read-only representation of a customer currency account.\nCan be used to display the account's current balance and currency.",
         "properties": {
@@ -23,10 +10,12 @@
             "type": "string"
           },
           "available_balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Available Balance",
             "type": "string"
           },
           "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance",
             "type": "string"
           },
@@ -93,6 +82,7 @@
         "description": "A read-only representation of a transaction on a customer currency account.",
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -196,10 +186,12 @@
             "type": "string"
           },
           "payout_received": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Payout Received",
             "type": "string"
           },
           "zar_sent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Zar Sent",
             "type": "string"
           }
@@ -302,102 +294,6 @@
           "account_reference"
         ],
         "title": "ApproveDepositRequest",
-        "type": "object"
-      },
-      "AuditLogRead": {
-        "properties": {
-          "action": {
-            "title": "Action",
-            "type": "string"
-          },
-          "actor_email": {
-            "title": "Actor Email",
-            "type": "string"
-          },
-          "actor_user_id": {
-            "format": "uuid",
-            "title": "Actor User Id",
-            "type": "string"
-          },
-          "after": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After"
-          },
-          "audit_id": {
-            "format": "uuid",
-            "title": "Audit Id",
-            "type": "string"
-          },
-          "before": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before"
-          },
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "request_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Request Id"
-          },
-          "subject_id": {
-            "format": "uuid",
-            "title": "Subject Id",
-            "type": "string"
-          },
-          "subject_type": {
-            "title": "Subject Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "audit_id",
-          "actor_user_id",
-          "actor_email",
-          "action",
-          "subject_type",
-          "subject_id",
-          "before",
-          "after",
-          "reason",
-          "request_id",
-          "created_at"
-        ],
-        "title": "AuditLogRead",
         "type": "object"
       },
       "BankAccountCreateRequest": {
@@ -816,6 +712,7 @@
             "type": "string"
           },
           "zar_sent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Zar Sent",
             "type": "string"
           }
@@ -911,7 +808,7 @@
         "type": "object"
       },
       "DepositRow": {
-        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.\n\n``currency`` is that of the RemitX bank account the money came into: ZAR,\nUSD, ZWL or NAD. A line without one RemitX banks in is skipped.\nOptional ``line_id`` is the bank export's stable line identifier when\npresent.",
+        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.\n\n``currency`` is that of the RemitX bank account the money came into: ZAR,\nUSD, ZWL or NAD. A line without one RemitX banks in is skipped.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -946,17 +843,6 @@
               }
             ],
             "title": "Date"
-          },
-          "line_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Line Id"
           },
           "reference": {
             "anyOf": [
@@ -1051,6 +937,7 @@
         "description": "A transfer still queued or settling.",
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -1201,6 +1088,7 @@
           "expected_monthly_volume_zar": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -1959,6 +1847,7 @@
           "expected_monthly_volume_zar": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2453,6 +2342,7 @@
           "expected_monthly_volume_zar": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3744,16 +3634,19 @@
             "title": "Application Id"
           },
           "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Limit Zar",
             "type": "string"
           },
           "daily_remaining_zar": {
             "description": "What can still be sent today: the daily limit less what was used, never below zero.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Remaining Zar",
             "type": "string"
           },
           "daily_used_zar": {
             "description": "ZAR sent today (SAST), counting transfers still settling and leaving out failed ones.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Used Zar",
             "type": "string"
           },
@@ -3766,16 +3659,19 @@
             "type": "integer"
           },
           "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Limit Zar",
             "type": "string"
           },
           "monthly_remaining_zar": {
             "description": "What can still be sent this month, counted the same way. A send must fit both this and daily_remaining_zar.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Remaining Zar",
             "type": "string"
           },
           "monthly_used_zar": {
             "description": "ZAR sent this calendar month (SAST), counted the same way.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Used Zar",
             "type": "string"
           },
@@ -3876,6 +3772,7 @@
       "KycTierRead": {
         "properties": {
           "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Limit Zar",
             "type": "string"
           },
@@ -3884,6 +3781,7 @@
             "type": "string"
           },
           "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Limit Zar",
             "type": "string"
           },
@@ -3915,18 +3813,22 @@
         "description": "ZAR already sent against the caller's daily and monthly allowance.\n\nSent includes queued and settling transfers and leaves out ones that\nfailed. The allowance is the KYC standing's limit. Both come from the\nstanding, so the day and month are the SAST ones the limit check counts.",
         "properties": {
           "daily_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Limit Zar",
             "type": "string"
           },
           "daily_sent_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Daily Sent Zar",
             "type": "string"
           },
           "monthly_limit_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Limit Zar",
             "type": "string"
           },
           "monthly_sent_zar": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Sent Zar",
             "type": "string"
           }
@@ -4055,6 +3957,7 @@
       "PendingDepositRead": {
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -4137,10 +4040,12 @@
             "type": "string"
           },
           "available_balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Available Balance",
             "type": "string"
           },
           "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance",
             "type": "string"
           },
@@ -4226,6 +4131,7 @@
       "ProcessedDepositRead": {
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -4393,18 +4299,22 @@
         "description": "A stateless rate preview \u2014 no beneficiary, nothing persisted, so no\nquote_id/status/expires_at. See services/quote_service.py's\nRemittancePricing, which this mirrors field-for-field.",
         "properties": {
           "exchange_rate_margin": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Exchange Rate Margin",
             "type": "string"
           },
           "fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat Exchange Rate",
             "type": "string"
           },
           "fiat_to_token_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat To Token Exchange Rate",
             "type": "string"
           },
           "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Amount",
             "type": "string"
           },
@@ -4413,10 +4323,12 @@
             "type": "string"
           },
           "receiver_payout_estimate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Estimate",
             "type": "string"
           },
           "receiver_payout_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Fee",
             "type": "string"
           },
@@ -4430,10 +4342,12 @@
             "type": "string"
           },
           "sender_transaction_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Transaction Fee",
             "type": "string"
           },
           "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Amount",
             "type": "string"
           },
@@ -4502,6 +4416,7 @@
             "type": "string"
           },
           "exchange_rate_margin": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Exchange Rate Margin",
             "type": "string"
           },
@@ -4510,10 +4425,12 @@
             "type": "string"
           },
           "fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat Exchange Rate",
             "type": "string"
           },
           "fiat_to_token_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat To Token Exchange Rate",
             "type": "string"
           },
@@ -4523,6 +4440,7 @@
             "type": "string"
           },
           "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Amount",
             "type": "string"
           },
@@ -4531,14 +4449,17 @@
             "type": "string"
           },
           "receiver_payout_estimate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Estimate",
             "type": "string"
           },
           "receiver_payout_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Fee",
             "type": "string"
           },
           "sender_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Amount",
             "type": "string"
           },
@@ -4552,6 +4473,7 @@
             "type": "string"
           },
           "sender_transaction_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Transaction Fee",
             "type": "string"
           },
@@ -4565,6 +4487,7 @@
             "type": "string"
           },
           "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Amount",
             "type": "string"
           },
@@ -4595,6 +4518,34 @@
           "status"
         ],
         "title": "QuoteRead",
+        "type": "object"
+      },
+      "ReclaimPendingSettlementsRequest": {
+        "properties": {
+          "min_age_seconds": {
+            "default": 0,
+            "title": "Min Age Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "ReclaimPendingSettlementsRequest",
+        "type": "object"
+      },
+      "ReclaimPendingSettlementsResponse": {
+        "properties": {
+          "requeued_quote_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Requeued Quote Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "requeued_quote_ids"
+        ],
+        "title": "ReclaimPendingSettlementsResponse",
         "type": "object"
       },
       "RejectBankAccountRequest": {
@@ -4638,6 +4589,7 @@
             "type": "string"
           },
           "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Amount",
             "type": "string"
           },
@@ -4651,6 +4603,7 @@
             "type": "string"
           },
           "sender_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Amount",
             "type": "string"
           },
@@ -4662,6 +4615,7 @@
             "$ref": "#/components/schemas/TransactionStatus"
           },
           "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Amount",
             "type": "string"
           },
@@ -4689,6 +4643,25 @@
           "created_at"
         ],
         "title": "RemittanceRead",
+        "type": "object"
+      },
+      "RetrySettlementEnqueueResponse": {
+        "properties": {
+          "enqueued": {
+            "title": "Enqueued",
+            "type": "boolean"
+          },
+          "quote_id": {
+            "format": "uuid",
+            "title": "Quote Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote_id",
+          "enqueued"
+        ],
+        "title": "RetrySettlementEnqueueResponse",
         "type": "object"
       },
       "RoleGrantRequest": {
@@ -4809,9 +4782,19 @@
         "title": "RoleRevokeRequest",
         "type": "object"
       },
+      "SettlementRecoveryKind": {
+        "enum": [
+          "retry_enqueue",
+          "manual_only",
+          "none"
+        ],
+        "title": "SettlementRecoveryKind",
+        "type": "string"
+      },
       "SkippedStatementLineRead": {
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -4865,6 +4848,79 @@
         ],
         "title": "SkippedStatementLineReason",
         "type": "string"
+      },
+      "StuckSettlementRead": {
+        "properties": {
+          "burn_xrpl_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burn Xrpl Tx Hash"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "failed_leg_count": {
+            "title": "Failed Leg Count",
+            "type": "integer"
+          },
+          "pending_leg_count": {
+            "title": "Pending Leg Count",
+            "type": "integer"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "processing_leg_count": {
+            "title": "Processing Leg Count",
+            "type": "integer"
+          },
+          "quote_id": {
+            "format": "uuid",
+            "title": "Quote Id",
+            "type": "string"
+          },
+          "recovery_kind": {
+            "$ref": "#/components/schemas/SettlementRecoveryKind"
+          },
+          "remittance_id": {
+            "format": "uuid",
+            "title": "Remittance Id",
+            "type": "string"
+          },
+          "settlement_leg_status": {
+            "title": "Settlement Leg Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote_id",
+          "remittance_id",
+          "created_at",
+          "settlement_leg_status",
+          "pending_leg_count",
+          "processing_leg_count",
+          "failed_leg_count",
+          "burn_xrpl_tx_hash",
+          "processed_at",
+          "recovery_kind"
+        ],
+        "title": "StuckSettlementRead",
+        "type": "object"
       },
       "ToxicCombinationRead": {
         "description": "A pair of permissions the access page warns about before a grant.",
@@ -4934,6 +4990,7 @@
           "exchange_rate_margin": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -4943,10 +5000,12 @@
             "title": "Exchange Rate Margin"
           },
           "fiat_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat Exchange Rate",
             "type": "string"
           },
           "fiat_to_token_exchange_rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fiat To Token Exchange Rate",
             "type": "string"
           },
@@ -4968,6 +5027,7 @@
             "type": "string"
           },
           "receiver_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Amount",
             "type": "string"
           },
@@ -4976,10 +5036,12 @@
             "type": "string"
           },
           "receiver_payout_estimate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Estimate",
             "type": "string"
           },
           "receiver_payout_fee": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Receiver Payout Fee",
             "type": "string"
           },
@@ -4991,6 +5053,7 @@
           "sender_amount": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5007,6 +5070,7 @@
           "sender_transaction_fee": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5045,6 +5109,7 @@
             "type": "integer"
           },
           "token_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Amount",
             "type": "string"
           },
@@ -5134,10 +5199,12 @@
         "description": "Token the treasury wallet can still spend, and token customers hold.",
         "properties": {
           "customer_token_balances": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Customer Token Balances",
             "type": "string"
           },
           "token_available": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Available",
             "type": "string"
           }
@@ -5385,10 +5452,12 @@
             "type": "string"
           },
           "token_settled": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Token Settled",
             "type": "string"
           },
           "zar_cash_in": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Zar Cash In",
             "type": "string"
           }
@@ -5463,14 +5532,17 @@
             "type": "string"
           },
           "fee_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Fee Amount",
             "type": "string"
           },
           "gross_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Gross Amount",
             "type": "string"
           },
           "net_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Net Amount",
             "type": "string"
           },
@@ -5555,81 +5627,6 @@
           }
         ],
         "summary": "List the caller's currency accounts",
-        "tags": [
-          "accounts"
-        ]
-      },
-      "post": {
-        "description": "Open a fiat payout account the caller does not hold yet. The settlement\nwallet is created at sign-up and cannot be opened here.\n\nRefusals: 403 if the caller is not KYC-verified; 409 if they already hold\nthat currency; 422 for an unsupported currency.",
-        "operationId": "open_account",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AccountOpenRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No valid session."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The caller lacks the required permission."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The current state refuses the request."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The request body failed validation."
-          }
-        },
-        "security": [
-          {
-            "ClerkSession": []
-          }
-        ],
-        "summary": "Open a currency account",
         "tags": [
           "accounts"
         ]
@@ -5738,214 +5735,6 @@
         "summary": "List one account's transaction history",
         "tags": [
           "accounts"
-        ]
-      }
-    },
-    "/admin/audit": {
-      "get": {
-        "description": "Reverse-chronological audit trail. Needs ``audit:read``. Opening a page\nwrites a ``audit.log.viewed`` entry describing the filters used.",
-        "operationId": "list_audit_log",
-        "parameters": [
-          {
-            "description": "Only entries written by this staff member.",
-            "in": "query",
-            "name": "actor_user_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only entries written by this staff member.",
-              "title": "Actor User Id"
-            }
-          },
-          {
-            "description": "Exact action string, e.g. ``kyc.pii.viewed``.",
-            "in": "query",
-            "name": "action",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Exact action string, e.g. ``kyc.pii.viewed``.",
-              "title": "Action"
-            }
-          },
-          {
-            "description": "Subject kind, e.g. ``kyc_application``.",
-            "in": "query",
-            "name": "subject_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Subject kind, e.g. ``kyc_application``.",
-              "title": "Subject Type"
-            }
-          },
-          {
-            "description": "Id of the record that was acted on or read.",
-            "in": "query",
-            "name": "subject_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Id of the record that was acted on or read.",
-              "title": "Subject Id"
-            }
-          },
-          {
-            "description": "Inclusive lower bound on ``created_at`` (UTC).",
-            "in": "query",
-            "name": "created_after",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Inclusive lower bound on ``created_at`` (UTC).",
-              "title": "Created After"
-            }
-          },
-          {
-            "description": "Exclusive upper bound on ``created_at`` (UTC).",
-            "in": "query",
-            "name": "created_before",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Exclusive upper bound on ``created_at`` (UTC).",
-              "title": "Created Before"
-            }
-          },
-          {
-            "description": "Page size. A full page means there may be more.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "description": "Page size. A full page means there may be more.",
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Only entries created before this instant. Pass the last row's `created_at` to fetch the next page.",
-            "in": "query",
-            "name": "before",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only entries created before this instant. Pass the last row's `created_at` to fetch the next page.",
-              "title": "Before"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AuditLogRead"
-                  },
-                  "title": "Response List Audit Log",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No valid session."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The caller lacks the required permission."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "ClerkSession": []
-          }
-        ],
-        "summary": "List privileged actions and sensitive reads",
-        "tags": [
-          "admin.audit"
         ]
       }
     },
@@ -7806,6 +7595,213 @@
           }
         ],
         "summary": "Read settlement volume and pipeline",
+        "tags": [
+          "admin.operations"
+        ]
+      }
+    },
+    "/admin/operations/settlements/reclaim-pending": {
+      "post": {
+        "description": "Same safe reclaim as the worker boot/beat job, on demand. Optional\n``min_age_seconds`` skips very new groups. Needs ``settlement:retry``.",
+        "operationId": "reclaim_pending_settlements",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReclaimPendingSettlementsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimPendingSettlementsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Re-enqueue all fully pending settlements",
+        "tags": [
+          "admin.operations"
+        ]
+      }
+    },
+    "/admin/operations/settlements/stuck": {
+      "get": {
+        "description": "Remittances whose settlement leg is not ``confirmed``, with leg counts\nand a ``recovery_kind`` hint (`retry_enqueue` vs `manual_only`). Needs\n``transaction:read_any``.",
+        "operationId": "list_stuck_settlements",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StuckSettlementRead"
+                  },
+                  "title": "Response List Stuck Settlements",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List non-terminal remittance settlements",
+        "tags": [
+          "admin.operations"
+        ]
+      }
+    },
+    "/admin/operations/settlements/{quote_id}/retry-enqueue": {
+      "post": {
+        "description": "Publishes ``settle_remittance`` when every leg is still ``pending``.\nRefuses ``processing`` or ``failed`` groups. Needs ``settlement:retry``.",
+        "operationId": "retry_settlement_enqueue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrySettlementEnqueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Re-enqueue settlement for one quote",
         "tags": [
           "admin.operations"
         ]
@@ -10872,10 +10868,6 @@
     {
       "description": "Audited reviewer access to KYC evidence.",
       "name": "admin.kyc.documents"
-    },
-    {
-      "description": "Privileged actions and sensitive reads \u2014 who did what, to whom, and when.",
-      "name": "admin.audit"
     }
   ]
 }

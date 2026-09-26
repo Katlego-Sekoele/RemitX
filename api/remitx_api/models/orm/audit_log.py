@@ -42,20 +42,12 @@ class AuditAction(StrEnum):
     string that is not a member here cannot be recorded.
     """
 
-    AUDIT_LOG_VIEWED = "audit.log.viewed"
     KYC_DOCUMENT_VIEWED = "kyc.document.viewed"
     KYC_DOCUMENT_REMOVED = "kyc.document.removed"
     KYC_PII_VIEWED = "kyc.pii.viewed"
     KYC_APPLICATION_DECIDED = "kyc.application.decided"
-    CASHIN_CONFIRMED = "cashin.confirmed"
-    CASHOUT_BANK_ACCOUNT_VERIFIED = "cashout.bank_account.verified"
-    CASHOUT_BANK_ACCOUNT_REJECTED = "cashout.bank_account.rejected"
-    ROLE_GRANTED = "role.granted"
-    ROLE_REVOKED = "role.revoked"
-
-
-# Stable id for entries that describe a look at the audit log itself (not a row).
-AUDIT_LOG_INDEX_SUBJECT_ID = uuid.UUID("00000000-0000-4000-8000-000000000001")
+    SETTLEMENT_RETRY_ENQUEUED = "settlement.retry_enqueued"
+    SETTLEMENT_RECLAIM_RAN = "settlement.reclaim.ran"
 
 
 class AuditSubject(StrEnum):
@@ -64,10 +56,7 @@ class AuditSubject(StrEnum):
 
     KYC_DOCUMENT = "kyc_document"
     KYC_APPLICATION = "kyc_application"
-    DEPOSIT = "deposit"
-    BANK_ACCOUNT = "bank_account"
-    USER_ROLE = "user_role"
-    AUDIT_LOG = "audit_log"
+    SETTLEMENT_QUOTE = "settlement_quote"
 
 
 # JSONB on Postgres for indexable containment queries; plain JSON on the
@@ -90,8 +79,8 @@ class AuditLog(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    # Never null — every entry is a real staff member (including whoever ran
-    # statement reconciliation on the admin portal).
+    # Never null. A system action gets its own user row rather than a NULL
+    # actor, so every entry answers "who" without a special case.
     actor_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
         ForeignKey("users.id", ondelete="RESTRICT"),

@@ -134,6 +134,10 @@ PERMISSION_SEEDS: tuple[PermissionSeed, ...] = (
         "Read any customer's transfer history (cross-user).",
     ),
     PermissionSeed(
+        PermissionCode.SETTLEMENT_RETRY,
+        "Re-enqueue stuck remittance settlement when safe (fully pending).",
+    ),
+    PermissionSeed(
         PermissionCode.PLATFORM_ACCOUNT_READ,
         "View RemitX's own account balances: bank, fee revenue and treasury.",
     ),
@@ -216,6 +220,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionCode.CASHIN_CONFIRM,
             PermissionCode.CASHIN_CANCEL,
             PermissionCode.TRANSACTION_READ_ANY,
+            PermissionCode.SETTLEMENT_RETRY,
             PermissionCode.PLATFORM_ACCOUNT_READ,
         ),
     ),
@@ -230,6 +235,7 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionCode.CASHOUT_COMPLETE,
             PermissionCode.CASHOUT_FAIL,
             PermissionCode.TRANSACTION_READ_ANY,
+            PermissionCode.SETTLEMENT_RETRY,
         ),
     ),
     RoleSeed(
