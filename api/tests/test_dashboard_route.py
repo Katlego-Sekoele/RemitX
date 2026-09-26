@@ -157,3 +157,29 @@ def test_dashboard_received_activity_uses_payout_not_settlement_token(
     inflight = next(row for row in body["in_flight"] if row["direction"] == "received")
     assert inflight["amount"] == "135.44"
     assert inflight["currency"] == CURRENCY_ZWL
+
+
+def test_dashboard_counts_other_currencies_by_their_rand_value(verified_client):
+    """A USD send is in the ZAR figures at the rand value its quote locked,
+    not left out of them."""
+    client, sender = verified_client
+    token = db.open_session()
+    try:
+        record_transfer(
+            sender,
+            make_user("dash-usd-beneficiary"),
+            sender_amount=Decimal("100"),
+            sender_currency="USD",
+            sender_amount_zar=Decimal("1850.00"),
+        )
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+    body = client.get(DASHBOARD).json()
+    today = datetime.now(UTC).date().isoformat()
+    day = next(row for row in body["activity"] if row["day"] == today)
+
+    assert body["limits"]["daily_sent_zar"] == "1850.00"
+    assert day["zar_sent"] == "1850.00"
+    assert [row["zar_sent"] for row in body["beneficiaries"]] == ["1850.00"]
