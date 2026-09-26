@@ -85,6 +85,11 @@ def test_the_run_covers_the_whole_journey(run):
         "send.quotes",
         "send.remittances",
         "settlement.settled",
+        "cashout.bank_accounts",
+        "cashout.bank_accounts_verified",
+        "cashout.withdrawals",
+        "money.payout_accounts_opened",
+        "money.payout_accounts_provisioned",
     ):
         assert counts.get(key, 0) > 0, key
 

@@ -11,9 +11,24 @@ from remitx_seeder.stories.timing import SAST, business_time, paydays
 
 
 def test_committed_scenarios_load():
-    assert {"default", "small"} <= set(list_scenarios())
+    assert {"default", "small", "loadtest"} <= set(list_scenarios())
     for name in list_scenarios():
         load_scenario(name)
+
+
+def test_the_loadtest_scenario_is_a_funded_database_only_population():
+    """What the load test acts as: hundreds of verified senders, no Clerk
+    users, no live XRPL settlements, and a payout operator for cash-out."""
+    scenario = load_scenario("loadtest")
+    assert scenario.clerk_user_cap == 0
+    assert scenario.senders >= 200
+    assert scenario.live_settlements == 0
+    assert scenario.money.dormant_rate == 0
+    assert scenario.money.reference_typo_rate == 0
+    assert scenario.ensure_every_path is False
+    assert scenario.staff["payout_operator"] >= 1
+    assert scenario.staff["compliance_officer"] >= 1
+    assert scenario.staff["treasury_operator"] >= 1
 
 
 def test_unknown_scenario_keys_are_refused():

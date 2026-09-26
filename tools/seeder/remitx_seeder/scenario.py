@@ -52,6 +52,14 @@ class MoneyBehaviour:
     settlement_failure_rate: float = 0.03
     # Deposits are topped up by this factor over what the month's sends need.
     deposit_headroom: float = 1.08
+    # Verified customers who register an external bank account.
+    bank_account_rate: float = 0.6
+    # Of those accounts, the share a payout operator rejects.
+    bank_reject_rate: float = 0.08
+    # Of the rest, the share left in the verification queue.
+    bank_leave_pending_rate: float = 0.12
+    # Holders of a verified account who cash out some spare balance.
+    withdraw_rate: float = 0.7
 
 
 @dataclass
@@ -70,6 +78,7 @@ class Scenario:
             "compliance_analyst": 2,
             "compliance_officer": 2,
             "treasury_operator": 1,
+            "payout_operator": 1,
             "support_agent": 1,
         }
     )

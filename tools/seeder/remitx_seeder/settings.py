@@ -1,8 +1,10 @@
 """Where a target's configuration comes from, and loading it.
 
 A *target* is the environment a run writes to: `local` (your Docker Compose
-stack, configured by the repo-root `.env`) or `qa` (the QA stack, configured by
-`tools/seeder/.env.qa`). The allowlists every target must satisfy live in
+stack, configured by the repo-root `.env`), `qa` (the QA stack, configured by
+`tools/seeder/.env.qa`) or `loadtest` (the throwaway load-test stack in
+`tools/loadtest`, configured by its committed `loadtest.env`, which holds
+nothing secret). The allowlists every target must satisfy live in
 `tools/seeder/targets.json`, which is committed: widening what the seeder may
 touch is a reviewed change, never an env var.
 
@@ -30,6 +32,7 @@ SCENARIOS_DIR = SEEDER_ROOT / "scenarios"
 TARGET_ENV_FILES = {
     "local": REPO_ROOT / ".env",
     "qa": SEEDER_ROOT / ".env.qa",
+    "loadtest": REPO_ROOT / "tools" / "loadtest" / "loadtest.env",
 }
 
 

@@ -98,7 +98,16 @@ def test_the_host_never_carries_credentials():
 
 def test_the_committed_targets_file_allows_no_production_resources():
     targets = load_targets()
-    assert set(targets) == {"local", "qa"}
+    assert set(targets) == {"local", "qa", "loadtest"}
     for spec in targets.values():
         assert not any("prod" in bucket for bucket in spec.buckets)
         assert not any("prod" in host for host in spec.database_hosts)
+
+
+def test_the_loadtest_target_only_reaches_its_own_throwaway_stack():
+    """`postgres` is a compose service name, unreachable from outside a compose
+    network, and the bucket name is one no other environment uses."""
+    spec = load_targets()["loadtest"]
+    assert spec.database_hosts == ("postgres",)
+    assert spec.buckets == ("loadtest-kyc-documents",)
+    assert not spec.api_url
