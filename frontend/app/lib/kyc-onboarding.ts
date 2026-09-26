@@ -3,8 +3,6 @@
  * here, so moving the pages means changing this file and `routes.ts` only.
  */
 
-const VERIFIED_STANDING = new Set(["approved", "review_due"])
-
 // Mirrors STARTABLE_STANDINGS in api/remitx_api/models/orm/kyc_lifecycle.py.
 // The server enforces it; this only decides whether to offer the button.
 const STARTABLE_STANDING = new Set(["not_started", "rejected", "review_due"])
@@ -16,8 +14,10 @@ const OPEN_STATUSES = new Set([
   "more_info_required",
 ])
 
-export function isKycVerified(status: string | undefined): boolean {
-  return VERIFIED_STANDING.has(status ?? "")
+export function isKycVerified(
+  standing: { is_verified?: boolean } | undefined
+): boolean {
+  return standing?.is_verified ?? false
 }
 
 export function canStartApplication(status: string | undefined): boolean {

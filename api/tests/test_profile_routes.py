@@ -28,6 +28,7 @@ def test_unverified_profile_has_no_limits():
     assert body["email"] == "fresh@example.com"
     assert body["mobile_number"] is None
     assert body["kyc"]["status"] == "not_started"
+    assert body["kyc"]["is_verified"] is False
     assert body["kyc"]["tier"] == 0
     assert body["kyc"]["daily_limit_zar"] == "0.00"
     assert body["kyc"]["monthly_limit_zar"] == "0.00"
@@ -48,6 +49,7 @@ def test_approved_profile_carries_the_tier_limits():
         body = client.get(PROFILE).json()
 
     assert body["kyc"]["status"] == "approved"
+    assert body["kyc"]["is_verified"] is True
     assert body["kyc"]["tier"] == 1
     assert body["kyc"]["daily_limit_zar"] == "3000.00"
     assert body["kyc"]["monthly_limit_zar"] == "25000.00"

@@ -76,7 +76,7 @@ export function AppNav() {
   const accounts = useQuery(api.accounts.getAccounts())
   // Until the standing loads, assume nothing needs attention.
   const kycIncomplete =
-    Boolean(onboarding.data) && !isKycVerified(onboarding.data?.standing.status)
+    Boolean(onboarding.data) && !isKycVerified(onboarding.data?.standing)
 
   return (
     <SidebarGroup>

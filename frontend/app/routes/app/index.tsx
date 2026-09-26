@@ -40,7 +40,7 @@ export function meta(): Route.MetaDescriptors {
 
 export default function AppHome() {
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
-  const verified = isKycVerified(onboarding.data?.standing.status)
+  const verified = isKycVerified(onboarding.data?.standing)
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>

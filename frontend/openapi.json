@@ -3648,6 +3648,10 @@
             "title": "Daily Used Zar",
             "type": "string"
           },
+          "is_verified": {
+            "title": "Is Verified",
+            "type": "boolean"
+          },
           "limit_percent": {
             "title": "Limit Percent",
             "type": "integer"
@@ -3680,6 +3684,7 @@
         },
         "required": [
           "status",
+          "is_verified",
           "tier",
           "application_id",
           "limit_percent",

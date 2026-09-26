@@ -316,6 +316,7 @@ class KycStandingRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     status: str
+    is_verified: bool
     tier: int
     application_id: uuid.UUID | None = None
     # No risk rating: this is the applicant's view, and telling someone how
