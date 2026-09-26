@@ -36,6 +36,7 @@ class PermissionCode(StrEnum):
     CASHOUT_COMPLETE = "cashout:complete"
     CASHOUT_FAIL = "cashout:fail"
     TRANSACTION_READ_ANY = "transaction:read_any"
+    SETTLEMENT_RETRY = "settlement:retry"
     PLATFORM_ACCOUNT_READ = "platform_account:read"
     CONFIG_FEES_WRITE = "config:fees:write"
     CONFIG_LIMITS_WRITE = "config:limits:write"

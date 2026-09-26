@@ -17,14 +17,12 @@ from datetime import timedelta
 from remitx_api.clock import utcnow
 from remitx_api.config import Config
 from remitx_api.models.orm.integration_message import STATUS_PENDING, IntegrationMessage
-from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.transaction import (
-    STATUS_PENDING as TX_STATUS_PENDING,
     STATUS_PROCESSING as TX_STATUS_PROCESSING,
-    TYPE_TOKEN_BURN,
     Transaction,
 )
-from sqlalchemy import exists, not_, select
+from remitx_api.settlement_recovery_queries import pending_settlement_quote_ids
+from sqlalchemy import select
 
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
@@ -61,36 +59,6 @@ def reclaim_pending_messages() -> int:
     return len(ids)
 
 
-def _pending_settlement_quote_ids(
-    session, *, min_age_seconds: int
-) -> list:
-    pending_burn = (
-        select(Transaction.tx_id)
-        .where(
-            Transaction.quote_id == Remittance.quote_id,
-            Transaction.type == TYPE_TOKEN_BURN,
-            Transaction.status == TX_STATUS_PENDING,
-        )
-        .correlate(Remittance)
-    )
-    non_pending_leg = (
-        select(Transaction.tx_id)
-        .where(
-            Transaction.quote_id == Remittance.quote_id,
-            Transaction.status != TX_STATUS_PENDING,
-        )
-        .correlate(Remittance)
-    )
-    stmt = select(Remittance.quote_id).where(
-        exists(pending_burn),
-        not_(exists(non_pending_leg)),
-    )
-    if min_age_seconds > 0:
-        cutoff = utcnow() - timedelta(seconds=min_age_seconds)
-        stmt = stmt.where(Remittance.created_at <= cutoff)
-    return list(session.scalars(stmt))
-
-
 def reclaim_pending_settlements(min_age_seconds: int) -> int:
     """Re-enqueue ``settle_remittance`` for groups still fully ``pending``.
 
@@ -99,7 +67,7 @@ def reclaim_pending_settlements(min_age_seconds: int) -> int:
     enqueued milliseconds ago is not duplicated on every beat tick.
     """
     with session_scope() as session:
-        quote_ids = _pending_settlement_quote_ids(
+        quote_ids = pending_settlement_quote_ids(
             session, min_age_seconds=min_age_seconds
         )
     for quote_id in quote_ids:
@@ -110,7 +78,7 @@ def reclaim_pending_settlements(min_age_seconds: int) -> int:
         )
     if quote_ids:
         logger.info(
-            "reclaimed %s pending settlement group(s) (min_age=%ss)",
+            "event=settlement.reclaim.ran reclaimed=%s min_age=%ss",
             len(quote_ids),
             min_age_seconds,
         )
@@ -135,8 +103,7 @@ def log_stale_processing_settlements(min_age_seconds: int) -> int:
         )
     for quote_id in quote_ids:
         logger.warning(
-            "settlement quote %s still processing (processed_at <= %s); "
-            "manual investigation required — not auto-reclaiming",
+            "event=settlement.stale_processing quote_id=%s processed_at_cutoff=%s",
             quote_id,
             cutoff.isoformat(),
         )
