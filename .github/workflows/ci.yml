@@ -13,9 +13,11 @@ jobs:
       run:
         working-directory: api
     services:
-      # Migrations are the one thing pytest cannot cover: the suite builds its
-      # schema from Base.metadata on SQLite and never touches alembic/versions,
-      # so a broken migration would otherwise first surface in the QA deploy.
+      # The default pytest lane builds its schema from Base.metadata on SQLite
+      # and never touches alembic/versions, so a broken migration would
+      # otherwise first surface in the QA deploy. The `postgres` lane
+      # (TEST_DATABASE_URL) makes its own migrated database here for what
+      # SQLite can't show, such as row locks.
       postgres:
         image: postgres:16-alpine
         env:
@@ -41,6 +43,8 @@ jobs:
         run: ruff check remitx_api remitx_worker tests alembic
 
       - name: Pytest
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
         run: pytest
 
       - name: Migrations apply, and the ORM still matches them
