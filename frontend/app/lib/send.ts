@@ -7,10 +7,10 @@
 
 import type { QuoteCreateRequest } from "~/client"
 import {
+  formatFiatToTokenExchangeRate,
   formatMoney,
   formatRate,
   fromCents,
-  invertRate,
   MAX_AMOUNT_CENTS,
   subtractAmounts,
   toCents,
@@ -303,7 +303,11 @@ export function quoteLines(quote: PricedQuote): QuoteLine[] {
       : []),
     {
       label: "Exchange rate",
-      value: `1 USD = R ${invertRate(quote.fiat_to_token_exchange_rate)}`,
+      value: formatFiatToTokenExchangeRate(
+        quote.fiat_to_token_exchange_rate,
+        sender,
+        quote.token_name
+      ),
       detail: `1 ${sender} = ${formatRate(quote.fiat_exchange_rate)} ${receiver}`,
     },
     {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   amountToCents,
   currencyLabel,
+  formatFiatToTokenExchangeRate,
   formatMoney,
   formatRate,
   fromCents,
@@ -96,5 +97,14 @@ describe("rates", () => {
   it("rounds half up", () => {
     // 1 / 8 = 0.125
     expect(invertRate("8", 2)).toBe("0.13")
+  })
+
+  it("labels the inverted token rate from the quote currencies", () => {
+    expect(
+      formatFiatToTokenExchangeRate("0.05405405", "ZAR", "uctusd")
+    ).toBe("1 RLUSD = R 18.5000")
+    expect(formatFiatToTokenExchangeRate("1", "USD", "uctusd")).toBe(
+      "1 RLUSD = USD 1.0000"
+    )
   })
 })
