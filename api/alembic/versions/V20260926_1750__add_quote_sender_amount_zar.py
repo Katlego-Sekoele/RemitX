@@ -9,7 +9,7 @@ the rows that exist, reads fall back to `sender_amount` for any NULL left
 behind (only ever a ZAR quote), and a later migration can make it NOT NULL.
 
 Revision ID: 46b798718ccd
-Revises: a1b2c3d4e5f6
+Revises: b3a8c1d4e5f6
 Create Date: 2026-09-26 17:50:00.000000+00:00
 
 """
@@ -19,7 +19,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "46b798718ccd"
-down_revision: str | None = "a1b2c3d4e5f6"
+down_revision: str | None = "b3a8c1d4e5f6"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
