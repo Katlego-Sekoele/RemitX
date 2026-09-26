@@ -73,7 +73,7 @@ function limitsFrom(
 export default function SendPage() {
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const standing = onboarding.data?.standing
-  const verified = isKycVerified(standing?.status)
+  const verified = isKycVerified(standing)
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
