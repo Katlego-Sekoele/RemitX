@@ -3,6 +3,7 @@ from decimal import Decimal
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.errors.deposits import DepositCurrencyMismatchError
+from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_NAD,
     CURRENCY_TOKEN,
@@ -12,10 +13,9 @@ from remitx_api.models.orm.account import (
     TYPE_PLATFORM_FIAT,
     create_account_reference,
 )
+from remitx_api.models.orm.audit_log import AuditAction, AuditLog
 from remitx_api.models.orm.transaction import STATUS_CONFIRMED, STATUS_PENDING
 from remitx_api.models.schemas.deposit import SkippedStatementLineReason
-from remitx_api.extensions import db
-from remitx_api.models.orm.audit_log import AuditAction, AuditLog
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service

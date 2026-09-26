@@ -144,8 +144,7 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_AUDIT,
         "description": (
-            "Privileged actions and sensitive reads — who did what, to whom, "
-            "and when."
+            "Privileged actions and sensitive reads — who did what, to whom, and when."
         ),
     },
 ]

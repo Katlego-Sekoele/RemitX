@@ -10,6 +10,7 @@ import uuid
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.user import User
+
 # Fixed id so migrations, tests, and runtime agree without a lookup table.
 SYSTEM_ACTOR_USER_ID = uuid.UUID("00000000-0000-4000-8000-000000000002")
 SYSTEM_ACTOR_CLERK_ID = "user_remitx_system"
