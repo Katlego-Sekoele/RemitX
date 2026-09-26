@@ -310,4 +310,23 @@ describe("refusals", () => {
     )
     expect(confirmRefusal(new ApiError("Quote not found", 400))).toBe("other")
   })
+
+  it("classifies a confirm the sending limits refused", () => {
+    expect(
+      confirmRefusal(
+        new ApiError(
+          "This would exceed your daily limit. You can send up to R 1,000.00 today.",
+          400
+        )
+      )
+    ).toBe("over_limit")
+    expect(
+      confirmRefusal(
+        new ApiError(
+          "You've reached your monthly limit. You can send again next month.",
+          400
+        )
+      )
+    ).toBe("over_limit")
+  })
 })
