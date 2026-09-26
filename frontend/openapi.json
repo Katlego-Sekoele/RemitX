@@ -808,7 +808,7 @@
         "type": "object"
       },
       "DepositRow": {
-        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.\n\n``currency`` is that of the RemitX bank account the money came into: ZAR,\nUSD, ZWL or NAD. A line without one RemitX banks in is skipped.",
+        "description": "One bank-statement line, as parsed client-side from the uploaded CSV.\n\n``currency`` is that of the RemitX bank account the money came into: ZAR,\nUSD, ZWL or NAD. A line without one RemitX banks in is skipped.\nOptional ``line_id`` is the bank export's stable line identifier when\npresent.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -843,6 +843,17 @@
               }
             ],
             "title": "Date"
+          },
+          "line_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Id"
           },
           "reference": {
             "anyOf": [
