@@ -68,6 +68,15 @@ class Config:
     def CLERK_SECRET_KEY(self) -> str:
         return os.getenv("CLERK_SECRET_KEY", "")
 
+    # PEM public key for networkless session verification: when set, the
+    # Clerk SDK checks tokens against it and never fetches Clerk's JWKS. In
+    # QA/production that is the instance's own key (Clerk dashboard → API keys
+    # → JWT public key). The load test (tools/loadtest) sets a throwaway key it
+    # signs its own tokens with, so no request reaches Clerk.
+    @property
+    def CLERK_JWT_KEY(self) -> str:
+        return os.getenv("CLERK_JWT_KEY", "").strip()
+
     # Written by platform_wallet/scripts/create_xprl_platform_wallet.py.
     @property
     def XRPL_ENCRYPTION_KEY(self) -> str:
