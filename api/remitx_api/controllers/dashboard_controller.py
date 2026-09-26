@@ -75,7 +75,7 @@ class DashboardController:
                     (current[1] if current else Decimal("0")) + fact.sender_amount,
                 )
             if not sent and counts and fact.created_at >= window_start:
-                received_by_day[fact.created_at.date()] += fact.token_amount
+                received_by_day[fact.created_at.date()] += fact.receiver_amount
             if fact.status in _IN_FLIGHT and len(in_flight) < IN_FLIGHT_LIMIT:
                 in_flight.append(_in_flight(fact, user_id))
 
@@ -94,7 +94,7 @@ class DashboardController:
                 ActivityDayRead(
                     day=day,
                     zar_sent=_money(sent_by_day[day]),
-                    token_received=_money(received_by_day[day]),
+                    payout_received=_money(received_by_day[day]),
                 )
                 for day in days
             ],
@@ -114,7 +114,7 @@ def _in_flight(fact: TransferFact, user_id: uuid.UUID) -> InFlightTransferRead:
         direction=DIRECTION_SENT if sent else DIRECTION_RECEIVED,
         counterparty_name=fact.beneficiary_name if sent else fact.sender_name,
         status=fact.status,
-        amount=_money(fact.sender_amount if sent else fact.token_amount),
-        currency=fact.sender_currency if sent else fact.token_name,
+        amount=_money(fact.sender_amount if sent else fact.receiver_amount),
+        currency=fact.sender_currency if sent else fact.receiver_currency,
         created_at=fact.created_at,
     )

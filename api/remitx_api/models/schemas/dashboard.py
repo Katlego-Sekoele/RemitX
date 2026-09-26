@@ -27,7 +27,9 @@ class ActivityDayRead(Schema):
 
     day: date
     zar_sent: Decimal
-    token_received: Decimal
+    # Sum of `receiver_amount` on transfers received that day (each in its
+    # quote's payout currency).
+    payout_received: Decimal
 
 
 class InFlightTransferRead(Schema):

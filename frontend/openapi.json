@@ -186,9 +186,9 @@
             "title": "Day",
             "type": "string"
           },
-          "token_received": {
+          "payout_received": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Token Received",
+            "title": "Payout Received",
             "type": "string"
           },
           "zar_sent": {
@@ -200,7 +200,7 @@
         "required": [
           "day",
           "zar_sent",
-          "token_received"
+          "payout_received"
         ],
         "title": "ActivityDayRead",
         "type": "object"
