@@ -76,7 +76,9 @@ export default function AuditLogPage() {
   return <AuditLogPageContent />
 }
 
-function actionBadgeVariant(action: string): "default" | "secondary" | "destructive" {
+function actionBadgeVariant(
+  action: string
+): "default" | "secondary" | "destructive" {
   if (action === "kyc.pii.viewed" || action === "kyc.document.viewed") {
     return "destructive"
   }
@@ -223,14 +225,17 @@ function AuditLogPageContent() {
                   <TableBody>
                     {rows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-muted-foreground">
+                        <TableCell
+                          colSpan={5}
+                          className="text-muted-foreground"
+                        >
                           No entries match these filters.
                         </TableCell>
                       </TableRow>
                     ) : (
                       rows.map((entry) => (
                         <TableRow key={entry.audit_id}>
-                          <TableCell className="whitespace-nowrap text-sm">
+                          <TableCell className="text-sm whitespace-nowrap">
                             {formatDateTime(entry.created_at)}
                           </TableCell>
                           <TableCell className="max-w-[180px] truncate text-sm">
