@@ -408,7 +408,7 @@ def _insert_deposit(
     )
     account_repo.decrease_balance(remitx_bank_account.account_id, amount)
     account_repo.increase_balance(account.account_id, amount)
-    return deposit_repo.add(
+    deposit = deposit_repo.add(
         Deposit(
             tx_id=transaction.tx_id,
             user_id=account.user_id,
@@ -417,6 +417,23 @@ def _insert_deposit(
             statement_fingerprint=fingerprint,
         )
     )
+    from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
+    from remitx_api.services.audit_service import record_audit
+    from remitx_api.system_actor import ensure_system_actor
+
+    record_audit(
+        actor_user_id=ensure_system_actor(),
+        action=AuditAction.CASHIN_CONFIRMED,
+        subject_type=AuditSubject.DEPOSIT,
+        subject_id=deposit.deposit_id,
+        after={
+            "status": "confirmed",
+            "auto_matched": True,
+            "user_id": str(account.user_id),
+            "account_reference": reference,
+        },
+    )
+    return deposit
 
 
 def _parse_statement_date(value, processed_at: datetime) -> datetime:
@@ -543,6 +560,7 @@ def approve_pending_deposit(
         before={"status": "pending"},
         after={
             "status": "confirmed",
+            "auto_matched": False,
             "user_id": str(matched.user_id),
             "account_reference": reference,
         },

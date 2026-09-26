@@ -14,9 +14,13 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.transaction import STATUS_CONFIRMED, STATUS_PENDING
 from remitx_api.models.schemas.deposit import SkippedStatementLineReason
+from remitx_api.extensions import db
+from remitx_api.models.orm.audit_log import AuditAction, AuditLog
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
+from remitx_api.system_actor import SYSTEM_ACTOR_USER_ID
+from sqlalchemy import select
 from tests.platform_account_helpers import seed_platform_accounts
 
 FOREIGN_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
@@ -104,6 +108,12 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
     [deposit] = result.deposits
     assert deposit.user_id == user.id
     _assert_deposited_in(deposit, CURRENCY_ZAR, "500.00")
+    (entry,) = db.session.scalars(
+        select(AuditLog).where(AuditLog.action == AuditAction.CASHIN_CONFIRMED.value)
+    ).all()
+    assert entry.actor_user_id == SYSTEM_ACTOR_USER_ID
+    assert entry.subject_id == deposit.deposit_id
+    assert entry.after["auto_matched"] is True
 
 
 @pytest.mark.parametrize("currency", FOREIGN_CURRENCIES)
