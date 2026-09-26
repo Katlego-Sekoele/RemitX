@@ -7,7 +7,7 @@ import {
   type KycApplicationSummaryRead,
   type KycStandingRead,
 } from "~/client"
-import { formatDate, formatZar } from "~/components/admin/kyc-review/format"
+import { formatDate } from "~/components/admin/kyc-review/format"
 import { Alert, AlertDescription } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import {
@@ -29,6 +29,7 @@ import {
   statusCopy,
   statusVariant,
 } from "~/lib/kyc-onboarding"
+import { formatMoney, isZeroMoney } from "~/lib/money"
 
 /** KYC standing, its limits, and past applications. A custom page inside
  * Clerk's `<UserProfile>`; an application and its wizard open as pages. */
@@ -51,14 +52,18 @@ export function VerificationPage({ kyc }: { kyc: KycStandingRead }) {
       <SettingsSection>
         <SettingsSectionLabel>Limits</SettingsSectionLabel>
         <SettingsSectionContent>
-          <SettingsItem>
-            {formatZar(kyc.daily_limit_zar)}
-            <SettingsItemDescription>per day</SettingsItemDescription>
-          </SettingsItem>
-          <SettingsItem>
-            {formatZar(kyc.monthly_limit_zar)}
-            <SettingsItemDescription>per month</SettingsItemDescription>
-          </SettingsItem>
+          <Allowance
+            remaining={kyc.daily_remaining_zar}
+            limit={kyc.daily_limit_zar}
+            left="left today"
+            per="per day"
+          />
+          <Allowance
+            remaining={kyc.monthly_remaining_zar}
+            limit={kyc.monthly_limit_zar}
+            left="left this month"
+            per="per month"
+          />
         </SettingsSectionContent>
       </SettingsSection>
       <SettingsSection>
@@ -79,6 +84,36 @@ export function VerificationPage({ kyc }: { kyc: KycStandingRead }) {
         </SettingsSectionContent>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+/** "R 1,800.00 of R 3,000.00 left today": what's left after what was
+ * already sent, as the API counts it when it checks a transfer. With no
+ * allowance yet, just the limit. */
+function Allowance({
+  remaining,
+  limit,
+  left,
+  per,
+}: {
+  remaining: string
+  limit: string
+  left: string
+  per: string
+}) {
+  if (isZeroMoney(limit)) {
+    return (
+      <SettingsItem>
+        {formatMoney(limit, "ZAR")}
+        <SettingsItemDescription>{per}</SettingsItemDescription>
+      </SettingsItem>
+    )
+  }
+  return (
+    <SettingsItem>
+      {`${formatMoney(remaining, "ZAR")} of ${formatMoney(limit, "ZAR")}`}
+      <SettingsItemDescription>{left}</SettingsItemDescription>
+    </SettingsItem>
   )
 }
 

@@ -353,19 +353,22 @@ export function quoteRefusal(error: unknown): QuoteRefusal {
 }
 
 export type ConfirmRefusal =
-  "quote_inactive" | "insufficient_balance" | "unverified" | "other"
+  | "quote_inactive"
+  | "insufficient_balance"
+  | "over_limit"
+  | "unverified"
+  | "other"
 
 /** Why `confirmRemittance` refused. */
 export function confirmRefusal(error: unknown): ConfirmRefusal {
   const status = statusOf(error)
   if (status === 409) return "quote_inactive"
   if (status === 403) return "unverified"
-  if (
-    status === 400 &&
-    error instanceof Error &&
-    /available balance/i.test(error.message)
-  ) {
-    return "insufficient_balance"
+  if (status === 400 && error instanceof Error) {
+    if (/available balance/i.test(error.message)) return "insufficient_balance"
+    // Another transfer used the allowance after this quote was issued. The
+    // message says which limit and what's left of it.
+    if (/\b(daily|monthly) limit\b/i.test(error.message)) return "over_limit"
   }
   return "other"
 }
