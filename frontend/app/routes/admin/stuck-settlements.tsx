@@ -247,9 +247,9 @@ function StuckSettlementRow({
 }) {
   const [retrying, setRetrying] = useState(false)
   const recovery = recoveryKindCopy(row.recovery_kind)
-  const legStatus = (
-    Object.values(TransactionStatus) as string[]
-  ).includes(row.settlement_leg_status)
+  const legStatus = (Object.values(TransactionStatus) as string[]).includes(
+    row.settlement_leg_status
+  )
     ? (row.settlement_leg_status as TransactionStatus)
     : TransactionStatus.PENDING
   const leg = statusCopy(legStatus)
