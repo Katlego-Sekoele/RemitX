@@ -291,8 +291,7 @@ class AccountController:
         account = self._accounts.get_by_id(account_id)
         if account is None or account.type != TYPE_USER or account.user_id != user_id:
             logger.warning(
-                "get_account_history: account %s not found or not owned by "
-                "user %s",
+                "get_account_history: account %s not found or not owned by user %s",
                 account_id,
                 user_id,
             )
