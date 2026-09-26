@@ -18,6 +18,7 @@ from remitx_api.services.exchange_rate_service import (
 from remitx_api.services.quote_service import (
     InsufficientBalanceError,
     UnknownBeneficiaryError,
+    UnknownBeneficiaryPayoutAccountError,
     UnknownSenderAccountError,
 )
 
@@ -40,7 +41,8 @@ def create_quote(
     the quote is confirmed with `POST /remittances`.
 
     Refusals: 403 if the caller isn't KYC-verified; 400 for an unknown
-    beneficiary, a `sender_currency` other than ZAR or with no account, an
+    beneficiary, a payout currency the beneficiary has no account for, a
+    `sender_currency` with no account, an
     amount over what is left of today's or this month's allowance (tier
     limits scaled by the risk rating, less what was already sent), the
     available balance, or one too small to cover the fees; 503 when no
@@ -64,6 +66,11 @@ def create_quote(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You have no account in sender_currency",
+        ) from exc
+    except UnknownBeneficiaryPayoutAccountError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
         ) from exc
     except (
         InsufficientBalanceError,

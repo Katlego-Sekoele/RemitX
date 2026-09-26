@@ -154,9 +154,8 @@ class AccountRepository(Repository[Account, uuid.UUID]):
     ) -> Account:
         """Like `get_user_account`, but provisions the account on the spot if
         this is the first time this person has ever needed one in this
-        currency — e.g. a beneficiary receiving their first remittance in a
-        payout currency nobody creates an account for at signup (only ZAR +
-        uctusd are eager)."""
+        currency. Used by tests, the seeder, and deposit matching — not
+        remittance payout (that requires an account the user has opened)."""
         account = self.get_user_account(user_id, currency)
         if account is not None:
             return account

@@ -31,6 +31,7 @@ from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import queue_service, quote_service, remittance_service
+from remitx_api.services.quote_service import UnknownBeneficiaryPayoutAccountError
 from remitx_api.services.remittance_service import (
     TOKEN_ISSUER_LABEL,
 )
@@ -113,6 +114,23 @@ def _fund_and_quote(sender, beneficiary, amount: Decimal):
         sender_currency=CURRENCY_ZAR,
         receiver_payout_currency="ZWL",
     )
+
+
+def test_confirm_refuses_when_beneficiary_lacks_payout_account(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    seed_platform_accounts()
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
+    quote.receiver_currency = "USD"
+    db.session.commit()
+
+    with pytest.raises(UnknownBeneficiaryPayoutAccountError):
+        remittance_service.confirm_remittance(sender.id, quote.quote_id)
+
+    reloaded = QuoteRepository().get_for_sender(quote.quote_id, sender.id)
+    assert reloaded is not None
+    assert reloaded.status == STATUS_ACTIVE
 
 
 def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
