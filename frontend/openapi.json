@@ -296,6 +296,102 @@
         "title": "ApproveDepositRequest",
         "type": "object"
       },
+      "AuditLogRead": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_email": {
+            "title": "Actor Email",
+            "type": "string"
+          },
+          "actor_user_id": {
+            "format": "uuid",
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "audit_id": {
+            "format": "uuid",
+            "title": "Audit Id",
+            "type": "string"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "title": "Subject Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "audit_id",
+          "actor_user_id",
+          "actor_email",
+          "action",
+          "subject_type",
+          "subject_id",
+          "before",
+          "after",
+          "reason",
+          "request_id",
+          "created_at"
+        ],
+        "title": "AuditLogRead",
+        "type": "object"
+      },
       "BankAccountCreateRequest": {
         "description": "Request schema for creating a bank account.",
         "properties": {
@@ -5608,6 +5704,214 @@
         ]
       }
     },
+    "/admin/audit": {
+      "get": {
+        "description": "Reverse-chronological audit trail. Needs ``audit:read``. Opening a page\nwrites a ``audit.log.viewed`` entry describing the filters used.",
+        "operationId": "list_audit_log",
+        "parameters": [
+          {
+            "description": "Only entries written by this staff member.",
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only entries written by this staff member.",
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "description": "Exact action string, e.g. ``kyc.pii.viewed``.",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact action string, e.g. ``kyc.pii.viewed``.",
+              "title": "Action"
+            }
+          },
+          {
+            "description": "Subject kind, e.g. ``kyc_application``.",
+            "in": "query",
+            "name": "subject_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Subject kind, e.g. ``kyc_application``.",
+              "title": "Subject Type"
+            }
+          },
+          {
+            "description": "Id of the record that was acted on or read.",
+            "in": "query",
+            "name": "subject_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Id of the record that was acted on or read.",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "description": "Inclusive lower bound on ``created_at`` (UTC).",
+            "in": "query",
+            "name": "created_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive lower bound on ``created_at`` (UTC).",
+              "title": "Created After"
+            }
+          },
+          {
+            "description": "Exclusive upper bound on ``created_at`` (UTC).",
+            "in": "query",
+            "name": "created_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive upper bound on ``created_at`` (UTC).",
+              "title": "Created Before"
+            }
+          },
+          {
+            "description": "Page size. A full page means there may be more.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Page size. A full page means there may be more.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only entries created before this instant. Pass the last row's `created_at` to fetch the next page.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only entries created before this instant. Pass the last row's `created_at` to fetch the next page.",
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogRead"
+                  },
+                  "title": "Response List Audit Log",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List privileged actions and sensitive reads",
+        "tags": [
+          "admin.audit"
+        ]
+      }
+    },
     "/admin/bank-accounts/pending": {
       "get": {
         "description": "List every bank account that is `pending_verification` and awaiting an\nadmin's approval or rejection. The full account number is returned here,\nbecause this is an admin endpoint, but the customer-facing endpoints mask\nit for security.",
@@ -10531,6 +10835,10 @@
     {
       "description": "Audited reviewer access to KYC evidence.",
       "name": "admin.kyc.documents"
+    },
+    {
+      "description": "Privileged actions and sensitive reads \u2014 who did what, to whom, and when.",
+      "name": "admin.audit"
     }
   ]
 }

@@ -129,7 +129,17 @@ def verify_bank_account(bank_account_id: uuid.UUID, admin_id: uuid.UUID) -> Bank
     # bank account is either not found or not pending.
     if not bank_accounts.verify(bank_account_id, admin_id, datetime.now(UTC)):
         _raise_not_pending_account(bank_accounts, bank_account_id, admin_id, "verify")
-    # Commit the transaction to save the verification in the database
+    from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
+    from remitx_api.services.audit_service import record_audit
+
+    record_audit(
+        actor_user_id=admin_id,
+        action=AuditAction.CASHOUT_BANK_ACCOUNT_VERIFIED,
+        subject_type=AuditSubject.BANK_ACCOUNT,
+        subject_id=bank_account_id,
+        before={"status": "pending_verification"},
+        after={"status": "verified"},
+    )
     db.session.commit()
     logger.info("bank account %s verified by admin %s", bank_account_id, admin_id)
     # Return the updated bank account object after verification
@@ -145,7 +155,18 @@ def reject_bank_account(
     # bank account is either not found or not pending.
     if not bank_accounts.reject(bank_account_id, admin_id, reason, datetime.now(UTC)):
         _raise_not_pending_account(bank_accounts, bank_account_id, admin_id, "reject")
-    # Commit the transaction to save the rejection in the database
+    from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
+    from remitx_api.services.audit_service import record_audit
+
+    record_audit(
+        actor_user_id=admin_id,
+        action=AuditAction.CASHOUT_BANK_ACCOUNT_REJECTED,
+        subject_type=AuditSubject.BANK_ACCOUNT,
+        subject_id=bank_account_id,
+        before={"status": "pending_verification"},
+        after={"status": "rejected"},
+        reason=reason.strip(),
+    )
     db.session.commit()
     logger.info(
         "bank account %s rejected by admin %s (%s)", bank_account_id, admin_id, reason
