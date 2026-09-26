@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from remitx_api.models.schemas.base import LedgerDecimal
 from pydantic import BaseModel
+from remitx_api.models.schemas.base import LedgerDecimal
 
 
 class _Sample(BaseModel):
