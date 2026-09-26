@@ -62,6 +62,7 @@ class Tag:
     ADMIN_WITHDRAWALS = "admin.withdrawals"
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
+    ADMIN_AUDIT = "admin.audit"
 
 
 TAGS: list[dict[str, str]] = [
@@ -139,6 +140,13 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_KYC_DOCUMENTS,
         "description": "Audited reviewer access to KYC evidence.",
+    },
+    {
+        "name": Tag.ADMIN_AUDIT,
+        "description": (
+            "Privileged actions and sensitive reads — who did what, to whom, "
+            "and when."
+        ),
     },
 ]
 

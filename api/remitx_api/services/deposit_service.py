@@ -532,6 +532,21 @@ def approve_pending_deposit(
     account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)
     account_repo.increase_balance(matched.account_id, transaction.amount)
     deposit_repo.link_deposit_to_user(deposit_id, matched.user_id, str(admin_id))
+    from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
+    from remitx_api.services.audit_service import record_audit
+
+    record_audit(
+        actor_user_id=admin_id,
+        action=AuditAction.CASHIN_CONFIRMED,
+        subject_type=AuditSubject.DEPOSIT,
+        subject_id=deposit_id,
+        before={"status": "pending"},
+        after={
+            "status": "confirmed",
+            "user_id": str(matched.user_id),
+            "account_reference": reference,
+        },
+    )
 
     db.session.commit()
     return deposit_repo.get_by_id(deposit_id)

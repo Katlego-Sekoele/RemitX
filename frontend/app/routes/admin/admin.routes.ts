@@ -57,6 +57,16 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         permission: "role:read",
         childItems: [],
       },
+      {
+        route: {
+          path: "admin/audit",
+          module: "routes/admin/audit.tsx",
+        },
+        label: "Audit log",
+        order: 20,
+        permission: "audit:read",
+        childItems: [],
+      },
     ],
   },
   {
