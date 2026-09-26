@@ -4,7 +4,7 @@ The application never mutates audit rows; this trigger makes that true even
 for a privileged database session.
 
 Revision ID: b3a8c1d4e5f6
-Revises: d7ea832b9596
+Revises: a1b2c3d4e5f6
 Create Date: 2026-09-26 16:00:00.000000+00:00
 
 """
@@ -12,7 +12,7 @@ Create Date: 2026-09-26 16:00:00.000000+00:00
 from alembic import op
 
 revision: str = "b3a8c1d4e5f6"
-down_revision: str | None = "d7ea832b9596"
+down_revision: str | None = "a1b2c3d4e5f6"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
