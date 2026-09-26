@@ -58,18 +58,12 @@ import {
   isRatesUnavailable,
   isTooSmallForFees,
   normalizeAmount,
-  PAYOUT_CURRENCIES,
   PREVIEW_DEBOUNCE_MS,
   RATES_UNAVAILABLE_MESSAGE,
   sanitizeAmountInput,
   type AmountLimits,
   type PayoutCurrency,
 } from "~/lib/send"
-
-const CURRENCY_ITEMS = PAYOUT_CURRENCIES.map((currency) => ({
-  value: currency,
-  label: currency,
-}))
 
 /** The indicative price for an amount; nothing is held or saved. */
 function usePreview(
@@ -168,6 +162,11 @@ export function AmountStep({
   // An empty field isn't a mistake yet; everything else is said at once.
   const showIssue = issue !== null && issue !== "empty"
   const name = beneficiaryName(beneficiary)
+  const payoutOptions = beneficiary.payout_currencies
+  const currencyItems = payoutOptions.map((value) => ({
+    value,
+    label: value,
+  }))
 
   /** What `limitZar` is worth in `fromCurrency`, at the priced rate — only
    * once that rate is known, and only worth showing at all for another
@@ -293,30 +292,42 @@ export function AmountStep({
             </Field>
             <Field>
               <FieldLabel htmlFor="send-currency">They receive in</FieldLabel>
-              <Select
-                items={CURRENCY_ITEMS}
-                value={currency}
-                onValueChange={(next) => {
-                  if (next) onCurrencyChange(next)
-                }}
-              >
-                <SelectTrigger id="send-currency" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    {CURRENCY_ITEMS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              {currencyItems.length === 1 ? (
+                <InputGroup>
+                  <InputGroupInput
+                    id="send-currency"
+                    readOnly
+                    value={currencyItems[0].label}
+                  />
+                </InputGroup>
+              ) : (
+                <Select
+                  items={currencyItems}
+                  value={currency}
+                  onValueChange={(next) => {
+                    if (next) onCurrencyChange(next)
+                  }}
+                >
+                  <SelectTrigger id="send-currency" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {currencyItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
               <FieldDescription>
-                {currency === beneficiary.payout_currency
-                  ? `${name}'s payout currency.`
-                  : `For this transfer only. ${name} is usually paid in ${beneficiary.payout_currency}.`}
+                {payoutOptions.length === 1
+                  ? `The only currency ${name} can receive in RemitX.`
+                  : currency === beneficiary.payout_currency
+                    ? `${name}'s payout currency.`
+                    : `For this transfer only. ${name} is usually paid in ${beneficiary.payout_currency}.`}
               </FieldDescription>
             </Field>
           </FieldGroup>

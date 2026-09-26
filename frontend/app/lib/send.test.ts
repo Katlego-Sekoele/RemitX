@@ -15,6 +15,7 @@ import {
   isRatesUnavailable,
   isTooSmallForFees,
   readSendSearch,
+  resolveSendPayoutCurrency,
   resolveStep,
   sanitizeAmountInput,
   stepNumber,
@@ -64,6 +65,49 @@ describe("search params", () => {
     const next = writeSendSearch(current, { from: "USD" })
     expect(next.toString()).toBe("beneficiary=b1&from=USD")
     expect(readSendSearch(next).from).toBe("USD")
+  })
+})
+
+describe("resolveSendPayoutCurrency", () => {
+  const beneficiary = {
+    payout_currency: "ZWL" as const,
+    payout_currencies: ["ZAR", "ZWL"] as const,
+  }
+
+  it("defaults to the beneficiary payout currency", () => {
+    expect(resolveSendPayoutCurrency({ currency: null }, beneficiary)).toBe(
+      "ZWL"
+    )
+  })
+
+  it("honours a URL override when it is a held account", () => {
+    expect(resolveSendPayoutCurrency({ currency: "ZAR" }, beneficiary)).toBe(
+      "ZAR"
+    )
+  })
+
+  it("ignores a URL override for a currency they do not hold", () => {
+    expect(resolveSendPayoutCurrency({ currency: "NAD" }, beneficiary)).toBe(
+      "ZWL"
+    )
+  })
+
+  it("returns null when they have no payout accounts", () => {
+    expect(
+      resolveSendPayoutCurrency(
+        { currency: null },
+        { payout_currency: "ZWL", payout_currencies: [] }
+      )
+    ).toBeNull()
+  })
+
+  it("falls back to a held currency when the saved default is not held", () => {
+    expect(
+      resolveSendPayoutCurrency(
+        { currency: null },
+        { payout_currency: "NAD", payout_currencies: ["ZAR", "ZWL"] }
+      )
+    ).toBe("ZAR")
   })
 })
 
