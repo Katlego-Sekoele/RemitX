@@ -48,9 +48,7 @@ def _decimal_plain_str(value: Decimal) -> str:
     return format(value, "f")
 
 
-LedgerDecimal = Annotated[
-    Decimal, PlainSerializer(_decimal_plain_str, return_type=str)
-]
+LedgerDecimal = Annotated[Decimal, PlainSerializer(_decimal_plain_str, return_type=str)]
 
 # A money amount a client asks to move, bounded to what the ledger's
 # Numeric(20,8) columns hold. Without the bound, an amount like 1e30

@@ -154,8 +154,6 @@ def test_dashboard_received_activity_uses_payout_not_settlement_token(
 
     assert day["payout_received"] == "1489.81"
     assert day["zar_sent"] == "0.00"
-    inflight = next(
-        row for row in body["in_flight"] if row["direction"] == "received"
-    )
+    inflight = next(row for row in body["in_flight"] if row["direction"] == "received")
     assert inflight["amount"] == "135.44"
     assert inflight["currency"] == CURRENCY_ZWL
