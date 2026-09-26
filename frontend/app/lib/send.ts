@@ -7,6 +7,7 @@
 
 import type { QuoteCreateRequest } from "~/client"
 import {
+  amountToCents,
   formatFiatToTokenExchangeRate,
   formatMoney,
   formatRate,
@@ -48,8 +49,12 @@ export function isPayoutCurrency(value: unknown): value is PayoutCurrency {
   return PAYOUT_CURRENCIES.includes(value as PayoutCurrency)
 }
 
-/** Sending is from the ZAR account only (decision 2 on #103). */
-export const SENDER_CURRENCY = "ZAR"
+/**
+ * Any of the sender's fiat accounts can send (decision 2 on #103, revised).
+ * ZAR is the default "from" account when the URL names none, and the one
+ * every customer has from signup.
+ */
+export const DEFAULT_SENDER_CURRENCY = "ZAR"
 
 /** How long the amount must sit still before the preview is requested. */
 export const PREVIEW_DEBOUNCE_MS = 400
@@ -60,6 +65,12 @@ export type SendSearch = {
   amount: string
   /** A per-transfer override of the beneficiary's payout currency. */
   currency: PayoutCurrency | null
+  /**
+   * Which of the sender's fiat accounts to send from, by currency. Null
+   * defaults to ZAR — validated against the sender's real accounts where
+   * this is read, the same way a stale `beneficiaryId` is.
+   */
+  from: string | null
   /** The step the URL asks for, before `resolveStep` checks it. */
   step: SendPageStep | null
 }
@@ -71,6 +82,7 @@ export function readSendSearch(params: URLSearchParams): SendSearch {
     beneficiaryId: params.get("beneficiary") || null,
     amount: params.get("amount") ?? "",
     currency: isPayoutCurrency(currency) ? currency : null,
+    from: params.get("from") || null,
     step:
       step === "recipient" || step === "amount" || step === "review"
         ? step
@@ -91,6 +103,7 @@ export function writeSendSearch(
   if (next.beneficiaryId) params.set("beneficiary", next.beneficiaryId)
   if (next.amount) params.set("amount", next.amount)
   if (next.currency) params.set("currency", next.currency)
+  if (next.from) params.set("from", next.from)
   if (next.step) params.set("step", next.step)
   return params
 }
@@ -138,9 +151,10 @@ export type AmountIssue =
   | "over_monthly_limit"
 
 export type AmountLimits = {
-  /** The ZAR account's available balance, a 2 dp decimal string. */
+  /** The chosen "from" account's available balance, in its own currency. */
   available?: string
-  /** What's left to send today and this month, in ZAR. */
+  /** What's left to send today and this month. Always in ZAR — the limits
+   * are rand, whatever account the send leaves from. */
   dailyRemaining?: string
   monthlyRemaining?: string
 }
@@ -150,24 +164,54 @@ export type AmountLimits = {
  * Fees aren't known until the API prices the amount, so "too small to cover
  * the fees" comes from the preview's refusal (`isTooSmallForFees`) instead.
  * A limit that hasn't loaded yet isn't checked; the API still is.
+ *
+ * `amountZar` is what `amount` is worth in rand — what the daily and monthly
+ * limits are actually checked against. Pass `amount` itself for a ZAR send
+ * (no conversion, no waiting on a preview); for another currency, pass the
+ * priced preview's `sender_amount_zar` once it has loaded, or omit it to
+ * skip the daily/monthly check until it has (same as a limit that hasn't
+ * loaded: caught for real by the API regardless).
  */
 export function amountIssue(
   amount: string,
-  limits: AmountLimits
+  limits: AmountLimits,
+  amountZar?: string
 ): AmountIssue | null {
   if (!amount.trim()) return "empty"
   const cents = toCents(amount)
   if (cents === null) return "invalid"
   if (cents <= 0n) return "zero"
   if (cents > MAX_AMOUNT_CENTS) return "too_large"
-  const over = (limit: string | undefined) => {
+  const over = (limit: string | undefined, valueCents: bigint) => {
     const limitCents = limit === undefined ? null : toCents(limit)
-    return limitCents !== null && cents > limitCents
+    return limitCents !== null && valueCents > limitCents
   }
-  if (over(limits.available)) return "over_balance"
-  if (over(limits.dailyRemaining)) return "over_daily_limit"
-  if (over(limits.monthlyRemaining)) return "over_monthly_limit"
+  if (over(limits.available, cents)) return "over_balance"
+  const zarCents = amountZar === undefined ? null : toCents(amountZar)
+  if (zarCents === null) return null
+  if (over(limits.dailyRemaining, zarCents)) return "over_daily_limit"
+  if (over(limits.monthlyRemaining, zarCents)) return "over_monthly_limit"
   return null
+}
+
+/**
+ * What `remainingZar` rand is worth in `currency`, at the rate a priced send
+ * implies (`amount` of `currency`, worth `amountZar` rand) — the same
+ * arithmetic the server's own refusal uses (services/send_limits.py).
+ * Rounded down, in cents, so the estimate itself would still fit. An
+ * indicative figure only: the real one comes from the quote it is confirmed
+ * against.
+ */
+export function estimateInCurrency(
+  remainingZar: string,
+  amount: string,
+  amountZar: string
+): string {
+  const amountZarCents = amountToCents(amountZar)
+  if (amountZarCents <= 0n) return "0.00"
+  const cents =
+    (amountToCents(remainingZar) * amountToCents(amount)) / amountZarCents
+  return fromCents(cents)
 }
 
 /**
@@ -184,29 +228,44 @@ export function canPreview(issue: AmountIssue | null): boolean {
   )
 }
 
+/** The amount another currency's limit refusal is worth, shown alongside the
+ * rand figure — see `estimateInCurrency`. */
+export type MoneyEstimate = { amount: string; currency: string }
+
+/**
+ * `currency` is what `limits.available` (and the amount itself) are
+ * denominated in — ZAR by default. `estimate`, when the send is in another
+ * currency, is what's left of the binding limit in that currency too.
+ */
 export function amountIssueMessage(
   issue: AmountIssue,
-  limits: AmountLimits
+  limits: AmountLimits,
+  currency: string = DEFAULT_SENDER_CURRENCY,
+  estimate?: MoneyEstimate
 ): string {
-  const zar = (value: string | undefined) =>
-    formatMoney(value ?? "0", SENDER_CURRENCY)
+  const money = (value: string | undefined, curr: string) =>
+    formatMoney(value ?? "0", curr)
+  const zar = (value: string | undefined) => money(value, "ZAR")
+  const suffix = estimate
+    ? ` (about ${money(estimate.amount, estimate.currency)})`
+    : ""
   switch (issue) {
     case "empty":
       return "Enter an amount to send."
     case "invalid":
-      return "Enter an amount in rand, like 500 or 500.50."
+      return "Enter an amount, like 500 or 500.50."
     case "zero":
-      return "Enter an amount more than R 0.00."
+      return `Enter an amount more than ${money("0", currency)}.`
     case "too_large":
       return "That amount is too large."
     case "too_small_for_fees":
       return "That's too small to cover the fees. Try a larger amount."
     case "over_balance":
-      return `That's more than your available balance of ${zar(limits.available)}.`
+      return `That's more than your available balance of ${money(limits.available, currency)}.`
     case "over_daily_limit":
-      return `That would exceed your daily limit. You can send up to ${zar(limits.dailyRemaining)} today.`
+      return `That would exceed your daily limit. You can send up to ${zar(limits.dailyRemaining)}${suffix} today.`
     case "over_monthly_limit":
-      return `That would exceed your monthly limit. You can send up to ${zar(limits.monthlyRemaining)} this month.`
+      return `That would exceed your monthly limit. You can send up to ${zar(limits.monthlyRemaining)}${suffix} this month.`
   }
 }
 
@@ -303,6 +362,10 @@ export function quoteLines(quote: PricedQuote): QuoteLine[] {
       : []),
     {
       label: "Exchange rate",
+      // fiat_to_token_exchange_rate is token units per 1 sender_currency;
+      // formatFiatToTokenExchangeRate inverts and labels it with the quote's
+      // own token and sender currency — not assumed to be RLUSD/rand, since
+      // any fiat account can send now.
       value: formatFiatToTokenExchangeRate(
         quote.fiat_to_token_exchange_rate,
         sender,

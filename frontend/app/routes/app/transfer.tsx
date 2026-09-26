@@ -204,7 +204,13 @@ function SendAgainButton({ transfer }: { transfer: Transfer }) {
   )
   const search = match
     ? `?${writeSendSearch(
-        { beneficiaryId: null, amount: "", currency: null, step: null },
+        {
+          beneficiaryId: null,
+          amount: "",
+          currency: null,
+          from: null,
+          step: null,
+        },
         { beneficiaryId: match.beneficiary_id }
       )}`
     : ""

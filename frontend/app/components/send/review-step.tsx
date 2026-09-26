@@ -42,7 +42,6 @@ import {
   quoteRefusal,
   RATES_UNAVAILABLE_MESSAGE,
   secondsLeft,
-  SENDER_CURRENCY,
   type PayoutCurrency,
 } from "~/lib/send"
 import { transferPath } from "~/lib/transfers"
@@ -56,17 +55,25 @@ import { transferPath } from "~/lib/transfers"
 function useQuote(
   beneficiaryId: string,
   amount: string,
+  fromCurrency: string,
   currency: PayoutCurrency
 ) {
   const senderAmount = normalizeAmount(amount)
   return useQuery({
-    queryKey: ["quotes", "create", beneficiaryId, senderAmount, currency],
+    queryKey: [
+      "quotes",
+      "create",
+      beneficiaryId,
+      senderAmount,
+      fromCurrency,
+      currency,
+    ],
     queryFn: async () => {
       const { data } = await sdk.quotes.createQuote({
         body: {
           beneficiary_id: beneficiaryId,
           sender_amount: senderAmount,
-          sender_currency: SENDER_CURRENCY,
+          sender_currency: fromCurrency,
           receiver_payout_currency: currency,
         },
         throwOnError: true,
@@ -83,17 +90,25 @@ export function ReviewStep({
   beneficiary,
   amount,
   currency,
+  fromCurrency,
   onBack,
 }: {
   beneficiary: Beneficiary
   amount: string
   currency: PayoutCurrency
+  /** Which of the sender's fiat accounts this transfer leaves from. */
+  fromCurrency: string
   onBack: () => void
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const now = useNow()
-  const quote = useQuote(beneficiary.beneficiary_id, amount, currency)
+  const quote = useQuote(
+    beneficiary.beneficiary_id,
+    amount,
+    fromCurrency,
+    currency
+  )
 
   // Set synchronously on the first click: a double click lands both clicks
   // before React re-renders the button disabled.
@@ -213,7 +228,8 @@ export function ReviewStep({
           <ItemContent>
             <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
             <ItemDescription>
-              Receives {data.receiver_currency} · Paid from your ZAR balance
+              Receives {data.receiver_currency} · Paid from your{" "}
+              {data.sender_currency} balance
             </ItemDescription>
           </ItemContent>
           <ItemActions>
@@ -253,8 +269,10 @@ export function ReviewStep({
             <WarningCircleIcon />
             <AlertTitle>Your balance no longer covers this transfer</AlertTitle>
             <AlertDescription>
-              Another transfer may have spent it first. Add money to your ZAR
-              balance by EFT, then get a new quote.
+              Another transfer may have spent it first.{" "}
+              {fromCurrency === "ZAR"
+                ? "Add money to your ZAR balance by EFT, then get a new quote."
+                : "Get a new quote once you have enough."}
             </AlertDescription>
             <AlertAction>
               <Button size="sm" variant="outline" onClick={newQuote}>
