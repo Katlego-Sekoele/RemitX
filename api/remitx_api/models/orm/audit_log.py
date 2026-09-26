@@ -90,8 +90,8 @@ class AuditLog(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    # Never null. A system action gets its own user row rather than a NULL
-    # actor, so every entry answers "who" without a special case.
+    # Never null — every entry is a real staff member (including whoever ran
+    # statement reconciliation on the admin portal).
     actor_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
         ForeignKey("users.id", ondelete="RESTRICT"),

@@ -20,6 +20,7 @@ from remitx_api.models.orm.account import (
     TYPE_PLATFORM_FIAT,
     Account,
 )
+from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
 from remitx_api.models.orm.deposit import CONFIRMED_BY_SYSTEM, Deposit
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
@@ -190,9 +191,17 @@ def _skipped_line(
     )
 
 
-def process_deposits(bank_statement: str | list[dict]) -> ProcessDepositsResult:
+def process_deposits(
+    bank_statement: str | list[dict],
+    *,
+    actor_user_id: uuid.UUID | None = None,
+) -> ProcessDepositsResult:
     """The daily reconciliation job — simulated for this project through the
     admin pushing a button on the admin portal page that executes the job.
+
+    When ``actor_user_id`` is set, each line that auto-matches a customer
+    writes a ``cashin.confirmed`` audit entry for that staff member. Callers
+    that invoke the job without a human (some tests) omit it.
     """
     deposit_repo = DepositRepository()
     transaction_repo = TransactionRepository()
@@ -208,6 +217,7 @@ def process_deposits(bank_statement: str | list[dict]) -> ProcessDepositsResult:
             transaction_repo,
             account_repo,
             occurrence_next,
+            actor_user_id=actor_user_id,
         )
         if deposit is not None:
             touched.append(deposit)
@@ -229,6 +239,8 @@ def _create_deposit(
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
     occurrence_next: dict[str, int],
+    *,
+    actor_user_id: uuid.UUID | None = None,
 ) -> tuple[Deposit | None, SkippedStatementLine | None]:
     """Match one bank statement line to an account and write its deposit + transaction.
 
@@ -338,6 +350,7 @@ def _create_deposit(
                     deposit_repo,
                     transaction_repo,
                     account_repo,
+                    actor_user_id=actor_user_id,
                 ),
                 None,
             )
@@ -363,6 +376,8 @@ def _insert_deposit(
     deposit_repo: DepositRepository,
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
+    *,
+    actor_user_id: uuid.UUID | None = None,
 ) -> Deposit:
     account = _find_account(reference, currency, account_repo)
     # If no account matches the reference, create a pending transaction and deposit
@@ -417,22 +432,21 @@ def _insert_deposit(
             statement_fingerprint=fingerprint,
         )
     )
-    from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
-    from remitx_api.services.audit_service import record_audit
-    from remitx_api.system_actor import ensure_system_actor
+    if actor_user_id is not None:
+        from remitx_api.services.audit_service import record_audit
 
-    record_audit(
-        actor_user_id=ensure_system_actor(),
-        action=AuditAction.CASHIN_CONFIRMED,
-        subject_type=AuditSubject.DEPOSIT,
-        subject_id=deposit.deposit_id,
-        after={
-            "status": "confirmed",
-            "auto_matched": True,
-            "user_id": str(account.user_id),
-            "account_reference": reference,
-        },
-    )
+        record_audit(
+            actor_user_id=actor_user_id,
+            action=AuditAction.CASHIN_CONFIRMED,
+            subject_type=AuditSubject.DEPOSIT,
+            subject_id=deposit.deposit_id,
+            after={
+                "status": "confirmed",
+                "auto_matched": True,
+                "user_id": str(account.user_id),
+                "account_reference": reference,
+            },
+        )
     return deposit
 
 

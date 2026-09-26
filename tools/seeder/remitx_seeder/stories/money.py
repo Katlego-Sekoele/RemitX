@@ -227,7 +227,10 @@ class MoneyStory:
                     "currency": "ZAR",
                 }
             )
-        result = deposit_service.process_deposits(rows)
+        operator = self.ctx.staff("treasury_operator")
+        result = deposit_service.process_deposits(
+            rows, actor_user_id=operator.user_id
+        )
         self.ctx.count("deposits.statement_lines", len(rows))
         self.ctx.count("deposits.skipped_lines", len(result.skipped))
         transactions = TransactionRepository()

@@ -26,13 +26,15 @@ class DepositController:
     def __init__(self) -> None:
         self._transactions = TransactionRepository()
 
-    def process_deposits(self, rows: list[dict]) -> ProcessDepositsResponse:
+    def process_deposits(
+        self, rows: list[dict], actor_user_id: uuid.UUID
+    ) -> ProcessDepositsResponse:
         """Run the reconciliation job, then fatten each resulting Deposit
         with its transaction's amount/currency/status — a Deposit row alone
         doesn't carry those, and the admin portal needs them to show what
         happened per statement line.
         """
-        result = deposit_service.process_deposits(rows)
+        result = deposit_service.process_deposits(rows, actor_user_id=actor_user_id)
         return ProcessDepositsResponse(
             processed=[
                 ProcessedDepositRead(**self._fatten(deposit))

@@ -19,7 +19,6 @@ from remitx_api.models.schemas.deposit import SkippedStatementLineReason
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
-from remitx_api.system_actor import SYSTEM_ACTOR_USER_ID
 from sqlalchemy import select
 from tests.platform_account_helpers import seed_platform_accounts
 
@@ -94,6 +93,7 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
     user = _customer("dep")
     zar_reference = f"{user.base_reference}-zar"
 
+    operator = _admin()
     result = deposit_service.process_deposits(
         [
             {
@@ -102,7 +102,8 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
                 "currency": currency,
                 "date": "2026-09-10",
             }
-        ]
+        ],
+        actor_user_id=operator.id,
     )
 
     [deposit] = result.deposits
@@ -111,7 +112,7 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
     (entry,) = db.session.scalars(
         select(AuditLog).where(AuditLog.action == AuditAction.CASHIN_CONFIRMED.value)
     ).all()
-    assert entry.actor_user_id == SYSTEM_ACTOR_USER_ID
+    assert entry.actor_user_id == operator.id
     assert entry.subject_id == deposit.deposit_id
     assert entry.after["auto_matched"] is True
 
