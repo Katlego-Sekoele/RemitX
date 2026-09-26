@@ -4422,7 +4422,6 @@
           },
           "sender_amount_zar": {
             "description": "The send in rand at these rates, to check against what is left of the sending limits. The quote locks its own.",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Amount Zar",
             "type": "string"
           },
@@ -4545,7 +4544,6 @@
           },
           "sender_amount_zar": {
             "description": "The send in rand at this quote's rates: what it counts as against the sending limits, which are in rand from any account.",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Sender Amount Zar",
             "type": "string"
           },
