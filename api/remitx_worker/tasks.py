@@ -36,6 +36,24 @@ def ping():
     return "pong"
 
 
+@celery.task(name="remitx_worker.tasks.reclaim_stuck_settlements")
+def reclaim_stuck_settlements() -> str:
+    """Periodic reclaim for settlement groups lost off the broker."""
+    from remitx_api.config import Config
+    from remitx_worker.reclaim import (
+        log_stale_processing_settlements,
+        reclaim_pending_settlements,
+    )
+
+    pending = reclaim_pending_settlements(
+        min_age_seconds=Config.SETTLEMENT_RECLAIM_MIN_AGE_SECONDS
+    )
+    stale = log_stale_processing_settlements(
+        min_age_seconds=Config.SETTLEMENT_PROCESSING_STALE_LOG_SECONDS
+    )
+    return f"pending={pending} stale_logged={stale}"
+
+
 @celery.task(name="remitx_worker.tasks.process_integration_message")
 def process_integration_message(message_id: str) -> str:
     """Move an integration message from PENDING to PROCESSED.
@@ -199,8 +217,9 @@ def confirm_treasury_burn(
     transaction the `quote_id` is set to `failed`. Only transaction status
     changes as no account balances were changed.
 
-    A failed group sits and needs manual investigation — there's no automatic
-    retry/reclaim for a stuck `transactions` row yet.
+    A failed group sits and needs manual investigation. Groups stuck in
+    ``processing`` are only logged by ``reclaim_stuck_settlements``; fully
+    ``pending`` groups are re-enqueued by ``reclaim_pending_settlements``.
 
     `error`(the original XRPL exception's message, from `burn_treasury_tokens`) is
     logged alongside that failure so Render's log stream shows the actual

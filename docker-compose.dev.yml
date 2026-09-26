@@ -186,7 +186,7 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    command: sh -c "[ -x /opt/venv/bin/python ] || python -m venv /opt/venv; /opt/venv/bin/pip install -e . && /opt/venv/bin/celery -A remitx_worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
+    command: sh -c "[ -x /opt/venv/bin/python ] || python -m venv /opt/venv; /opt/venv/bin/pip install -e . && /opt/venv/bin/celery -A remitx_worker.celery_app worker -B --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
 
 volumes:
   postgres_data:
