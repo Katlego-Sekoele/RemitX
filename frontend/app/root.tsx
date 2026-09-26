@@ -8,6 +8,7 @@ import {
   isRouteErrorResponse,
 } from "react-router"
 
+import { ApiBootstrap } from "~/components/api-bootstrap"
 import { AppShell } from "~/components/app-shell"
 import { ChromeBar, HomeLink } from "~/components/app-chrome"
 import { ThemeProvider } from "~/components/theme-provider"
@@ -96,6 +97,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
+          <ApiBootstrap />
           <ThemeProvider>
             {children}
             <Toaster />

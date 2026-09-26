@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
 
 import {
   amountToCents,
@@ -7,6 +7,7 @@ import {
   formatRate,
   fromCents,
   invertRate,
+  setSettlementTokenCurrency,
   subtractAmounts,
   toCents,
 } from "~/lib/money"
@@ -61,6 +62,10 @@ describe("subtractAmounts", () => {
 })
 
 describe("formatMoney", () => {
+  beforeAll(() => {
+    setSettlementTokenCurrency("uctusd")
+  })
+
   it("formats rand with its symbol and other currencies by code", () => {
     expect(plain(formatMoney("1000.00", "ZAR"))).toBe("R 1,000.00")
     expect(plain(formatMoney("1354.37", "ZWL"))).toBe("ZWL 1,354.37")
@@ -70,7 +75,9 @@ describe("formatMoney", () => {
 
   it("calls the token RLUSD", () => {
     expect(plain(formatMoney("52.43", "uctusd"))).toBe("RLUSD 52.43")
+    expect(plain(formatMoney("52.43", "", "settlement"))).toBe("RLUSD 52.43")
     expect(currencyLabel("uctusd")).toBe("RLUSD")
+    expect(currencyLabel("", "settlement")).toBe("RLUSD")
   })
 
   it("keeps digits a float would drop", () => {

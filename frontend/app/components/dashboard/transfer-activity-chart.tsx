@@ -21,7 +21,7 @@ import {
   formatChartDay,
   formatChartMoney,
 } from "~/lib/chart-series"
-import { SETTLEMENT_TOKEN_LABEL, TOKEN_CURRENCY } from "~/lib/money"
+import { SETTLEMENT_TOKEN_LABEL } from "~/lib/money"
 
 const chartConfig = {
   zarSent: { label: "ZAR sent", color: "var(--chart-1)" },
@@ -80,10 +80,9 @@ export function TransferActivityChart({
                 <ChartTooltipContent
                   labelFormatter={(value) => formatChartDay(String(value))}
                   formatter={(value, name) =>
-                    formatChartMoney(
-                      value,
-                      name === "tokenReceived" ? TOKEN_CURRENCY : "ZAR"
-                    )
+                    name === "tokenReceived"
+                      ? formatChartMoney(value, "", "settlement")
+                      : formatChartMoney(value, "ZAR")
                   }
                 />
               }

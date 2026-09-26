@@ -308,7 +308,7 @@ export function quoteLines(quote: PricedQuote): QuoteLine[] {
     },
     {
       label: `${TOKEN_LABEL} sent`,
-      value: formatMoney(quote.token_amount, quote.token_name),
+      value: formatMoney(quote.token_amount, quote.token_name, "settlement"),
     },
     {
       label: paid ? "Recipient gets" : "Received",

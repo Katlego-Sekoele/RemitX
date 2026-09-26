@@ -26,7 +26,6 @@ import {
   formatMoney,
   isZeroMoney,
   SETTLEMENT_TOKEN_LABEL,
-  TOKEN_CURRENCY,
 } from "~/lib/money"
 import { PERMISSIONS } from "~/lib/permissions"
 
@@ -78,13 +77,13 @@ export function TreasuryCoverage() {
           <DescriptionItem>
             <DescriptionTerm>Available</DescriptionTerm>
             <DescriptionDetails className="font-heading text-2xl font-semibold tabular-nums">
-              {formatMoney(available, TOKEN_CURRENCY)}
+              {formatMoney(available, "", "settlement")}
             </DescriptionDetails>
           </DescriptionItem>
           <DescriptionItem>
             <DescriptionTerm>Customer balances</DescriptionTerm>
             <DescriptionDetails className="font-heading text-2xl font-semibold tabular-nums">
-              {formatMoney(owed, TOKEN_CURRENCY)}
+              {formatMoney(owed, "", "settlement")}
             </DescriptionDetails>
           </DescriptionItem>
         </DescriptionList>

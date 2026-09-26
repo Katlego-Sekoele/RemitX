@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns"
 
-import { formatMoney, amountToCents } from "~/lib/money"
+import type { AccountKind } from "~/lib/money"
+import { amountToCents, formatMoney } from "~/lib/money"
 
 /** "2026-09-25" → "25 Sep", for chart axis ticks. */
 export function formatChartDay(day: string): string {
@@ -28,8 +29,12 @@ export function chartAmount(amount: string): number {
 }
 
 /** A chart tooltip value back into the money format the rest of the app uses. */
-export function formatChartMoney(value: unknown, currency: string): string {
+export function formatChartMoney(
+  value: unknown,
+  currency: string,
+  kind: AccountKind = "fiat"
+): string {
   const numeric = typeof value === "number" ? value : Number(value)
   if (!Number.isFinite(numeric)) return ""
-  return formatMoney(numeric.toFixed(2), currency)
+  return formatMoney(numeric.toFixed(2), currency, kind)
 }

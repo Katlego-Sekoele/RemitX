@@ -36,7 +36,7 @@ import {
   formatChartMoney,
   lastDays,
 } from "~/lib/chart-series"
-import { SETTLEMENT_TOKEN_LABEL, TOKEN_CURRENCY } from "~/lib/money"
+import { SETTLEMENT_TOKEN_LABEL } from "~/lib/money"
 import { PERMISSIONS } from "~/lib/permissions"
 
 const volumeConfig = {
@@ -142,10 +142,9 @@ export function OperationsCharts() {
                   <ChartTooltipContent
                     labelFormatter={(value) => formatChartDay(String(value))}
                     formatter={(value, name) =>
-                      formatChartMoney(
-                        value,
-                        name === "tokenSettled" ? TOKEN_CURRENCY : "ZAR"
-                      )
+                      name === "tokenSettled"
+                        ? formatChartMoney(value, "", "settlement")
+                        : formatChartMoney(value, "ZAR")
                     }
                   />
                 }

@@ -914,6 +914,10 @@
       },
       "HealthRead": {
         "properties": {
+          "settlement_token_currency": {
+            "title": "Settlement Token Currency",
+            "type": "string"
+          },
           "status": {
             "const": "ok",
             "title": "Status",
@@ -921,7 +925,8 @@
           }
         },
         "required": [
-          "status"
+          "status",
+          "settlement_token_currency"
         ],
         "title": "HealthRead",
         "type": "object"
