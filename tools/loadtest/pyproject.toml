@@ -1,0 +1,13 @@
+# Tool settings only. The load test is not an installable package: its scripts
+# run inside the load-test stack's containers (see docker-compose.yml).
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

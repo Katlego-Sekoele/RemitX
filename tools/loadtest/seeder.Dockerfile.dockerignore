@@ -1,0 +1,16 @@
+# The seeder image's build context is the repo root; it only needs these.
+*
+!api/
+!tools/seeder/
+!tools/loadtest/
+
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.env
+**/.env.*
+api/remitx.db
+tools/seeder/runs
+tools/loadtest/results

@@ -1,0 +1,175 @@
+# The throwaway load-test stack. Run it with `make loadtest` (run.sh), which
+# builds it, seeds a fresh database, runs Locust, and then deletes every
+# container, network and volume here.
+#
+# The default network is internal: nothing in the stack can reach the
+# internet, so a call to Clerk, the exchange-rate API or the XRPL testnet that
+# slipped through would fail instead of leaving the machine.
+
+name: remitx-loadtest
+
+# Migrations, the API and the worker run the production image (api/Dockerfile).
+x-api-image: &api-image
+  image: remitx-loadtest-api
+  build: ../../api
+  env_file: loadtest.env
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: loadtest
+      POSTGRES_DB: loadtest
+      # No password: only this stack's internal network can reach it, and it
+      # is deleted after every run.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadtest -d loadtest"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The seeder uploads KYC documents; same image as docker-compose.dev.yml.
+  minio:
+    image: cgr.dev/chainguard/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: loadtest
+      MINIO_ROOT_PASSWORD: loadtest-secret
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  minio-setup:
+    image: cgr.dev/chainguard/minio
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 loadtest loadtest-secret &&
+      mc mb --ignore-existing local/loadtest-kyc-documents
+      "
+
+  migrate:
+    <<: *api-image
+    command: alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Seeds the database through the backend's own code, then prepare.py stores
+  # rates, a signing key pair and the people Locust acts as.
+  seeder:
+    build:
+      context: ../..
+      dockerfile: tools/loadtest/seeder.Dockerfile
+    env_file: loadtest.env
+    volumes:
+      - run_data:/run-data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-setup:
+        condition: service_completed_successfully
+    profiles: [tools]
+
+  api:
+    <<: *api-image
+    # CLERK_JWT_KEY is the public half of the key pair prepare.py generated.
+    command:
+      - sh
+      - -c
+      - >-
+        CLERK_JWT_KEY="$$(cat /run-data/jwt_public.pem)" || exit 1;
+        export CLERK_JWT_KEY;
+        exec python -m remitx_api
+    volumes:
+      - run_data:/run-data:ro
+    # One CPU by default; 0.1 matches a Render free instance.
+    cpus: ${LOADTEST_API_CPUS:-1}
+    mem_limit: ${LOADTEST_API_MEMORY:-512m}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/health', timeout=2)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The real worker, except that the XRPL burn is simulated with a delay
+  # calibrated on QA's real settlements (fake_xrpl_worker.py).
+  worker:
+    <<: *api-image
+    command: python /loadtest/fake_xrpl_worker.py
+    environment:
+      CELERY_CONCURRENCY: ${LOADTEST_CELERY_CONCURRENCY:-2}
+      # Passed through only when set; fake_xrpl_worker.py has the defaults.
+      LOADTEST_BURN_P50_S:
+      LOADTEST_BURN_P95_S:
+      LOADTEST_BURN_FAILURE_RATE:
+    volumes:
+      - ./fake_xrpl_worker.py:/loadtest/fake_xrpl_worker.py:ro
+    cpus: ${LOADTEST_WORKER_CPUS:-1}
+    # A Render free instance's memory; each Celery process costs ~100 MB.
+    mem_limit: ${LOADTEST_WORKER_MEMORY:-512m}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/health', timeout=2)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  locust:
+    build:
+      context: .
+      dockerfile: locust.Dockerfile
+    # Your user id, so the report it writes to results/ is yours to delete.
+    user: "${LOADTEST_UID:-1000}:${LOADTEST_GID:-1000}"
+    environment:
+      LOADTEST_STEPS:
+      LOADTEST_STEP_SECONDS:
+      LOADTEST_SPAWN_RATE:
+    command: >-
+      -f /mnt/locust/locustfile.py --headless --host http://api:4200
+      --html /results/report.html --csv /results/stats --csv-full-history
+      --only-summary --exit-code-on-error 0
+    volumes:
+      - run_data:/run-data:ro
+      - ${LOADTEST_RESULTS_DIR:-./results}:/results
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    profiles: [tools]
+
+networks:
+  default:
+    internal: true
+
+volumes:
+  postgres_data:
+  minio_data:
+  run_data:

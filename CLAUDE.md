@@ -29,6 +29,8 @@ Monorepo with two apps sharing one env file:
 - [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [tools/seeder/](tools/seeder/) — local-only QA test-data seeder (NiceGUI). Never deployed; drives the backend's own controllers, services and worker tasks. See its [README](tools/seeder/README.md) and [ADR 0001](docs/adr/0001-qa-seeder-drives-the-service-layer.md)
+- [tools/loadtest/](tools/loadtest/) — Locust load test on a throwaway Docker stack, seeded by the seeder; never calls Clerk, the rate API or the XRPL. See its [README](tools/loadtest/README.md)
+- [Makefile](Makefile) — shortcuts for the commands below; `make` lists them
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
 - [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
 
@@ -38,9 +40,11 @@ Monorepo with two apps sharing one env file:
 
 `.env` is gitignored and a pre-commit hook hard-blocks committing any file named `.env` or `.env.*` (templates named `*.example` excepted).
 
-The one exception to the single `.env`: the seeder's QA target reads `tools/seeder/.env.qa` (gitignored), so QA credentials never sit in the file the API uses locally.
+Two exceptions to the single `.env`: the seeder's QA target reads `tools/seeder/.env.qa` (gitignored), so QA credentials never sit in the file the API uses locally; and the load test's throwaway stack (and the seeder's `loadtest` target) reads the committed `tools/loadtest/loadtest.env`, which holds nothing secret, so a run can never pick up real keys.
 
 ## Commands
+
+`make` lists shortcuts for most of the commands below.
 
 ### Docker (full stack: API + frontend + Postgres + Redis + MinIO)
 
@@ -99,6 +103,15 @@ pytest                              # needs SEEDER_TEST_DATABASE_URL (a Postgres
 ```
 
 A backend change that breaks the seeder fails its CI job: update the story in `tools/seeder/remitx_seeder/stories/`. Writes that bypass product flows go only in `direct.py`.
+
+### Load test (Docker only)
+
+```bash
+make loadtest        # build, seed a fresh stack, run Locust, delete the stack
+make loadtest-down   # delete the stack after an interrupted or KEEP_STACK=1 run
+```
+
+The report lands in `tools/loadtest/results/<timestamp>/report.html`. The API verifies Locust's self-signed tokens through `CLERK_JWT_KEY` (networkless Clerk verification), and the worker's XRPL burn is simulated with a delay calibrated by `tools/loadtest/qa_xrpl_timings.sql`.
 
 ### Git hooks
 

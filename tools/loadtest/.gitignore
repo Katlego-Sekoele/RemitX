@@ -1,0 +1,7 @@
+# Locust reports and logs, one folder per run.
+results/
+# Tool caches.
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
