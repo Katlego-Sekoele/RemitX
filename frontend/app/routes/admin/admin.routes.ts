@@ -57,16 +57,6 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         permission: "role:read",
         childItems: [],
       },
-      {
-        route: {
-          path: "admin/audit",
-          module: "routes/admin/audit.tsx",
-        },
-        label: "Audit log",
-        order: 20,
-        permission: "audit:read",
-        childItems: [],
-      },
     ],
   },
   {
@@ -152,6 +142,22 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         },
         label: "Bank accounts",
         permission: "cashout:read",
+        childItems: [],
+      },
+    ],
+  },
+  {
+    label: "Operations",
+    order: 24,
+    icon: "PulseIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/stuck-settlements",
+          module: "routes/admin/stuck-settlements.tsx",
+        },
+        label: "Stuck settlements",
+        permission: "transaction:read_any",
         childItems: [],
       },
     ],
