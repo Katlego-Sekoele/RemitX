@@ -46,6 +46,7 @@
     "compliance_analyst": "Joins the KYC review team as an analyst.",
     "compliance_officer": "Compliance officer for KYC decisions.",
     "treasury_operator": "Runs the daily bank-statement reconciliation.",
+    "payout_operator": "Works the cash-out queue: verifies bank accounts before withdrawals.",
     "support_agent": "Customer support desk.",
     "auditor": "Quarterly internal audit access."
   },

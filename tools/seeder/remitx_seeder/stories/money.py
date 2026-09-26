@@ -13,6 +13,14 @@
   confirmation (`RemittanceController.confirm`), within the sender's KYC
   limits and available balance. Some quotes are left to expire. Settlement is
   in settlement.py.
+- **Payout accounts** in a currency other than ZAR are opened by the
+  recipient through `AccountController.open_account` once they are verified.
+  Someone who cannot pass KYC (no residence in a country RemitX onboards) is
+  provisioned in `direct.open_payout_account`, because a quote now refuses a
+  beneficiary who does not already hold the payout currency.
+- **Cash-out** is an external bank account (`BankAccountController`) that a
+  payout operator verifies or rejects, then a withdrawal
+  (`WithdrawalController.request`) of spare balance.
 """
 
 from __future__ import annotations
@@ -24,11 +32,21 @@ from decimal import ROUND_UP, Decimal
 
 from remitx_seeder import direct
 from remitx_seeder.context import RunContext, SeededPerson
+from remitx_seeder.data import load
 from remitx_seeder.generators.personas import weighted
 from remitx_seeder.sim import Simulation
 from remitx_seeder.stories.timing import SAST, business_time, paydays, waking_time
 
 MIN_SEND_ZAR = Decimal("150")
+# Payout currency a verified person opens for themselves. ZAR already exists
+# from signup. Zimbabwean and Namibian recipients are not in this map's
+# onboarding countries, so they never reach `open_account`.
+HOME_PAYOUT = {"US": "USD", "ZW": "USD", "NA": "NAD"}
+REJECT_REASONS = (
+    "Account holder name does not match the profile.",
+    "Branch code does not match the bank.",
+    "The statement is older than three months.",
+)
 # What a send costs on top of the amount, roughly (fixed + percentage + FX
 # margin). Only used to size deposits, never to price anything.
 FEE_BUFFER_RATE = Decimal("0.03")
@@ -80,6 +98,8 @@ class MoneyStory:
     # --- the verified sender's life --------------------------------------
 
     def on_verified(self, person: SeededPerson) -> None:
+        self._open_home_payout_account(person)
+        self._plan_bank_account(person)
         if person.persona.role != "sender":
             return
         if self.ctx.rng.random() < self.ctx.scenario.money.dormant_rate:
@@ -118,10 +138,7 @@ class MoneyStory:
 
         corridor = person.persona.corridor
         currency = weighted(self.ctx.rng, corridor["payout_currencies"])
-        if currency != "ZAR":
-            direct.open_payout_account(
-                recipient.user_id, recipient.base_reference, currency
-            )
+        self._ensure_payout_account(recipient, currency)
         row = BeneficiaryController().create(
             person.user_id,
             recipient.user_id,
@@ -136,6 +153,165 @@ class MoneyStory:
             }
         )
         self.ctx.count("money.beneficiaries")
+
+    def _open_home_payout_account(self, person: SeededPerson) -> None:
+        currency = HOME_PAYOUT.get(person.persona.nationality)
+        if currency is None:
+            return
+        self._ensure_payout_account(person, currency)
+
+    def _ensure_payout_account(self, person: SeededPerson, currency: str) -> None:
+        """The beneficiary must already hold `currency` before a quote.
+
+        A verified customer opens it themselves. Anyone else is provisioned
+        directly: the product refuses `open_account` until KYC is approved,
+        and people outside the onboarding countries never get there.
+        """
+        from remitx_api.errors.accounts import AccountAlreadyHeldError
+        from remitx_api.models.orm.account import CURRENCY_ZAR
+        from remitx_api.repositories.account_repository import AccountRepository
+
+        if currency == CURRENCY_ZAR:
+            return
+        if AccountRepository().get_user_account(person.user_id, currency) is not None:
+            return
+        if person.verified:
+            from remitx_api.controllers.account_controller import AccountController
+
+            try:
+                AccountController().open_account(person.user_id, currency)
+            except AccountAlreadyHeldError:
+                return
+            self.ctx.count("money.payout_accounts_opened")
+            return
+        direct.open_payout_account(person.user_id, person.base_reference, currency)
+        self.ctx.count("money.payout_accounts_provisioned")
+
+    # --- cash-out ----------------------------------------------------------
+
+    def _plan_bank_account(self, person: SeededPerson) -> None:
+        money = self.ctx.scenario.money
+        if self.ctx.rng.random() >= money.bank_account_rate:
+            return
+        person.will_cash_out = self.ctx.rng.random() < money.withdraw_rate
+        currency = (
+            "ZAR"
+            if person.persona.role == "sender"
+            else HOME_PAYOUT.get(person.persona.nationality, "ZAR")
+        )
+        at = self.ctx.clock.now() + timedelta(hours=self.ctx.rng.uniform(1, 8))
+        self.sim.schedule(
+            at, "cashout.bank_account", lambda: self._add_bank_account(person, currency)
+        )
+
+    def _add_bank_account(self, person: SeededPerson, currency: str) -> None:
+        from remitx_api.controllers.bank_account_controller import (
+            BankAccountController,
+        )
+
+        banks = load("banks")[currency]
+        bank = self.ctx.rng.choice(banks)
+        holder = f"{person.persona.first_name} {person.persona.last_name}"
+        view = BankAccountController().add(
+            person.user_id,
+            holder,
+            bank["name"],
+            str(self.ctx.rng.randint(10**9, 10**10 - 1)),
+            currency,
+            bank.get("branch_code"),
+            person.persona.residence or person.persona.nationality,
+        )
+        record = {
+            "id": view.bank_account_id,
+            "currency": currency,
+            "status": "pending_verification",
+        }
+        person.bank_accounts.append(record)
+        self.ctx.count("cashout.bank_accounts")
+
+        money = self.ctx.scenario.money
+        roll = self.ctx.rng.random()
+        if roll < money.bank_reject_rate:
+            action = "reject"
+        elif roll < money.bank_reject_rate + money.bank_leave_pending_rate:
+            self.ctx.count("cashout.bank_accounts_left_pending")
+            return
+        else:
+            action = "verify"
+        at = business_time(
+            self.ctx.rng,
+            self.ctx.clock.now() + timedelta(hours=self.ctx.rng.uniform(1, 8)),
+        )
+        self.sim.schedule(
+            at,
+            f"cashout.bank_account.{action}",
+            lambda: self._review_bank_account(person, record, action),
+        )
+
+    def _review_bank_account(
+        self, person: SeededPerson, record: dict, action: str
+    ) -> None:
+        from remitx_api.controllers.bank_account_controller import (
+            BankAccountController,
+        )
+
+        operators = self.ctx.staff_by_role.get("payout_operator") or []
+        if not operators:
+            self.ctx.count("cashout.no_operator")
+            return
+        operator = self.ctx.rng.choice(operators)
+        controller = BankAccountController()
+        if action == "reject":
+            controller.reject(
+                record["id"],
+                operator.user_id,
+                self.ctx.rng.choice(REJECT_REASONS),
+            )
+            record["status"] = "rejected"
+            self.ctx.count("cashout.bank_accounts_rejected")
+            return
+        controller.verify(record["id"], operator.user_id)
+        record["status"] = "verified"
+        self.ctx.count("cashout.bank_accounts_verified")
+        if person.will_cash_out:
+            currency = "ZAR" if person.persona.role == "sender" else record["currency"]
+            self._withdraw(person, currency)
+
+    def _withdraw(self, person: SeededPerson, currency: str) -> None:
+        from remitx_api.controllers.withdrawal_controller import WithdrawalController
+        from remitx_api.models.orm.account import CURRENCY_ZAR
+        from remitx_api.repositories.account_repository import AccountRepository
+
+        if person.cashed_out:
+            return
+        verified = [
+            row
+            for row in person.bank_accounts
+            if row["status"] == "verified" and row["currency"] == currency
+        ]
+        if not verified:
+            self.ctx.count("cashout.waiting_on_bank")
+            return
+        accounts = AccountRepository()
+        account = accounts.get_user_account(person.user_id, currency)
+        if account is None:
+            return
+        available = accounts.get_available_balance(account.account_id)
+        # Senders keep a minimum send; everyone else just leaves a small sum.
+        floor = MIN_SEND_ZAR if currency == CURRENCY_ZAR else Decimal("20")
+        spare = available - floor
+        if spare < Decimal("50"):
+            self.ctx.count("cashout.skipped_low_balance")
+            return
+        # Capped so a withdrawal before the month's sends does not eat the
+        # cash-in those sends were sized from. The deposit plan adds R250
+        # when this person will cash out.
+        amount = min(spare, Decimal(self.ctx.rng.randint(80, 200)))
+        WithdrawalController().request(
+            person.user_id, verified[0]["id"], currency, amount
+        )
+        person.cashed_out = True
+        self.ctx.count("cashout.withdrawals")
 
     # --- cash-in -----------------------------------------------------------
 
@@ -159,6 +335,10 @@ class MoneyStory:
             sends = self.ctx.rng.randint(*corridor["sends_per_month"])
             amounts = self._split(budget, sends)
             needed = sum(amounts) * (1 + FEE_BUFFER_RATE) + FEE_BUFFER_FIXED * sends
+            # Cash-out takes a slice after the sends; leave that on top of
+            # the fee buffer so the transfers still fit.
+            if person.will_cash_out:
+                needed += Decimal("250")
             # Up to the next R50: people deposit round-ish amounts.
             deposit = (
                 needed * Decimal(str(self.ctx.scenario.money.deposit_headroom)) / 50
@@ -287,6 +467,32 @@ class MoneyStory:
                 "send.quote",
                 lambda amount=amount: self._quote(person, amount),
             )
+        # Cash out from this deposit while it is still intact. Sends are
+        # scheduled over the following days; the amount is capped under the
+        # reserve _plan_deposits added.
+        self._cash_out_from_deposit(person)
+
+    def _cash_out_from_deposit(self, person: SeededPerson) -> None:
+        """Withdraw spare salary, opening a bank account first if needed.
+
+        Until one withdrawal has landed, every credited sender tries. After
+        that, only people who already decided to cash out do.
+        """
+        if person.cashed_out:
+            return
+        if not person.will_cash_out and self.ctx.counters.get("cashout.withdrawals", 0):
+            return
+        person.will_cash_out = True
+        zar = [
+            row
+            for row in person.bank_accounts
+            if row["currency"] == "ZAR" and row["status"] != "rejected"
+        ]
+        if not zar:
+            self._add_bank_account(person, "ZAR")
+            return
+        if any(row["status"] == "verified" for row in zar):
+            self._withdraw(person, "ZAR")
 
     def _quote(self, person: SeededPerson, wanted: Decimal) -> None:
         from remitx_api.controllers.quote_controller import QuoteController

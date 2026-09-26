@@ -13,7 +13,8 @@
   "staff": {
     "compliance_analyst": 1,
     "compliance_officer": 1,
-    "treasury_operator": 1
+    "treasury_operator": 1,
+    "payout_operator": 1
   },
   "clerk_user_cap": 80,
   "ensure_every_path": true,

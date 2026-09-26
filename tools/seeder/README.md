@@ -55,6 +55,19 @@ Every command checks these first, and refuses on any failure:
 A QA run never borrows local settings: connection and credential keys missing
 from `.env.qa` are blanked, not filled from the repo-root `.env`.
 
+## The loadtest target
+
+`loadtest` seeds the throwaway stack named in the committed
+`tools/loadtest/loadtest.env`: that file's database host and bucket, and no
+Clerk key, so everyone it creates is database-only. Run it with
+`python -m remitx_seeder seed --target loadtest --scenario loadtest` from
+inside that stack. It is not meant for the UI.
+
+The scenario is a few hundred senders over two weeks, almost all verified,
+with beneficiaries and deposits sized well above what they send
+(`deposit_headroom`). Rare KYC paths are turned down so a load run is not
+spent on abandoned drafts. `clerk_user_cap` is 0.
+
 ## Signing in as a seeded person
 
 Seeded people get `…+clerk_test@example.com` emails. Clerk treats `+clerk_test`
@@ -82,7 +95,8 @@ the replayed time with no change to its code.
 | Review | analysts claim and request more information, officers approve, reject and override ratings, through `KycController` | real |
 | Documents | SPECIMEN ID cards and utility bills drawn with Pillow, some deliberately blurry | generated, uploaded for real |
 | Beneficiaries | `BeneficiaryController.create` | real |
-| Payout wallets (USD, ZWL, NAD) | `direct.open_payout_account`, since no product flow opens one yet | direct write |
+| Payout wallets (USD, ZWL, NAD) | verified customers through `AccountController.open_account`; everyone else through `direct.open_payout_account` (they cannot pass KYC) | real, or direct when KYC is impossible |
+| Cash-out | external bank account through `BankAccountController`; a payout operator verifies, rejects, or leaves it pending; spare balance leaves through `WithdrawalController.request` | real |
 | Cash-in | bank-statement lines, reconciled next working morning by `deposit_service.process_deposits`; mistyped references land pending, and a treasury operator resolves most of them | real |
 | Sends | `QuoteController.create_quote`, then `RemittanceController.confirm`, within KYC limits and available balance | real |
 | Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the XRPL call is simulated |
@@ -202,6 +216,5 @@ drop databases on; each session migrates its own.
 - `users.last_name` is never set, because no product flow sets it yet (the Schema tab shows it).
 - No application reaches `review_due`: reviews fall due 180 to 730 days after
   approval, beyond any window.
-- There is no cash-out flow to seed.
 - Quotes left to expire keep status `ACTIVE` with a past `expires_at`, as they
   do in the product.

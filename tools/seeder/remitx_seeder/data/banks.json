@@ -1,0 +1,22 @@
+{
+  "_about": "Banks a seeded person might name on a cash-out account. Branch codes are real routing shapes for the bank, not a customer's branch. Edit this to change which banks show up in the verification queue.",
+  "ZAR": [
+    {"name": "FNB", "branch_code": "250655"},
+    {"name": "Standard Bank", "branch_code": "051001"},
+    {"name": "Absa", "branch_code": "632005"},
+    {"name": "Nedbank", "branch_code": "198765"},
+    {"name": "Capitec", "branch_code": "470010"}
+  ],
+  "USD": [
+    {"name": "Chase", "branch_code": "021000021"},
+    {"name": "Bank of America", "branch_code": "026009593"}
+  ],
+  "NAD": [
+    {"name": "FNB Namibia", "branch_code": "282672"},
+    {"name": "Bank Windhoek", "branch_code": "481972"}
+  ],
+  "ZWL": [
+    {"name": "CBZ Bank", "branch_code": "6123"},
+    {"name": "Steward Bank", "branch_code": "2001"}
+  ]
+}

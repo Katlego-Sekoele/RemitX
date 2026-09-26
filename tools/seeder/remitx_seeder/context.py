@@ -40,6 +40,11 @@ class SeededPerson:
     force_override: bool = False
     force_tier_two: bool = False
     beneficiaries: list[dict] = field(default_factory=list)
+    # External bank accounts registered after verification, and whether this
+    # person will cash out spare balance once one of them is verified.
+    bank_accounts: list[dict] = field(default_factory=list)
+    will_cash_out: bool = False
+    cashed_out: bool = False
 
     @property
     def key(self) -> str:
