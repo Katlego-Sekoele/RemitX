@@ -78,7 +78,7 @@ function formatDate(value: string) {
   })
 }
 
-/** Statement rows only ever carry reference/amount/currency/date to
+/** Statement rows carry reference/amount/currency/date and optional line_id to
  * `process_deposits` — everything else in the CSV (description, ...) is for
  * the admin's eyes only. */
 function toDepositRows(rows: CsvRow[]): DepositRow[] {
@@ -87,6 +87,7 @@ function toDepositRows(rows: CsvRow[]): DepositRow[] {
     amount: row.amount ?? "0",
     currency: row.currency?.trim() ? row.currency.trim() : null,
     date: row.date?.trim() ? row.date.trim() : null,
+    line_id: row.line_id?.trim() ? row.line_id.trim() : null,
   }))
 }
 

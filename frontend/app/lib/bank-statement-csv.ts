@@ -1,9 +1,11 @@
 /** Bank-statement file the deposit reconciliation job reads.
  *
  * Columns match `api/scripts/sample_bank_statement.csv`. The API uses
- * reference, amount, currency, and date; description is for the person
- * reconciling. Currency is that of the RemitX bank account the money came
- * into, and a line is only credited to an account in that currency.
+ * reference, amount, currency, date, and optional line_id; description is
+ * for the person reconciling. Currency is that of the RemitX bank account
+ * the money came into, and a line is only credited to an account in that
+ * currency. The date cell may be a calendar date (YYYY-MM-DD) or an ISO
+ * datetime when the bank export includes a time.
  */
 
 // `csv/sync` is the Node build. It calls `Buffer` while the module evaluates,

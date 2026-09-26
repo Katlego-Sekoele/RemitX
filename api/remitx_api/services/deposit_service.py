@@ -1,6 +1,7 @@
 import csv
 import logging
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -76,22 +77,77 @@ class ProcessDepositsResult:
     skipped: list[SkippedStatementLine]
 
 
-def statement_fingerprint(row: dict, *, statement_date: datetime) -> str:
+def _statement_date_cell_is_date_only(raw_date) -> bool:
+    """Whether the CSV cell carries a calendar date only (no time of day)."""
+    if raw_date in (None, ""):
+        return False
+    cell = str(raw_date).strip()
+    return len(cell) == 10 and cell[4] == "-" and cell[7] == "-"
+
+
+def _fingerprint_time_key(raw_date, statement_date: datetime) -> str:
+    """The time component of a line's deduplication key."""
+    if _statement_date_cell_is_date_only(raw_date):
+        return statement_date.astimezone(UTC).date().isoformat()
+    return statement_date.astimezone(UTC).replace(microsecond=0).isoformat()
+
+
+def statement_line_dedup_base(
+    row: dict,
+    *,
+    reference: str | None,
+    amount: Decimal,
+    currency: str,
+    statement_date: datetime,
+    raw_date,
+) -> str:
+    """Shared prefix for lines that need an occurrence index within one upload."""
+    line_id = (row.get("line_id") or "").strip()
+    if line_id:
+        return f"id:{line_id}|{currency}"
+    time_key = _fingerprint_time_key(raw_date, statement_date)
+    ref = reference or ""
+    quantized = amount.quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
+    return f"{time_key}|{ref}|{format(quantized, 'f')}|{currency}"
+
+
+def statement_fingerprint(
+    row: dict,
+    *,
+    reference: str | None,
+    amount: Decimal,
+    currency: str,
+    statement_date: datetime,
+    raw_date,
+    occurrence: int,
+) -> str:
     """Stable identity of one bank-statement line.
 
-    UTC calendar day of the line (same instant used for the transaction's
-    ``created_at``), the reference as written, the amount at 2dp, and the
-    currency. The same CSV uploaded twice, or an overlapping date range,
-    produces the same fingerprint and is not credited again. The same
-    reference and amount on the same day in two currencies are two lines.
+    When the bank export carries a ``line_id``, that id (scoped to currency)
+    is the key. Otherwise the UTC instant or calendar date (when the CSV cell
+    is date-only), reference, amount at 2dp, currency, and the line's
+    occurrence among identical rows in the same upload. Re-uploading the same
+    statement produces the same fingerprints and does not credit again.
     """
-    reference = (row.get("reference") or "").strip()
-    amount = Decimal(str(row.get("amount"))).quantize(
-        _AMOUNT_QUANTUM, rounding=ROUND_HALF_UP
+    line_id = (row.get("line_id") or "").strip()
+    if line_id:
+        return statement_line_dedup_base(
+            row,
+            reference=reference,
+            amount=amount,
+            currency=currency,
+            statement_date=statement_date,
+            raw_date=raw_date,
+        )
+    base = statement_line_dedup_base(
+        row,
+        reference=reference,
+        amount=amount,
+        currency=currency,
+        statement_date=statement_date,
+        raw_date=raw_date,
     )
-    currency = (row.get("currency") or "").strip().upper()
-    calendar_day = statement_date.astimezone(UTC).date().isoformat()
-    return f"{calendar_day}|{reference}|{format(amount, 'f')}|{currency}"
+    return f"{base}|#{occurrence}"
 
 
 def _statement_currency(row: dict) -> str | None:
@@ -144,9 +200,14 @@ def process_deposits(bank_statement: str | list[dict]) -> ProcessDepositsResult:
 
     touched: list[Deposit] = []
     skipped: list[SkippedStatementLine] = []
+    occurrence_next: dict[str, int] = defaultdict(int)
     for row in _read_bank_statement(bank_statement):
         deposit, skip = _create_deposit(
-            row, deposit_repo, transaction_repo, account_repo
+            row,
+            deposit_repo,
+            transaction_repo,
+            account_repo,
+            occurrence_next,
         )
         if deposit is not None:
             touched.append(deposit)
@@ -167,6 +228,7 @@ def _create_deposit(
     deposit_repo: DepositRepository,
     transaction_repo: TransactionRepository,
     account_repo: AccountRepository,
+    occurrence_next: dict[str, int],
 ) -> tuple[Deposit | None, SkippedStatementLine | None]:
     """Match one bank statement line to an account and write its deposit + transaction.
 
@@ -232,9 +294,24 @@ def _create_deposit(
             reason=SkippedStatementLineReason.UNKNOWN_CURRENCY,
         )
     statement_date = _parse_statement_date(raw_date, processed_at)
-    fingerprint = statement_fingerprint(
-        {**row, "reference": reference, "amount": amount, "currency": currency},
+    dedup_base = statement_line_dedup_base(
+        row,
+        reference=reference,
+        amount=amount,
+        currency=currency,
         statement_date=statement_date,
+        raw_date=raw_date,
+    )
+    occurrence = occurrence_next[dedup_base]
+    occurrence_next[dedup_base] += 1
+    fingerprint = statement_fingerprint(
+        row,
+        reference=reference,
+        amount=amount,
+        currency=currency,
+        statement_date=statement_date,
+        raw_date=raw_date,
+        occurrence=occurrence,
     )
     if deposit_repo.get_by_statement_fingerprint(fingerprint) is not None:
         logger.info("Skipping statement line already reconciled (%s)", fingerprint)

@@ -65,8 +65,7 @@ class Deposit(Base):
     deposit_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
-    # Identity of the statement line: UTC date, stripped reference, amount at
-    # 2dp. See deposit_service.statement_fingerprint.
+    # Identity of the statement line. See deposit_service.statement_fingerprint.
     statement_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
     tx_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=False

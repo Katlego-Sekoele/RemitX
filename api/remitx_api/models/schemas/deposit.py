@@ -12,12 +12,15 @@ class DepositRow(Schema):
 
     ``currency`` is that of the RemitX bank account the money came into: ZAR,
     USD, ZWL or NAD. A line without one RemitX banks in is skipped.
+    Optional ``line_id`` is the bank export's stable line identifier when
+    present.
     """
 
     reference: str | None = None
     amount: Decimal
     currency: str | None = None
     date: str | None = None
+    line_id: str | None = None
 
 
 class ProcessDepositsRequest(Schema):
