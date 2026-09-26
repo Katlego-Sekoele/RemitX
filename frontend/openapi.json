@@ -3636,6 +3636,18 @@
             "title": "Daily Limit Zar",
             "type": "string"
           },
+          "daily_remaining_zar": {
+            "description": "What can still be sent today: the daily limit less what was used, never below zero.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Remaining Zar",
+            "type": "string"
+          },
+          "daily_used_zar": {
+            "description": "ZAR sent today (SAST), counting transfers still settling and leaving out failed ones.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Daily Used Zar",
+            "type": "string"
+          },
           "limit_percent": {
             "title": "Limit Percent",
             "type": "integer"
@@ -3643,6 +3655,18 @@
           "monthly_limit_zar": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Monthly Limit Zar",
+            "type": "string"
+          },
+          "monthly_remaining_zar": {
+            "description": "What can still be sent this month, counted the same way. A send must fit both this and daily_remaining_zar.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Remaining Zar",
+            "type": "string"
+          },
+          "monthly_used_zar": {
+            "description": "ZAR sent this calendar month (SAST), counted the same way.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Used Zar",
             "type": "string"
           },
           "status": {
@@ -3660,7 +3684,11 @@
           "application_id",
           "limit_percent",
           "daily_limit_zar",
-          "monthly_limit_zar"
+          "monthly_limit_zar",
+          "daily_used_zar",
+          "monthly_used_zar",
+          "daily_remaining_zar",
+          "monthly_remaining_zar"
         ],
         "title": "KycStandingRead",
         "type": "object"
@@ -3777,7 +3805,7 @@
         "type": "object"
       },
       "LimitHeadroomRead": {
-        "description": "ZAR already sent against the caller's daily and monthly allowance.\n\nSent includes queued and settling transfers and leaves out ones that\nfailed. The allowance is the KYC standing's limit.",
+        "description": "ZAR already sent against the caller's daily and monthly allowance.\n\nSent includes queued and settling transfers and leaves out ones that\nfailed. The allowance is the KYC standing's limit. Both come from the\nstanding, so the day and month are the SAST ones the limit check counts.",
         "properties": {
           "daily_limit_zar": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -9898,7 +9926,7 @@
     },
     "/quotes/create-quote": {
       "post": {
-        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, no account in `sender_currency`, an amount over the KYC\nallowance (tier limits scaled by the risk rating), the available\nbalance, or one too small to cover the fees; 503 when no exchange rate\nis available.",
+        "description": "Prices `sender_amount` for one of the caller's beneficiaries and holds\nthat price until `expires_at` (QUOTE_TTL_MINUTES). Nothing is spent until\nthe quote is confirmed with `POST /remittances`.\n\nRefusals: 403 if the caller isn't KYC-verified; 400 for an unknown\nbeneficiary, a `sender_currency` other than ZAR or with no account, an\namount over what is left of today's or this month's allowance (tier\nlimits scaled by the risk rating, less what was already sent), the\navailable balance, or one too small to cover the fees; 503 when no\nexchange rate is available. A limit refusal names the limit and what is\nleft of it.",
         "operationId": "create_quote",
         "requestBody": {
           "content": {
@@ -10125,7 +10153,7 @@
         ]
       },
       "post": {
-        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.\n\nRefusals: 403 if the caller is no longer KYC-verified; 400 for an unknown\nquote, or one that no longer fits the available balance or what is left\nof today's or this month's allowance (the refusal names the limit and\nwhat is left of it); 409 if the quote was already used or has expired.\nA refused quote stays active.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {
@@ -10167,6 +10195,16 @@
               }
             },
             "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
           },
           "409": {
             "content": {

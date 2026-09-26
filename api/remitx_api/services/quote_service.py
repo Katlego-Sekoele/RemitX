@@ -6,7 +6,9 @@ Two entry points share one pricing helper, `price_remittance`:
   time-boxed `Quote` row. Does not touch `transactions` or any account
   balance — nothing is spent until a remittance is confirmed against this
   quote. This is the main entry point for creating a quote, and it checks the
-  balances/limits to decide whether a quote may be issued at all.
+  balances/limits to decide whether a quote may be issued at all. The limit
+  check here is the early, friendly one; `confirm_remittance` repeats it as
+  the real gate (services/send_limits.py).
 - `preview_quote` — a stateless "what would X currency become in Y
   currency" calculation with no beneficiary and nothing persisted, for
   browsing rates before picking (or without) a beneficiary contact.
@@ -19,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from remitx_api.config import Config
+from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_USD, CURRENCY_ZAR
 from remitx_api.models.orm.quote import STATUS_ACTIVE, Quote
@@ -29,6 +32,7 @@ from remitx_api.repositories.kyc_application_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
+from remitx_api.services.send_limits import require_can_send
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +49,9 @@ def round_amount(value: Decimal) -> Decimal:
     return value.quantize(AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
 
 
-# Custom exceptions for quote creation.
-class KycNotApprovedError(Exception):
-    """Sender's KYC standing isn't verified — brief: "Only approved users may
-    send remittances." A sender who never verified, or whose verification
-    was rejected, is turned away outright, never just limited. Standing is
-    derived from `kyc_applications` (KycApplicationRepository.get_standing),
-    not stored on `User` — see models/orm/user.py."""
-
-
-class LimitExceededError(Exception):
-    """`sender_amount` alone exceeds the sender's KYC standing allowance.
-
-    The ceiling is the tier's daily or monthly limit scaled by the risk
-    rating's `limit_percent` (`allowance_for`, via `get_standing`). An
-    approved customer with no rating gets the tier unscaled. This still
-    compares one amount to that ceiling, not remaining usage after other
-    sends (KYC-3 / #25).
-    """
-
-
+# Custom exceptions for quote creation. An unverified sender and an amount over
+# what is left of the allowance are refused by `require_can_send`, with the
+# domain errors in errors/remittances.py.
 class UnknownBeneficiaryError(Exception):
     """`beneficiary_id` doesn't exist, or doesn't belong to this sender."""
 
@@ -248,36 +235,24 @@ def create_quote(
     sender = users.get_by_id(sender_user_id)
     if sender is None:
         raise ValueError(f"User {sender_user_id} does not exist")
-    standing = KycApplicationRepository().get_standing(sender_user_id)
-    if not standing.is_verified:
-        logger.info(
-            "create_quote: sender %s is not KYC-verified, quote refused",
-            sender_user_id,
+    # Verified, sending ZAR, and within what is left of today's and this
+    # month's allowance after what they have already sent. Standing is derived
+    # from `kyc_applications` and the ledger, not stored on `User`.
+    try:
+        require_can_send(
+            KycApplicationRepository().get_standing(sender_user_id),
+            sender_amount,
+            sender_currency,
         )
-        raise KycNotApprovedError(str(sender_user_id))
-
-    # Score-scaled ceilings — see LimitExceededError. Daily is the tighter
-    # of the two while monthly stays at least the daily figure.
-    if sender_amount > standing.daily_limit_zar:
+    except DomainError as exc:
         logger.info(
-            "create_quote: sender %s amount %s exceeds daily limit %s",
+            "create_quote: sender %s refused for %s %s: %s",
             sender_user_id,
             sender_amount,
-            standing.daily_limit_zar,
+            sender_currency,
+            exc.detail,
         )
-        raise LimitExceededError(
-            f"{sender_amount} exceeds the daily limit of {standing.daily_limit_zar}"
-        )
-    if sender_amount > standing.monthly_limit_zar:
-        logger.info(
-            "create_quote: sender %s amount %s exceeds monthly limit %s",
-            sender_user_id,
-            sender_amount,
-            standing.monthly_limit_zar,
-        )
-        raise LimitExceededError(
-            f"{sender_amount} exceeds the monthly limit of {standing.monthly_limit_zar}"
-        )
+        raise
     # Get the beneficiary and check that it belongs to this sender. The
     # beneficiary's linked_user_id is the one who will receive the remittance.
     beneficiary = beneficiaries.get_by_id(beneficiary_id)

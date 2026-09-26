@@ -1,22 +1,19 @@
 """The customer dashboard: limits, activity, in-flight transfers, beneficiaries."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 
+import time_machine
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
-from remitx_api.models.orm.exchange_rate import ExchangeRate
-from remitx_api.models.orm.quote import Quote
-from remitx_api.models.orm.remittance import Remittance
+from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_FAILED,
     STATUS_PENDING,
-    TYPE_REMITTANCE,
-    Transaction,
 )
-from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.services.send_limits import SAST
 from tests.kyc_helpers import make_user
+from tests.send_helpers import record_transfer
 
 DASHBOARD = "/dashboard"
 
@@ -49,21 +46,21 @@ def test_dashboard_counts_sends_and_leaves_out_failures(verified_client):
         beneficiary = make_user("dash-beneficiary")
         beneficiary.first_name = "Amahle"
         beneficiary.last_name = "Dlamini"
-        _transfer(
+        record_transfer(
             sender,
             beneficiary,
             sender_amount=Decimal("1000"),
             token_amount=Decimal("50"),
             status=STATUS_CONFIRMED,
         )
-        _transfer(
+        record_transfer(
             sender,
             beneficiary,
             sender_amount=Decimal("100"),
             token_amount=Decimal("5"),
             status=STATUS_PENDING,
         )
-        _transfer(
+        record_transfer(
             sender,
             beneficiary,
             sender_amount=Decimal("250"),
@@ -93,55 +90,24 @@ def test_dashboard_counts_sends_and_leaves_out_failures(verified_client):
     assert inflight["currency"] == CURRENCY_ZAR
 
 
-def _transfer(sender, beneficiary, *, sender_amount, token_amount, status):
-    now = datetime.now(UTC)
-    rate = ExchangeRate(
-        base_currency=CURRENCY_ZAR,
-        quote_currency=CURRENCY_ZAR,
-        rate=Decimal("1"),
-        fetched_at=now,
-        valid_until=now + timedelta(hours=1),
-    )
-    db.session.add(rate)
-    db.session.flush()
-    quote = Quote(
-        sender_user_id=sender.id,
-        beneficiary_user_id=beneficiary.id,
-        sender_amount=sender_amount,
-        sender_currency=CURRENCY_ZAR,
-        sender_transaction_fee=Decimal("0"),
-        token_amount=token_amount,
-        token_name=CURRENCY_TOKEN,
-        fiat_to_token_exchange_rate=Decimal("0.05"),
-        fiat_exchange_rate_id=rate.id,
-        fiat_exchange_rate=Decimal("1"),
-        exchange_rate_margin=Decimal("0"),
-        receiver_amount=sender_amount,
-        receiver_currency=CURRENCY_ZAR,
-        receiver_payout_fee=Decimal("0"),
-        receiver_payout_estimate=sender_amount,
-        expires_at=now + timedelta(minutes=15),
-    )
-    db.session.add(quote)
-    db.session.flush()
-    accounts = AccountRepository()
-    source = accounts.get_or_create_user_account(
-        sender.id, sender.base_reference, CURRENCY_TOKEN
-    )
-    destination = accounts.get_or_create_user_account(
-        beneficiary.id, beneficiary.base_reference, CURRENCY_TOKEN
-    )
-    leg = Transaction(
-        type=TYPE_REMITTANCE,
-        credit_account_id=source.account_id,
-        debit_account_id=destination.account_id,
-        amount=token_amount,
-        currency=CURRENCY_TOKEN,
-        status=status,
-        quote_id=quote.quote_id,
-        confirmed_at=now if status == STATUS_CONFIRMED else None,
-    )
-    db.session.add(leg)
-    db.session.flush()
-    db.session.add(Remittance(quote_id=quote.quote_id, tx_id=leg.tx_id))
-    db.session.flush()
+def test_dashboard_limits_count_the_south_african_day(verified_client):
+    """At 01:00 SAST, a send at 23:30 the night before is yesterday's, though
+    both are the same UTC day. The ring shows what the limit check counts."""
+    client, sender = verified_client
+    with time_machine.travel(datetime(2025, 6, 15, 1, tzinfo=SAST), tick=False):
+        token = db.open_session()
+        try:
+            record_transfer(
+                sender,
+                make_user("dash-late-beneficiary"),
+                sender_amount=Decimal("3000"),
+                at=datetime(2025, 6, 14, 23, 30, tzinfo=SAST),
+            )
+            db.session.commit()
+        finally:
+            db.close_session(token)
+
+        limits = client.get(DASHBOARD).json()["limits"]
+
+    assert limits["daily_sent_zar"] == "0.00"
+    assert limits["monthly_sent_zar"] == "3000.00"

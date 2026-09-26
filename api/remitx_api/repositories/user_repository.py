@@ -24,6 +24,13 @@ class UserRepository(Repository[User, uuid.UUID]):
             raise UnknownUserError(user_id)
         return user
 
+    def lock(self, user_id: uuid.UUID) -> None:
+        """Hold the user's row (`SELECT ... FOR UPDATE`) until the transaction
+        ends, so their requests that read what they have already done and
+        then act on it run one at a time. The next one waits here, then reads
+        what this one committed. SQLite has no row locks and ignores it."""
+        db.session.execute(select(User.id).where(User.id == user_id).with_for_update())
+
     def get_many(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, User]:
         """Users by id, keyed by id."""
         if not user_ids:

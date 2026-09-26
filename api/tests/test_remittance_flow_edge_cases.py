@@ -22,6 +22,7 @@ import pytest
 from pydantic import ValidationError
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
+from remitx_api.errors.remittances import LimitExceededError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -439,7 +440,7 @@ def test_the_daily_limit_is_inclusive(ledger):
     _fund(env["sender"], limit + 1)
 
     assert _quote(env, limit).sender_amount == limit
-    with pytest.raises(quote_service.LimitExceededError):
+    with pytest.raises(LimitExceededError):
         _quote(env, limit + Decimal("0.01"))
 
 

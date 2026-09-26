@@ -12,7 +12,8 @@ class LimitHeadroomRead(Schema):
     """ZAR already sent against the caller's daily and monthly allowance.
 
     Sent includes queued and settling transfers and leaves out ones that
-    failed. The allowance is the KYC standing's limit.
+    failed. The allowance is the KYC standing's limit. Both come from the
+    standing, so the day and month are the SAST ones the limit check counts.
     """
 
     daily_limit_zar: Decimal
