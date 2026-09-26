@@ -1,18 +1,21 @@
 """Withdrawal request + settlement
 Withdrawal is the movement between a user's own fiat bank account and
-RemitX's platform fiat account, system does a a mock external payout.
+RemitX's platform fiat account. The net transaction into the platform fiat
+account is the (mock) external payout itself — see `_settle_withdrawal`.
 
 The cash-out fee (`Config.CASH_OUT_FEE_RATE`, applied to the gross requested
 amount) is deducted from the withdrawn amount and paid into RemitX's fee
 revenue account (`REMITX_REVENUE`) for the withdrawal's currency — the same
-kind of account a remittance fee lands in — while the net payout leg goes to
-the RemitX fiat bank account in that currency.
+kind of account a remittance fee lands in — while the net payout transaction
+goes to the RemitX fiat bank account in that currency.
 
-The destination bank account must already be `verified`.
+The destination bank account must already be `verified`. KYC standing and
+account suspension are deliberately not checked: a withdrawal only pays out a
+balance the user already holds (Transaction_Flow_Context.md §7).
 
 Possible evolution: if a real payment-gateway call is ever added to the
-payout leg, settlement should move to the same async pattern remittance
-settlement uses.
+payout transaction, settlement should move to the same async pattern
+remittance settlement uses.
 """
 
 import logging
@@ -135,7 +138,7 @@ def request_withdrawal(
             f"Bank account is denominated in {bank_account.currency}, not {currency}"
         )
 
-    # Get the user's platform fiat account in the requested withdrawalcurrency
+    # Get the user's platform fiat account in the requested withdrawal currency
     user_fiat_account = accounts.get_user_account(user_id, currency)
     if user_fiat_account is None:
         logger.warning(
@@ -237,7 +240,7 @@ def request_withdrawal(
     # Immediately settle the withdrawal, which confirms the pending transactions
     # and moves the balances. Not committed before this: settlement commits the
     # request and the settlement together, or rolls both back, so a refused
-    # settlement can't leave pending legs holding the customer's funds.
+    # settlement can't leave pending transactions holding the customer's funds.
     _settle_withdrawal(withdrawal, confirmed_by=CONFIRMED_BY_SYSTEM)
 
     return withdrawals.get_by_id(withdrawal.withdrawal_id)
@@ -253,7 +256,7 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
     `WithdrawalNotPendingError` if the transactions aren't `pending` any more
     (already settled), after rolling back everything uncommitted in the
     session — including, when called from `request_withdrawal`, the withdrawal
-    row and its legs."""
+    row and its transactions."""
     accounts = AccountRepository()
     transactions = TransactionRepository()
 
@@ -289,16 +292,12 @@ def _settle_withdrawal(withdrawal: Withdrawal, confirmed_by: str) -> None:
     payout_account = accounts.get_platform_account(
         TYPE_PLATFORM_FIAT, withdrawal.currency
     )
-    # Increase the payout source account balance by amount to be paid out to the user)
+    # Increase the payout source account balance by the net amount. This
+    # transaction is the external payout: REMITX_FIAT's balance is the negative
+    # of the cash RemitX holds (a deposit took it below zero), so moving it back
+    # towards zero is the net leaving RemitX's bank for the user's real bank
+    # account.
     accounts.increase_balance(payout_account.account_id, withdrawal.net_amount)
-
-    # Decrease the payout source account balance by the net amount being paid
-    # out to the user.
-    # Simulate the external payout by reducing the balance of RemitX's fiat
-    # platform account.
-    # Deliberately NOT backed by a transaction for simplicity, as the actual
-    # payout is external and not tracked in the system.
-    accounts.decrease_balance(payout_account.account_id, withdrawal.net_amount)
 
     # Settlement runs once per withdrawal.
     withdrawal.confirmed_by = confirmed_by

@@ -65,7 +65,10 @@ class Env:
 @pytest.fixture
 def env(request):
     """A funded ZAR customer plus a payout_operator admin, with the platform
-    ZAR fiat/revenue accounts `POST /withdrawals` needs already seeded.
+    ZAR fiat/revenue accounts `POST /withdrawals` needs already seeded. The
+    customer is funded the way a deposit funds them (§2 Phase A): the
+    platform fiat account goes down by what the customer's goes up, so the
+    ledger starts out summing to zero.
     `starting_balance` can be overridden with
     `@pytest.mark.parametrize`-free indirect use — see
     `test_insufficient_balance_is_a_400`.
@@ -109,6 +112,12 @@ def env(request):
             zar_account = account_repo.get_user_account(customer.id, CURRENCY_ZAR)
             account_repo.increase_balance(
                 zar_account.account_id, Decimal(starting_balance)
+            )
+            account_repo.decrease_balance(
+                account_repo.get_platform_account(
+                    TYPE_PLATFORM_FIAT, CURRENCY_ZAR
+                ).account_id,
+                Decimal(starting_balance),
             )
             db.session.commit()
 
@@ -311,9 +320,9 @@ def _available_zar(env) -> str:
 
 def test_withdrawal_splits_the_fee_into_revenue_and_the_net_into_fiat(env):
     """The net leg lands in RemitX's ZAR fiat account and the fee leg in its
-    ZAR fee revenue account; both transactions end up confirmed. Settlement
-    then takes the net back off the fiat account (no transaction) to show it
-    leaving RemitX's bank, so fiat ends where it started."""
+    ZAR fee revenue account; both transactions end up confirmed. The fiat
+    account's balance is minus the cash RemitX holds, so the net paid out
+    moves it from -1000 towards zero: only the 0.75 fee is still held."""
     from remitx_api.models.orm.transaction import Transaction
     from remitx_api.models.orm.withdrawal import Withdrawal
 
@@ -328,7 +337,7 @@ def test_withdrawal_splits_the_fee_into_revenue_and_the_net_into_fiat(env):
         revenue = AccountRepository().get_platform_account(
             TYPE_PLATFORM_REVENUE, CURRENCY_ZAR
         )
-        assert platform.account_balance == Decimal("0")
+        assert platform.account_balance == Decimal("-900.75")
         assert revenue.account_balance == Decimal("0.75")
 
         withdrawal = db.session.get(Withdrawal, uuid.UUID(body["withdrawal_id"]))
@@ -349,7 +358,7 @@ def test_withdrawal_splits_the_fee_into_revenue_and_the_net_into_fiat(env):
 def test_two_withdrawals_in_a_row_each_settle_and_balances_add_up(env):
     """Each withdrawal confirms only its own two legs, and the balance moves
     accumulate: the user loses both gross amounts, revenue gains both fees,
-    and the fiat account still ends at zero (each net goes in and back out)."""
+    and the fiat account moves towards zero by both nets."""
     from remitx_api.models.orm.transaction import Transaction
     from remitx_api.models.orm.withdrawal import Withdrawal
 
@@ -371,7 +380,8 @@ def test_two_withdrawals_in_a_row_each_settle_and_balances_add_up(env):
         revenue = AccountRepository().get_platform_account(
             TYPE_PLATFORM_REVENUE, CURRENCY_ZAR
         )
-        assert platform.account_balance == Decimal("0")
+        # -1000 + 99.25 + 198.50
+        assert platform.account_balance == Decimal("-702.25")
         # 0.75% of 100 + 0.75% of 200
         assert revenue.account_balance == Decimal("2.25")
 
@@ -591,7 +601,8 @@ def _count_withdrawals() -> int:
 
 def _fund_customer_account(env, currency, amount) -> None:
     """Give the customer an account in `currency` (only ZAR + uctusd exist from
-    signup) holding `amount`."""
+    signup) holding `amount`, taken out of RemitX's fiat account in that
+    currency as a deposit would be, when one is seeded."""
     token = db.open_session()
     try:
         account_repo = AccountRepository()
@@ -599,6 +610,9 @@ def _fund_customer_account(env, currency, amount) -> None:
             env.customer.id, env.customer.base_reference, currency
         )
         account_repo.increase_balance(account.account_id, Decimal(amount))
+        platform = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, currency)
+        if platform is not None:
+            account_repo.decrease_balance(platform.account_id, Decimal(amount))
         db.session.commit()
     finally:
         db.close_session(token)
@@ -745,9 +759,11 @@ def test_usd_withdrawal_uses_the_usd_platform_accounts_only(env):
         )
         sa_fiat = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, CURRENCY_ZAR)
         assert us_revenue.account_balance == Decimal("1.50")
-        assert us_fiat.account_balance == Decimal("0")
+        # -500 funded + 198.50 paid out
+        assert us_fiat.account_balance == Decimal("-301.50")
         assert sa_revenue.account_balance == Decimal("0")
-        assert sa_fiat.account_balance == Decimal("0")
+        # Only the fixture's R1000 funding, untouched by the USD withdrawal
+        assert sa_fiat.account_balance == Decimal("-1000")
         usd = account_repo.get_user_account(env.customer.id, "USD")
         assert usd.account_balance == Decimal("300")
     finally:
@@ -798,13 +814,13 @@ def test_settled_legs_record_currency_accounts_and_timestamps(env):
         db.close_session(token)
 
 
-def test_fiat_balance_is_its_transactions_minus_total_paid_out(env):
-    """The one deliberate ledger exception (Transaction_Flow_Context.md §7):
-    REMITX_FIAT's stored balance equals its confirmed transactions minus
-    every withdrawal net paid out, which is what a reconciliation check will
-    have to allow for."""
+def test_withdrawals_keep_the_ledger_summing_to_zero(env):
+    """No balance moves without a transaction: after several withdrawals the
+    fiat account has moved by exactly its confirmed transactions (from the
+    fixture's -1000 funding), and every ZAR balance still sums to zero — the
+    user's claim plus fee revenue is exactly the cash RemitX still holds."""
+    from remitx_api.models.orm.account import Account
     from remitx_api.models.orm.transaction import Transaction
-    from remitx_api.models.orm.withdrawal import Withdrawal
     from sqlalchemy import func, select
 
     bank_account = _verified_bank_account(env)
@@ -828,9 +844,15 @@ def test_fiat_balance_is_its_transactions_minus_total_paid_out(env):
         from_transactions = Decimal(confirmed_sum(Transaction.debit_account_id)) - (
             Decimal(confirmed_sum(Transaction.credit_account_id))
         )
-        paid_out = Decimal(db.session.scalar(select(func.sum(Withdrawal.net_amount))))
-        assert paid_out > 0
-        assert fiat.account_balance == from_transactions - paid_out
+        assert from_transactions > 0
+        assert fiat.account_balance == Decimal("-1000") + from_transactions
+
+        zar_total = db.session.scalar(
+            select(func.sum(Account.account_balance)).where(
+                Account.account_currency == CURRENCY_ZAR
+            )
+        )
+        assert Decimal(zar_total) == Decimal("0")
     finally:
         db.close_session(token)
 
