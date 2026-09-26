@@ -23,7 +23,7 @@ export const PERMISSIONS = {
   kycDocumentRead: "kyc:document:read",
   platformAccountRead: "platform_account:read",
   transactionReadAny: "transaction:read_any",
-  auditRead: "audit:read",
+  settlementRetry: "settlement:retry",
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
