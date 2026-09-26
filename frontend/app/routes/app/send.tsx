@@ -22,14 +22,14 @@ import {
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
+import { beneficiaryName } from "~/lib/beneficiaries"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   amountIssue,
   DEFAULT_SENDER_CURRENCY,
-  isPayoutCurrency,
-  PAYOUT_CURRENCIES,
   readSendSearch,
+  resolveSendPayoutCurrency,
   resolveStep,
   stepNumber,
   writeSendSearch,
@@ -149,6 +149,21 @@ function AddMoney({ currency }: { currency: string }) {
   )
 }
 
+function NoPayoutAccount({ beneficiaryName: name }: { beneficiaryName: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>No payout account</CardTitle>
+        <CardDescription>
+          {name} doesn&apos;t have a payout account yet, so you can&apos;t send
+          to them. Ask them to open a ZAR, USD, ZWL, or NAD account in RemitX,
+          then try again.
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  )
+}
+
 function SendFlow({ standing }: { standing: KycStanding | undefined }) {
   const [params, setParams] = useSearchParams()
   const search = readSendSearch(params)
@@ -210,11 +225,9 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
     })
   }
 
-  const currency: PayoutCurrency =
-    search.currency ??
-    (beneficiary && isPayoutCurrency(beneficiary.payout_currency)
-      ? beneficiary.payout_currency
-      : PAYOUT_CURRENCIES[0])
+  const currency: PayoutCurrency | null = beneficiary
+    ? resolveSendPayoutCurrency(search, beneficiary)
+    : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -248,6 +261,8 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
           }
           onContinue={() => update({ step: "amount" })}
         />
+      ) : currency === null ? (
+        <NoPayoutAccount beneficiaryName={beneficiaryName(beneficiary)} />
       ) : step === "amount" ? (
         <AmountStep
           beneficiary={beneficiary}

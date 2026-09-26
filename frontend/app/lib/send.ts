@@ -56,6 +56,30 @@ export function isPayoutCurrency(value: unknown): value is PayoutCurrency {
  */
 export const DEFAULT_SENDER_CURRENCY = "ZAR"
 
+export type BeneficiaryPayoutSource = {
+  payout_currency: PayoutCurrency
+  payout_currencies: readonly PayoutCurrency[]
+}
+
+/**
+ * The payout currency for a send: URL override when it is one of the
+ * beneficiary's held accounts, otherwise their default or the first held.
+ */
+export function resolveSendPayoutCurrency(
+  search: Pick<SendSearch, "currency">,
+  beneficiary: BeneficiaryPayoutSource
+): PayoutCurrency | null {
+  const options = beneficiary.payout_currencies
+  if (options.length === 0) return null
+  if (search.currency && options.includes(search.currency)) {
+    return search.currency
+  }
+  if (options.includes(beneficiary.payout_currency)) {
+    return beneficiary.payout_currency
+  }
+  return options[0] ?? null
+}
+
 /** How long the amount must sit still before the preview is requested. */
 export const PREVIEW_DEBOUNCE_MS = 400
 

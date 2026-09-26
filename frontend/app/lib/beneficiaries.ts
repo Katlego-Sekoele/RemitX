@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 
-import { api, type BeneficiaryRead } from "~/client"
+import { api, type BeneficiaryRead, type PayoutCurrency } from "~/client"
 
 export type BeneficiarySort = "newest" | "alphabetical"
 
@@ -11,6 +11,17 @@ export const BENEFICIARY_SORT_LABELS: Record<BeneficiarySort, string> = {
 
 export type BeneficiaryNameSource = {
   full_name?: string | null
+}
+
+/** Fiat payout currencies this beneficiary can receive: the accounts they
+ * hold, plus their saved default when it is no longer in that list. */
+export function beneficiaryPayoutCurrencies(
+  beneficiary: Pick<BeneficiaryRead, "payout_currency" | "payout_currencies">
+): readonly PayoutCurrency[] {
+  const held = beneficiary.payout_currencies
+  return held.includes(beneficiary.payout_currency)
+    ? held
+    : [beneficiary.payout_currency, ...held]
 }
 
 /** What to call a beneficiary: their verified name, or their sign-up first
