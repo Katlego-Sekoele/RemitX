@@ -324,6 +324,21 @@ class KycStandingRead(Schema):
     limit_percent: int
     daily_limit_zar: Decimal
     monthly_limit_zar: Decimal
+    daily_used_zar: Decimal = Field(
+        description="ZAR sent today (SAST), counting transfers still settling "
+        "and leaving out failed ones."
+    )
+    monthly_used_zar: Decimal = Field(
+        description="ZAR sent this calendar month (SAST), counted the same way."
+    )
+    daily_remaining_zar: Decimal = Field(
+        description="What can still be sent today: the daily limit less what "
+        "was used, never below zero."
+    )
+    monthly_remaining_zar: Decimal = Field(
+        description="What can still be sent this month, counted the same way. "
+        "A send must fit both this and daily_remaining_zar."
+    )
 
 
 # --- Risk rule set ---------------------------------------------------------------

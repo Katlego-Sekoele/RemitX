@@ -55,9 +55,9 @@ function asAmount(value: string | undefined): string | undefined {
 }
 
 /**
- * What's left to send. These figures are the standing allowance: the tier's
- * daily and monthly limits scaled by the risk rating. Until KYC-3 (#25)
- * reports usage, the whole allowance is still available.
+ * What's left to send: the standing allowance (the tier's daily and monthly
+ * limits scaled by the risk rating) less what was already sent today and
+ * this month, as the API counts it when it checks a quote.
  */
 function limitsFrom(
   standing: KycStanding | undefined,
@@ -65,8 +65,8 @@ function limitsFrom(
 ): AmountLimits {
   return {
     available: asAmount(available),
-    dailyRemaining: asAmount(standing?.daily_limit_zar),
-    monthlyRemaining: asAmount(standing?.monthly_limit_zar),
+    dailyRemaining: asAmount(standing?.daily_remaining_zar),
+    monthlyRemaining: asAmount(standing?.monthly_remaining_zar),
   }
 }
 

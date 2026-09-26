@@ -55,7 +55,7 @@ describe("headlineAmount", () => {
   const transfer = {
     sender_amount: "1000.00",
     sender_currency: "ZAR",
-    receiver_payout_estimate: "15416.29",
+    receiver_amount: "15416.29",
     receiver_currency: "ZWL",
   }
 

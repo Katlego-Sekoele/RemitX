@@ -49,10 +49,12 @@ from remitx_api.repositories.kyc_risk_rule_repository import (
 from remitx_api.repositories.kyc_status_progression_repository import (
     KycApplicationStatusProgressionRepository,
 )
+from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.repository import Repository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services.audit_service import record_audit
 from remitx_api.services.kyc_risk_rules import RiskAssessment, allowance_for
+from remitx_api.services.send_limits import limit_windows
 
 # A rating is a reviewer's to override only while a decision is still pending.
 # After approval the tier and limits already rest on it; changing it then is a
@@ -70,8 +72,10 @@ class KycStanding:
 
     The limits are derived too — the tier's limits from `kyc_tiers`, scaled by
     the rating's `limit_percent` from `kyc_risk_ratings` — so changing either
-    row changes every customer it applies to, with nothing to backfill. This
-    is what the limits enforcement path (#25) reads.
+    row changes every customer it applies to, with nothing to backfill. So is
+    what the user has used of them: their sends over the current SAST day and
+    month (`services/send_limits.py`). This is what the limits enforcement path
+    (#25) reads.
     """
 
     status: KycStatus
@@ -81,10 +85,21 @@ class KycStanding:
     limit_percent: int = 100
     daily_limit_zar: Decimal = Decimal("0.00")
     monthly_limit_zar: Decimal = Decimal("0.00")
+    daily_used_zar: Decimal = Decimal("0.00")
+    monthly_used_zar: Decimal = Decimal("0.00")
 
     @property
     def is_verified(self) -> bool:
         return self.status in VERIFIED_STATUSES
+
+    @property
+    def daily_remaining_zar(self) -> Decimal:
+        """Never negative: a limit lowered after sending leaves nothing."""
+        return max(self.daily_limit_zar - self.daily_used_zar, Decimal("0.00"))
+
+    @property
+    def monthly_remaining_zar(self) -> Decimal:
+        return max(self.monthly_limit_zar - self.monthly_used_zar, Decimal("0.00"))
 
 
 @dataclass(frozen=True)
@@ -146,6 +161,7 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limits_from_tier(tier),
             None if rating_record is None else band_from_record(rating_record),
         )
+        sent = RemittanceRepository().sent_zar(user_id, limit_windows(utcnow()))
 
         return KycStanding(
             status=(
@@ -159,6 +175,8 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limit_percent=allowance.limit_percent,
             daily_limit_zar=allowance.daily_limit_zar,
             monthly_limit_zar=allowance.monthly_limit_zar,
+            daily_used_zar=sent.day_zar,
+            monthly_used_zar=sent.month_zar,
         )
 
     def list_for_user(self, user_id: uuid.UUID) -> list[KycApplication]:

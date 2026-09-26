@@ -104,10 +104,14 @@ export function ReviewStep({
       if (error) confirming.current = false
     },
     onSuccess: (remittance) => {
-      // The pending legs have lowered the available balance, and every
-      // transfer list (whatever limit) has a new row.
+      // The pending legs have lowered the available balance and what's left
+      // of the sending limits, and every transfer list (whatever limit) has a
+      // new row.
       queryClient.invalidateQueries({
         queryKey: api.accounts.getAccounts().queryKey,
+      })
+      queryClient.invalidateQueries({
+        queryKey: api.kyc.onboarding.getApplication().queryKey,
       })
       queryClient.invalidateQueries({
         queryKey: api.remittances.listRemittances().queryKey,
@@ -117,7 +121,9 @@ export function ReviewStep({
     },
     onError: (error) => {
       const refusal = confirmRefusal(error)
-      if (refusal === "unverified") {
+      if (refusal === "unverified" || refusal === "over_limit") {
+        // The standing carries both: the page's gate, and what the amount
+        // step lets the sender enter.
         queryClient.invalidateQueries({
           queryKey: api.kyc.onboarding.getApplication().queryKey,
         })
@@ -256,6 +262,17 @@ export function ReviewStep({
               </Button>
             </AlertAction>
           </Alert>
+        ) : refusal === "over_limit" ? (
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>This transfer is over your sending limit</AlertTitle>
+            <AlertDescription>{errorMessage(confirm.error)}</AlertDescription>
+            <AlertAction>
+              <Button size="sm" variant="outline" onClick={onBack}>
+                Change amount
+              </Button>
+            </AlertAction>
+          </Alert>
         ) : refusal === "other" ? (
           <Alert variant="destructive">
             <WarningCircleIcon />
@@ -269,7 +286,12 @@ export function ReviewStep({
           Back
         </Button>
         <Button
-          disabled={stale || sending || refusal === "insufficient_balance"}
+          disabled={
+            stale ||
+            sending ||
+            refusal === "insufficient_balance" ||
+            refusal === "over_limit"
+          }
           onClick={() => {
             if (confirming.current) return
             confirming.current = true

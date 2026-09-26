@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
+from remitx_api.errors.remittances import KycNotApprovedError, LimitExceededError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -13,13 +14,14 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
-from remitx_api.models.orm.quote import STATUS_USED
+from remitx_api.models.orm.quote import STATUS_ACTIVE, STATUS_USED
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
     TYPE_BENEFICIARY_PAYOUT,
     TYPE_FEE,
     TYPE_REMITTANCE,
     TYPE_TOKEN_BURN,
+    Transaction,
 )
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.quote_repository import QuoteRepository
@@ -29,6 +31,7 @@ from remitx_api.services import queue_service, quote_service, remittance_service
 from remitx_api.services.remittance_service import (
     TOKEN_ISSUER_LABEL,
 )
+from sqlalchemy import func, select
 from tests.kyc_helpers import insert_application
 from tests.platform_account_helpers import seed_platform_accounts
 
@@ -328,6 +331,77 @@ def test_second_active_quote_fails_available_balance_check_after_first_confirms(
 
     with pytest.raises(remittance_service.InsufficientBalanceError):
         remittance_service.confirm_remittance(sender.id, second_quote.quote_id)
+
+
+def _quote(sender, beneficiary, amount: str):
+    return quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal(amount),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+
+
+def _legs_for(quote_id) -> int:
+    return db.session.scalar(
+        select(func.count())
+        .select_from(Transaction)
+        .where(Transaction.quote_id == quote_id)
+    )
+
+
+def test_confirming_counts_what_was_sent_since_the_quote(app_context, enqueued):
+    """Quotes are checked against what was sent when they were issued, and
+    several can be issued against one allowance, so confirming is the real
+    gate: after R2,000 goes, R1,000.01 more is refused and R1,000 still fits
+    the R3,000 day exactly."""
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    seed_platform_accounts()
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    account_repo = AccountRepository()
+    sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
+    account_repo.increase_balance(sender_zar.account_id, Decimal("10000"))
+    db.session.commit()
+    first = _quote(sender, beneficiary, "2000").quote_id
+    over = _quote(sender, beneficiary, "1000.01").quote_id
+    exact = _quote(sender, beneficiary, "1000").quote_id
+
+    remittance_service.confirm_remittance(sender.id, first)
+    with pytest.raises(LimitExceededError) as refused:
+        remittance_service.confirm_remittance(sender.id, over)
+    remittance_service.confirm_remittance(sender.id, exact)
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,000.00 today."
+    )
+    # The refused quote is left as it was: active, with no legs.
+    assert QuoteRepository().get_by_id(over).status == STATUS_ACTIVE
+    assert _legs_for(over) == 0
+    assert enqueued == [str(first), str(exact)]
+
+
+def test_a_sender_no_longer_verified_cannot_confirm(app_context, enqueued):
+    """Standing can change between quote and confirm — here a newer
+    application now defines it — so confirming checks it again."""
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    seed_platform_accounts()
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    quote_id = _fund_and_quote(sender, beneficiary, Decimal("1000")).quote_id
+    insert_application(
+        sender.id,
+        status=KycStatus.REJECTED,
+        created_at=datetime.now(UTC) + timedelta(seconds=1),
+    )
+
+    with pytest.raises(KycNotApprovedError):
+        remittance_service.confirm_remittance(sender.id, quote_id)
+
+    assert QuoteRepository().get_by_id(quote_id).status == STATUS_ACTIVE
+    assert _legs_for(quote_id) == 0
+    assert enqueued == []
 
 
 def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(

@@ -91,6 +91,14 @@ function join(parts: Intl.NumberFormatPart[]): string {
 }
 
 /**
+ * The largest amount a customer may enter: what the ledger's Numeric(20,8)
+ * columns hold, to the cent (999 999 999 999.99). Not a business limit —
+ * KYC limits refuse real sends far below it — but anything larger is refused
+ * by the API, so the forms say so before sending.
+ */
+export const MAX_AMOUNT_CENTS = 99_999_999_999_999n
+
+/**
  * "1000.5" → 100050n. `null` for anything that isn't a plain, non-negative
  * amount with at most two decimal places. Typed amounts use this; stored
  * decimals use `amountToCents`.

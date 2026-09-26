@@ -47,18 +47,16 @@ class DashboardController:
     def get_dashboard(self, user_id: uuid.UUID) -> DashboardRead:
         now = datetime.now(UTC)
         today = _midnight(now)
-        month_start = today.replace(day=1)
         window_start = today - timedelta(days=WINDOW_DAYS - 1)
         days = [
             window_start.date() + timedelta(days=offset)
             for offset in range(WINDOW_DAYS)
         ]
 
+        # Limits and what was sent against them, as the limit check counts it.
         standing = self._applications.get_standing(user_id)
         facts = self._overview.transfers_for_user(user_id)
 
-        daily_sent = Decimal("0")
-        monthly_sent = Decimal("0")
         sent_by_day: dict = defaultdict(lambda: Decimal("0"))
         received_by_day: dict = defaultdict(lambda: Decimal("0"))
         paid: dict[uuid.UUID, tuple[str, Decimal]] = {}
@@ -68,10 +66,6 @@ class DashboardController:
             sent = fact.sender_user_id == user_id
             counts = fact.status != STATUS_FAILED
             if sent and counts and fact.sender_currency == CURRENCY_ZAR:
-                if fact.created_at >= today:
-                    daily_sent += fact.sender_amount
-                if fact.created_at >= month_start:
-                    monthly_sent += fact.sender_amount
                 if fact.created_at >= window_start:
                     sent_by_day[fact.created_at.date()] += fact.sender_amount
                 name = fact.beneficiary_name or "Unnamed"
@@ -92,9 +86,9 @@ class DashboardController:
         return DashboardRead(
             limits=LimitHeadroomRead(
                 daily_limit_zar=_money(standing.daily_limit_zar),
-                daily_sent_zar=_money(daily_sent),
+                daily_sent_zar=_money(standing.daily_used_zar),
                 monthly_limit_zar=_money(standing.monthly_limit_zar),
-                monthly_sent_zar=_money(monthly_sent),
+                monthly_sent_zar=_money(standing.monthly_used_zar),
             ),
             activity=[
                 ActivityDayRead(

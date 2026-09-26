@@ -67,7 +67,10 @@ def get_active_rate(
         rate_value = rate_provider().get_rate(base_currency, quote_currency)
     except RateFetchError:
         logger.warning(
-            "live rate fetch failed; falling back to stored rate", exc_info=True
+            "live rate fetch failed for %s/%s; falling back to stored rate",
+            base_currency,
+            quote_currency,
+            exc_info=True,
         )
         fallback_rate = repo.get_most_recent_rate(base_currency, quote_currency)
         if fallback_rate is not None:
@@ -76,6 +79,17 @@ def get_active_rate(
                 fetched_at = fetched_at.replace(tzinfo=UTC)
             if now - fetched_at <= timedelta(hours=Config.MAX_RATE_STALENESS_HOURS):
                 return fallback_rate
+        # Quoting is now blocked for this pair until the live API recovers or
+        # a fresh rate is stored some other way — worth an error, not just
+        # the warning above, since every quote for this pair will 503 until
+        # it clears.
+        logger.error(
+            "no usable %s/%s rate: live fetch failed and no stored rate is "
+            "recent enough (max staleness %sh)",
+            base_currency,
+            quote_currency,
+            Config.MAX_RATE_STALENESS_HOURS,
+        )
         raise RateUnavailableError(
             "live rate fetch failed and no recent-enough stored rate exists"
         ) from None

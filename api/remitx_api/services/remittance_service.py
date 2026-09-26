@@ -2,7 +2,10 @@
 
 Uses an active ACTIVE `Quote` to initiate an actual remittance send: seven
 `pending` ledger legs sharing one `quote_id`, the quote is flipped to USED,
-then settlement is enqueued. For each of the seven transactions,
+then settlement is enqueued. Confirming is the real gate for who may send and
+how much (services/send_limits.py): the sender must still be verified, and the
+quote must fit what is left of their daily and monthly allowance now, not when
+it was issued. For each of the seven transactions,
 `remitx_worker.tasks.confirm_treasury_burn` confirms and credits them all
 together, once the treasury's on-chain burn (leg 6) has resolved;
 `settle_remittance` and `burn_treasury_tokens` only hand off along the way.
@@ -14,10 +17,12 @@ own local fiat currency (leg 7, the payout). Leg 6, the burn, returns
 that same amount from the treasury to the Token issuer on-chain.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
 from remitx_api.config import Config
+from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -34,11 +39,17 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.kyc_application_repository import (
+    KycApplicationRepository,
+)
 from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
+from remitx_api.services.send_limits import require_can_send
+
+logger = logging.getLogger(__name__)
 
 REMITX_TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
 # Sourced from Config rather than hardcoded.
@@ -67,14 +78,48 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     transactions = TransactionRepository()
     remittances = RemittanceRepository()
 
+    # Held until the commit below. The limit check reads what this sender has
+    # already sent, so their next confirm waits here until this one has
+    # inserted its legs (or rolled back) instead of reading the same total.
+    UserRepository().lock(sender_user_id)
+
     quote = quotes.get_for_sender(quote_id, sender_user_id)
     if quote is None:
+        logger.info(
+            "confirm_remittance: quote %s not found for sender %s",
+            quote_id,
+            sender_user_id,
+        )
         raise QuoteNotFoundError(str(quote_id))
 
     # Mark the quote as used
     now = datetime.now(UTC)
     if not quotes.mark_used(quote.quote_id, now):
+        logger.info(
+            "confirm_remittance: quote %s is no longer active (used or expired)",
+            quote_id,
+        )
         raise QuoteNotActiveError(str(quote_id))
+
+    # Checked again, not trusted from the quote: standing can change after a
+    # quote is issued, and several quotes can be issued against one allowance.
+    try:
+        require_can_send(
+            KycApplicationRepository().get_standing(sender_user_id),
+            quote.sender_amount,
+            quote.sender_currency,
+        )
+    except DomainError as exc:
+        # Revert the quote status back to ACTIVE, as for a short balance below
+        db.session.rollback()
+        logger.info(
+            "confirm_remittance: sender %s refused for quote %s: %s; quote "
+            "reverted to ACTIVE",
+            sender_user_id,
+            quote_id,
+            exc.detail,
+        )
+        raise
 
     # Get the sender's fiat currency account using the quote's sender_currency
     sender_account = accounts.get_user_account(
@@ -86,6 +131,14 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     if available < quote.sender_amount:
         # Revert the quote status back to ACTIVE if the balance is insufficient
         db.session.rollback()
+        logger.info(
+            "confirm_remittance: sender %s available balance %s < quote %s "
+            "amount %s, quote reverted to ACTIVE",
+            sender_user_id,
+            available,
+            quote_id,
+            quote.sender_amount,
+        )
         raise InsufficientBalanceError(
             f"available balance {available} is less than {quote.sender_amount}"
         )
@@ -228,7 +281,21 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     # commit the quote flip, the seven pending legs, and the remittance record
     db.session.commit()
 
-    # Enqueue only after the commit above
-    queue_service.enqueue_settle_remittance(str(quote.quote_id))
+    # Enqueue only after the commit above. The seven legs are already
+    # committed as `pending` at this point — if this enqueue is lost, the
+    # remittance sits pending forever with nothing to drive it forward, so
+    # a failure here is logged loudly before propagating rather than left to
+    # a bare stack trace.
+    try:
+        queue_service.enqueue_settle_remittance(str(quote.quote_id))
+    except Exception:
+        logger.exception(
+            "confirm_remittance: failed to enqueue settle_remittance for "
+            "quote %s (remittance %s) — legs are committed pending but "
+            "settlement was never queued",
+            quote.quote_id,
+            remittance.remittance_id,
+        )
+        raise
 
     return remittance  # return the remittance record

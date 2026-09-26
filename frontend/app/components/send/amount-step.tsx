@@ -168,10 +168,10 @@ export function AmountStep({
                   : `Available: ${formatMoney(limits.available, SENDER_CURRENCY)}`}
                 {limits.dailyRemaining === undefined
                   ? null
-                  : ` · Daily limit: ${formatMoney(limits.dailyRemaining, SENDER_CURRENCY)}`}
+                  : ` · Left today: ${formatMoney(limits.dailyRemaining, SENDER_CURRENCY)}`}
                 {limits.monthlyRemaining === undefined
                   ? null
-                  : ` · Monthly limit: ${formatMoney(limits.monthlyRemaining, SENDER_CURRENCY)}`}
+                  : ` · Left this month: ${formatMoney(limits.monthlyRemaining, SENDER_CURRENCY)}`}
               </FieldDescription>
               {showIssue ? (
                 <FieldError>{amountIssueMessage(issue, limits)}</FieldError>
@@ -234,7 +234,7 @@ export function AmountStep({
                     <DescriptionDetails>
                       ≈{" "}
                       {formatMoney(
-                        preview.data.receiver_payout_estimate,
+                        preview.data.receiver_amount,
                         preview.data.receiver_payout_currency
                       )}
                     </DescriptionDetails>

@@ -40,10 +40,6 @@ class SeededPerson:
     force_override: bool = False
     force_tier_two: bool = False
     beneficiaries: list[dict] = field(default_factory=list)
-    # Sends counted against the daily and monthly limits, keyed by
-    # date / (year, month).
-    sent_by_day: Counter = field(default_factory=Counter)
-    sent_by_month: Counter = field(default_factory=Counter)
 
     @property
     def key(self) -> str:

@@ -2,14 +2,21 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
+import time_machine
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
+from remitx_api.errors.remittances import (
+    KycNotApprovedError,
+    LimitExceededError,
+    UnsupportedSenderCurrencyError,
+)
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_application import KycApplication
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.transaction import (
+    STATUS_FAILED,
     STATUS_PENDING,
     TYPE_REMITTANCE,
     Transaction,
@@ -17,8 +24,10 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.services import exchange_rate_service, quote_service
 from remitx_api.services.exchange_rate_provider import RateFetchError
+from remitx_api.services.send_limits import SAST
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
+from tests.send_helpers import record_transfer
 
 
 def _round_amount(value: Decimal) -> Decimal:
@@ -199,8 +208,7 @@ def test_fixed_fee_converts_into_a_non_zar_sender_currency(app_context):
         Decimal("15") * zar_rate / fiat_to_token_exchange_rate
     )
     expected_fee = _round_amount(expected_fixed_fee + Decimal("0.005") * Decimal("100"))
-    margin = _round_amount(Decimal("0.01") * Decimal("100"))
-    net = Decimal("100") - expected_fee - margin
+    net = Decimal("100") - expected_fee  # USD -> USD: no FX margin
     expected_token_amount = _round_amount(net * fiat_to_token_exchange_rate)
 
     assert pricing.sender_transaction_fee == expected_fee
@@ -217,14 +225,80 @@ def test_fee_and_margin_round_half_up_at_an_exact_cent_boundary(app_context):
     a bare `.quantize()` with no explicit rounding mode.
     """
     _store_rate("18.50")  # USD -> ZAR, needed for token math
-    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")  # direct leg
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")  # direct leg
 
-    pricing = quote_service.preview_quote(Decimal("212.50"), CURRENCY_ZAR, CURRENCY_ZAR)
+    # Cross-currency, so the FX margin applies (a same-currency send has none).
+    pricing = quote_service.preview_quote(Decimal("212.50"), CURRENCY_ZAR, "ZWL")
 
     # fee = 15 + 0.005*212.50 = 16.0625 -> 16.06 (not a tie, same either mode)
     assert pricing.sender_transaction_fee == Decimal("16.06")
     # margin = 0.01*212.50 = 2.125 -> 2.13 under ROUND_HALF_UP
     assert pricing.exchange_rate_margin == Decimal("2.13")
+
+
+def test_same_currency_preview_carries_no_fx_margin(app_context):
+    """The FX margin is a charge for converting currency — ZAR -> ZAR
+    converts nothing, so none is taken and it all reaches the net."""
+    _store_rate("18.50")  # USD -> ZAR, needed for token math
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")  # direct leg
+
+    pricing = quote_service.preview_quote(Decimal("1000"), CURRENCY_ZAR, CURRENCY_ZAR)
+
+    fee = Decimal("15") + Decimal("0.005") * Decimal("1000")  # 20
+    net = Decimal("1000") - fee  # 980, no margin taken
+    expected_receiver_amount = _round_amount(net * Decimal("1"))
+    expected_payout_fee = _round_amount(Decimal("0.0075") * expected_receiver_amount)
+
+    assert pricing.exchange_rate_margin == Decimal("0")
+    assert pricing.sender_transaction_fee == fee
+    assert pricing.receiver_amount == expected_receiver_amount
+    # The transfer and cash-out fees still apply — only the FX margin goes.
+    assert pricing.receiver_payout_fee == expected_payout_fee
+    assert (
+        pricing.receiver_payout_estimate
+        == expected_receiver_amount - expected_payout_fee
+    )
+
+
+def test_same_currency_quote_to_a_zar_beneficiary_carries_no_fx_margin(
+    app_context,
+):
+    _store_rate("18.50")
+    _store_rate("1", base_currency="ZAR", quote_currency="ZAR")
+    sender = _approve(
+        UserController().ensure_provisioned(
+            "user_quote_sender", lambda: "sender@example.com", lambda: "Sender"
+        )
+    )
+    recipient = UserController().ensure_provisioned(
+        "user_quote_recipient", lambda: "recipient@example.com", lambda: "Recipient"
+    )
+    beneficiary = (
+        BeneficiaryController()
+        .create(
+            sender_user_id=sender.id,
+            linked_user_id=recipient.id,
+            payout_currency=CURRENCY_ZAR,
+            relationship="sibling",
+        )
+        .beneficiary
+    )
+    _fund(sender, "1000")
+
+    quote = quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal("1000"),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency=CURRENCY_ZAR,
+    )
+
+    fee = Decimal("15") + Decimal("0.005") * Decimal("1000")
+    expected_rate = (Decimal("1") / Decimal("18.50")).quantize(Decimal("0.00000001"))
+    assert quote.exchange_rate_margin == Decimal("0")
+    assert quote.sender_transaction_fee == fee
+    assert quote.token_amount == _round_amount((Decimal("1000") - fee) * expected_rate)
+    assert quote.receiver_amount == Decimal("1000") - fee
 
 
 def test_sender_amount_is_rounded_to_two_decimals_on_entry(app_context):
@@ -318,7 +392,7 @@ def test_unverified_sender_is_rejected(app_context):
         .beneficiary
     )
 
-    with pytest.raises(quote_service.KycNotApprovedError):
+    with pytest.raises(KycNotApprovedError):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -334,9 +408,7 @@ def test_amount_over_the_daily_ceiling_is_rejected(app_context):
     sender, recipient, beneficiary = _make_sender_and_beneficiary()
     _fund(sender, "6000")
 
-    with pytest.raises(
-        quote_service.LimitExceededError, match="daily limit of 3000.00"
-    ):
+    with pytest.raises(LimitExceededError, match=r"up to R 3,000\.00 today"):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -364,9 +436,7 @@ def test_high_risk_rating_scales_the_daily_ceiling(app_context):
     )
     assert quote.sender_amount == Decimal("1500.00")
 
-    with pytest.raises(
-        quote_service.LimitExceededError, match="daily limit of 1500.00"
-    ):
+    with pytest.raises(LimitExceededError, match=r"up to R 1,500\.00 today"):
         quote_service.create_quote(
             sender.id,
             beneficiary.beneficiary_id,
@@ -393,6 +463,126 @@ def test_low_risk_enhanced_tier_allows_above_the_standard_ceiling(app_context):
         receiver_payout_currency="ZWL",
     )
     assert quote.sender_amount == Decimal("5000.00")
+
+
+def _quote_zar(sender, beneficiary, amount: str):
+    return quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal(amount),
+        sender_currency=CURRENCY_ZAR,
+        receiver_payout_currency="ZWL",
+    )
+
+
+def test_what_was_sent_today_counts_against_the_day(app_context):
+    """A running total, not a ceiling per send: exactly what is left of the
+    R3,000 passes, and one cent more is refused with what is left."""
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    _fund(sender, "10000")
+    record_transfer(sender, recipient, sender_amount=Decimal("2000"))
+    db.session.commit()
+
+    assert _quote_zar(sender, beneficiary, "1000").sender_amount == Decimal("1000.00")
+    with pytest.raises(LimitExceededError) as refused:
+        _quote_zar(sender, beneficiary, "1000.01")
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,000.00 today."
+    )
+
+
+def test_a_failed_transfer_gives_its_amount_back(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    _fund(sender, "10000")
+    record_transfer(
+        sender, recipient, sender_amount=Decimal("3000"), status=STATUS_FAILED
+    )
+    db.session.commit()
+
+    assert _quote_zar(sender, beneficiary, "3000").sender_amount == Decimal("3000.00")
+
+
+def test_earlier_days_count_against_the_month(app_context):
+    """R3,000 on each of the first eight days leaves R1,000 of the month,
+    less than a fresh day's R3,000, so the month is the limit that binds."""
+    with time_machine.travel(datetime(2025, 6, 20, 10, tzinfo=SAST), tick=False):
+        _store_rate("18.50")
+        _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+        sender, recipient, beneficiary = _make_sender_and_beneficiary()
+        _fund(sender, "10000")
+        for day in range(1, 9):
+            record_transfer(
+                sender,
+                recipient,
+                sender_amount=Decimal("3000"),
+                at=datetime(2025, 6, day, 12, tzinfo=SAST),
+            )
+        db.session.commit()
+
+        assert _quote_zar(sender, beneficiary, "1000").sender_amount == Decimal(
+            "1000.00"
+        )
+        with pytest.raises(LimitExceededError) as refused:
+            _quote_zar(sender, beneficiary, "1000.01")
+
+    assert refused.value.detail == (
+        "This would exceed your monthly limit. You can send up to R 1,000.00 "
+        "this month."
+    )
+
+
+def test_the_allowance_comes_back_at_midnight_sast(app_context):
+    """23:50 on the 14th and 00:10 on the 15th in South Africa are the same
+    UTC day. Only a SAST day gives the sender a fresh allowance at their own
+    midnight."""
+    with time_machine.travel(datetime(2025, 6, 14, 23, 50, tzinfo=SAST), tick=False):
+        _store_rate("18.50")
+        _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+        sender, recipient, beneficiary = _make_sender_and_beneficiary()
+        _fund(sender, "10000")
+        record_transfer(
+            sender,
+            recipient,
+            sender_amount=Decimal("3000"),
+            at=datetime(2025, 6, 14, 23, 0, tzinfo=SAST),
+        )
+        db.session.commit()
+
+        with pytest.raises(LimitExceededError) as refused:
+            _quote_zar(sender, beneficiary, "100")
+
+    assert refused.value.detail == (
+        "You've reached your daily limit. You can send again tomorrow."
+    )
+    with time_machine.travel(datetime(2025, 6, 15, 0, 10, tzinfo=SAST), tick=False):
+        assert _quote_zar(sender, beneficiary, "3000").sender_amount == Decimal(
+            "3000.00"
+        )
+
+
+def test_only_the_zar_account_sends(app_context):
+    """Decision 2 on #103. The limits are in ZAR, so a balance in another
+    currency could otherwise be sent without counting against them."""
+    _store_rate("18.50")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    accounts = AccountRepository()
+    usd = accounts.get_or_create_user_account(sender.id, sender.base_reference, "USD")
+    accounts.increase_balance(usd.account_id, Decimal("500"))
+    db.session.commit()
+
+    with pytest.raises(UnsupportedSenderCurrencyError):
+        quote_service.create_quote(
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal("100"),
+            sender_currency="USD",
+            receiver_payout_currency="ZWL",
+        )
 
 
 def test_beneficiary_not_owned_by_caller_is_rejected(app_context):

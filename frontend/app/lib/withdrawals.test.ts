@@ -30,6 +30,7 @@ describe("withdrawalAmountError", () => {
     ["0", "Enter an amount above zero."],
     ["0.00", "Enter an amount above zero."],
     ["1000.01", "That's more than your available balance."],
+    ["1000000000000", "That amount is too large."],
   ])("refuses %j", (amount, message) => {
     expect(withdrawalAmountError(amount, "1000.00")).toBe(message)
   })

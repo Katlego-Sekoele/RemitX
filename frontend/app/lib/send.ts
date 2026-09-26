@@ -11,6 +11,7 @@ import {
   formatRate,
   fromCents,
   invertRate,
+  MAX_AMOUNT_CENTS,
   subtractAmounts,
   toCents,
   TOKEN_LABEL,
@@ -130,6 +131,7 @@ export type AmountIssue =
   | "empty"
   | "invalid"
   | "zero"
+  | "too_large"
   | "too_small_for_fees"
   | "over_balance"
   | "over_daily_limit"
@@ -157,6 +159,7 @@ export function amountIssue(
   const cents = toCents(amount)
   if (cents === null) return "invalid"
   if (cents <= 0n) return "zero"
+  if (cents > MAX_AMOUNT_CENTS) return "too_large"
   const over = (limit: string | undefined) => {
     const limitCents = limit === undefined ? null : toCents(limit)
     return limitCents !== null && cents > limitCents
@@ -194,6 +197,8 @@ export function amountIssueMessage(
       return "Enter an amount in rand, like 500 or 500.50."
     case "zero":
       return "Enter an amount more than R 0.00."
+    case "too_large":
+      return "That amount is too large."
     case "too_small_for_fees":
       return "That's too small to cover the fees. Try a larger amount."
     case "over_balance":
@@ -251,6 +256,7 @@ export type PricedQuote = {
   fiat_exchange_rate: string
   token_amount: string
   token_name: string
+  receiver_amount: string
   receiver_currency: string
   receiver_payout_fee: string
   receiver_payout_estimate: string
@@ -305,11 +311,15 @@ export function quoteLines(quote: PricedQuote): QuoteLine[] {
       value: formatMoney(quote.token_amount, quote.token_name),
     },
     {
-      label: "Cash-out fee",
+      label: paid ? "Recipient gets" : "Received",
+      value: formatMoney(quote.receiver_amount, receiver),
+    },
+    {
+      label: "Recipient cash-out fee",
       value: formatMoney(quote.receiver_payout_fee, receiver),
     },
     {
-      label: paid ? "Recipient gets" : "Received",
+      label: "Estimated payout if recipient withdraws",
       value: formatMoney(quote.receiver_payout_estimate, receiver),
     },
   ]
@@ -343,19 +353,22 @@ export function quoteRefusal(error: unknown): QuoteRefusal {
 }
 
 export type ConfirmRefusal =
-  "quote_inactive" | "insufficient_balance" | "unverified" | "other"
+  | "quote_inactive"
+  | "insufficient_balance"
+  | "over_limit"
+  | "unverified"
+  | "other"
 
 /** Why `confirmRemittance` refused. */
 export function confirmRefusal(error: unknown): ConfirmRefusal {
   const status = statusOf(error)
   if (status === 409) return "quote_inactive"
   if (status === 403) return "unverified"
-  if (
-    status === 400 &&
-    error instanceof Error &&
-    /available balance/i.test(error.message)
-  ) {
-    return "insufficient_balance"
+  if (status === 400 && error instanceof Error) {
+    if (/available balance/i.test(error.message)) return "insufficient_balance"
+    // Another transfer used the allowance after this quote was issued. The
+    // message says which limit and what's left of it.
+    if (/\b(daily|monthly) limit\b/i.test(error.message)) return "over_limit"
   }
   return "other"
 }

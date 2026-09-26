@@ -1,15 +1,24 @@
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import aliased
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.remittance import Remittance
-from remitx_api.models.orm.transaction import TYPE_TOKEN_BURN, Transaction
+from remitx_api.models.orm.transaction import (
+    STATUS_FAILED,
+    TYPE_TOKEN_BURN,
+    Transaction,
+)
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.repository import Repository
+from remitx_api.services.send_limits import LimitWindows
+
+CENTS = Decimal("0.01")
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,14 @@ class RemittanceRecord:
     burn_leg: Transaction | None
     sender: User
     recipient: User
+
+
+@dataclass(frozen=True)
+class SentTotals:
+    """ZAR a user has sent in one SAST day and in the month containing it."""
+
+    day_zar: Decimal
+    month_zar: Decimal
 
 
 class RemittanceRepository(Repository[Remittance, uuid.UUID]):
@@ -104,6 +121,40 @@ class RemittanceRepository(Repository[Remittance, uuid.UUID]):
         )
         row = db.session.execute(statement).first()
         return RemittanceRecord(*row) if row else None
+
+    def sent_zar(self, sender_user_id: uuid.UUID, windows: LimitWindows) -> SentTotals:
+        """What the user sent in ZAR during `windows`' day and month, by when
+        each transfer was confirmed: every transfer whose settlement leg
+        hasn't failed, including those still pending or settling. Only their
+        own sends count, never money they received."""
+        settlement = aliased(Transaction)
+        in_day = and_(
+            Remittance.created_at >= windows.day_start,
+            Remittance.created_at < windows.day_end,
+        )
+        day_total, month_total = db.session.execute(
+            select(
+                func.coalesce(
+                    func.sum(case((in_day, Quote.sender_amount), else_=0)), 0
+                ),
+                func.coalesce(func.sum(Quote.sender_amount), 0),
+            )
+            .select_from(Remittance)
+            .join(Quote, Quote.quote_id == Remittance.quote_id)
+            .join(settlement, settlement.tx_id == Remittance.tx_id)
+            .where(
+                Quote.sender_user_id == sender_user_id,
+                Quote.sender_currency == CURRENCY_ZAR,
+                settlement.status != STATUS_FAILED,
+                Remittance.created_at >= windows.month_start,
+                Remittance.created_at < windows.month_end,
+            )
+        ).one()
+        # SQLite sums Numeric columns as floats.
+        return SentTotals(
+            day_zar=Decimal(str(day_total)).quantize(CENTS),
+            month_zar=Decimal(str(month_total)).quantize(CENTS),
+        )
 
     @staticmethod
     def _records():

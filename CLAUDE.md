@@ -62,6 +62,8 @@ uvicorn asgi:app --host 0.0.0.0 --port 4200   # production-style entry point
 
 pytest                              # all tests
 pytest tests/test_health.py::test_health_returns_ok   # single test
+TEST_DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@localhost:PORT/postgres pytest -m postgres
+                                    # Postgres lane (row locks etc.): makes and drops its own migrated DB; skipped when unset
 ruff check --fix . && ruff format . # lint + format (config in pyproject.toml)
 
 alembic upgrade head                # apply migrations

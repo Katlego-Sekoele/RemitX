@@ -300,16 +300,15 @@ class MoneyStory:
             return
         standing = KycApplicationRepository().get_standing(person.user_id)
         now = self.ctx.clock.now()
-        today, month = now.date(), (now.year, now.month)
         accounts = AccountRepository()
         zar = accounts.get_user_account(person.user_id, CURRENCY_ZAR)
-        # Kept within the limits even though the API only checks one send at a
-        # time today (KYC-3): seeded history must stay valid once it checks
-        # the day's and month's totals too.
+        # What the API will let them send: what's left of today's and this
+        # month's allowance (SAST, counting sends still settling) and their
+        # available balance.
         room = min(
             wanted,
-            standing.daily_limit_zar - person.sent_by_day[today],
-            standing.monthly_limit_zar - person.sent_by_month[month],
+            standing.daily_remaining_zar,
+            standing.monthly_remaining_zar,
             accounts.get_available_balance(zar.account_id),
         )
         amount = min(wanted, floor_send(room))
@@ -348,9 +347,16 @@ class MoneyStory:
 
     def _confirm(self, person: SeededPerson, quote_id, amount: Decimal) -> None:
         from remitx_api.controllers.remittance_controller import RemittanceController
+        from remitx_api.repositories.kyc_application_repository import (
+            KycApplicationRepository,
+        )
 
+        standing = KycApplicationRepository().get_standing(person.user_id)
+        if amount > min(standing.daily_remaining_zar, standing.monthly_remaining_zar):
+            # Another of their sends was confirmed after this quote was sized
+            # and took the room it was sized for. Confirming would be refused,
+            # so, like someone the app has told as much, they let it lapse.
+            self.ctx.count("send.quotes_over_limit")
+            return
         RemittanceController().confirm(person.user_id, quote_id)
-        now = self.ctx.clock.now()
-        person.sent_by_day[now.date()] += amount
-        person.sent_by_month[(now.year, now.month)] += amount
         self.ctx.count("send.remittances")

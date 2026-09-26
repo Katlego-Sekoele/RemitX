@@ -103,6 +103,9 @@ describe("amountIssue", () => {
     ["1.234", "invalid"],
     ["0", "zero"],
     ["0.00", "zero"],
+    // Too large beats over-balance: it's the reason the preview won't run.
+    ["1000000000000", "too_large"],
+    ["1" + "0".repeat(27), "too_large"],
     ["1000.01", "over_balance"],
     ["800.01", "over_daily_limit"],
     ["600.01", "over_monthly_limit"],
@@ -116,11 +119,21 @@ describe("amountIssue", () => {
     expect(amountIssue("5000", {})).toBeNull()
   })
 
+  it("allows up to the largest amount the ledger holds", () => {
+    expect(amountIssue("999999999999.99", {})).toBeNull()
+    expect(amountIssue("1000000000000.00", {})).toBe("too_large")
+  })
+
+  it("doesn't preview an amount too large to price", () => {
+    expect(canPreview(amountIssue("1000000000000", limits))).toBe(false)
+  })
+
   it("gives every issue its own message", () => {
     const issues: AmountIssue[] = [
       "empty",
       "invalid",
       "zero",
+      "too_large",
       "too_small_for_fees",
       "over_balance",
       "over_daily_limit",
@@ -195,8 +208,9 @@ describe("quoteLines", () => {
       "Amount converted",
       "Exchange rate",
       "RLUSD sent",
-      "Cash-out fee",
       "Recipient gets",
+      "Recipient cash-out fee",
+      "Estimated payout if recipient withdraws",
     ])
   })
 
@@ -208,6 +222,7 @@ describe("quoteLines", () => {
       "R 970.00",
       "1 USD = R 18.5000",
       "RLUSD 52.43",
+      "ZWL 15,733.40",
       "ZWL 118.00",
       "ZWL 15,615.40",
     ])
@@ -216,6 +231,21 @@ describe("quoteLines", () => {
 
   it("keeps percentages out of the labels", () => {
     expect(lines.some((line) => line.label.includes("%"))).toBe(false)
+  })
+
+  it("shows a zero FX margin on a same-currency send", () => {
+    const sameCurrency = quoteLines({
+      ...QUOTE,
+      exchange_rate_margin: "0.00",
+      fiat_exchange_rate: "1.00000000",
+      receiver_currency: "ZAR",
+    }).map((line) => ({ label: line.label, value: plain(line.value) }))
+
+    expect(sameCurrency).toContainEqual({ label: "FX margin", value: "R 0.00" })
+    expect(sameCurrency).toContainEqual({
+      label: "Amount converted",
+      value: "R 980.00",
+    })
   })
 
   it("hides the sender's fees on a received transfer", () => {
@@ -229,8 +259,9 @@ describe("quoteLines", () => {
     expect(received).toEqual([
       "Exchange rate",
       "RLUSD sent",
-      "Cash-out fee",
       "Received",
+      "Recipient cash-out fee",
+      "Estimated payout if recipient withdraws",
     ])
   })
 })
@@ -278,5 +309,24 @@ describe("refusals", () => {
       "unverified"
     )
     expect(confirmRefusal(new ApiError("Quote not found", 400))).toBe("other")
+  })
+
+  it("classifies a confirm the sending limits refused", () => {
+    expect(
+      confirmRefusal(
+        new ApiError(
+          "This would exceed your daily limit. You can send up to R 1,000.00 today.",
+          400
+        )
+      )
+    ).toBe("over_limit")
+    expect(
+      confirmRefusal(
+        new ApiError(
+          "You've reached your monthly limit. You can send again next month.",
+          400
+        )
+      )
+    ).toBe("over_limit")
   })
 })

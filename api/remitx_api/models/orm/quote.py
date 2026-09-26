@@ -15,7 +15,8 @@ Three currency concepts live on this row:
   `fiat_exchange_rate`, not through the token leg) is what settlement
   actually credits to the beneficiary's fiat account, with no cash-out fee deducted.
   `receiver_payout_fee`/ `receiver_payout_estimate` apply `CASH_OUT_FEE_RATE`
-  on top but stay display-only until a real withdrawal flow exists.
+  on top: the quotation's estimate of a later cash-out. They are never
+  charged here; a withdrawal works out its own fee when it happens.
 - `fiat_exchange_rate`/`fiat_exchange_rate_id` — the direct sender-currency
   to payout-currency rate (e.g. ZAR -> ZWL, its own fetched pair, not derived
   from two USD-relative rates). Doesn't affect settlement or `token_amount`.
@@ -88,7 +89,8 @@ class Quote(Base):
     exchange_rate_margin: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
     )
-    # Gross estimated cash-out, in receiver_currency, before receiver_payout_fee.
+    # What settlement credits to the beneficiary's fiat account, in
+    # receiver_currency. No cash-out fee is taken from it.
     receiver_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # The beneficiary's chosen payout currency (e.g. ZWL). Used with
     # beneficiary user id to get the beneficiary's fiat account.

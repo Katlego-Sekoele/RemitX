@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import ConfigDict
 
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.schemas.base import Amount, Schema, UtcDateTime
 
 
 class WithdrawalCreateRequest(Schema):
@@ -13,7 +13,7 @@ class WithdrawalCreateRequest(Schema):
 
     bank_account_id: uuid.UUID
     currency: str
-    amount: Decimal
+    amount: Amount
 
 
 class WithdrawalRead(Schema):
