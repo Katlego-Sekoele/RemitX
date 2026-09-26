@@ -100,9 +100,9 @@ describe("rates", () => {
   })
 
   it("labels the inverted token rate from the quote currencies", () => {
-    expect(
-      formatFiatToTokenExchangeRate("0.05405405", "ZAR", "uctusd")
-    ).toBe("1 RLUSD = R 18.5000")
+    expect(formatFiatToTokenExchangeRate("0.05405405", "ZAR", "uctusd")).toBe(
+      "1 RLUSD = R 18.5000"
+    )
     expect(formatFiatToTokenExchangeRate("1", "USD", "uctusd")).toBe(
       "1 RLUSD = USD 1.0000"
     )
