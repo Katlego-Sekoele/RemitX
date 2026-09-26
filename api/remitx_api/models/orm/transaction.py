@@ -16,6 +16,7 @@ resolves it — see models/orm/deposit.py.
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
@@ -42,12 +43,20 @@ TRANSACTION_TYPES = (
     TYPE_BENEFICIARY_PAYOUT,
 )
 
-STATUS_PENDING = "pending"
-STATUS_PROCESSING = "processing"
-STATUS_CONFIRMED = "confirmed"
-STATUS_FAILED = "failed"
 
-STATUSES = (STATUS_PENDING, STATUS_PROCESSING, STATUS_CONFIRMED, STATUS_FAILED)
+class TransactionStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
+STATUS_PENDING = TransactionStatus.PENDING.value
+STATUS_PROCESSING = TransactionStatus.PROCESSING.value
+STATUS_CONFIRMED = TransactionStatus.CONFIRMED.value
+STATUS_FAILED = TransactionStatus.FAILED.value
+
+STATUSES = tuple(TransactionStatus)
 
 
 class Transaction(Base):

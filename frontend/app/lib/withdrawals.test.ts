@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { AccountRead } from "~/client"
+import { BankAccountStatus, TransactionStatus } from "~/client"
 import {
   bankAccountLabel,
   bankAccountStatus,
@@ -53,17 +54,23 @@ describe("labels", () => {
   })
 
   it("reads each verification status", () => {
-    expect(bankAccountStatus("pending_verification").label).toBe(
-      "Awaiting verification"
+    expect(
+      bankAccountStatus(BankAccountStatus.PENDING_VERIFICATION).label
+    ).toBe("Awaiting verification")
+    expect(bankAccountStatus(BankAccountStatus.VERIFIED).variant).toBe(
+      "default"
     )
-    expect(bankAccountStatus("verified").variant).toBe("default")
-    expect(bankAccountStatus("rejected").variant).toBe("destructive")
+    expect(bankAccountStatus(BankAccountStatus.REJECTED).variant).toBe(
+      "destructive"
+    )
     expect(bankAccountStatus("something_new").label).toBe("something_new")
   })
 
   it("reads a settled withdrawal as paid out", () => {
-    expect(withdrawalStatus("confirmed").label).toBe("Paid out")
-    expect(withdrawalStatus("failed").variant).toBe("destructive")
+    expect(withdrawalStatus(TransactionStatus.CONFIRMED).label).toBe("Paid out")
+    expect(withdrawalStatus(TransactionStatus.FAILED).variant).toBe(
+      "destructive"
+    )
   })
 
   it("links to the Withdraw page for a currency", () => {

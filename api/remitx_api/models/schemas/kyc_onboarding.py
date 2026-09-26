@@ -21,6 +21,7 @@ from typing import Literal
 
 from pydantic import AliasChoices, ConfigDict, Field
 
+from remitx_api.models.orm.kyc_lifecycle import KycStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 from remitx_api.models.schemas.kyc import (
     KycPepRelationshipRead,
@@ -92,7 +93,9 @@ class KycApplicantApplicationRead(Schema):
 
     application_id: uuid.UUID
     # Effective: an approval past its review date reports `review_due`.
-    status: str = Field(validation_alias=AliasChoices("effective_status", "status"))
+    status: KycStatus = Field(
+        validation_alias=AliasChoices("effective_status", "status")
+    )
     version: int
     tier_granted: int | None = None
     created_at: UtcDateTime
@@ -141,7 +144,7 @@ class KycOnboardingRead(Schema):
 
 class KycApplicationSummaryRead(Schema):
     application_id: uuid.UUID
-    status: str
+    status: KycStatus
     created_at: UtcDateTime
     submitted_at: UtcDateTime | None = None
     decided_at: UtcDateTime | None = None
@@ -153,7 +156,7 @@ class KycApplicationSummaryRead(Schema):
 class KycStatusEventRead(Schema):
     model_config = ConfigDict(from_attributes=True)
 
-    status: str
+    status: KycStatus
     changed_at: UtcDateTime
 
 

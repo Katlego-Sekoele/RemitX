@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field
 
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
@@ -23,7 +24,7 @@ class RemittanceRead(Schema):
     remittance_id: uuid.UUID
     quote_id: uuid.UUID
     tx_id: uuid.UUID
-    status: str
+    status: TransactionStatus
     sender_amount: Decimal
     sender_currency: str
     token_amount: Decimal
@@ -61,7 +62,7 @@ class TransferRead(Schema):
         description="The other person's verified name: the recipient of a "
         "sent transfer, the sender of a received one."
     )
-    status: str
+    status: TransactionStatus
     created_at: UtcDateTime
     processed_at: UtcDateTime | None = Field(
         description="When settlement started on the XRPL Testnet."

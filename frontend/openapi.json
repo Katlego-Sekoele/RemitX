@@ -137,8 +137,7 @@
             "title": "Remittance Id"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/TransactionStatus"
           },
           "tx_id": {
             "format": "uuid",
@@ -414,8 +413,7 @@
             "title": "Rejection Reason"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/BankAccountStatus"
           }
         },
         "required": [
@@ -432,6 +430,15 @@
         ],
         "title": "BankAccountRead",
         "type": "object"
+      },
+      "BankAccountStatus": {
+        "enum": [
+          "pending_verification",
+          "verified",
+          "rejected"
+        ],
+        "title": "BankAccountStatus",
+        "type": "string"
       },
       "BeneficiaryCreateRequest": {
         "additionalProperties": false,
@@ -967,8 +974,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/TransactionStatus"
           }
         },
         "required": [
@@ -1357,8 +1363,7 @@
             "title": "Source Of Wealth"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           },
           "submitted_at": {
             "anyOf": [
@@ -2196,8 +2201,7 @@
             "title": "Source Of Wealth"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           },
           "submitted_at": {
             "anyOf": [
@@ -2692,8 +2696,7 @@
             "title": "Source Of Wealth"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           },
           "submitted_at": {
             "anyOf": [
@@ -2818,8 +2821,7 @@
             "title": "Next Review At"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           },
           "submitted_at": {
             "anyOf": [
@@ -3674,8 +3676,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           },
           "tier": {
             "title": "Tier",
@@ -3738,8 +3739,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/KycStatus"
           }
         },
         "required": [
@@ -4572,8 +4572,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/TransactionStatus"
           },
           "token_amount": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -4804,6 +4803,16 @@
         "title": "ToxicCombinationRead",
         "type": "object"
       },
+      "TransactionStatus": {
+        "enum": [
+          "pending",
+          "processing",
+          "confirmed",
+          "failed"
+        ],
+        "title": "TransactionStatus",
+        "type": "string"
+      },
       "TransferRead": {
         "description": "One transfer, sent or received, as the caller sees it.\n\n`status` is the settlement leg's: `pending` (queued), `processing`\n(settling on the XRPL Testnet), `confirmed` or `failed`. `xrpl_tx_hash`\nis the burn transaction's hash, set once the transfer has confirmed.",
         "properties": {
@@ -4942,8 +4951,7 @@
             "title": "Settled At"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/TransactionStatus"
           },
           "timeline": {
             "items": {
@@ -5398,8 +5406,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/TransactionStatus"
           },
           "tx_id": {
             "format": "uuid",

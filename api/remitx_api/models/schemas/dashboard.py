@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
@@ -38,7 +39,7 @@ class InFlightTransferRead(Schema):
     remittance_id: uuid.UUID
     direction: Literal["sent", "received"]
     counterparty_name: str | None
-    status: str
+    status: TransactionStatus
     amount: Decimal
     currency: str
     created_at: UtcDateTime

@@ -13,7 +13,7 @@ export type HistoryRow = {
   /** The fee part of `amount`, when the line folds a fee leg in. */
   fees: string | null
   currency: string
-  status: string
+  status: AccountTransactionRead["status"]
   created_at: string
   remittance_id: string | null
   xrpl_tx_hash: string | null

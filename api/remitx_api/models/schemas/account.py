@@ -5,6 +5,7 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 
@@ -63,7 +64,7 @@ class AccountTransactionRead(Schema):
     direction: str
     amount: Decimal
     currency: str
-    status: str
+    status: TransactionStatus
     created_at: UtcDateTime
     confirmed_at: UtcDateTime | None
     # Plain language, from the account owner's side: "Deposit",
