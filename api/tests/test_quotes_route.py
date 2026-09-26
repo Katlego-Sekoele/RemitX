@@ -106,6 +106,7 @@ def test_create_quote_end_to_end(verified_client):
     assert response.status_code == 200
     body = response.json()
     assert body["sender_amount"] == "1000.00000000"
+    assert Decimal(body["sender_amount_zar"]) == Decimal("1000.00")
     assert body["status"] == "ACTIVE"
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
 
@@ -277,6 +278,7 @@ def test_preview_end_to_end_no_beneficiary_needed(verified_client):
     assert Decimal(body["sender_transaction_fee"]) == Decimal("20.00000000")
     assert body["receiver_payout_currency"] == "USD"
     assert body["fiat_exchange_rate"] == "0.05400000"
+    assert Decimal(body["sender_amount_zar"]) == Decimal("1000.00")
     assert "quote_id" not in body
 
 

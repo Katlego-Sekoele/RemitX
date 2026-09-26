@@ -6,11 +6,7 @@ import time_machine
 from remitx_api.config import Config
 from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 from remitx_api.controllers.user_controller import UserController
-from remitx_api.errors.remittances import (
-    KycNotApprovedError,
-    LimitExceededError,
-    UnsupportedSenderCurrencyError,
-)
+from remitx_api.errors.remittances import KycNotApprovedError, LimitExceededError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -597,24 +593,79 @@ def test_the_allowance_comes_back_at_midnight_sast(app_context):
         )
 
 
-def test_only_the_zar_account_sends(app_context):
-    """Decision 2 on #103. The limits are in ZAR, so a balance in another
-    currency could otherwise be sent without counting against them."""
-    _store_rate("18.50")
-    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+def _dollar_sender():
+    """A tier-1 sender holding USD 1,000.00, and a ZWL beneficiary, at R18.50
+    to the dollar."""
+    _store_rate("18.50")  # USD -> ZAR: the rand value, and the fixed fee
+    _store_rate("300.07", base_currency="USD", quote_currency="ZWL")
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
     accounts = AccountRepository()
     usd = accounts.get_or_create_user_account(sender.id, sender.base_reference, "USD")
-    accounts.increase_balance(usd.account_id, Decimal("500"))
+    accounts.increase_balance(usd.account_id, Decimal("1000"))
+    db.session.commit()
+    return sender, recipient, beneficiary
+
+
+def _quote_usd(sender, beneficiary, amount: str):
+    return quote_service.create_quote(
+        sender.id,
+        beneficiary.beneficiary_id,
+        Decimal(amount),
+        sender_currency="USD",
+        receiver_payout_currency="ZWL",
+    )
+
+
+def test_a_dollar_quote_locks_its_rand_value(app_context):
+    """Any fiat account sends. What the send counts as against the rand limits
+    is worked out at the quote's own rates, through the USD peg as the fixed
+    fee is, and kept on the quote."""
+    sender, _recipient, beneficiary = _dollar_sender()
+
+    quote = _quote_usd(sender, beneficiary, "100")
+
+    assert quote.sender_amount == Decimal("100.00")
+    assert quote.sender_amount_zar == Decimal("1850.00")
+
+
+def test_a_rand_quote_is_worth_its_own_amount(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    _fund(sender, "1000")
+
+    quote = _quote_zar(sender, beneficiary, "1000")
+
+    assert quote.sender_amount_zar == Decimal("1000.00")
+
+
+def test_a_preview_says_what_the_send_is_worth_in_rand(app_context):
+    _store_rate("18.50")
+    _store_rate("1", base_currency="USD", quote_currency="USD")
+
+    pricing = quote_service.preview_quote(Decimal("100"), "USD", "USD")
+
+    assert pricing.sender_amount_zar == Decimal("1850.00")
+
+
+def test_dollars_count_against_what_is_left_in_rand(app_context):
+    """R2,000 already sent leaves R1,000 of the day. USD 100.00 is R1,850.00,
+    so it's refused with what is left in both currencies, and the estimate
+    itself fits."""
+    sender, recipient, beneficiary = _dollar_sender()
+    record_transfer(sender, recipient, sender_amount=Decimal("2000"))
     db.session.commit()
 
-    with pytest.raises(UnsupportedSenderCurrencyError):
-        quote_service.create_quote(
-            sender.id,
-            beneficiary.beneficiary_id,
-            Decimal("100"),
-            sender_currency="USD",
-            receiver_payout_currency="ZWL",
-        )
+    with pytest.raises(LimitExceededError) as refused:
+        _quote_usd(sender, beneficiary, "100")
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,000.00 "
+        "(about USD 54.05) today."
+    )
+    assert _quote_usd(sender, beneficiary, "54.05").sender_amount_zar == Decimal(
+        "999.93"
+    )
 
 
 def test_beneficiary_not_owned_by_caller_is_rejected(app_context):
