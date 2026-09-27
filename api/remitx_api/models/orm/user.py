@@ -84,11 +84,6 @@ class User(Base):
     # models/orm/beneficiary.py); populating it at signup is a separate,
     # not-yet-built change.
     last_name: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Not yet resolved/settable from anywhere (no onboarding/profile flow
-    # exists) — always NULL for now. Added for the same reason as
-    # `last_name`: BeneficiaryController joins these instead of storing a
-    # second, driftable copy on `Beneficiary` (see models/orm/beneficiary.py).
-    mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The verified name and residence (ISO 3166-1 alpha-2) from the user's
     # latest approved KYC application, written in the same transaction as the
     # approval (`KycApplicationRepository.apply_transition`). A copy, but of
@@ -112,8 +107,11 @@ class User(Base):
     )
     # Contact mobile, E.164, edited on the profile page. Clerk's sign-in
     # strategies do not require a phone, so it lives here. Not identity
-    # evidence: the verified mobile stays on the approved `kyc_applications`
-    # row and this never overwrites it.
+    # evidence: editing it never overwrites the verified mobile on the
+    # approved `kyc_applications` row, though an approval seeds this field
+    # from that row the same way it seeds `full_name` and `country`
+    # (`UserRepository.record_verified_identity`), so a profile edit
+    # afterwards is what wins going forward.
     mobile_number: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set when compliance stops the account (`user:suspend`). Deliberately not
     # part of the KYC state machine: a suspended user may well be KYC-approved,

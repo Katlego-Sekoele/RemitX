@@ -103,10 +103,15 @@ class UserRepository(Repository[User, uuid.UUID]):
         return f"{base}{next_number}"
 
     def record_verified_identity(
-        self, user_id: uuid.UUID, full_name: str | None, country: str | None
+        self,
+        user_id: uuid.UUID,
+        full_name: str | None,
+        country: str | None,
+        mobile_number: str | None = None,
     ) -> None:
-        """Copy an approved KYC application's name and residence onto the
-        user. Flushes only — the approval's transaction commits it.
+        """Copy an approved KYC application's name, residence, and mobile
+        number onto the user. Flushes only — the approval's transaction
+        commits it.
 
         A value the application left empty keeps what is already stored
         rather than blanking it.
@@ -116,4 +121,6 @@ class UserRepository(Repository[User, uuid.UUID]):
             user.full_name = full_name.strip()
         if country:
             user.country = country
+        if mobile_number:
+            user.mobile_number = mobile_number.strip()
         db.session.flush()
