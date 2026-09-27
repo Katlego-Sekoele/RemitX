@@ -35,13 +35,15 @@ from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
 def open_payout_account(
     user_id: uuid.UUID, base_reference: str, currency: str
 ) -> Account:
-    """Give a recipient a fiat account in their payout currency.
+    """Give an unverified recipient a fiat account in their payout currency.
 
-    Stands in for: opening a USD, ZWL or NAD wallet. Signup creates only ZAR
-    and uctusd accounts, and a beneficiary can only be added in a currency the
-    recipient already holds, so without this no ZWL, NAD or USD corridor could
-    exist. Uses `AccountRepository.get_or_create_user_account`, the same call
-    settlement makes when it pays a recipient in a new currency.
+    Stands in for: `AccountController.open_account`, which the product now
+    has, but only for a verified customer. Zimbabwean and Namibian recipients
+    live outside the countries RemitX onboards, and some people in ZA and the
+    US never finish KYC, so they cannot open the account themselves. A quote
+    refuses a beneficiary who does not already hold the payout currency, so
+    without this those corridors could not exist. Verified customers open
+    the account through the controller instead (see `MoneyStory`).
     """
     account = AccountRepository().get_or_create_user_account(
         user_id, base_reference, currency

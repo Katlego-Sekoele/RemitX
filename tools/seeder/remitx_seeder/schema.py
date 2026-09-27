@@ -31,6 +31,8 @@ COVERAGE = {
     "quotes": "money",
     "remittances": "money",
     "exchange_rates": "money (historical rate provider)",
+    "bank_accounts": "money (cash-out)",
+    "withdrawals": "money (cash-out)",
 }
 
 REFERENCE_TABLES = {

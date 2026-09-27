@@ -30,6 +30,7 @@ def main() -> None:
     celery.worker_main(
         [
             "worker",
+            "-B",
             "--loglevel=info",
             f"--concurrency={Config.CELERY_CONCURRENCY}",
         ]

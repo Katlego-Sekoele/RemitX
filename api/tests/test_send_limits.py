@@ -10,11 +10,7 @@ from decimal import Decimal
 
 import pytest
 import time_machine
-from remitx_api.errors.remittances import (
-    KycNotApprovedError,
-    LimitExceededError,
-    UnsupportedSenderCurrencyError,
-)
+from remitx_api.errors.remittances import KycNotApprovedError, LimitExceededError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.kyc_application import KycApplication
@@ -99,21 +95,30 @@ def standing(
     )
 
 
-def test_exactly_what_is_left_may_be_sent():
+def check(
+    standing: KycStanding,
+    amount: str,
+    currency: str = CURRENCY_ZAR,
+    *,
+    in_rand: str | None = None,
+) -> None:
+    """Can this standing send `amount` of `currency`, worth `in_rand` (the
+    amount itself, for rand)?"""
     require_can_send(
-        standing(daily_used="1200", monthly_used="1200"),
-        Decimal("1800.00"),
-        CURRENCY_ZAR,
+        standing,
+        Decimal(in_rand or amount),
+        amount=Decimal(amount),
+        currency=currency,
     )
+
+
+def test_exactly_what_is_left_may_be_sent():
+    check(standing(daily_used="1200", monthly_used="1200"), "1800.00")
 
 
 def test_one_cent_over_the_day_is_refused_with_what_is_left():
     with pytest.raises(LimitExceededError) as refused:
-        require_can_send(
-            standing(daily_used="1200", monthly_used="1200"),
-            Decimal("1800.01"),
-            CURRENCY_ZAR,
-        )
+        check(standing(daily_used="1200", monthly_used="1200"), "1800.01")
 
     assert refused.value.status_code == 400
     assert refused.value.detail == (
@@ -123,9 +128,7 @@ def test_one_cent_over_the_day_is_refused_with_what_is_left():
 
 def test_the_month_is_named_when_it_leaves_less_than_the_day():
     with pytest.raises(LimitExceededError) as refused:
-        require_can_send(
-            standing(monthly_used="24500"), Decimal("500.01"), CURRENCY_ZAR
-        )
+        check(standing(monthly_used="24500"), "500.01")
 
     assert refused.value.detail == (
         "This would exceed your monthly limit. You can send up to R 500.00 this month."
@@ -134,11 +137,7 @@ def test_the_month_is_named_when_it_leaves_less_than_the_day():
 
 def test_a_used_up_day_says_when_sending_can_resume():
     with pytest.raises(LimitExceededError) as refused:
-        require_can_send(
-            standing(daily_used="3000", monthly_used="3000"),
-            Decimal("0.01"),
-            CURRENCY_ZAR,
-        )
+        check(standing(daily_used="3000", monthly_used="3000"), "0.01")
 
     assert refused.value.detail == (
         "You've reached your daily limit. You can send again tomorrow."
@@ -148,11 +147,7 @@ def test_a_used_up_day_says_when_sending_can_resume():
 def test_a_used_up_month_outranks_the_day():
     """Tomorrow's fresh day wouldn't help, so the month is the one to name."""
     with pytest.raises(LimitExceededError) as refused:
-        require_can_send(
-            standing(daily_used="3000", monthly_used="25000"),
-            Decimal("1"),
-            CURRENCY_ZAR,
-        )
+        check(standing(daily_used="3000", monthly_used="25000"), "1")
 
     assert refused.value.detail == (
         "You've reached your monthly limit. You can send again next month."
@@ -164,18 +159,47 @@ def test_a_used_up_month_outranks_the_day():
 )
 def test_an_unverified_sender_is_refused_before_any_limit(status):
     with pytest.raises(KycNotApprovedError) as refused:
-        require_can_send(standing(status=status), Decimal("1"), CURRENCY_ZAR)
+        check(standing(status=status), "1")
 
     assert refused.value.status_code == 403
 
 
-def test_sending_is_from_zar_only():
-    """Decision 2 on #103: the limits are in ZAR and nothing converts another
-    currency's amount into them, so another currency's account can't send."""
-    with pytest.raises(UnsupportedSenderCurrencyError) as refused:
-        require_can_send(standing(), Decimal("1"), "USD")
+def test_another_currency_is_checked_by_its_rand_value():
+    """The limits stay in rand. USD 97.29 at R18.50 is R1,799.87, inside
+    the R1,800.00 left."""
+    check(
+        standing(daily_used="1200", monthly_used="1200"),
+        "97.29",
+        "USD",
+        in_rand="1799.87",
+    )
 
-    assert refused.value.status_code == 400
+
+def test_a_refusal_in_another_currency_estimates_what_is_left_in_it():
+    """R1,800.00 is about USD 97.29 at the send's own rate (USD 100.00 for
+    R1,850.00), rounded down so the estimate itself would fit."""
+    with pytest.raises(LimitExceededError) as refused:
+        check(
+            standing(daily_used="1200", monthly_used="1200"),
+            "100.00",
+            "USD",
+            in_rand="1850.00",
+        )
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,800.00 "
+        "(about USD 97.29) today."
+    )
+
+
+def test_the_monthly_estimate_uses_the_same_rate():
+    with pytest.raises(LimitExceededError) as refused:
+        check(standing(monthly_used="24500"), "100.00", "USD", in_rand="1850.00")
+
+    assert refused.value.detail == (
+        "This would exceed your monthly limit. You can send up to R 500.00 "
+        "(about USD 27.02) this month."
+    )
 
 
 # --- What has been used ----------------------------------------------------
@@ -268,17 +292,37 @@ def test_only_what_the_user_sent_counts(sender, recipient):
     assert now.monthly_used_zar == Decimal("0.00")
 
 
-def test_only_zar_sends_count_against_zar_limits(sender, recipient):
+def test_another_currency_counts_the_rand_value_its_quote_locked(sender, recipient):
+    moment = sast(2025, 6, 15, 8)
     record_transfer(
         sender,
         recipient,
-        sender_amount=Decimal("50"),
-        at=sast(2025, 6, 15, 8),
+        sender_amount=Decimal("100"),
         sender_currency="USD",
+        sender_amount_zar=Decimal("1850.00"),
+        at=moment,
+    )
+    send(sender, recipient, "500", moment)
+
+    now = standing_at(sender, sast(2025, 6, 15, 9))
+
+    assert now.daily_used_zar == Decimal("2350.00")
+    assert now.monthly_used_zar == Decimal("2350.00")
+
+
+def test_a_quote_from_before_rand_values_counts_its_amount(sender, recipient):
+    """Only a ZAR quote can have no rand value: the code that wrote one
+    before the column existed could send nothing else."""
+    record_transfer(
+        sender,
+        recipient,
+        sender_amount=Decimal("700"),
+        sender_amount_zar=None,
+        at=sast(2025, 6, 15, 8),
     )
     db.session.commit()
 
-    assert standing_at(sender, sast(2025, 6, 15, 9)).daily_used_zar == Decimal("0.00")
+    assert standing_at(sender, sast(2025, 6, 15, 9)).daily_used_zar == Decimal("700.00")
 
 
 def test_what_is_left_never_goes_below_zero(sender, recipient):

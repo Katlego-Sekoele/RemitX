@@ -4,13 +4,15 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import time_machine
+from remitx_api.auth.dependencies import get_current_user
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.account import CURRENCY_ZAR, CURRENCY_ZWL
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_FAILED,
     STATUS_PENDING,
 )
+from remitx_api.models.orm.user import User
 from remitx_api.services.send_limits import SAST
 from tests.kyc_helpers import make_user
 from tests.send_helpers import record_transfer
@@ -36,7 +38,7 @@ def test_dashboard_is_empty_until_the_caller_sends(verified_client):
     assert body["limits"]["monthly_limit_zar"] == "25000.00"
     assert len(body["activity"]) == 30
     assert all(day["zar_sent"] == "0.00" for day in body["activity"])
-    assert all(day["token_received"] == "0.00" for day in body["activity"])
+    assert all(day["payout_received"] == "0.00" for day in body["activity"])
 
 
 def test_dashboard_counts_sends_and_leaves_out_failures(verified_client):
@@ -79,7 +81,7 @@ def test_dashboard_counts_sends_and_leaves_out_failures(verified_client):
     assert body["limits"]["daily_sent_zar"] == "1100.00"
     assert body["limits"]["monthly_sent_zar"] == "1100.00"
     assert day["zar_sent"] == "1100.00"
-    assert day["token_received"] == "0.00"
+    assert day["payout_received"] == "0.00"
     assert body["beneficiaries"] == [{"name": "Amahle D.", "zar_sent": "1100.00"}]
     assert len(body["in_flight"]) == 1
     inflight = body["in_flight"][0]
@@ -111,3 +113,73 @@ def test_dashboard_limits_count_the_south_african_day(verified_client):
 
     assert limits["daily_sent_zar"] == "0.00"
     assert limits["monthly_sent_zar"] == "3000.00"
+
+
+def test_dashboard_received_activity_uses_payout_not_settlement_token(
+    verified_client,
+):
+    """Recipients see what lands in their payout currency, not RLUSD on the
+    settlement leg."""
+    client, sender = verified_client
+    token = db.open_session()
+    try:
+        recipient = make_user("dash-recipient")
+        record_transfer(
+            sender,
+            recipient,
+            sender_amount=Decimal("1000"),
+            token_amount=Decimal("52.43"),
+            receiver_amount=Decimal("1354.37"),
+            receiver_currency=CURRENCY_ZWL,
+            status=STATUS_CONFIRMED,
+        )
+        record_transfer(
+            sender,
+            recipient,
+            sender_amount=Decimal("100"),
+            token_amount=Decimal("5.24"),
+            receiver_amount=Decimal("135.44"),
+            receiver_currency=CURRENCY_ZWL,
+            status=STATUS_PENDING,
+        )
+        db.session.commit()
+        recipient_id = recipient.id
+    finally:
+        db.close_session(token)
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=recipient_id)
+    body = client.get(DASHBOARD).json()
+    today = datetime.now(UTC).date().isoformat()
+    day = next(row for row in body["activity"] if row["day"] == today)
+
+    assert day["payout_received"] == "1489.81"
+    assert day["zar_sent"] == "0.00"
+    inflight = next(row for row in body["in_flight"] if row["direction"] == "received")
+    assert inflight["amount"] == "135.44"
+    assert inflight["currency"] == CURRENCY_ZWL
+
+
+def test_dashboard_counts_other_currencies_by_their_rand_value(verified_client):
+    """A USD send is in the ZAR figures at the rand value its quote locked,
+    not left out of them."""
+    client, sender = verified_client
+    token = db.open_session()
+    try:
+        record_transfer(
+            sender,
+            make_user("dash-usd-beneficiary"),
+            sender_amount=Decimal("100"),
+            sender_currency="USD",
+            sender_amount_zar=Decimal("1850.00"),
+        )
+        db.session.commit()
+    finally:
+        db.close_session(token)
+
+    body = client.get(DASHBOARD).json()
+    today = datetime.now(UTC).date().isoformat()
+    day = next(row for row in body["activity"] if row["day"] == today)
+
+    assert body["limits"]["daily_sent_zar"] == "1850.00"
+    assert day["zar_sent"] == "1850.00"
+    assert [row["zar_sent"] for row in body["beneficiaries"]] == ["1850.00"]

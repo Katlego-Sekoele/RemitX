@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select, update
 
+from remitx_api.errors.accounts import AccountAlreadyHeldError
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -137,14 +138,24 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             )
         ).all()
 
+    def open_user_account(
+        self, user_id: uuid.UUID, base_reference: str, currency: str
+    ) -> Account:
+        """Create a payout account the user does not hold yet. ZAR and the
+        settlement wallet are created at sign-up; everything else is opened
+        here or lazily on first payout."""
+        existing = self.get_user_account(user_id, currency)
+        if existing is not None:
+            raise AccountAlreadyHeldError(currency)
+        return self.save(self._build_account(user_id, base_reference, currency))
+
     def get_or_create_user_account(
         self, user_id: uuid.UUID, base_reference: str, currency: str
     ) -> Account:
         """Like `get_user_account`, but provisions the account on the spot if
         this is the first time this person has ever needed one in this
-        currency — e.g. a beneficiary receiving their first remittance in a
-        payout currency nobody creates an account for at signup (only ZAR +
-        uctusd are eager)."""
+        currency. Used by tests, the seeder, and deposit matching — not
+        remittance payout (that requires an account the user has opened)."""
         account = self.get_user_account(user_id, currency)
         if account is not None:
             return account

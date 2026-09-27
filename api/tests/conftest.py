@@ -1,8 +1,5 @@
 import os
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,11 +11,8 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.user import User
 from remitx_api.services import queue_service
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 from tests.kyc_helpers import insert_application
-
-API_ROOT = Path(__file__).resolve().parents[1]
+from tests.postgres_helpers import migrate, throwaway_database
 
 
 @pytest.fixture
@@ -132,32 +126,28 @@ def enqueued(monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def postgres_url():
-    """A throwaway database on TEST_DATABASE_URL's server, migrated with the
-    API's Alembic so it has the real schema, and dropped at the end."""
+def postgres_server_url():
     server_url = os.environ.get("TEST_DATABASE_URL")
     if not server_url:
         pytest.skip("TEST_DATABASE_URL is not set")
-    name = f"remitx_test_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(server_url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as connection:
-        connection.execute(text(f'CREATE DATABASE "{name}"'))
-    url = make_url(server_url).set(database=name).render_as_string(hide_password=False)
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
-            cwd=API_ROOT,
-            # No wallet: the treasury-funding migration would otherwise read a
-            # real balance off the testnet.
-            env={**os.environ, "DATABASE_URL": url, "PLATFORM_WALLET_ADDRESS": ""},
-            check=True,
-            capture_output=True,
-        )
+    return server_url
+
+
+@pytest.fixture(scope="session")
+def postgres_url(postgres_server_url):
+    """A throwaway database on that server, migrated with the API's Alembic
+    so it has the real schema, and dropped at the end."""
+    with throwaway_database(postgres_server_url) as url:
+        migrate(url)
         yield url
-    finally:
-        with admin.connect() as connection:
-            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
+
+
+@pytest.fixture
+def empty_postgres_url(postgres_server_url):
+    """A database of the test's own, not migrated yet: for tests that step
+    through migrations with `tests.postgres_helpers.migrate`."""
+    with throwaway_database(postgres_server_url) as url:
+        yield url
 
 
 @pytest.fixture

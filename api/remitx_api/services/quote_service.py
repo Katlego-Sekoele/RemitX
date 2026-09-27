@@ -32,7 +32,7 @@ from remitx_api.repositories.kyc_application_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import exchange_rate_service
-from remitx_api.services.send_limits import require_can_send
+from remitx_api.services.send_limits import require_verified, require_within_limits
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,12 @@ class UnknownSenderAccountError(Exception):
     this is a real, reachable outcome, not a defensive check."""
 
 
+class UnknownBeneficiaryPayoutAccountError(Exception):
+    """Beneficiary has no fiat account in `receiver_payout_currency`. Payout
+    only credits accounts the recipient has opened — never provisioned at
+    send time."""
+
+
 class InsufficientBalanceError(Exception):
     """Sender's *available* balance (raw minus their own pending outgoing
     legs — Open Question #5) can't cover `sender_amount`."""
@@ -74,6 +80,8 @@ class RemittancePricing:
     `preview_quote`, which need the same math but not the same data."""
 
     sender_currency: str
+    # The send in rand at these rates: what it counts as against the limits.
+    sender_amount_zar: Decimal
     sender_transaction_fee: Decimal
     exchange_rate_margin: Decimal
     token_amount: Decimal
@@ -93,7 +101,8 @@ class RemittancePricing:
     receiver_payout_currency: str
     # The real cash-out estimate, in receiver_payout_currency: net converted
     # directly via fiat_exchange_rate (not routed through the token leg),
-    # then Config.CASH_OUT_FEE_RATE applied. No real cash-out flow exists yet (see
+    # then the same cash-out fee as withdrawals (rate with a minimum). No real
+    # cash-out flow exists yet (see
     # models/orm/quote.py) — this is a display estimate only.
     receiver_amount: Decimal
     receiver_payout_fee: Decimal
@@ -147,6 +156,18 @@ def _convert_zar_fee_to_sender_currency(
     return round_amount(fee_zar * zar_rate / fiat_to_token_exchange_rate)
 
 
+def to_zar(amount: Decimal, currency: str) -> Decimal:
+    """`amount` of `currency` in rand, through each currency's USD/token peg:
+    the fixed fee's conversion run the other way. What a send counts as
+    against the sending limits, which are in rand whatever account it leaves.
+    No rate is needed, or looked up, for rand itself."""
+    if currency == CURRENCY_ZAR:
+        return amount
+    token_rate, _ = _token_rate(currency)
+    zar_rate, _ = _token_rate(CURRENCY_ZAR)
+    return round_amount(amount * token_rate / zar_rate)
+
+
 def price_remittance(
     sender_amount: Decimal, sender_currency: str, receiver_payout_currency: str
 ) -> RemittancePricing:
@@ -193,14 +214,19 @@ def price_remittance(
 
     # Real cash-out estimate, in receiver_payout_currency: net (post-fee,
     # pre-token-conversion) converted directly via fiat_exchange_rate — not
-    # routed through the token/USD leg — then Config.CASH_OUT_FEE_RATE applied. No
-    # real redemption happens at quote time, so this is a display estimate.
+    # routed through the token/USD leg — then the same cash-out fee as
+    # withdrawal_service (rate with a minimum). No real redemption happens at
+    # quote time, so this is a display estimate.
     receiver_amount = round_amount(net * fiat_exchange_rate)
-    payout_fee = round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount)
+    payout_fee = max(
+        round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount),
+        Config.MIN_CASH_OUT_FEE,
+    )
     payout_estimate = receiver_amount - payout_fee
 
     return RemittancePricing(
         sender_currency=sender_currency,
+        sender_amount_zar=to_zar(sender_amount, sender_currency),
         sender_transaction_fee=fee,
         exchange_rate_margin=margin,
         token_amount=token_amount,
@@ -235,14 +261,20 @@ def create_quote(
     sender = users.get_by_id(sender_user_id)
     if sender is None:
         raise ValueError(f"User {sender_user_id} does not exist")
-    # Verified, sending ZAR, and within what is left of today's and this
-    # month's allowance after what they have already sent. Standing is derived
-    # from `kyc_applications` and the ledger, not stored on `User`.
+    # Verified, and within what is left of today's and this month's allowance
+    # after what they have already sent. Standing is derived from
+    # `kyc_applications` and the ledger, not stored on `User`. The allowance
+    # is in rand, so the send counts at its value in rand at this quote's
+    # rates, which the quote then locks.
+    standing = KycApplicationRepository().get_standing(sender_user_id)
     try:
-        require_can_send(
-            KycApplicationRepository().get_standing(sender_user_id),
-            sender_amount,
-            sender_currency,
+        require_verified(standing)
+        sender_amount_zar = to_zar(sender_amount, sender_currency)
+        require_within_limits(
+            standing,
+            sender_amount_zar,
+            amount=sender_amount,
+            currency=sender_currency,
         )
     except DomainError as exc:
         logger.info(
@@ -292,6 +324,20 @@ def create_quote(
         )
         raise ValueError("beneficiary is missing their uctusd account")
 
+    beneficiary_fiat_account = accounts.get_user_account(
+        beneficiary.linked_user_id, receiver_payout_currency
+    )
+    if beneficiary_fiat_account is None:
+        logger.info(
+            "create_quote: beneficiary %s (linked_user_id=%s) has no %s account",
+            beneficiary_id,
+            beneficiary.linked_user_id,
+            receiver_payout_currency,
+        )
+        raise UnknownBeneficiaryPayoutAccountError(
+            f"beneficiary has no account in {receiver_payout_currency}"
+        )
+
     # Check the sender's available balance
     available = accounts.get_available_balance(sender_account.account_id)
     if available < sender_amount:
@@ -314,6 +360,7 @@ def create_quote(
         beneficiary_user_id=beneficiary.linked_user_id,
         sender_amount=sender_amount,
         sender_currency=pricing.sender_currency,
+        sender_amount_zar=sender_amount_zar,
         sender_transaction_fee=pricing.sender_transaction_fee,
         token_amount=pricing.token_amount,
         token_name=pricing.token_name,

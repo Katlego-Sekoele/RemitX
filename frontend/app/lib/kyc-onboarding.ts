@@ -3,29 +3,35 @@
  * here, so moving the pages means changing this file and `routes.ts` only.
  */
 
-const VERIFIED_STANDING = new Set(["approved", "review_due"])
+import { KycStatus } from "~/client"
 
-// Mirrors STARTABLE_STANDINGS in api/remitx_api/models/orm/kyc_lifecycle.py.
+// Subset of `STARTABLE_STANDINGS` in api/remitx_api/models/orm/kyc_lifecycle.py.
 // The server enforces it; this only decides whether to offer the button.
-const STARTABLE_STANDING = new Set(["not_started", "rejected", "review_due"])
-
-const OPEN_STATUSES = new Set([
-  "in_progress",
-  "submitted",
-  "under_review",
-  "more_info_required",
+const STARTABLE_STANDING = new Set<KycStatus>([
+  KycStatus.NOT_STARTED,
+  KycStatus.REJECTED,
+  KycStatus.REVIEW_DUE,
 ])
 
-export function isKycVerified(status: string | undefined): boolean {
-  return VERIFIED_STANDING.has(status ?? "")
+const OPEN_STATUSES = new Set<KycStatus>([
+  KycStatus.IN_PROGRESS,
+  KycStatus.SUBMITTED,
+  KycStatus.UNDER_REVIEW,
+  KycStatus.MORE_INFO_REQUIRED,
+])
+
+export function isKycVerified(
+  standing: { is_verified?: boolean } | undefined
+): boolean {
+  return standing?.is_verified ?? false
 }
 
-export function canStartApplication(status: string | undefined): boolean {
-  return STARTABLE_STANDING.has(status ?? "")
+export function canStartApplication(status: KycStatus | undefined): boolean {
+  return status !== undefined && STARTABLE_STANDING.has(status)
 }
 
-export function isOpenStatus(status: string | undefined): boolean {
-  return OPEN_STATUSES.has(status ?? "")
+export function isOpenStatus(status: KycStatus | undefined): boolean {
+  return status !== undefined && OPEN_STATUSES.has(status)
 }
 
 /** Standing and history: the Verification page of Clerk's <UserProfile>. An
@@ -53,54 +59,59 @@ export function applicationStepPath(
   return `${applicationPath(applicationId)}/${step}`
 }
 
-export const KYC_STATUS_COPY: Record<string, { title: string; body: string }> =
-  {
-    not_started: {
-      title: "Not started",
-      body: "Verify your identity to start sending.",
-    },
-    in_progress: { title: "In progress", body: "Your draft is saved." },
-    submitted: {
-      title: "Submitted",
-      body: "We're reviewing your application.",
-    },
-    under_review: {
-      title: "Under review",
-      body: "A reviewer is looking at your application.",
-    },
-    more_info_required: {
-      title: "More information needed",
-      body: "Update your application and submit again.",
-    },
-    approved: {
-      title: "Approved",
-      body: "You're verified and can start sending.",
-    },
-    rejected: {
-      title: "Not approved",
-      body: "You can start a new application.",
-    },
-    review_due: {
-      title: "Review due",
-      body: "Your verification has expired. Start a new application to renew it.",
-    },
-  }
+export const KYC_STATUS_COPY: Record<
+  KycStatus,
+  { title: string; body: string }
+> = {
+  [KycStatus.NOT_STARTED]: {
+    title: "Not started",
+    body: "Verify your identity to start sending.",
+  },
+  [KycStatus.IN_PROGRESS]: {
+    title: "In progress",
+    body: "Your draft is saved.",
+  },
+  [KycStatus.SUBMITTED]: {
+    title: "Submitted",
+    body: "We're reviewing your application.",
+  },
+  [KycStatus.UNDER_REVIEW]: {
+    title: "Under review",
+    body: "A reviewer is looking at your application.",
+  },
+  [KycStatus.MORE_INFO_REQUIRED]: {
+    title: "More information needed",
+    body: "Update your application and submit again.",
+  },
+  [KycStatus.APPROVED]: {
+    title: "Approved",
+    body: "You're verified and can start sending.",
+  },
+  [KycStatus.REJECTED]: {
+    title: "Not approved",
+    body: "You can start a new application.",
+  },
+  [KycStatus.REVIEW_DUE]: {
+    title: "Review due",
+    body: "Your verification has expired. Start a new application to renew it.",
+  },
+}
 
-export function statusCopy(status: string | undefined) {
-  return KYC_STATUS_COPY[status ?? ""] ?? KYC_STATUS_COPY.not_started
+export function statusCopy(status: KycStatus | undefined) {
+  return KYC_STATUS_COPY[status ?? KycStatus.NOT_STARTED]
 }
 
 export function statusVariant(
-  status: string | undefined
+  status: KycStatus | undefined
 ): "default" | "destructive" | "outline" | "secondary" {
   switch (status) {
-    case "approved":
+    case KycStatus.APPROVED:
       return "default"
-    case "rejected":
-    case "more_info_required":
-    case "review_due":
+    case KycStatus.REJECTED:
+    case KycStatus.MORE_INFO_REQUIRED:
+    case KycStatus.REVIEW_DUE:
       return "destructive"
-    case "in_progress":
+    case KycStatus.IN_PROGRESS:
       return "outline"
     default:
       return "secondary"

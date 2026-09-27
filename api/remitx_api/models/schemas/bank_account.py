@@ -5,6 +5,7 @@ from typing import Annotated
 
 from pydantic import ConfigDict, StringConstraints
 
+from remitx_api.models.orm.bank_account import BankAccountStatus
 from remitx_api.models.schemas.base import Schema, UtcDateTime
 
 # Required text: whitespace-only counts as blank and is refused with a 422.
@@ -39,7 +40,7 @@ class BankAccountRead(Schema):
     branch_code: str | None
     currency: str
     country: str | None
-    status: str
+    status: BankAccountStatus
     rejection_reason: str | None
     created_at: UtcDateTime
 

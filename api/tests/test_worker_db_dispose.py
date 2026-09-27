@@ -43,7 +43,7 @@ def test_reclaim_disposes_even_when_it_fails(monkeypatch):
     disposed = []
     monkeypatch.setattr(db, "dispose", lambda: disposed.append(True))
     monkeypatch.setattr(
-        "remitx_worker.reclaim.reclaim_pending_messages",
+        "remitx_worker.reclaim.reclaim_on_worker_boot",
         lambda: (_ for _ in ()).throw(RuntimeError("database down")),
     )
 

@@ -62,6 +62,7 @@ class Tag:
     ADMIN_WITHDRAWALS = "admin.withdrawals"
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
+    ADMIN_AUDIT = "admin.audit"
 
 
 TAGS: list[dict[str, str]] = [
@@ -140,6 +141,12 @@ TAGS: list[dict[str, str]] = [
         "name": Tag.ADMIN_KYC_DOCUMENTS,
         "description": "Audited reviewer access to KYC evidence.",
     },
+    {
+        "name": Tag.ADMIN_AUDIT,
+        "description": (
+            "Privileged actions and sensitive reads — who did what, to whom, and when."
+        ),
+    },
 ]
 
 
@@ -170,6 +177,7 @@ def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         404: "Not found.",
         409: "The current state refuses the request.",
         413: "The upload is too large.",
+        422: "The request body failed validation.",
         502: "Object storage failed.",
         503: "A service the request depends on is unavailable.",
     }

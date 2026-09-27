@@ -6,7 +6,6 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import aliased
 
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.transaction import (
@@ -123,9 +122,10 @@ class RemittanceRepository(Repository[Remittance, uuid.UUID]):
         return RemittanceRecord(*row) if row else None
 
     def sent_zar(self, sender_user_id: uuid.UUID, windows: LimitWindows) -> SentTotals:
-        """What the user sent in ZAR during `windows`' day and month, by when
-        each transfer was confirmed: every transfer whose settlement leg
-        hasn't failed, including those still pending or settling. Only their
+        """What the user sent during `windows`' day and month, in rand, by
+        when each transfer was confirmed: every transfer whose settlement leg
+        hasn't failed, including those still pending or settling. A send from
+        another currency counts at the rand value its quote locked. Only their
         own sends count, never money they received."""
         settlement = aliased(Transaction)
         in_day = and_(
@@ -134,17 +134,14 @@ class RemittanceRepository(Repository[Remittance, uuid.UUID]):
         )
         day_total, month_total = db.session.execute(
             select(
-                func.coalesce(
-                    func.sum(case((in_day, Quote.sender_amount), else_=0)), 0
-                ),
-                func.coalesce(func.sum(Quote.sender_amount), 0),
+                func.coalesce(func.sum(case((in_day, Quote.value_zar), else_=0)), 0),
+                func.coalesce(func.sum(Quote.value_zar), 0),
             )
             .select_from(Remittance)
             .join(Quote, Quote.quote_id == Remittance.quote_id)
             .join(settlement, settlement.tx_id == Remittance.tx_id)
             .where(
                 Quote.sender_user_id == sender_user_id,
-                Quote.sender_currency == CURRENCY_ZAR,
                 settlement.status != STATUS_FAILED,
                 Remittance.created_at >= windows.month_start,
                 Remittance.created_at < windows.month_end,

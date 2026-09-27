@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 
 from remitx_seeder.clerk import FakeClerkGateway
 from remitx_seeder.engine import run_seed
-from remitx_seeder.scenario import Scenario
+from remitx_seeder.scenario import MoneyBehaviour, Scenario
 from remitx_seeder.settlement import SYNTHETIC_HASH_PREFIX
 from remitx_seeder.storage import MemoryStorage
 
@@ -27,12 +27,15 @@ def run(database):
     clerk = FakeClerkGateway(existing_users=EXISTING_CLERK_USERS)
     storage = MemoryStorage()
     events: list[dict] = []
+    # dormant_rate 0 so Clerk senders (scarce under the cap) always get
+    # beneficiaries — the live-tail test needs at least two of them.
     scenario = Scenario(
         name="test",
         days=40,
         senders=14,
         recipients={"ZW": 5, "NA": 2, "ZA": 4, "US": 2},
         clerk_user_cap=CLERK_CAP,
+        money=MoneyBehaviour(dormant_rate=0.0),
     )
     summary = run_seed(
         scenario,
@@ -85,6 +88,11 @@ def test_the_run_covers_the_whole_journey(run):
         "send.quotes",
         "send.remittances",
         "settlement.settled",
+        "cashout.bank_accounts",
+        "cashout.bank_accounts_verified",
+        "cashout.withdrawals",
+        "money.payout_accounts_opened",
+        "money.payout_accounts_provisioned",
     ):
         assert counts.get(key, 0) > 0, key
 

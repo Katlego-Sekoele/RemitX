@@ -24,10 +24,14 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.kyc_application_repository import (
+    KycApplicationRepository,
+)
 from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import queue_service, quote_service, remittance_service
+from remitx_api.services.quote_service import UnknownBeneficiaryPayoutAccountError
 from remitx_api.services.remittance_service import (
     TOKEN_ISSUER_LABEL,
 )
@@ -110,6 +114,23 @@ def _fund_and_quote(sender, beneficiary, amount: Decimal):
         sender_currency=CURRENCY_ZAR,
         receiver_payout_currency="ZWL",
     )
+
+
+def test_confirm_refuses_when_beneficiary_lacks_payout_account(app_context):
+    _store_rate("18.50")
+    _store_rate("16.22", base_currency="ZAR", quote_currency="ZWL")
+    seed_platform_accounts()
+    sender, recipient, beneficiary = _make_sender_and_beneficiary()
+    quote = _fund_and_quote(sender, beneficiary, Decimal("1000"))
+    quote.receiver_currency = "USD"
+    db.session.commit()
+
+    with pytest.raises(UnknownBeneficiaryPayoutAccountError):
+        remittance_service.confirm_remittance(sender.id, quote.quote_id)
+
+    reloaded = QuoteRepository().get_for_sender(quote.quote_id, sender.id)
+    assert reloaded is not None
+    assert reloaded.status == STATUS_ACTIVE
 
 
 def test_confirming_a_quote_creates_seven_pending_legs(app_context, enqueued):
@@ -421,3 +442,54 @@ def test_a_quote_issued_before_its_beneficiary_is_removed_still_confirms(
 
     assert QuoteRepository().get_by_id(quote.quote_id).status == STATUS_USED
     assert remittance.quote_id == quote.quote_id
+
+
+def _dollar_sender_with_quotes(*amounts: str):
+    """A tier-1 sender holding USD 1,000.00, with a quote to a ZWL
+    beneficiary for each amount, priced at R18.50 to the dollar."""
+    _store_rate("18.50")
+    _store_rate("300.07", base_currency="USD", quote_currency="ZWL")
+    seed_platform_accounts()
+    sender, _recipient, beneficiary = _make_sender_and_beneficiary()
+    accounts = AccountRepository()
+    usd = accounts.get_or_create_user_account(sender.id, sender.base_reference, "USD")
+    accounts.increase_balance(usd.account_id, Decimal("1000"))
+    db.session.commit()
+    quote_ids = [
+        quote_service.create_quote(
+            sender.id,
+            beneficiary.beneficiary_id,
+            Decimal(amount),
+            sender_currency="USD",
+            receiver_payout_currency="ZWL",
+        ).quote_id
+        for amount in amounts
+    ]
+    return sender, quote_ids
+
+
+def test_confirming_counts_the_rand_value_the_quote_locked(app_context, enqueued):
+    """A rate move after the quote changes nothing: USD 100.00 counts as the
+    R1,850.00 locked at R18.50, not the R4,000.00 it would be at R40."""
+    sender, (quote_id,) = _dollar_sender_with_quotes("100")
+    _store_rate("40")
+
+    remittance_service.confirm_remittance(sender.id, quote_id)
+
+    standing = KycApplicationRepository().get_standing(sender.id)
+    assert standing.daily_used_zar == Decimal("1850.00")
+
+
+def test_a_dollar_confirm_refusal_estimates_at_the_quotes_rate(app_context, enqueued):
+    """Two USD 100.00 quotes, R1,850.00 each: once one is sent, R1,150.00 is
+    left, about USD 62.16 at the rate the refused quote locked."""
+    sender, (first, second) = _dollar_sender_with_quotes("100", "100")
+    remittance_service.confirm_remittance(sender.id, first)
+
+    with pytest.raises(LimitExceededError) as refused:
+        remittance_service.confirm_remittance(sender.id, second)
+
+    assert refused.value.detail == (
+        "This would exceed your daily limit. You can send up to R 1,150.00 "
+        "(about USD 62.16) today."
+    )

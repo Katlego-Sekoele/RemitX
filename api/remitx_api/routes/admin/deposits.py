@@ -38,14 +38,17 @@ controller = DepositController()
     summary="Reconcile bank-statement rows into deposits",
     responses=error_responses(409),
 )
-def process_deposits(payload: ProcessDepositsRequest):
+def process_deposits(
+    payload: ProcessDepositsRequest,
+    operator: User = Depends(get_current_user),
+):
     """Each row carries the currency of the RemitX bank account it came into.
     Rows whose reference names the customer's account in that currency are
     confirmed and credited. The rest, including references to an account in
     another currency, wait in the pending queue for manual matching. Rows
     with no currency RemitX banks in are skipped. Needs ``cashin:confirm``."""
     rows = [row.model_dump() for row in payload.rows]
-    return controller.process_deposits(rows)
+    return controller.process_deposits(rows, operator.id)
 
 
 @router.get(

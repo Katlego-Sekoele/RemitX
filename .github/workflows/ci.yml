@@ -115,3 +115,12 @@ jobs:
         env:
           SEEDER_TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
         run: pytest
+
+      # The load test's scripts import the backend and the seeder too, so a
+      # rename that would break `make loadtest` fails here instead.
+      - name: Load test scripts (tools/loadtest)
+        working-directory: tools/loadtest
+        run: |
+          ruff check .
+          ruff format --check .
+          pytest

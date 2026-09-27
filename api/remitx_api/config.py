@@ -41,6 +41,19 @@ class Config:
     # ~925 MB, so the worker was OOM-killed between "mingle" and "ready" and
     # consumed nothing. Concurrency here is bounded by memory, not cores.
     CELERY_CONCURRENCY = int(os.getenv("CELERY_CONCURRENCY", "2"))
+    # How often the worker's embedded beat re-runs settlement reclaim (seconds).
+    SETTLEMENT_RECLAIM_INTERVAL_SECONDS = int(
+        os.getenv("SETTLEMENT_RECLAIM_INTERVAL_SECONDS", "300")
+    )
+    # Only remittance groups fully ``pending`` for at least this long are
+    # re-enqueued on the beat tick (boot reclaim ignores the age gate).
+    SETTLEMENT_RECLAIM_MIN_AGE_SECONDS = int(
+        os.getenv("SETTLEMENT_RECLAIM_MIN_AGE_SECONDS", "180")
+    )
+    # ``processing`` groups older than this are logged for manual follow-up.
+    SETTLEMENT_PROCESSING_STALE_LOG_SECONDS = int(
+        os.getenv("SETTLEMENT_PROCESSING_STALE_LOG_SECONDS", "600")
+    )
     CORS_ORIGINS = _split_csv(os.getenv("CORS_ORIGINS", "http://localhost:5173"))
 
     # Alembic owns the Postgres schema in every environment (see
@@ -54,6 +67,15 @@ class Config:
     @property
     def CLERK_SECRET_KEY(self) -> str:
         return os.getenv("CLERK_SECRET_KEY", "")
+
+    # PEM public key for networkless session verification: when set, the
+    # Clerk SDK checks tokens against it and never fetches Clerk's JWKS. In
+    # QA/production that is the instance's own key (Clerk dashboard → API keys
+    # → JWT public key). The load test (tools/loadtest) sets a throwaway key it
+    # signs its own tokens with, so no request reaches Clerk.
+    @property
+    def CLERK_JWT_KEY(self) -> str:
+        return os.getenv("CLERK_JWT_KEY", "").strip()
 
     # Written by platform_wallet/scripts/create_xprl_platform_wallet.py.
     @property

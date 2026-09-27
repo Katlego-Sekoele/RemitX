@@ -1,17 +1,16 @@
 """Staff overview: cash-in and settlement over the last 30 UTC days."""
 
 from datetime import date
-from decimal import Decimal
 
-from remitx_api.models.schemas.base import Schema
+from remitx_api.models.schemas.base import LedgerDecimal, Schema
 
 
 class VolumeDayRead(Schema):
     """Confirmed ZAR cash-in and confirmed token settlement on one UTC day."""
 
     day: date
-    zar_cash_in: Decimal
-    token_settled: Decimal
+    zar_cash_in: LedgerDecimal
+    token_settled: LedgerDecimal
 
 
 class PipelineDayRead(Schema):

@@ -30,7 +30,11 @@ import {
   ItemTitle,
 } from "~/components/ui/item"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { beneficiaryName, invalidateBeneficiaries } from "~/lib/beneficiaries"
+import {
+  beneficiaryName,
+  beneficiaryPayoutCurrencies,
+  invalidateBeneficiaries,
+} from "~/lib/beneficiaries"
 
 /** Change a beneficiary's payout currency or relationship, in place on the
  * list. The person is fixed: a different person is a different beneficiary.
@@ -50,11 +54,7 @@ export function EditBeneficiaryForm({
   const [payoutCurrency, setPayoutCurrency] = useState<PayoutCurrency>(
     beneficiary.payout_currency
   )
-  const payoutOptions = beneficiary.payout_currencies.includes(
-    beneficiary.payout_currency
-  )
-    ? beneficiary.payout_currencies
-    : [beneficiary.payout_currency, ...beneficiary.payout_currencies]
+  const payoutOptions = beneficiaryPayoutCurrencies(beneficiary)
   const [relationship, setRelationship] = useState<BeneficiaryRelationship>(
     beneficiary.relationship
   )

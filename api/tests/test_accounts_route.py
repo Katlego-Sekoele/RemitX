@@ -2,7 +2,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.config import TestConfig
 from remitx_api.controllers.account_controller import describe_leg
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
@@ -12,8 +14,10 @@ from remitx_api.models.orm.account import (
     CURRENCY_USD,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
+    PAYOUT_CURRENCIES,
     TYPE_PLATFORM_REVENUE,
     Account,
+    create_account_reference,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.user import User, short_display_name
@@ -23,16 +27,114 @@ from remitx_api.services import deposit_service, remittance_service
 from remitx_worker import db as worker_db
 from remitx_worker.tasks import confirm_treasury_burn
 from sqlalchemy.orm import sessionmaker
+from tests.kyc_helpers import seed_kyc_reference_data
 from tests.platform_account_helpers import seed_platform_accounts
 
 ACCOUNTS = "/accounts"
 HISTORY = "/accounts-history"
+LOOKUP = "/beneficiaries/lookup-by-reference"
 
 
 def test_accounts_anonymous_caller_is_rejected(anonymous_client):
     response = anonymous_client.get(ACCOUNTS)
 
     assert response.status_code == 401
+
+
+def test_open_account_anonymous_caller_is_rejected(anonymous_client):
+    response = anonymous_client.post(ACCOUNTS, json={"currency": "USD"})
+
+    assert response.status_code == 401
+
+
+def test_open_account_requires_kyc_verification(client):
+    token = db.open_session()
+    try:
+        seed_kyc_reference_data()
+    finally:
+        db.close_session(token)
+
+    response = client.post(ACCOUNTS, json={"currency": "USD"})
+
+    assert response.status_code == 403
+    assert "verified" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize("currency", PAYOUT_CURRENCIES)
+def test_open_account_creates_each_payout_currency(verified_client, currency):
+    client, sender = verified_client
+    if currency == CURRENCY_ZAR:
+        pytest.skip("ZAR is created at sign-up")
+
+    response = client.post(ACCOUNTS, json={"currency": currency})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["currency"] == currency
+    assert body["kind"] == "fiat"
+    assert body["balance"] == "0.00"
+    assert body["available_balance"] == "0.00"
+    assert body["reference"] == create_account_reference(
+        sender.base_reference, currency
+    )
+
+
+def test_open_account_duplicate_currency_is_409(verified_client):
+    client, sender = verified_client
+
+    first = client.post(ACCOUNTS, json={"currency": "USD"})
+    assert first.status_code == 201
+
+    second = client.post(ACCOUNTS, json={"currency": "USD"})
+
+    assert second.status_code == 409
+    assert "already" in second.json()["detail"].lower()
+
+
+def test_open_account_rejects_settlement_token(verified_client):
+    client, _sender = verified_client
+    token_name = TestConfig().UCTUSD_TOKEN_NAME
+
+    response = client.post(ACCOUNTS, json={"currency": token_name})
+
+    assert response.status_code == 422
+
+
+def test_open_account_rejects_unsupported_currency(verified_client):
+    client, _sender = verified_client
+
+    response = client.post(ACCOUNTS, json={"currency": "EUR"})
+
+    assert response.status_code == 422
+
+
+def test_open_account_reference_works_in_beneficiary_lookup(verified_client):
+    client, sender = verified_client
+    other_id = _provision_other_user("open_account_lookup")
+
+    opened = client.post(ACCOUNTS, json={"currency": "NAD"})
+    assert opened.status_code == 201
+    reference = opened.json()["reference"]
+
+    _sign_in_as(client, User(id=other_id, base_reference="other1"))
+    lookup = client.get(LOOKUP, params={"account_reference": reference})
+
+    assert lookup.status_code == 200
+    assert lookup.json()["account_currency"] == "NAD"
+    assert "NAD" in lookup.json()["payout_currencies"]
+
+
+def _provision_other_user(clerk_id: str) -> uuid.UUID:
+    token = db.open_session()
+    try:
+        other = UserController().ensure_provisioned(
+            clerk_id,
+            lambda: f"{clerk_id}@example.com",
+            lambda: "Other",
+        )
+        return other.id
+    finally:
+        db.close_session(token)
 
 
 def test_history_anonymous_caller_is_rejected(anonymous_client):

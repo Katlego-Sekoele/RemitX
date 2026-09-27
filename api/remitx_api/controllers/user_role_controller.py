@@ -27,6 +27,7 @@ from remitx_api.errors.roles import (
     UnknownRoleError,
 )
 from remitx_api.extensions import db
+from remitx_api.models.orm.audit_log import AuditAction, AuditSubject
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.user_role import UserRole
 from remitx_api.models.schemas.role import (
@@ -45,6 +46,7 @@ from remitx_api.repositories.toxic_combination_repository import (
 )
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.repositories.user_role_repository import UserRoleRepository
+from remitx_api.services.audit_service import record_audit
 
 
 class UserRoleController:
@@ -119,6 +121,19 @@ class UserRoleController:
         assignment.toxic_combination_acknowledged = bool(warnings) and (
             request.toxic_combination_acknowledged
         )
+        if actor_id is not None:
+            record_audit(
+                actor_user_id=actor_id,
+                subject_type=AuditSubject.USER_ROLE,
+                subject_id=assignment.user_role_id,
+                action=AuditAction.ROLE_GRANTED,
+                after={
+                    "role": role.name,
+                    "user_id": str(user.id),
+                    "self_granted": assignment.self_granted,
+                },
+                reason=assignment.grant_reason,
+            )
         return RoleGrantResult(
             grant=_to_user_role_read(assignment, role),
             created=True,
@@ -155,6 +170,15 @@ class UserRoleController:
         assignment.revoked_at = utcnow()
         assignment.revoked_by = actor_id
         assignment.revoke_reason = reason.strip()
+        if actor_id is not None:
+            record_audit(
+                actor_user_id=actor_id,
+                action=AuditAction.ROLE_REVOKED,
+                subject_type=AuditSubject.USER_ROLE,
+                subject_id=assignment.user_role_id,
+                before={"role": role.name, "user_id": str(user.id)},
+                reason=assignment.revoke_reason,
+            )
 
         return _to_user_role_read(assignment, role)
 

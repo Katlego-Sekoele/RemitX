@@ -18,6 +18,7 @@ from remitx_api.models.schemas.remittance import (
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
+from remitx_api.services.quote_service import UnknownBeneficiaryPayoutAccountError
 from remitx_api.services.remittance_service import (
     InsufficientBalanceError,
     QuoteNotActiveError,
@@ -71,10 +72,11 @@ def confirm_remittance(
     §2 Phase B2/C.
 
     Refusals: 403 if the caller is no longer KYC-verified; 400 for an unknown
-    quote, or one that no longer fits the available balance or what is left
-    of today's or this month's allowance (the refusal names the limit and
-    what is left of it); 409 if the quote was already used or has expired.
-    A refused quote stays active.
+    quote, a beneficiary with no fiat account in the quote's payout currency,
+    or one that no longer fits the available balance or what is left of
+    today's or this month's allowance (the refusal names the limit and what
+    is left of it); 409 if the quote was already used or has expired. A
+    refused quote stays active.
     """
     try:
         view = controller.confirm(user.id, payload.quote_id)
@@ -89,6 +91,10 @@ def confirm_remittance(
             detail="Quote is no longer active",
         ) from exc
     except InsufficientBalanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except UnknownBeneficiaryPayoutAccountError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc

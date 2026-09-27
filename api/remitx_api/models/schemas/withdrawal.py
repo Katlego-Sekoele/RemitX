@@ -1,11 +1,11 @@
 """Request/response schemas for withdrawal endpoints (customer + admin)."""
 
 import uuid
-from decimal import Decimal
 
 from pydantic import ConfigDict
 
-from remitx_api.models.schemas.base import Amount, Schema, UtcDateTime
+from remitx_api.models.orm.transaction import TransactionStatus
+from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
 
 
 class WithdrawalCreateRequest(Schema):
@@ -24,12 +24,12 @@ class WithdrawalRead(Schema):
     withdrawal_id: uuid.UUID
     tx_id: uuid.UUID
     bank_account_id: uuid.UUID
-    status: str
+    status: TransactionStatus
     # Requested amount that leaves the user's RemitX account (fee + net).
-    gross_amount: Decimal
-    fee_amount: Decimal
+    gross_amount: LedgerDecimal
+    fee_amount: LedgerDecimal
     # What actually lands in the user's bank account (gross - fee).
-    net_amount: Decimal
+    net_amount: LedgerDecimal
     currency: str
     confirmed_by: str | None
     created_at: UtcDateTime

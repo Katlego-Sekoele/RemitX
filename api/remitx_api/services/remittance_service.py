@@ -47,6 +47,7 @@ from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
+from remitx_api.services.quote_service import UnknownBeneficiaryPayoutAccountError
 from remitx_api.services.send_limits import require_can_send
 
 logger = logging.getLogger(__name__)
@@ -103,11 +104,14 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
 
     # Checked again, not trusted from the quote: standing can change after a
     # quote is issued, and several quotes can be issued against one allowance.
+    # The send counts at the rand value the quote locked, so a rate move since
+    # changes nothing.
     try:
         require_can_send(
             KycApplicationRepository().get_standing(sender_user_id),
-            quote.sender_amount,
-            quote.sender_currency,
+            quote.value_zar,
+            amount=quote.sender_amount,
+            currency=quote.sender_currency,
         )
     except DomainError as exc:
         # Revert the quote status back to ACTIVE, as for a short balance below
@@ -147,10 +151,21 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     beneficiary_token_account = accounts.get_user_account(
         quote.beneficiary_user_id, CURRENCY_TOKEN
     )
-    beneficiary_user = UserRepository().require_by_id(quote.beneficiary_user_id)
-    beneficiary_fiat_account = accounts.get_or_create_user_account(
-        beneficiary_user.id, beneficiary_user.base_reference, quote.receiver_currency
+    beneficiary_fiat_account = accounts.get_user_account(
+        quote.beneficiary_user_id, quote.receiver_currency
     )
+    if beneficiary_fiat_account is None:
+        db.session.rollback()
+        logger.info(
+            "confirm_remittance: beneficiary %s has no %s account for quote %s; "
+            "quote reverted to ACTIVE",
+            quote.beneficiary_user_id,
+            quote.receiver_currency,
+            quote_id,
+        )
+        raise UnknownBeneficiaryPayoutAccountError(
+            f"beneficiary has no account in {quote.receiver_currency}"
+        )
     RemitX_fee_revenue_account = accounts.get_platform_account(
         TYPE_PLATFORM_REVENUE, quote.sender_currency
     )

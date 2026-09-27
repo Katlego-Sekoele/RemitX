@@ -1,0 +1,43 @@
+{
+  "name": "fixture-sweep",
+  "description": "Tiny fixture for unit tests.",
+  "burn": {
+    "p50_s": 8.61,
+    "p95_s": 10.24,
+    "failure_rate": 0
+  },
+  "locust": {
+    "steps": [10, 25],
+    "step_seconds": 60,
+    "spawn_rate": 10
+  },
+  "postgres": {
+    "max_connections": 839
+  },
+  "compute": [
+    {
+      "name": "render-free",
+      "api": { "cpus": 0.1, "memory": "512m" },
+      "worker": {
+        "cpus": 0.1,
+        "memory": "512m",
+        "celery_concurrency": 2
+      },
+      "postgres": { "cpus": 0.5, "memory": "2g" }
+    },
+    {
+      "name": "api-1cpu",
+      "api": { "cpus": 1.0, "memory": "512m" },
+      "worker": {
+        "cpus": 1.0,
+        "memory": "1g",
+        "celery_concurrency": 2
+      },
+      "postgres": { "cpus": 1, "memory": "4g" }
+    }
+  ],
+  "database_pool": {
+    "pool_size": 100,
+    "max_overflow": 177
+  }
+}

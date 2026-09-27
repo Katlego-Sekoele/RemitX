@@ -2,10 +2,10 @@
 
 import uuid
 from datetime import date
-from decimal import Decimal
 from typing import Literal
 
-from remitx_api.models.schemas.base import Schema, UtcDateTime
+from remitx_api.models.orm.transaction import TransactionStatus
+from remitx_api.models.schemas.base import LedgerDecimal, Schema, UtcDateTime
 
 
 class LimitHeadroomRead(Schema):
@@ -16,18 +16,20 @@ class LimitHeadroomRead(Schema):
     standing, so the day and month are the SAST ones the limit check counts.
     """
 
-    daily_limit_zar: Decimal
-    daily_sent_zar: Decimal
-    monthly_limit_zar: Decimal
-    monthly_sent_zar: Decimal
+    daily_limit_zar: LedgerDecimal
+    daily_sent_zar: LedgerDecimal
+    monthly_limit_zar: LedgerDecimal
+    monthly_sent_zar: LedgerDecimal
 
 
 class ActivityDayRead(Schema):
     """One UTC day of the caller's own transfers."""
 
     day: date
-    zar_sent: Decimal
-    token_received: Decimal
+    zar_sent: LedgerDecimal
+    # Sum of `receiver_amount` on transfers received that day (each in its
+    # quote's payout currency).
+    payout_received: LedgerDecimal
 
 
 class InFlightTransferRead(Schema):
@@ -36,8 +38,8 @@ class InFlightTransferRead(Schema):
     remittance_id: uuid.UUID
     direction: Literal["sent", "received"]
     counterparty_name: str | None
-    status: str
-    amount: Decimal
+    status: TransactionStatus
+    amount: LedgerDecimal
     currency: str
     created_at: UtcDateTime
 
@@ -46,7 +48,7 @@ class BeneficiarySpendRead(Schema):
     """How much ZAR the caller has sent to one person, failures excluded."""
 
     name: str
-    zar_sent: Decimal
+    zar_sent: LedgerDecimal
 
 
 class DashboardRead(Schema):

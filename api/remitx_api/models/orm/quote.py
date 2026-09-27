@@ -20,13 +20,29 @@ Three currency concepts live on this row:
 - `fiat_exchange_rate`/`fiat_exchange_rate_id` — the direct sender-currency
   to payout-currency rate (e.g. ZAR -> ZWL, its own fetched pair, not derived
   from two USD-relative rates). Doesn't affect settlement or `token_amount`.
+
+`sender_amount_zar` is the send's value in rand at this quote's rates: what it
+counts as against the sending limits, which are in rand whatever account the
+money leaves (services/send_limits.py). Locked here like the fees, so a rate
+move after the quote never changes it.
 """
 
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, Text, Uuid, text
+from sqlalchemy import (
+    CheckConstraint,
+    ColumnElement,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    Text,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -64,6 +80,12 @@ class Quote(Base):
     sender_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     # Used with sender user id to get the sender's fiat account.
     sender_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    # `sender_amount` in rand at this quote's rates. Read it through
+    # `value_zar`: it is NULL on a quote written before the column existed,
+    # until a later migration can make it NOT NULL.
+    sender_amount_zar: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8), nullable=True
+    )
     sender_transaction_fee: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False
     )  # In the sender's currency.
@@ -111,3 +133,17 @@ class Quote(Base):
     status: Mapped[str] = mapped_column(
         Text, nullable=False, default=STATUS_ACTIVE, server_default=STATUS_ACTIVE
     )
+
+    @hybrid_property
+    def value_zar(self) -> Decimal:
+        """What the send counts as in rand. A quote written before
+        `sender_amount_zar` existed can only be a ZAR one, since that code
+        sent nothing else, so its amount is already in rand."""
+        if self.sender_amount_zar is None:
+            return self.sender_amount
+        return self.sender_amount_zar
+
+    @value_zar.inplace.expression
+    @classmethod
+    def _value_zar_expression(cls) -> ColumnElement[Decimal]:
+        return func.coalesce(cls.sender_amount_zar, cls.sender_amount)

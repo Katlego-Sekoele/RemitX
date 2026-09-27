@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
+from remitx_api.errors.accounts import KycNotApprovedToOpenAccountError
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
@@ -26,6 +27,7 @@ from remitx_api.models.orm.transaction import (
 )
 from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
 from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
@@ -205,10 +207,35 @@ def describe_leg(
 class AccountController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
+        self._applications = KycApplicationRepository()
         self._transactions = TransactionRepository()
         self._quotes = QuoteRepository()
         self._remittances = RemittanceRepository()
         self._users = UserRepository()
+
+    def open_account(self, user_id: uuid.UUID, currency: str) -> AccountView:
+        """Open a fiat payout account the caller does not hold yet."""
+        standing = self._applications.get_standing(user_id)
+        if not standing.is_verified:
+            raise KycNotApprovedToOpenAccountError()
+
+        user = self._users.get_by_id(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} does not exist")
+
+        account = self._accounts.open_user_account(
+            user_id, user.base_reference, currency
+        )
+        return AccountView(
+            account_id=account.account_id,
+            currency=account.account_currency,
+            reference=account.reference,
+            kind=account_kind(account.account_currency),
+            balance=_money(account.account_balance),
+            available_balance=_money(
+                self._accounts.get_available_balance(account.account_id)
+            ),
+        )
 
     def get_accounts(self, user_id: uuid.UUID) -> list[AccountView]:
         """Every currency account the caller holds: ZAR and uctusd from

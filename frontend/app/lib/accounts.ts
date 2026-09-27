@@ -1,4 +1,6 @@
-import type { AccountRead } from "~/client"
+import type { QueryClient } from "@tanstack/react-query"
+
+import { api, PayoutCurrency, type AccountRead } from "~/client"
 import { currencyName } from "~/lib/money"
 
 export const ACCOUNTS_HREF = "/app/accounts"
@@ -14,6 +16,22 @@ export function accountHref(accountId: string) {
  * reconcile the bank statement, so only the ZAR account takes one. */
 export function acceptsDeposits(account: AccountRead) {
   return account.kind === "fiat" && account.currency === "ZAR"
+}
+
+/** Fiat payout currencies the user does not hold yet (ZAR, USD, ZWL, NAD). */
+export function openablePayoutCurrencies(
+  heldCurrencies: readonly string[]
+): PayoutCurrency[] {
+  const held = new Set(heldCurrencies)
+  return (Object.values(PayoutCurrency) as PayoutCurrency[]).filter(
+    (currency) => !held.has(currency)
+  )
+}
+
+export async function invalidateAccounts(queryClient: QueryClient) {
+  await queryClient.invalidateQueries({
+    queryKey: api.accounts.getAccounts().queryKey,
+  })
 }
 
 export function accountTitle(account: AccountRead) {

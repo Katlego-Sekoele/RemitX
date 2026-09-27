@@ -9,6 +9,7 @@ the remittance tying them together — not the full group of legs
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import EllipsisType
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
@@ -30,12 +31,23 @@ def record_transfer(
     *,
     sender_amount: Decimal,
     token_amount: Decimal = Decimal("1"),
+    receiver_amount: Decimal | None = None,
+    receiver_currency: str | None = None,
     status: str = STATUS_PENDING,
     at: datetime | None = None,
     sender_currency: str = CURRENCY_ZAR,
+    sender_amount_zar: Decimal | None | EllipsisType = ...,
 ) -> Remittance:
     """A transfer from `sender` to `recipient`, confirmed at `at` (now by
-    default), whose settlement leg is at `status`. Flushed, not committed."""
+    default), whose settlement leg is at `status`. Flushed, not committed.
+
+    `sender_amount_zar` is the rand value the quote locked: the amount itself
+    for a ZAR send unless given, and required for any other currency. None
+    records a quote from before that column existed."""
+    if sender_amount_zar is ...:
+        if sender_currency != CURRENCY_ZAR:
+            raise ValueError("a non-ZAR transfer needs its sender_amount_zar")
+        sender_amount_zar = sender_amount
     now = datetime.now(UTC)
     # Stored as UTC, like every timestamp the API writes: SQLite drops the
     # offset of whatever it binds.
@@ -54,6 +66,7 @@ def record_transfer(
         beneficiary_user_id=recipient.id,
         sender_amount=sender_amount,
         sender_currency=sender_currency,
+        sender_amount_zar=sender_amount_zar,
         sender_transaction_fee=Decimal("0"),
         token_amount=token_amount,
         token_name=CURRENCY_TOKEN,
@@ -61,8 +74,10 @@ def record_transfer(
         fiat_exchange_rate_id=rate.id,
         fiat_exchange_rate=Decimal("1"),
         exchange_rate_margin=Decimal("0"),
-        receiver_amount=sender_amount,
-        receiver_currency=sender_currency,
+        receiver_amount=(
+            receiver_amount if receiver_amount is not None else sender_amount
+        ),
+        receiver_currency=receiver_currency or sender_currency,
         receiver_payout_fee=Decimal("0"),
         receiver_payout_estimate=sender_amount,
         created_at=at,

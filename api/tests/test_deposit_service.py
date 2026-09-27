@@ -3,6 +3,7 @@ from decimal import Decimal
 import pytest
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.errors.deposits import DepositCurrencyMismatchError
+from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_NAD,
     CURRENCY_TOKEN,
@@ -12,11 +13,13 @@ from remitx_api.models.orm.account import (
     TYPE_PLATFORM_FIAT,
     create_account_reference,
 )
+from remitx_api.models.orm.audit_log import AuditAction, AuditLog
 from remitx_api.models.orm.transaction import STATUS_CONFIRMED, STATUS_PENDING
 from remitx_api.models.schemas.deposit import SkippedStatementLineReason
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import deposit_service
+from sqlalchemy import select
 from tests.platform_account_helpers import seed_platform_accounts
 
 FOREIGN_CURRENCIES = (CURRENCY_USD, CURRENCY_ZWL, CURRENCY_NAD)
@@ -90,6 +93,7 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
     user = _customer("dep")
     zar_reference = f"{user.base_reference}-zar"
 
+    operator = _admin()
     result = deposit_service.process_deposits(
         [
             {
@@ -98,12 +102,19 @@ def test_matching_zar_reference_confirms_and_credits_immediately(app_context, cu
                 "currency": currency,
                 "date": "2026-09-10",
             }
-        ]
+        ],
+        actor_user_id=operator.id,
     )
 
     [deposit] = result.deposits
     assert deposit.user_id == user.id
     _assert_deposited_in(deposit, CURRENCY_ZAR, "500.00")
+    (entry,) = db.session.scalars(
+        select(AuditLog).where(AuditLog.action == AuditAction.CASHIN_CONFIRMED.value)
+    ).all()
+    assert entry.actor_user_id == operator.id
+    assert entry.subject_id == deposit.deposit_id
+    assert entry.after["auto_matched"] is True
 
 
 @pytest.mark.parametrize("currency", FOREIGN_CURRENCIES)
@@ -192,6 +203,72 @@ def test_line_without_a_currency_remitx_banks_in_is_skipped(app_context, currenc
     assert _balance(user, CURRENCY_ZAR) == 0
 
 
+def test_two_identical_date_only_lines_in_one_statement_both_credit(app_context):
+    """Two genuine same-day deposits with the same reference and amount."""
+    seed_platform_accounts()
+    user = _customer("double_dep")
+    zar_reference = f"{user.base_reference}-zar"
+    line = {
+        "reference": zar_reference,
+        "amount": "500.00",
+        "currency": "ZAR",
+        "date": "2026-09-10",
+    }
+
+    result = deposit_service.process_deposits([line, dict(line)])
+
+    assert len(result.deposits) == 2
+    assert result.skipped == []
+    assert _balance(user, CURRENCY_ZAR) == Decimal("1000.00")
+
+
+def test_same_day_deposits_with_distinct_times_both_credit(app_context):
+    seed_platform_accounts()
+    user = _customer("timed_dep")
+    zar_reference = f"{user.base_reference}-zar"
+
+    result = deposit_service.process_deposits(
+        [
+            {
+                "reference": zar_reference,
+                "amount": "500.00",
+                "currency": "ZAR",
+                "date": "2026-09-10T09:15:00",
+            },
+            {
+                "reference": zar_reference,
+                "amount": "500.00",
+                "currency": "ZAR",
+                "date": "2026-09-10T16:45:00",
+            },
+        ]
+    )
+
+    assert len(result.deposits) == 2
+    assert _balance(user, CURRENCY_ZAR) == Decimal("1000.00")
+
+
+def test_statement_line_id_is_the_deduplication_key(app_context):
+    seed_platform_accounts()
+    user = _customer("line_id")
+    zar_reference = f"{user.base_reference}-zar"
+    row = {
+        "line_id": "BNK-8821",
+        "reference": zar_reference,
+        "amount": "500.00",
+        "currency": "ZAR",
+        "date": "2026-09-10",
+    }
+
+    first = deposit_service.process_deposits([row])
+    second = deposit_service.process_deposits([row])
+
+    assert len(first.deposits) == 1
+    assert second.deposits == []
+    assert len(second.skipped) == 1
+    assert _balance(user, CURRENCY_ZAR) == Decimal("500.00")
+
+
 def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context):
     """Uploading the same CSV twice, or an overlapping date range, must not
     create a second deposit or move the balance again.
@@ -207,17 +284,38 @@ def test_reprocessing_the_same_statement_line_does_not_credit_again(app_context)
     }
 
     first = deposit_service.process_deposits([line])
-    second = deposit_service.process_deposits([line, dict(line)])
+    second = deposit_service.process_deposits([line])
 
     assert len(first.deposits) == 1
     assert second.deposits == []
-    assert len(second.skipped) == 2
+    assert len(second.skipped) == 1
     assert _balance(user, CURRENCY_ZAR) == Decimal("500.00")
     assert len(deposit_service.get_deposits_for_user(user.id)) == 1
 
     later = deposit_service.process_deposits([{**line, "amount": "10.00"}])
     assert len(later.deposits) == 1
     assert _balance(user, CURRENCY_ZAR) == Decimal("510.00")
+
+
+def test_reprocessing_two_identical_lines_skips_both(app_context):
+    seed_platform_accounts()
+    user = _customer("dedup_pair")
+    zar_reference = f"{user.base_reference}-zar"
+    line = {
+        "reference": zar_reference,
+        "amount": "500.00",
+        "currency": "ZAR",
+        "date": "2026-09-10",
+    }
+    pair = [line, dict(line)]
+
+    first = deposit_service.process_deposits(pair)
+    second = deposit_service.process_deposits(pair)
+
+    assert len(first.deposits) == 2
+    assert second.deposits == []
+    assert len(second.skipped) == 2
+    assert _balance(user, CURRENCY_ZAR) == Decimal("1000.00")
 
 
 def test_the_same_line_in_two_currencies_is_two_deposits(app_context):

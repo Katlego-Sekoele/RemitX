@@ -21,17 +21,25 @@ import {
   formatChartDay,
   formatChartMoney,
 } from "~/lib/chart-series"
-import { SETTLEMENT_TOKEN_LABEL, TOKEN_CURRENCY } from "~/lib/money"
 
 const chartConfig = {
   zarSent: { label: "ZAR sent", color: "var(--chart-1)" },
-  tokenReceived: {
-    label: `${SETTLEMENT_TOKEN_LABEL} received`,
+  payoutReceived: {
+    label: "Payout received",
     color: "var(--chart-2)",
   },
 } satisfies ChartConfig
 
-/** ZAR sent and RLUSD received over the last 30 UTC days. */
+function formatPayoutReceived(value: unknown): string {
+  const numeric = typeof value === "number" ? value : Number(value)
+  if (!Number.isFinite(numeric)) return ""
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numeric)
+}
+
+/** ZAR sent and payout-currency received over the last 30 UTC days. */
 export function TransferActivityChart({
   activity,
 }: {
@@ -40,7 +48,7 @@ export function TransferActivityChart({
   const data = activity.map((day) => ({
     day: day.day,
     zarSent: chartAmount(day.zar_sent),
-    tokenReceived: chartAmount(day.token_received),
+    payoutReceived: chartAmount(day.payout_received),
   }))
 
   return (
@@ -48,7 +56,7 @@ export function TransferActivityChart({
       <CardHeader>
         <CardTitle>Activity</CardTitle>
         <CardDescription>
-          ZAR you sent and {SETTLEMENT_TOKEN_LABEL} you received, by day. Failed
+          ZAR you sent and what you received in payout currency, by day. Failed
           transfers are left out.
         </CardDescription>
       </CardHeader>
@@ -69,7 +77,7 @@ export function TransferActivityChart({
             />
             <YAxis yAxisId="zar" tickLine={false} axisLine={false} width={40} />
             <YAxis
-              yAxisId="token"
+              yAxisId="payout"
               orientation="right"
               tickLine={false}
               axisLine={false}
@@ -80,10 +88,9 @@ export function TransferActivityChart({
                 <ChartTooltipContent
                   labelFormatter={(value) => formatChartDay(String(value))}
                   formatter={(value, name) =>
-                    formatChartMoney(
-                      value,
-                      name === "tokenReceived" ? TOKEN_CURRENCY : "ZAR"
-                    )
+                    name === "payoutReceived"
+                      ? formatPayoutReceived(value)
+                      : formatChartMoney(value, "ZAR")
                   }
                 />
               }
@@ -97,12 +104,12 @@ export function TransferActivityChart({
               stroke="var(--color-zarSent)"
             />
             <Area
-              yAxisId="token"
-              dataKey="tokenReceived"
+              yAxisId="payout"
+              dataKey="payoutReceived"
               type="monotone"
-              fill="var(--color-tokenReceived)"
+              fill="var(--color-payoutReceived)"
               fillOpacity={0.25}
-              stroke="var(--color-tokenReceived)"
+              stroke="var(--color-payoutReceived)"
             />
             <ChartLegend content={<ChartLegendContent />} />
           </AreaChart>

@@ -71,16 +71,20 @@ def _to_httpx(request: Request) -> httpx.Request:
 def verify_request(request: Request, config: Config) -> ClerkClaims:
     """Return the caller's claims, or raise 401.
 
-    Raises RuntimeError — not 401 — when the secret key is missing: that is a
+    Raises RuntimeError — not 401 — when neither key is configured: that is a
     deployment fault, and returning 401 would disguise it as a client error.
     """
     secret_key = config.CLERK_SECRET_KEY
-    if not secret_key:
-        raise RuntimeError("CLERK_SECRET_KEY is not configured")
+    jwt_key = config.CLERK_JWT_KEY
+    if not (secret_key or jwt_key):
+        raise RuntimeError("Neither CLERK_SECRET_KEY nor CLERK_JWT_KEY is configured")
 
     state = _sdk(secret_key).authenticate_request(
         _to_httpx(request),
         AuthenticateRequestOptions(
+            # With a JWT key the SDK verifies against it alone, never fetching
+            # Clerk's JWKS; without one, it fetches them with the secret key.
+            jwt_key=jwt_key or None,
             # Reuses CORS_ORIGINS: both answer "which browser origins are
             # legitimate", so one list cannot drift from the other.
             authorized_parties=config.CORS_ORIGINS,
@@ -117,6 +121,9 @@ def fetch_user_email(clerk_user_id: str, config: Config) -> str | None:
     Returns None rather than raising: a profile lookup failing is not a reason
     to reject an otherwise valid session, and the column is nullable.
     """
+    if not config.CLERK_SECRET_KEY:
+        # Verifying with CLERK_JWT_KEY alone: there is no Backend API to ask.
+        return None
     sdk = _sdk(config.CLERK_SECRET_KEY)
     try:
         user = sdk.users.get(user_id=clerk_user_id)
@@ -177,6 +184,9 @@ def fetch_user_first_name(clerk_user_id: str, config: Config) -> str | None:
     reason to reject an otherwise valid session — `UserRepository.next_base_reference`
     falls back to a generic base when no name is available.
     """
+    if not config.CLERK_SECRET_KEY:
+        # Same as fetch_user_email: no secret key, no Backend API.
+        return None
     sdk = _sdk(config.CLERK_SECRET_KEY)
     try:
         user = sdk.users.get(user_id=clerk_user_id)

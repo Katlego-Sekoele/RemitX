@@ -1,0 +1,441 @@
+{
+  "profile_name": "compute-sweep",
+  "description": "Three compute tiers after one seed: API/worker/Postgres scale together (0.1\u21921\u21922 CPU for app services; Postgres 0.5\u21921\u21922 CPU).",
+  "burn_p50_s": 8.61,
+  "burn_p95_s": 10.24,
+  "locust_steps": [
+    10,
+    25,
+    50,
+    100,
+    250,
+    500,
+    1000
+  ],
+  "compute": [
+    {
+      "name": "small",
+      "api_cpus": 0.1,
+      "api_memory": "512m",
+      "worker_cpus": 0.1,
+      "postgres_cpus": 0.5,
+      "plateaus": [
+        {
+          "users": 10,
+          "http_median_ms": 1100.0,
+          "http_p95_ms": 1900.0,
+          "http_rps": 2.7,
+          "http_requests": 237,
+          "http_failures": 1,
+          "settle_e2e_rps": 0.2,
+          "settle_e2e_n": 12,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9700.0,
+          "queue_wait_median_ms": 3500.0
+        },
+        {
+          "users": 25,
+          "http_median_ms": 4400.0,
+          "http_p95_ms": 6500.0,
+          "http_rps": 2.6,
+          "http_requests": 526,
+          "http_failures": 2,
+          "settle_e2e_rps": 0.1,
+          "settle_e2e_n": 26,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9600.0,
+          "queue_wait_median_ms": 7300.0
+        },
+        {
+          "users": 50,
+          "http_median_ms": 6700.0,
+          "http_p95_ms": 22000.0,
+          "http_rps": 2.4,
+          "http_requests": 758,
+          "http_failures": 9,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 36,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9300.0,
+          "queue_wait_median_ms": 6700.0
+        },
+        {
+          "users": 100,
+          "http_median_ms": 11000.0,
+          "http_p95_ms": 43000.0,
+          "http_rps": 3.900000000000001,
+          "http_requests": 955,
+          "http_failures": 13,
+          "settle_e2e_rps": 0.2,
+          "settle_e2e_n": 43,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9500.0,
+          "queue_wait_median_ms": 5300.0
+        },
+        {
+          "users": 250,
+          "http_median_ms": 14000.0,
+          "http_p95_ms": 114000.0,
+          "http_rps": 0.9,
+          "http_requests": 1077,
+          "http_failures": 13,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 45,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9400.0,
+          "queue_wait_median_ms": 5300.0
+        },
+        {
+          "users": 500,
+          "http_median_ms": 16000.0,
+          "http_p95_ms": 104000.0,
+          "http_rps": 1.4,
+          "http_requests": 1221,
+          "http_failures": 71,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 48,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9300.0,
+          "queue_wait_median_ms": 5300.0
+        },
+        {
+          "users": 1000,
+          "http_median_ms": 19000.0,
+          "http_p95_ms": 285000.0,
+          "http_rps": 2.5,
+          "http_requests": 1512,
+          "http_failures": 180,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 48,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9300.0,
+          "queue_wait_median_ms": 5300.0
+        }
+      ],
+      "endpoints_at_10": [
+        {
+          "name": "/remittances",
+          "median_ms": 6600.0,
+          "average_ms": 6720.318333764653,
+          "requests": 17,
+          "failures": 0
+        },
+        {
+          "name": "/kyc/application",
+          "median_ms": 3200.0,
+          "average_ms": 4579.168304000047,
+          "requests": 28,
+          "failures": 0
+        },
+        {
+          "name": "/quotes/create-quote",
+          "median_ms": 3100.0,
+          "average_ms": 6522.784389823541,
+          "requests": 17,
+          "failures": 0
+        },
+        {
+          "name": "/admin/deposits/pending",
+          "median_ms": 1800.0,
+          "average_ms": 3686.799360199984,
+          "requests": 5,
+          "failures": 0
+        },
+        {
+          "name": "/accounts",
+          "median_ms": 1100.0,
+          "average_ms": 2328.5225601000557,
+          "requests": 50,
+          "failures": 0
+        }
+      ],
+      "http_fail_pct": 11.667723525681675,
+      "settle_fail_pct": 0.0,
+      "peak_http_rps": 2.5,
+      "settle_throughput_at_peak_users": 0.0
+    },
+    {
+      "name": "medium",
+      "api_cpus": 1.0,
+      "api_memory": "1g",
+      "worker_cpus": 1.0,
+      "postgres_cpus": 1.0,
+      "plateaus": [
+        {
+          "users": 10,
+          "http_median_ms": 55.0,
+          "http_p95_ms": 100.0,
+          "http_rps": 5.099999999999999,
+          "http_requests": 585,
+          "http_failures": 0,
+          "settle_e2e_rps": 0.1,
+          "settle_e2e_n": 30,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 8400.0,
+          "queue_wait_median_ms": 34.0
+        },
+        {
+          "users": 25,
+          "http_median_ms": 61.0,
+          "http_p95_ms": 180.0,
+          "http_rps": 11.0,
+          "http_requests": 1894,
+          "http_failures": 4,
+          "settle_e2e_rps": 0.4,
+          "settle_e2e_n": 78,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 10000.0,
+          "queue_wait_median_ms": 5500.0
+        },
+        {
+          "users": 50,
+          "http_median_ms": 130.0,
+          "http_p95_ms": 4000.0,
+          "http_rps": 10.1,
+          "http_requests": 3078,
+          "http_failures": 9,
+          "settle_e2e_rps": 0.2,
+          "settle_e2e_n": 109,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 13000.0,
+          "queue_wait_median_ms": 9800.0
+        },
+        {
+          "users": 100,
+          "http_median_ms": 900.0,
+          "http_p95_ms": 13000.0,
+          "http_rps": 7.9,
+          "http_requests": 4003,
+          "http_failures": 12,
+          "settle_e2e_rps": 0.2,
+          "settle_e2e_n": 128,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 15000.0,
+          "queue_wait_median_ms": 11000.0
+        },
+        {
+          "users": 250,
+          "http_median_ms": 2100.0,
+          "http_p95_ms": 37000.0,
+          "http_rps": 5.4,
+          "http_requests": 4806,
+          "http_failures": 14,
+          "settle_e2e_rps": 0.1,
+          "settle_e2e_n": 147,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 19000.0,
+          "queue_wait_median_ms": 14000.0
+        },
+        {
+          "users": 500,
+          "http_median_ms": 2300.0,
+          "http_p95_ms": 113000.0,
+          "http_rps": 4.5,
+          "http_requests": 5117,
+          "http_failures": 64,
+          "settle_e2e_rps": 0.1,
+          "settle_e2e_n": 154,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 20000.0,
+          "queue_wait_median_ms": 15000.0
+        },
+        {
+          "users": 1000,
+          "http_median_ms": 2500.0,
+          "http_p95_ms": 0.0,
+          "http_rps": 0.0,
+          "http_requests": 5239,
+          "http_failures": 124,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 159,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 22000.0,
+          "queue_wait_median_ms": 15000.0
+        }
+      ],
+      "endpoints_at_10": [
+        {
+          "name": "/remittances/[id]",
+          "median_ms": 86.0,
+          "average_ms": 103.21601405109378,
+          "requests": 137,
+          "failures": 0
+        },
+        {
+          "name": "/remittances",
+          "median_ms": 59.0,
+          "average_ms": 97.75134472726099,
+          "requests": 33,
+          "failures": 0
+        },
+        {
+          "name": "/admin/operations",
+          "median_ms": 57.0,
+          "average_ms": 73.55437485706976,
+          "requests": 7,
+          "failures": 0
+        },
+        {
+          "name": "/accounts",
+          "median_ms": 55.0,
+          "average_ms": 82.8060588758139,
+          "requests": 153,
+          "failures": 0
+        },
+        {
+          "name": "/quotes/create-quote",
+          "median_ms": 49.0,
+          "average_ms": 85.35377530302647,
+          "requests": 33,
+          "failures": 0
+        }
+      ],
+      "http_fail_pct": 2.8079242032730405,
+      "settle_fail_pct": 0.0,
+      "peak_http_rps": 0.0,
+      "settle_throughput_at_peak_users": 0.0
+    },
+    {
+      "name": "large",
+      "api_cpus": 2.0,
+      "api_memory": "2g",
+      "worker_cpus": 2.0,
+      "postgres_cpus": 2.0,
+      "plateaus": [
+        {
+          "users": 10,
+          "http_median_ms": 58.0,
+          "http_p95_ms": 68.0,
+          "http_rps": 4.4,
+          "http_requests": 600,
+          "http_failures": 0,
+          "settle_e2e_rps": 0.3,
+          "settle_e2e_n": 32,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9100.0,
+          "queue_wait_median_ms": 32.0
+        },
+        {
+          "users": 25,
+          "http_median_ms": 56.0,
+          "http_p95_ms": 79.0,
+          "http_rps": 13.299999999999999,
+          "http_requests": 2053,
+          "http_failures": 1,
+          "settle_e2e_rps": 0.6,
+          "settle_e2e_n": 105,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 8900.0,
+          "queue_wait_median_ms": 34.0
+        },
+        {
+          "users": 50,
+          "http_median_ms": 57.0,
+          "http_p95_ms": 180.0,
+          "http_rps": 20.700000000000003,
+          "http_requests": 4744,
+          "http_failures": 13,
+          "settle_e2e_rps": 1.2,
+          "settle_e2e_n": 203,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 9500.0,
+          "queue_wait_median_ms": 720.0
+        },
+        {
+          "users": 100,
+          "http_median_ms": 73.0,
+          "http_p95_ms": 3500.0,
+          "http_rps": 21.0,
+          "http_requests": 7460,
+          "http_failures": 31,
+          "settle_e2e_rps": 1.1,
+          "settle_e2e_n": 286,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 11000.0,
+          "queue_wait_median_ms": 5000.0
+        },
+        {
+          "users": 250,
+          "http_median_ms": 380.0,
+          "http_p95_ms": 15000.0,
+          "http_rps": 15.5,
+          "http_requests": 9466,
+          "http_failures": 40,
+          "settle_e2e_rps": 0.7,
+          "settle_e2e_n": 355,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 14000.0,
+          "queue_wait_median_ms": 8100.0
+        },
+        {
+          "users": 500,
+          "http_median_ms": 590.0,
+          "http_p95_ms": 93000.0,
+          "http_rps": 0.0,
+          "http_requests": 9940,
+          "http_failures": 125,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 367,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 14000.0,
+          "queue_wait_median_ms": 8900.0
+        },
+        {
+          "users": 1000,
+          "http_median_ms": 780.0,
+          "http_p95_ms": 0.0,
+          "http_rps": 0.0,
+          "http_requests": 10112,
+          "http_failures": 229,
+          "settle_e2e_rps": 0.0,
+          "settle_e2e_n": 378,
+          "settle_e2e_failures": 0,
+          "chain_confirm_median_ms": 14000.0,
+          "queue_wait_median_ms": 9100.0
+        }
+      ],
+      "endpoints_at_10": [
+        {
+          "name": "/remittances/[id]",
+          "median_ms": 79.0,
+          "average_ms": 82.98486280273828,
+          "requests": 147,
+          "failures": 0
+        },
+        {
+          "name": "/remittances",
+          "median_ms": 60.0,
+          "average_ms": 66.83606709085518,
+          "requests": 33,
+          "failures": 0
+        },
+        {
+          "name": "/accounts",
+          "median_ms": 58.0,
+          "average_ms": 86.79897060548163,
+          "requests": 147,
+          "failures": 0
+        },
+        {
+          "name": "/quotes/create-quote",
+          "median_ms": 45.0,
+          "average_ms": 72.87343809096483,
+          "requests": 33,
+          "failures": 0
+        },
+        {
+          "name": "/admin/kyc/applications",
+          "median_ms": 45.0,
+          "average_ms": 46.5031164998436,
+          "requests": 10,
+          "failures": 0
+        }
+      ],
+      "http_fail_pct": 2.2412715421019733,
+      "settle_fail_pct": 0.0,
+      "peak_http_rps": 0.0,
+      "settle_throughput_at_peak_users": 0.0
+    }
+  ],
+  "bottleneck": "At 10 concurrent users, HTTP median latency is 1100 ms on small (API 0.1 CPU) versus 55 ms on medium (API 1.0 CPU). That gap points to API CPU starvation under the smaller compute cap, not Postgres or the settlement queue. Calibrated RLUSD burn remains ~8.6 s p50 on Testnet; queue throughput follows worker capacity and burn delay."
+}

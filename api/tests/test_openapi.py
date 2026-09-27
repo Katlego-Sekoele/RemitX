@@ -62,3 +62,22 @@ def test_beneficiary_option_lists_are_named_enums():
     schemas = create_app(TestConfig).openapi()["components"]["schemas"]
     assert schemas["PayoutCurrency"]["enum"] == ["ZAR", "USD", "ZWL", "NAD"]
     assert "sibling" in schemas["BeneficiaryRelationship"]["enum"]
+
+
+def test_status_fields_are_named_enums():
+    schemas = create_app(TestConfig).openapi()["components"]["schemas"]
+    assert schemas["TransactionStatus"]["enum"] == [
+        "pending",
+        "processing",
+        "confirmed",
+        "failed",
+    ]
+    assert schemas["BankAccountStatus"]["enum"] == [
+        "pending_verification",
+        "verified",
+        "rejected",
+    ]
+    assert "not_started" in schemas["KycStatus"]["enum"]
+    assert "review_due" in schemas["KycStatus"]["enum"]
+    transfer = schemas["TransferRead"]["properties"]["status"]
+    assert transfer["$ref"] == "#/components/schemas/TransactionStatus"

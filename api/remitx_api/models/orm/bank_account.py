@@ -5,6 +5,7 @@ A user's external bank account — the destination for a withdrawal.
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,15 +13,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 from remitx_api.clock import utcnow
 from remitx_api.extensions import Base
 
-STATUS_PENDING_VERIFICATION = "pending_verification"
-STATUS_VERIFIED = "verified"
-STATUS_REJECTED = "rejected"
 
-BANK_ACCOUNT_STATUSES = (
-    STATUS_PENDING_VERIFICATION,
-    STATUS_VERIFIED,
-    STATUS_REJECTED,
-)
+class BankAccountStatus(StrEnum):
+    PENDING_VERIFICATION = "pending_verification"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
+
+STATUS_PENDING_VERIFICATION = BankAccountStatus.PENDING_VERIFICATION.value
+STATUS_VERIFIED = BankAccountStatus.VERIFIED.value
+STATUS_REJECTED = BankAccountStatus.REJECTED.value
+
+BANK_ACCOUNT_STATUSES = tuple(BankAccountStatus)
 
 
 class BankAccount(Base):

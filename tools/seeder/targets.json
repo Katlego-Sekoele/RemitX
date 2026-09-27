@@ -12,5 +12,12 @@
     "buckets": ["remitx-qa-kyc-documents"],
     "api_url": "https://remitx-qa-api.onrender.com",
     "api_origin": "https://qa.remitx.tech"
+  },
+  "loadtest": {
+    "description": "The throwaway load-test stack (tools/loadtest): its own Postgres and bucket, deleted after every run.",
+    "database_hosts": ["postgres"],
+    "buckets": ["loadtest-kyc-documents"],
+    "api_url": "",
+    "api_origin": ""
   }
 }

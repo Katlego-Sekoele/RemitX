@@ -12,6 +12,7 @@ from remitx_seeder.stories.timing import SAST, business_time, paydays
 
 def test_committed_scenarios_load():
     assert {"default", "small"} <= set(list_scenarios())
+    assert "loadtest" not in list_scenarios()
     for name in list_scenarios():
         load_scenario(name)
 
@@ -26,6 +27,13 @@ def test_unknown_scenario_keys_are_refused():
 def test_rates_must_be_probabilities():
     with pytest.raises(ValueError, match="reject_rate"):
         Scenario.from_dict({"kyc": {"reject_rate": 1.5}})
+
+
+def test_review_delay_hours_must_be_a_low_high_pair():
+    with pytest.raises(ValueError, match="review_delay_hours"):
+        Scenario.from_dict({"kyc": {"review_delay_hours": [1, 24, 36, 48]}})
+    with pytest.raises(ValueError, match="review_delay_hours"):
+        Scenario.from_dict({"kyc": {"review_delay_hours": [72, 2]}})
 
 
 def test_a_scenario_with_senders_needs_decision_makers():

@@ -35,6 +35,12 @@ const CURRENCY_NAMES: Record<string, string> = {
 // USD and NAD both write "$", so they keep their codes.
 const SYMBOLS: Record<string, string> = { ZAR: "R" }
 
+/** "R" for rand, otherwise the currency's own code (`formatMoney`'s prefix,
+ * for a line that builds its own string rather than calling it). */
+export function currencySymbol(currency: string): string {
+  return SYMBOLS[currency] ?? currency
+}
+
 type Sign = "auto" | "always" | "exceptZero" | "never"
 
 const AMOUNT_PATTERN = /^\d+(\.\d{0,2})?$/
@@ -123,8 +129,34 @@ export function fromCents(cents: bigint): string {
  * trailing zeros ("12.50000000"). Accept those too, and refuse anything that
  * would lose a cent.
  */
+/**
+ * Pydantic may JSON-encode a zero Numeric(20,8) as ``0E-8``. Expand exponent
+ * form to a plain decimal string without using floats.
+ */
+function expandScientificDecimal(value: string): string {
+  const trimmed = value.trim()
+  if (!/[eE]/.test(trimmed)) return trimmed
+  const negative = trimmed.startsWith("-")
+  const body = trimmed.replace(/^[-+]/, "")
+  const [coeff, expPart] = body.split(/[eE]/)
+  if (expPart === undefined) return trimmed
+  const exp = Number(expPart)
+  if (!Number.isInteger(exp)) return trimmed
+  const [intPart, fracPart = ""] = coeff.split(".")
+  const digits = intPart + fracPart
+  const decimalIndex = intPart.length + exp
+  if (decimalIndex <= 0) {
+    return `${negative ? "-" : ""}0.${"0".repeat(-decimalIndex)}${digits}`
+  }
+  if (decimalIndex >= digits.length) {
+    return `${negative ? "-" : ""}${digits}${"0".repeat(decimalIndex - digits.length)}`
+  }
+  return `${negative ? "-" : ""}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`
+}
+
 export function amountToCents(value: string): bigint {
-  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(value.trim())
+  const normalized = expandScientificDecimal(value)
+  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(normalized.trim())
   if (!match) throw new Error(`Not a decimal amount: ${value}`)
   const [, sign, whole, fraction = ""] = match
   if (/[1-9]/.test(fraction.slice(2))) {
@@ -193,4 +225,19 @@ export function invertRate(rate: string, dp: number = RATE_DP): string {
   const quotient = (2n * scale * target + numerator) / (2n * numerator)
   const digits = quotient.toString().padStart(dp + 1, "0")
   return dp === 0 ? digits : `${digits.slice(0, -dp)}.${digits.slice(-dp)}`
+}
+
+/**
+ * How many units of `senderCurrency` buy one settlement token. The API's
+ * `fiat_to_token_exchange_rate` is token per sender unit; people read the
+ * inverse, with the quote's token label and sender currency.
+ */
+export function formatFiatToTokenExchangeRate(
+  fiatToTokenExchangeRate: string,
+  senderCurrency: string,
+  tokenName: string
+): string {
+  const token = currencyLabel(tokenName, "settlement")
+  const sender = SYMBOLS[senderCurrency] ?? senderCurrency
+  return `1 ${token} = ${sender} ${formatRate(invertRate(fiatToTokenExchangeRate))}`
 }

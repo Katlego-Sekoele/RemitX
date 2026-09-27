@@ -16,6 +16,7 @@ FILES = (
     "occupations.json",
     "corridors.json",
     "templates.json",
+    "banks.json",
 )
 
 

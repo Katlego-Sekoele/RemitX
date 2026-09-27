@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router"
 
 import { api, type KycStandingRead as KycStanding } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
-import { AmountStep } from "~/components/send/amount-step"
+import { AmountStep, type FromAccount } from "~/components/send/amount-step"
 import { RecipientStep } from "~/components/send/recipient-step"
 import { ReviewStep } from "~/components/send/review-step"
 import { SendProgress } from "~/components/send/send-progress"
@@ -22,15 +22,15 @@ import {
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
+import { beneficiaryName } from "~/lib/beneficiaries"
 import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   amountIssue,
-  isPayoutCurrency,
-  PAYOUT_CURRENCIES,
+  DEFAULT_SENDER_CURRENCY,
   readSendSearch,
+  resolveSendPayoutCurrency,
   resolveStep,
-  SENDER_CURRENCY,
   stepNumber,
   writeSendSearch,
   type AmountLimits,
@@ -73,7 +73,7 @@ function limitsFrom(
 export default function SendPage() {
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const standing = onboarding.data?.standing
-  const verified = isKycVerified(standing?.status)
+  const verified = isKycVerified(standing)
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
@@ -81,7 +81,7 @@ export default function SendPage() {
         <PageHeader>
           <PageHeaderTitle>Send money</PageHeaderTitle>
           <PageHeaderDescription>
-            From your ZAR balance to someone in your beneficiaries.
+            To someone in your beneficiaries, from any balance you hold.
           </PageHeaderDescription>
         </PageHeader>
         {onboarding.isPending ? (
@@ -124,15 +124,44 @@ function VerificationRequired() {
   )
 }
 
-function AddMoney() {
+function AddMoney({ currency }: { currency: string }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Add money</CardTitle>
         <CardDescription>
-          Your ZAR balance is empty. Pay in by EFT using your ZAR account
-          reference; the transfer can be sent once we&apos;ve confirmed the
-          deposit. You can still see what an amount would cost below.
+          {currency === DEFAULT_SENDER_CURRENCY ? (
+            <>
+              Your ZAR balance is empty. Pay in by EFT using your ZAR account
+              reference; the transfer can be sent once we&apos;ve confirmed the
+              deposit. You can still see what an amount would cost below.
+            </>
+          ) : (
+            <>
+              Your {currency} balance is empty. It fills as you&apos;re paid
+              into it; switch to ZAR above to send now, or see what an amount
+              would cost below.
+            </>
+          )}
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function NoPayoutAccount({
+  beneficiaryName: name,
+}: {
+  beneficiaryName: string
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>No payout account</CardTitle>
+        <CardDescription>
+          {name} doesn&apos;t have a payout account yet, so you can&apos;t send
+          to them. Ask them to open a ZAR, USD, ZWL, or NAD account in RemitX,
+          then try again.
         </CardDescription>
       </CardHeader>
     </Card>
@@ -146,13 +175,20 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
   const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
   const accounts = useQuery(api.accounts.getAccounts())
 
-  const zarAccount = accounts.data?.find(
-    (account) => account.currency === SENDER_CURRENCY
+  // Any fiat account can send (decision 2 on #103, revised); the token
+  // (settlement) account never appears here.
+  const fromAccounts: FromAccount[] =
+    accounts.data?.filter((account) => account.kind === "fiat") ?? []
+  const fromCurrency =
+    fromAccounts.find((account) => account.currency === search.from)
+      ?.currency ?? DEFAULT_SENDER_CURRENCY
+  const fromAccount = fromAccounts.find(
+    (account) => account.currency === fromCurrency
   )
-  const limits = limitsFrom(standing, zarAccount?.available_balance)
+  const limits = limitsFrom(standing, fromAccount?.available_balance)
   const emptyBalance =
-    zarAccount !== undefined &&
-    amountToCents(zarAccount.available_balance) <= 0n
+    fromAccount !== undefined &&
+    amountToCents(fromAccount.available_balance) <= 0n
 
   const beneficiary =
     beneficiaries.data?.find(
@@ -165,7 +201,16 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
     ? { ...search, beneficiaryId: null }
     : search
 
-  const amountValid = amountIssue(search.amount, limits) === null
+  // A ZAR send needs no preview to know its own rand value; another
+  // currency's isn't known here (no live quote at this level), so this stays
+  // optimistic for it — the real gate is server-side regardless, at both the
+  // quote and the confirm this validity only decides whether to offer.
+  const amountValid =
+    amountIssue(
+      search.amount,
+      limits,
+      fromCurrency === DEFAULT_SENDER_CURRENCY ? search.amount : undefined
+    ) === null
   const step =
     beneficiaries.isPending && search.beneficiaryId
       ? null
@@ -184,11 +229,9 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
     })
   }
 
-  const currency: PayoutCurrency =
-    search.currency ??
-    (beneficiary && isPayoutCurrency(beneficiary.payout_currency)
-      ? beneficiary.payout_currency
-      : PAYOUT_CURRENCIES[0])
+  const currency: PayoutCurrency | null = beneficiary
+    ? resolveSendPayoutCurrency(search, beneficiary)
+    : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -199,7 +242,7 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
           onStepChange={(next) => update({ step: next })}
         />
       ) : null}
-      {emptyBalance ? <AddMoney /> : null}
+      {emptyBalance ? <AddMoney currency={fromCurrency} /> : null}
       {step === null ? (
         <Skeleton className="h-40 w-full" />
       ) : step === "recipient" || !beneficiary ? (
@@ -222,11 +265,15 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
           }
           onContinue={() => update({ step: "amount" })}
         />
+      ) : currency === null ? (
+        <NoPayoutAccount beneficiaryName={beneficiaryName(beneficiary)} />
       ) : step === "amount" ? (
         <AmountStep
           beneficiary={beneficiary}
           amount={search.amount}
           currency={currency}
+          fromCurrency={fromCurrency}
+          fromAccounts={fromAccounts}
           limits={limits}
           onAmountChange={(amount) => update({ amount }, true)}
           onCurrencyChange={(next) =>
@@ -234,6 +281,15 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
               {
                 // The beneficiary's own currency needs no override.
                 currency: next === beneficiary.payout_currency ? null : next,
+              },
+              true
+            )
+          }
+          onFromChange={(next) =>
+            update(
+              {
+                // The default account (ZAR) needs no override in the URL.
+                from: next === DEFAULT_SENDER_CURRENCY ? null : next,
               },
               true
             )
@@ -246,6 +302,7 @@ function SendFlow({ standing }: { standing: KycStanding | undefined }) {
           beneficiary={beneficiary}
           amount={search.amount}
           currency={currency}
+          fromCurrency={fromCurrency}
           // A changed amount needs a new quote; the old one simply expires.
           onBack={() => update({ step: "amount" })}
         />

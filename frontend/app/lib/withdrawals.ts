@@ -1,7 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query"
 import type { VariantProps } from "class-variance-authority"
 
-import { api, type AccountRead, type BankAccountRead } from "~/client"
+import {
+  api,
+  BankAccountStatus,
+  TransactionStatus,
+  type AccountRead,
+  type BankAccountRead,
+} from "~/client"
 import type { badgeVariants } from "~/components/ui/badge"
 import { amountToCents, MAX_AMOUNT_CENTS, toCents } from "~/lib/money"
 
@@ -22,18 +28,21 @@ export function canWithdrawFrom(account: AccountRead) {
 }
 
 const BANK_ACCOUNT_STATUS: Record<
-  string,
+  BankAccountStatus,
   { label: string; variant: BadgeVariant }
 > = {
-  pending_verification: { label: "Awaiting verification", variant: "outline" },
-  verified: { label: "Verified", variant: "default" },
-  rejected: { label: "Rejected", variant: "destructive" },
+  [BankAccountStatus.PENDING_VERIFICATION]: {
+    label: "Awaiting verification",
+    variant: "outline",
+  },
+  [BankAccountStatus.VERIFIED]: { label: "Verified", variant: "default" },
+  [BankAccountStatus.REJECTED]: { label: "Rejected", variant: "destructive" },
 }
 
 /** A bank account's verification status as the customer and staff read it. */
-export function bankAccountStatus(status: string) {
+export function bankAccountStatus(status: BankAccountStatus | string) {
   return (
-    BANK_ACCOUNT_STATUS[status] ?? {
+    BANK_ACCOUNT_STATUS[status as BankAccountStatus] ?? {
       label: status,
       variant: "outline" as const,
     }
@@ -51,16 +60,16 @@ export function bankAccountLabel(
 // A withdrawal settles in the request that makes it, so its status is the
 // payout leg's: confirmed once it has settled, failed if it was refused.
 const WITHDRAWAL_STATUS: Record<
-  string,
+  TransactionStatus,
   { label: string; variant: BadgeVariant }
 > = {
-  pending: { label: "Processing", variant: "outline" },
-  processing: { label: "Processing", variant: "outline" },
-  confirmed: { label: "Paid out", variant: "default" },
-  failed: { label: "Failed", variant: "destructive" },
+  [TransactionStatus.PENDING]: { label: "Processing", variant: "outline" },
+  [TransactionStatus.PROCESSING]: { label: "Processing", variant: "outline" },
+  [TransactionStatus.CONFIRMED]: { label: "Paid out", variant: "default" },
+  [TransactionStatus.FAILED]: { label: "Failed", variant: "destructive" },
 }
 
-export function withdrawalStatus(status: string) {
+export function withdrawalStatus(status: TransactionStatus) {
   return (
     WITHDRAWAL_STATUS[status] ?? { label: status, variant: "outline" as const }
   )
