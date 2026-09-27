@@ -211,14 +211,26 @@ def process_deposits(
     skipped: list[SkippedStatementLine] = []
     occurrence_next: dict[str, int] = defaultdict(int)
     for row in _read_bank_statement(bank_statement):
-        deposit, skip = _create_deposit(
+        reference = (row.get("reference") or "").strip() or None
+        try:
+            deposit, skip = _create_deposit(
             row,
             deposit_repo,
             transaction_repo,
             account_repo,
             occurrence_next,
             actor_user_id=actor_user_id,
-        )
+            )
+        except Exception:
+            logger.error(
+                "Failed to process statement line (reference=%s, "
+                "currency=%s): unexpected error",
+                reference,
+                row.get("currency"),
+                exc_info=True,
+            )
+            raise
+        
         if deposit is not None:
             touched.append(deposit)
         elif skip is not None:
@@ -491,6 +503,7 @@ def _bank_account(currency: str, account_repo: AccountRepository) -> Account:
     comes in, and so the source leg of its transaction."""
     bank_account = account_repo.get_platform_account(TYPE_PLATFORM_FIAT, currency)
     if bank_account is None:
+        logger.error("No RemitX platform bank account seeded for currency %s", currency)
         raise PlatformBankAccountMissingError(currency)
     return bank_account
 
@@ -499,8 +512,12 @@ def _read_bank_statement(bank_statement: str | list[dict]) -> list[dict]:
     """Normalize a CSV path or an already-parsed list of rows into rows."""
     if isinstance(bank_statement, list):
         return bank_statement
-    with open(bank_statement, newline="") as csv_file:
-        return list(csv.DictReader(csv_file))
+    try:
+        with open(bank_statement, newline="") as csv_file:
+            return list(csv.DictReader(csv_file))
+    except (OSError, csv.Error):
+        logger.error("Failed to read bank statement file %r", bank_statement)
+        raise
 
 
 def get_deposit(deposit_id: uuid.UUID) -> Deposit | None:
@@ -542,14 +559,27 @@ def approve_pending_deposit(
 
     deposit = deposit_repo.get_by_id(deposit_id)
     if deposit is None:
+        logger.warning("Approve failed: deposit %s does not exist", deposit_id)
         raise DepositNotPendingError()
     transaction = transaction_repo.get_by_id(deposit.tx_id)
 
     reference = account_reference.strip().lower()
     matched = account_repo.get_user_account_by_reference(reference)
     if matched is None:
+        logger.warning(
+            "Approve failed: reference %s on deposit %s matches no account",
+            reference,
+            deposit_id,
+        )
         raise UnknownDepositReferenceError()
     if matched.account_currency != transaction.currency:
+        logger.warning(
+            "Approve failed: deposit %s is %s but reference %s is a %s account",
+            deposit_id,
+            transaction.currency,
+            reference,
+            matched.account_currency,
+        )
         raise DepositCurrencyMismatchError(
             transaction.currency, matched.account_currency
         )
@@ -558,6 +588,10 @@ def approve_pending_deposit(
     if not transaction_repo.confirm_pending_deposit_transaction(
         deposit.tx_id, matched.account_id, confirmed_at
     ):
+        logger.warning(
+            "Approve failed: deposit %s was no longer pending by confirm time",
+            deposit_id,
+        )
         raise DepositNotPendingError()
 
     account_repo.decrease_balance(transaction.credit_account_id, transaction.amount)

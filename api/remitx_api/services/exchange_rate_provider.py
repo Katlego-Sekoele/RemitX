@@ -45,6 +45,10 @@ class ExchangeRateApiProvider:
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
+            # httpx errors embed the request URL, which contains api_key.
+            # Redact exc.args in place too, not just the message we build here —
+            # exc_info=True logging prints the chained cause's own str(exc).
+            exc.args = tuple(str(arg).replace(api_key, "***") for arg in exc.args)
             raise RateFetchError(f"rate fetch failed: {exc}") from exc
 
         if payload.get("result") != "success":
