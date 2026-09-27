@@ -625,11 +625,15 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         if to_status is KycStatus.APPROVED:
             # Customer routes can't read another user's application (RLS), so
             # the verified name and country a sender's beneficiary list shows
-            # are copied onto `users` as part of the approval itself.
+            # are copied onto `users` as part of the approval itself. The
+            # verified mobile number is copied the same way, so it seeds the
+            # profile contact page instead of leaving it blank until the
+            # user re-enters what they already gave during verification.
             self._users.record_verified_identity(
                 application.user_id,
                 full_name=application.full_name,
                 country=application.residential_country,
+                mobile_number=application.mobile_number,
             )
             self._record_assessment(
                 application_id,
