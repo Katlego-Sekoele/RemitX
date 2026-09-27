@@ -33,7 +33,6 @@ def request_withdrawal(
     """Make a withdrawal request from the user's fiat account to a bank account.
     The bank account must be verified and match the currency of the withdrawal."""
     try:
-        # get the view model for the withdrawal request
         view = controller.request(
             user.id, payload.bank_account_id, payload.currency, payload.amount
         )

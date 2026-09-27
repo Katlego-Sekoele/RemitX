@@ -53,7 +53,6 @@ def add_bank_account(
             branch_code=branch_code,
             currency=currency,
             country=country,
-            # New bank accounts are always pending verification
             status=STATUS_PENDING_VERIFICATION,
         )
     )
@@ -98,7 +97,6 @@ def _raise_not_pending_account(
     BankAccountNotFoundError with logging if the bank account is not pending
     or not found."""
     bank_account = bank_accounts.get_by_id(bank_account_id)
-    # if the bank account doesn't exist, raise a BankAccountNotFoundError
     if bank_account is None:
         logger.warning(
             "admin %s tried to %s unknown bank_account %s",
@@ -107,10 +105,6 @@ def _raise_not_pending_account(
             bank_account_id,
         )
         raise BankAccountNotFoundError(str(bank_account_id))
-    # Else the bank account exists but is not pending, raise a
-    # BankAccountNotPendingError
-    # Reason it isn't pending should be because its status is either verified
-    # or rejected.
     logger.warning(
         "admin %s tried to %s bank_account %s, already %s",
         admin_id,
@@ -142,7 +136,6 @@ def verify_bank_account(bank_account_id: uuid.UUID, admin_id: uuid.UUID) -> Bank
     )
     db.session.commit()
     logger.info("bank account %s verified by admin %s", bank_account_id, admin_id)
-    # Return the updated bank account object after verification
     return bank_accounts.get_by_id(bank_account_id)
 
 
@@ -171,5 +164,4 @@ def reject_bank_account(
     logger.info(
         "bank account %s rejected by admin %s (%s)", bank_account_id, admin_id, reason
     )
-    # Return the updated bank account object after rejection
     return bank_accounts.get_by_id(bank_account_id)

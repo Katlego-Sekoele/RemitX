@@ -122,7 +122,6 @@ def settle_remittance(quote_id: str) -> str:
                 Transaction.type == TYPE_TOKEN_BURN,
                 Transaction.status == TX_STATUS_PENDING,
             )
-            # Get the first pending token burn transaction for the given quote_id
         ).first()
 
     if pending_burn_leg is None:
@@ -133,7 +132,6 @@ def settle_remittance(quote_id: str) -> str:
         )
         return "skipped"
 
-    # Enqueue the burn treasury tokens task for the given quote_id
     queue_service.enqueue_burn_treasury_tokens(quote_id)
     return "queued"
 
@@ -165,11 +163,7 @@ def burn_treasury_tokens(quote_id: str) -> str:
             )
             .values(status=TX_STATUS_PROCESSING, processed_at=utcnow())
             .execution_options(synchronize_session=False)
-            # Get all transactions with the given quote_id and pending
-            # status, and update their status to processing
         )
-        # if no rows were updated, log that the quote has no pending
-        # transactions and return "skipped"
         if claimed.rowcount == 0:
             logger.info(
                 "quote %s has no pending transactions; already burned or unknown",
@@ -183,18 +177,12 @@ def burn_treasury_tokens(quote_id: str) -> str:
                 Transaction.type == TYPE_TOKEN_BURN,
                 Transaction.status == TX_STATUS_PROCESSING,
             )
-            # Get the amount of the pending token burn transaction for the
-            # given quote_id
         ).scalar_one()
 
-    # Try to burn the tokens by calling the xrpl_service.burn_tokens
-    # function with the amount.
     try:
         tx_hash = xrpl_service.burn_tokens(amount)
     except Exception as exc:
         logger.exception("burn failed for quote %s (amount=%s)", quote_id, amount)
-        # if the burn fails, enqueue the confirm_treasury_burn task with
-        # None as the tx_hash and the exception message as the error
         queue_service.enqueue_confirm_treasury_burn(quote_id, None, str(exc))
         return "burn_failed"
 
@@ -228,7 +216,6 @@ def confirm_treasury_burn(
     it.
     """
     try:
-        # get the quote_id as a UUID object
         target_id = uuid.UUID(quote_id)
     except (AttributeError, TypeError, ValueError):
         logger.warning("quote id %r is not a valid id; skipping", quote_id)
@@ -247,11 +234,7 @@ def confirm_treasury_burn(
                 )
                 .values(status=TX_STATUS_FAILED)
                 .execution_options(synchronize_session=False)
-                # Get transactions with the given quote_id and in-flight
-                # status, and update their status to failed
             )
-        # if no rows were updated, log that the quote has no pending or
-        # processing transactions and return "skipped"
         if result.rowcount == 0:
             logger.info(
                 "quote %s has no pending or processing transactions; "
@@ -280,9 +263,6 @@ def confirm_treasury_burn(
             )
             .values(status=TX_STATUS_CONFIRMED, confirmed_at=utcnow())
             .execution_options(synchronize_session=False)
-            # Update all transactions with the given quote_id and
-            # in-flight status to confirmed, and set their confirmed_at
-            # timestamp to now
         )
         if confirmed.rowcount == 0:
             logger.info(
@@ -299,8 +279,6 @@ def confirm_treasury_burn(
                 Transaction.type == TYPE_TOKEN_BURN,
             )
             .values(xrpl_tx_hash=tx_hash)
-            # Add the token burn success hash to the token burn
-            # transaction row
         )
 
         remittance_transactions = session.execute(
@@ -312,9 +290,6 @@ def confirm_treasury_burn(
                 Transaction.quote_id == target_id,
                 Transaction.status == TX_STATUS_CONFIRMED,
             )
-            # Get all confirmed transactions for the given remittance
-            # quote_id, and select their credit_account_id,
-            # debit_account_id, and amount
         ).all()
 
         # Update the debited account balances first, then the credited
@@ -325,9 +300,6 @@ def confirm_treasury_burn(
                 update(Account)
                 .where(Account.account_id == debit_account_id)
                 .values(account_balance=Account.account_balance + amount)
-                # Update the account balance of the debit_account_id by
-                # adding the amount to it, for each remittance transaction
-                # in the list of confirmed transactions
             )
         for credit_account_id, _debit_account_id, amount in remittance_transactions:
             session.execute(
@@ -335,9 +307,6 @@ def confirm_treasury_burn(
                 .where(Account.account_id == credit_account_id)
                 .values(account_balance=Account.account_balance - amount)
             )
-            # Update the account balance of the credit_account_id by
-            # subtracting the amount from it, for each remittance
-            # transaction in the list of confirmed transactions
     logger.info(
         "quote %s burned (%s): %d transactions confirmed and settled",
         quote_id,

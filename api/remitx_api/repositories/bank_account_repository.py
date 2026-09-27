@@ -78,7 +78,6 @@ class BankAccountRepository(Repository[BankAccount, uuid.UUID]):
     ) -> bool:
         """Guarded pending_verification -> verified. Flushes only — caller
         commits. Returns True iff a row changed."""
-        # Call _transition_from_pending to update the bank account status to verified
         return self._transition_from_pending(
             bank_account_id,
             status=STATUS_VERIFIED,
@@ -95,7 +94,6 @@ class BankAccountRepository(Repository[BankAccount, uuid.UUID]):
     ) -> bool:
         """Guarded pending_verification -> rejected. Flushes only — caller
         commits. Returns True iff a row changed."""
-        # Call _transition_from_pending to update the bank account status to rejected
         return self._transition_from_pending(
             bank_account_id,
             status=STATUS_REJECTED,

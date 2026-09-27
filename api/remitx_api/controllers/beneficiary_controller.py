@@ -101,8 +101,6 @@ class BeneficiaryController:
         methods — name, contact and country all come from there, not this
         table.
         """
-        # If the linked_user_id doesn't exist, raise an error.
-        # This is a business rule for this project.
         linked_user = self._users.get_by_id(linked_user_id)
         if linked_user is None:
             raise UnknownLinkedUserError(linked_user_id)

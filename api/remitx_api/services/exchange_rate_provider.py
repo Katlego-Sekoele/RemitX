@@ -35,7 +35,6 @@ class ExchangeRateApiProvider:
         if not api_key:
             raise RateFetchError("EXCHANGE_RATE_API_KEY is not configured")
 
-        # Build the API URL
         url = _PAIR_URL.format(
             api_key=api_key, base=base_currency, quote=quote_currency
         )
@@ -50,7 +49,6 @@ class ExchangeRateApiProvider:
         if payload.get("result") != "success":
             raise RateFetchError(f"rate API returned {payload.get('result')!r}")
 
-        # If the API response is successful, extract the conversion rate
         try:
             return Decimal(str(payload["conversion_rate"]))
         except (KeyError, ArithmeticError, TypeError, ValueError) as exc:

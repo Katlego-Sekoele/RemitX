@@ -7,7 +7,6 @@ from remitx_api.repositories.bank_account_repository import BankAccountRepositor
 from remitx_api.services import bank_account_service
 
 
-# dataclass is used to create immutable view models for bank accounts
 @dataclass(frozen=True)
 class BankAccountView:
     """View model for a bank account."""
@@ -64,8 +63,6 @@ class BankAccountController:
         self, user_id: uuid.UUID, currency: str
     ) -> list[BankAccountView]:
         """List all verified bank accounts for a user in a given currency."""
-        # Call the service layer to get all withdrawable bank accounts for the
-        # user in the specified currency
         return [
             self._view(bank_account)
             for bank_account in bank_account_service.list_withdrawable_bank_accounts(
@@ -79,7 +76,6 @@ class BankAccountController:
 
     def list_pending(self) -> list[BankAccountView]:
         """List all bank accounts that are pending verification."""
-        # Call the service layer to get all pending bank accounts
         return [
             self._view(bank_account)
             for bank_account in bank_account_service.list_pending_bank_accounts()
@@ -89,7 +85,6 @@ class BankAccountController:
         self, bank_account_id: uuid.UUID, admin_id: uuid.UUID
     ) -> BankAccountView:
         """Verify a bank account for a user."""
-        # Call the service layer to verify the bank account
         bank_account = bank_account_service.verify_bank_account(
             bank_account_id, admin_id
         )
@@ -99,9 +94,6 @@ class BankAccountController:
         self, bank_account_id: uuid.UUID, admin_id: uuid.UUID, reason: str
     ) -> BankAccountView:
         """Reject a bank account for a user."""
-        # Updates the bank account status and records the rejection reason.
-        # Call the service layer to reject the bank account and provide a
-        # reason for rejection
         bank_account = bank_account_service.reject_bank_account(
             bank_account_id, admin_id, reason
         )
