@@ -27,10 +27,22 @@ def test_every_treasurer_sees_the_platform_accounts_in_display_order():
     assert response.status_code == 200
     assert [account["label"] for account in response.json()] == [
         "RemitX SA Bank Account",
+        "RemitX BW Bank Account",
+        "RemitX EU Bank Account",
+        "RemitX UK Bank Account",
+        "RemitX LES Bank Account",
+        "RemitX MAL Bank Account",
+        "RemitX MOZ Bank Account",
         "RemitX NAM Bank Account",
         "RemitX US Bank Account",
         "RemitX ZIM Bank Account",
         "RemitX SA Fee Revenue",
+        "RemitX BW Fee Revenue",
+        "RemitX EU Fee Revenue",
+        "RemitX UK Fee Revenue",
+        "RemitX LES Fee Revenue",
+        "RemitX MAL Fee Revenue",
+        "RemitX MOZ Fee Revenue",
         "RemitX NAM Fee Revenue",
         "RemitX US Fee Revenue",
         "RemitX ZIM Fee Revenue",
@@ -61,7 +73,7 @@ def test_customer_accounts_are_not_platform_accounts():
         response = client.get(PLATFORM_ACCOUNTS)
 
     assert all(account["type"] != "USER" for account in response.json())
-    assert len(response.json()) == 10
+    assert len(response.json()) == 22
 
 
 def test_available_balance_nets_out_pending_outgoing_legs():

@@ -292,7 +292,7 @@ def test_create_rejects_an_invalid_payout_currency(verified_client):
         CREATE_ENDPOINT,
         json={
             "linked_user_id": str(linked_id),
-            "payout_currency": "EUR",  # not a fiat account currency
+            "payout_currency": "JPY",  # not a supported payout currency
             "relationship": "friend",
         },
     )
@@ -590,7 +590,7 @@ def test_an_edit_must_change_something_and_only_what_it_may(verified_client):
         ).status_code
         == 422
     )
-    assert client.patch(path, json={"payout_currency": "EUR"}).status_code == 422
+    assert client.patch(path, json={"payout_currency": "JPY"}).status_code == 422
     assert client.patch(path, json={"relationship": "stranger"}).status_code == 422
     # ZWL is the account they hold. USD is a payout currency they do not.
     refused = client.patch(path, json={"payout_currency": "USD"})
