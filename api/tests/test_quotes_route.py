@@ -289,7 +289,7 @@ def test_preview_unsupported_currency_is_a_400(verified_client):
         f"{ENDPOINT}/preview-quote",
         json={
             "sender_amount": "1000",
-            "sender_currency": "EUR",
+            "sender_currency": "JPY",
             "receiver_payout_currency": "USD",
         },
     )
@@ -298,12 +298,12 @@ def test_preview_unsupported_currency_is_a_400(verified_client):
 
 
 @pytest.mark.parametrize("operation", ["create-quote", "preview-quote"])
-@pytest.mark.parametrize("currency", ["uctusd", "EUR"])
+@pytest.mark.parametrize("currency", ["uctusd", "JPY"])
 def test_payout_currency_must_be_a_payout_currency(
     verified_client, operation, currency
 ):
-    """Beneficiaries are paid in ZAR, USD, ZWL or NAD. The token and any
-    other code are refused."""
+    """Beneficiaries are paid in one of the supported payout currencies. The
+    token and any other code are refused."""
     client, _sender = verified_client
 
     response = client.post(

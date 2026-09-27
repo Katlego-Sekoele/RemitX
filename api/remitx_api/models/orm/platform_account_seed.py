@@ -22,6 +22,12 @@ from dataclasses import dataclass
 
 from remitx_api.config import Config
 from remitx_api.models.orm.account import (
+    CURRENCY_BWP,
+    CURRENCY_EUR,
+    CURRENCY_GBP,
+    CURRENCY_LSL,
+    CURRENCY_MWK,
+    CURRENCY_MZN,
     CURRENCY_NAD,
     CURRENCY_TOKEN,
     CURRENCY_USD,
@@ -64,6 +70,12 @@ _COUNTRIES = (
     ("us", "RemitX US", CURRENCY_USD),
     ("zim", "RemitX ZIM", CURRENCY_ZWL),
     ("nam", "RemitX NAM", CURRENCY_NAD),
+    ("eu", "RemitX EU", CURRENCY_EUR),
+    ("uk", "RemitX UK", CURRENCY_GBP),
+    ("bw", "RemitX BW", CURRENCY_BWP),
+    ("les", "RemitX LES", CURRENCY_LSL),
+    ("mal", "RemitX MAL", CURRENCY_MWK),
+    ("moz", "RemitX MOZ", CURRENCY_MZN),
 )
 
 PLATFORM_ACCOUNT_SEEDS: tuple[PlatformAccountSeed, ...] = (

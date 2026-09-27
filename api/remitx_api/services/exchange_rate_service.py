@@ -18,6 +18,12 @@ from datetime import UTC, datetime, timedelta
 from remitx_api.config import Config
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
+    CURRENCY_BWP,
+    CURRENCY_EUR,
+    CURRENCY_GBP,
+    CURRENCY_LSL,
+    CURRENCY_MWK,
+    CURRENCY_MZN,
     CURRENCY_NAD,
     CURRENCY_USD,
     CURRENCY_ZAR,
@@ -33,7 +39,18 @@ from remitx_api.services.exchange_rate_provider import (
 logger = logging.getLogger(__name__)
 
 # Currencies a rate may be fetched for.
-SUPPORTED_CURRENCIES = {CURRENCY_USD, CURRENCY_ZAR, CURRENCY_ZWL, CURRENCY_NAD}
+SUPPORTED_CURRENCIES = {
+    CURRENCY_USD,
+    CURRENCY_ZAR,
+    CURRENCY_ZWL,
+    CURRENCY_NAD,
+    CURRENCY_EUR,
+    CURRENCY_GBP,
+    CURRENCY_BWP,
+    CURRENCY_LSL,
+    CURRENCY_MWK,
+    CURRENCY_MZN,
+}
 
 
 class RateUnavailableError(Exception):

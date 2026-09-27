@@ -182,7 +182,7 @@ def test_reference_to_an_account_in_another_currency_is_left_pending(
     assert _balance(user, CURRENCY_ZAR) == 0
 
 
-@pytest.mark.parametrize("currency", [None, "", CURRENCY_TOKEN, "EUR"])
+@pytest.mark.parametrize("currency", [None, "", CURRENCY_TOKEN, "JPY"])
 def test_line_without_a_currency_remitx_banks_in_is_skipped(app_context, currency):
     seed_platform_accounts()
     user = _customer("no_currency")

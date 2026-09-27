@@ -55,6 +55,12 @@ CURRENCY_TOKEN = Config().UCTUSD_TOKEN_NAME
 CURRENCY_USD = "USD"
 CURRENCY_ZWL = "ZWL"
 CURRENCY_NAD = "NAD"
+CURRENCY_EUR = "EUR"
+CURRENCY_GBP = "GBP"
+CURRENCY_BWP = "BWP"
+CURRENCY_LSL = "LSL"
+CURRENCY_MWK = "MWK"
+CURRENCY_MZN = "MZN"
 
 
 class PayoutCurrency(StrEnum):
@@ -69,6 +75,12 @@ class PayoutCurrency(StrEnum):
     USD = CURRENCY_USD
     ZWL = CURRENCY_ZWL
     NAD = CURRENCY_NAD
+    EUR = CURRENCY_EUR
+    GBP = CURRENCY_GBP
+    BWP = CURRENCY_BWP
+    LSL = CURRENCY_LSL
+    MWK = CURRENCY_MWK
+    MZN = CURRENCY_MZN
 
 
 PAYOUT_CURRENCIES = tuple(currency.value for currency in PayoutCurrency)
@@ -79,6 +91,12 @@ CURRENCY_REFERENCE_SUFFIX = {
     CURRENCY_USD: "usd",
     CURRENCY_ZWL: "zwl",
     CURRENCY_NAD: "nad",
+    CURRENCY_EUR: "eur",
+    CURRENCY_GBP: "gbp",
+    CURRENCY_BWP: "bwp",
+    CURRENCY_LSL: "lsl",
+    CURRENCY_MWK: "mwk",
+    CURRENCY_MZN: "mzn",
     CURRENCY_TOKEN: "tok",
 }
 

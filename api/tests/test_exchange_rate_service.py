@@ -111,12 +111,12 @@ def test_unsupported_currency_is_rejected_without_touching_repo_or_provider(
 
     with pytest.raises(exchange_rate_service.UnsupportedCurrencyError):
         exchange_rate_service.get_active_rate(
-            base_currency="EUR", quote_currency=CURRENCY_ZAR
+            base_currency="JPY", quote_currency=CURRENCY_ZAR
         )
 
     with pytest.raises(exchange_rate_service.UnsupportedCurrencyError):
         exchange_rate_service.get_active_rate(
-            base_currency=CURRENCY_USD, quote_currency="EUR"
+            base_currency=CURRENCY_USD, quote_currency="JPY"
         )
 
 

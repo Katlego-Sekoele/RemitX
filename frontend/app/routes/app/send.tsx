@@ -28,6 +28,7 @@ import { amountToCents, fromCents } from "~/lib/money"
 import {
   amountIssue,
   DEFAULT_SENDER_CURRENCY,
+  PAYOUT_CURRENCIES,
   readSendSearch,
   resolveSendPayoutCurrency,
   resolveStep,
@@ -149,6 +150,13 @@ function AddMoney({ currency }: { currency: string }) {
   )
 }
 
+/** "ZAR, USD, ZWL, NAD, EUR, GBP, BWP, LSL, MWK, or MZN" */
+function formatPayoutCurrencyList(): string {
+  const currencies = [...PAYOUT_CURRENCIES]
+  const last = currencies.pop()
+  return `${currencies.join(", ")}, or ${last}`
+}
+
 function NoPayoutAccount({
   beneficiaryName: name,
 }: {
@@ -160,8 +168,8 @@ function NoPayoutAccount({
         <CardTitle>No payout account</CardTitle>
         <CardDescription>
           {name} doesn&apos;t have a payout account yet, so you can&apos;t send
-          to them. Ask them to open a ZAR, USD, ZWL, or NAD account in RemitX,
-          then try again.
+          to them. Ask them to open a {formatPayoutCurrencyList()} account in
+          RemitX, then try again.
         </CardDescription>
       </CardHeader>
     </Card>

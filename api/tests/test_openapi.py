@@ -60,7 +60,18 @@ def test_beneficiary_option_lists_are_named_enums():
     # The add and edit forms build their selects from these, so they have to
     # reach the generated client as values, not as free-form strings.
     schemas = create_app(TestConfig).openapi()["components"]["schemas"]
-    assert schemas["PayoutCurrency"]["enum"] == ["ZAR", "USD", "ZWL", "NAD"]
+    assert schemas["PayoutCurrency"]["enum"] == [
+        "ZAR",
+        "USD",
+        "ZWL",
+        "NAD",
+        "EUR",
+        "GBP",
+        "BWP",
+        "LSL",
+        "MWK",
+        "MZN",
+    ]
     assert "sibling" in schemas["BeneficiaryRelationship"]["enum"]
 
 
