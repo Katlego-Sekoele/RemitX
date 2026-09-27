@@ -87,16 +87,9 @@ def _statement_date_cell_is_date_only(raw_date) -> bool:
 
 
 def _fingerprint_time_key(raw_date, statement_date: datetime) -> str:
-    """The time component of a line's deduplication key.
-
-    A date-only cell is keyed by the calendar date as written, not by
-    `statement_date` — that datetime now carries a time of day (see
-    `_localize_statement_datetime`) that varies with when reconciliation
-    ran, so deriving the key from it would make the same statement line
-    fingerprint differently across runs.
-    """
+    """The time component of a line's deduplication key."""
     if _statement_date_cell_is_date_only(raw_date):
-        return str(raw_date).strip()
+        return statement_date.astimezone(UTC).date().isoformat()
     return statement_date.astimezone(UTC).replace(microsecond=0).isoformat()
 
 
@@ -164,16 +157,7 @@ def _statement_currency(row: dict) -> str | None:
     return currency if currency in STATEMENT_CURRENCIES else None
 
 
-def _try_parse_statement_datetime(
-    value, processed_at: datetime
-) -> datetime | None:
-    """Parse a statement date cell to a timezone-aware UTC datetime, or None
-    if it can't be parsed.
-
-    A date-only cell (e.g. "2026-09-10") doesn't report a time of day, so
-    rather than defaulting to a fabricated midnight, it's timed at
-    `processed_at` — the moment reconciliation actually ran.
-    """
+def _try_parse_statement_datetime(value) -> datetime | None:
     if not value:
         return None
     if isinstance(value, datetime):
@@ -182,11 +166,7 @@ def _try_parse_statement_datetime(
         parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return None
-    if parsed.tzinfo:
-        return parsed
-    if _statement_date_cell_is_date_only(value):
-        return processed_at
-    return parsed.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _statement_date_cell(row: dict) -> str | None:
@@ -312,10 +292,7 @@ def _create_deposit(
 
     processed_at = datetime.now(UTC)
     raw_date = row.get("date")
-    if (
-        raw_date not in (None, "")
-        and _try_parse_statement_datetime(raw_date, processed_at) is None
-    ):
+    if raw_date not in (None, "") and _try_parse_statement_datetime(raw_date) is None:
         logger.warning(
             "Skipping statement line with unparseable date (reference=%s, date=%r)",
             reference,
@@ -493,7 +470,7 @@ def _parse_statement_date(value, processed_at: datetime) -> datetime:
 
     Falls back to `processed_at` when the row didn't carry a date.
     """
-    parsed = _try_parse_statement_datetime(value, processed_at)
+    parsed = _try_parse_statement_datetime(value)
     return parsed if parsed is not None else processed_at
 
 
