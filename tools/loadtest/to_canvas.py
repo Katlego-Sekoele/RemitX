@@ -240,7 +240,7 @@ def render_html(summary: RunSummary) -> str:
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Performance testing results — { _esc(summary.profile_name) }</title>
+<title>Performance testing results — {_esc(summary.profile_name)}</title>
 <style>
   :root {{
     --bg: #f7f7f5;
