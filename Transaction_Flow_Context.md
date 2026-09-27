@@ -22,13 +22,16 @@ CREATE TABLE accounts (
     account_balance  NUMERIC(20,8) NOT NULL DEFAULT 0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT ck_account_owner CHECK (
+    CONSTRAINT accounts_type_valid CHECK (
+        type IN ('USER','REMITX_FIAT','REMITX_XRPL_WALLET','REMITX_REVENUE','EXTERNAL')
+    ),
+    CONSTRAINT accounts_owner_matches_type CHECK (
         (type = 'USER' AND user_id IS NOT NULL) OR (type <> 'USER' AND user_id IS NULL)
     ),
-    CONSTRAINT ck_account_reference CHECK (
+    CONSTRAINT accounts_reference_matches_type CHECK (
         (type = 'USER' AND reference IS NOT NULL) OR (type <> 'USER' AND reference IS NULL)
     ),
-    CONSTRAINT ck_account_balance_nonneg CHECK (
+    CONSTRAINT accounts_user_balance_nonneg CHECK (
         type <> 'USER' OR account_balance >= 0
     )
 );
@@ -189,7 +192,7 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 
 ### Phase B — Sender pays the beneficiary (remittance)
 
-**B1. Request a quote** — `quotes`: sender's ZAR account, beneficiary's `uctusd` account (exists from signup — see §2, Phase A), mid rate 18.50, fee 20.00, margin 10.00, net 970.00, settlement **52.432432 uctusd**, `ACTIVE`, expires in 15 min. Issued only to a verified sender, from any fiat account they hold, for an amount that fits what is left of their daily and monthly allowance in rand (§7, sending limits).
+**B1. Request a quote** — `quotes`: sender's ZAR account, beneficiary's `uctusd` account (exists from signup — see §2, Phase A), mid rate 18.50, fee 20.00, margin 10.00, net 970.00, settlement **52.432432 uctusd**, `ACTIVE`, expires in 15 min. Issued only to a verified sender, from any fiat account they hold, for an amount that fits what is left of their daily and monthly allowance in rand (§7, sending limits). `create_quote` also requires the beneficiary to already hold a fiat account in the requested `receiver_payout_currency` — it looks the account up with `AccountRepository.get_user_account` and raises `UnknownBeneficiaryPayoutAccountError` if it's missing, rather than creating one (see B2's note on this).
 
 **B2. Sender confirms** (`services/remittance_service.py::confirm_remittance`) — first, under a row lock on the sender, a guarded `quotes` transition (`WHERE quote_id=? AND status='ACTIVE' AND expires_at > ?`) flips the quote to **USED**, and the sender's KYC standing and what is left of their allowance are checked again, since both can change after a quote is issued (a refusal rolls the quote back to `ACTIVE`); only once those succeed does one commit insert a `remittances` row and every leg it needs — **all seven inserted `pending`**, sharing one `quote_id`, and none of them touching a balance yet (nor, per Phase C below, until the burn leg's on-chain call actually resolves):
 
@@ -203,7 +206,7 @@ Sender's ZAR balance is 1,000. Nothing on chain. No tokens exist yet.
 
 `remittances` is deliberately lean (`remittance_id`, `quote_id` — FK, UNIQUE — `tx_id`, `created_at`; see §3): every priced field (`fx_rate`, `fee_amount`, token amounts, currencies) is already frozen on the `quotes` row it confirms, so nothing here duplicates it, and "who confirmed it" is already `quotes.sender_user_id` — `confirm_remittance` only ever confirms a quote against its own sender, so a separate `confirmed_by` column would just be the same value stored twice. A remittance's receipt is the controller joining `remittances` + `quotes`, not extra storage.
 
-**The beneficiary never holds a resting `uctusd` balance** — a deliberate deviation from the brief's literal "recipient holds and views RLUSD, then chooses when to cash out" wording (§4.7). Tendai's `uctusd` account is a momentary pass-through exactly like Sipho's own: legs 4-5 credit it then debit the same amount straight back to the treasury, nets to zero once both confirm. The payout leg (7) auto-converts the settled amount into Tendai's own ZWL account instead — no separate withdrawal action needed to reach fiat — but only once the burn leg (6) has actually destroyed the equivalent tokens on-chain (§2, Phase C). `Tendai's ZWL account` is provisioned lazily, inside `confirm_remittance`, the first time he receives money in that currency (not at signup — only ZAR + `uctusd` are eager). The cash-out fee (`Config.CASH_OUT_FEE_RATE`, already computed on every quote as `receiver_payout_fee`) is **not** deducted here — deferred to the real withdrawal-from-the-platform flow (§2, Phase E), which deducts it against the actual requested amount at withdrawal time, not this estimate.
+**The beneficiary never holds a resting `uctusd` balance** — a deliberate deviation from the brief's literal "recipient holds and views RLUSD, then chooses when to cash out" wording (§4.7). Tendai's `uctusd` account is a momentary pass-through exactly like Sipho's own: legs 4-5 credit it then debit the same amount straight back to the treasury, nets to zero once both confirm. The payout leg (7) auto-converts the settled amount into Tendai's own ZWL account instead — no separate withdrawal action needed to reach fiat — but only once the burn leg (6) has actually destroyed the equivalent tokens on-chain (§2, Phase C). `Tendai's ZWL account` is **not** provisioned by the remittance flow at all — only ZAR + `uctusd` are opened eagerly, at signup (§2, Phase A). A payout-currency account has to already exist before anyone can quote or confirm a send to that beneficiary: both `create_quote` (B1) and `confirm_remittance` look it up with `AccountRepository.get_user_account` and raise `UnknownBeneficiaryPayoutAccountError` — never `get_or_create_user_account` — if it's missing (`confirm_remittance` also rolls the quote back to `ACTIVE` first, since nothing about that failure should burn the sender's one shot at it). Opening a non-eager currency account is instead a separate, user-initiated action — `POST /accounts` (`AccountController.open_account`), gated on the beneficiary's own KYC standing. This was a deliberate tightening: an earlier version of `confirm_remittance` did call `get_or_create_user_account` here, auto-provisioning the beneficiary's payout account on first receipt; that was replaced with the raise-if-missing check above so a payout only ever lands in an account the recipient actually opened themselves. The cash-out fee (`Config.CASH_OUT_FEE_RATE`, already computed on every quote as `receiver_payout_fee`) is **not** deducted here — deferred to the real withdrawal-from-the-platform flow (§2, Phase E), which deducts it against the actual requested amount at withdrawal time, not this estimate.
 
 Sipho's `uctusd` account nets to exactly zero across its two token legs, once they confirm — it's a momentary pass-through that exists so the sender's own activity history shows the tokens they sent, not a balance they ever actually held.
 
@@ -380,6 +383,7 @@ erDiagram
         uuid beneficiary_user_id FK
         decimal sender_amount
         string sender_currency
+        decimal sender_amount_zar "nullable — send's value in rand at this quote's rates"
         decimal sender_transaction_fee
         decimal token_amount
         string token_name
@@ -472,7 +476,9 @@ CREATE TABLE beneficiaries (
     beneficiary_id   UUID PRIMARY KEY,
     sender_user_id   UUID NOT NULL REFERENCES users(id),   -- the sender who added this contact
     linked_user_id   UUID NOT NULL REFERENCES users(id),   -- the registered user this contact resolves to
-    payout_currency  VARCHAR(8) NOT NULL,                  -- USD, ZWL, or NAD
+    payout_currency  VARCHAR(8) NOT NULL,                  -- ZAR, USD, ZWL, or NAD — every
+                                                             -- fiat account counts, including
+                                                             -- the signup ZAR one (§1)
     relationship     VARCHAR(16) NOT NULL,                 -- partner, parent, child, sibling, relative, friend, employee, other
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -485,6 +491,11 @@ CREATE TABLE quotes (
     beneficiary_user_id    UUID NOT NULL REFERENCES users(id),
     sender_amount          NUMERIC(20,8) NOT NULL,
     sender_currency        VARCHAR(8) NOT NULL,
+    -- The send's value in rand at this quote's rates — what it counts as
+    -- against the sending limits (§7). NULL only for a ZAR quote or one
+    -- written before this column existed; `Quote.value_zar` falls back to
+    -- `sender_amount` itself in both cases (both are already in rand).
+    sender_amount_zar      NUMERIC(20,8),
     sender_transaction_fee NUMERIC(20,8) NOT NULL,
     token_amount           NUMERIC(20,8) NOT NULL,
     token_name             VARCHAR(8) NOT NULL,
@@ -521,9 +532,7 @@ CREATE TABLE quotes (
 | `beneficiaries` | A sender's contact — who they can quote/remit to. Built. `linked_user_id` must already be a registered `User`; first_name/last_name/email/mobile_number/country are read from that `User` via a join, never duplicated here. A sender adds one by looking up the target's fiat account reference (e.g. `sian1-zar` — the same one they'd quote for an EFT deposit), never the `uctusd` reference or a raw user id — see `BeneficiaryController.lookup_by_fiat_account_reference`. |
 | `users` | `base_reference` and `suspended_at`. `base_reference` is not itself an EFT reference — see §1, §2 Phase A. Carries neither a staff flag (RBAC's `user_roles` decides that) nor a KYC status: a user's KYC standing is derived from `kyc_applications`, not copied here. |
 | `kyc_applications`, `kyc_documents`, `kyc_decisions` | One row per KYC attempt, its evidence, and the append-only log of reviewer decisions. Outside the money flow, so not drawn above — see remitx_api/models/orm/kyc_lifecycle.py for the status machine. |
-| `currencies`, `fee_config` | Deferred — not revisited under this redesign yet. See §8. |
 | `exchange_rates` | Built (§2, Phase B1; §4) — a real API-backed rate, fetched lazily. |
-| `xrpl_accounts`, `xrpl_settlements` | Not yet reconciled with the new ledger shape. See §8. |
 | `audit_log` | Built, but for RBAC/KYC actions, not this ledger — see `models/orm/audit_log.py`. Not drawn above; outside the money flow. |
 
 **Write rules:**
@@ -635,7 +644,7 @@ Deliberately unresolved for now — flagging rather than guessing:
 3. **Nothing stops a platform/external account being seeded twice.** The platform-accounts migration skips a label that already exists, so environments seeded by the old script keep their rows — but nothing at the schema level stops a manual insert from creating a duplicate. Worth a `UNIQUE (type, label, account_currency) WHERE type <> 'USER'` if that's ever a real risk.
 4. ~~Withdrawal request vs. approval.~~ **Resolved, then refined twice more once actually built (§2, Phase E).** No approval gate on the withdrawal itself — the customer's request creates the `withdrawals` row and its two legs and settles them immediately, always, in the same call. The one thing that *does* still gate manually is the bank account, and it's a one-time decision per account rather than a recurring reconciliation job or a per-withdrawal action: `POST /admin/bank-accounts/{id}/verify`/`.../reject`. Earlier revisions of this flow let a withdrawal into an unverified account sit `pending` on an admin queue (`POST /admin/withdrawals/{id}/verify-and-process`/`.../fail`); both are gone now — a withdrawal into an unverified account is refused outright (400) instead, since the frontend's picker (`GET /bank-accounts/withdrawable`) never offers one as a destination in the first place. All that's left for an admin to do with a withdrawal is look at one (`GET /admin/withdrawals/users/{user_id}`, the user-profile page), not act on it.
 5. ~~A sender's ZAR balance doesn't actually drop until settlement confirms.~~ **Resolved.** Since all seven of a remittance's legs stay `pending` until Phase C (§2, Phase B), `account_balance` is untouched for the whole in-flight window. `AccountRepository.get_available_balance` (raw balance minus the sender's own still-`pending`/`processing` outgoing legs — `processing` is included alongside `pending` so a leg `burn_treasury_tokens` has already claimed, but `confirm_treasury_burn` hasn't yet resolved, doesn't look spendable again mid-burn) is now checked at **both** points that matter: `quote_service.create_quote` at issue time, and `remittance_service.confirm_remittance` again at confirmation (B2) — the second check is what actually closes the gap, since B2 is what creates the pending legs a *different* quote's own check would need to see. Confirming one quote against a balance now makes a second, still-`ACTIVE` quote against the same balance fail with `InsufficientBalanceError` at confirmation, even though nothing stopped both being *issued*.
-6. `currencies`, `fee_config`, `xrpl_accounts`, `xrpl_settlements` haven't been reconciled with this new ledger shape yet — carried over from the earlier design, unchanged, to revisit later. (`exchange_rates` is now built — see §4 — and `audit_log` exists, tracking RBAC/KYC actions rather than the money-flow tables above; neither belongs on this list anymore.)
+6. ~~`currencies`, `fee_config`, `xrpl_accounts`, `xrpl_settlements` haven't been reconciled with this new ledger shape yet.~~ **Resolved — these tables never existed.** Checked the full model/migration history: none of the four was ever an ORM model or a migration in this codebase. Fee parameters live as env-driven constants on `Config` (§6: `FIXED_FEE_ZAR`, `PERCENTAGE_FEE_RATE`, `FX_MARGIN_RATE`, `CASH_OUT_FEE_RATE`), not a `fee_config` table; currency/country reference data lives in a `countries` table (`models/orm/country.py`), not `currencies`; and there's no `XrplAccount`/`XrplSettlement` model at all — the XRPL treasury/issuer relationship (§1) is fully represented by ordinary `accounts` rows (`REMITX_XRPL_WALLET`, `EXTERNAL`) and `transactions` rows (`token_burn`, `treasury_funding`). This line was carried across many revisions of this doc without anyone re-checking it against the code — nothing to revisit, there was nothing there. (`exchange_rates` is built — §4 — and `audit_log` exists, tracking RBAC/KYC actions rather than the money-flow tables above.)
 7. ~~`process_deposits` has no protection against reprocessing the same bank statement.~~ **Resolved.** Each deposit stores `statement_fingerprint`, a unique key of the line's UTC date, stripped reference, amount at 2 decimal places, and currency (fingerprints from before lines carried a currency were backfilled with their transaction's). Uploading the same CSV again, or an overlapping range, skips lines already reconciled and does not move balances. A line that was already imported twice before this constraint keeps the earliest row's fingerprint; the extras are left as they were, under a legacy key, so money already credited is not reversed.
 8. ~~The fixed remittance fee's amount and currency-generality.~~ **Resolved.** Fee amounts are decided (§5): R15 fixed, 0.5% percentage, 1.0% FX margin, 0.75% cash-out. The fixed fee's currency-generality gap is also closed: it's denominated in ZAR and converted into `sender_currency` via each currency's USD peg at quote time (§5), so the beneficiary-free preview quote (§2 Phase B1) gets a real fixed fee for any supported sender currency, not just ZAR. The FX margin remains a rate *spread* (percentage), which is already currency-general by construction — nothing to convert.
 9. **Whether uctusd issuance/burning itself carries a separate token fee.** Today's fee model (§5) only has a remittance-side fee (percentage + FX margin, since #8) and a withdrawal/cash-out fee. Not decided: whether moving tokens through the treasury at settlement, or burning them back to the issuer (§2 Phase C), itself carries an additional platform fee distinct from those two. Flagging as a possibility, not deciding either way — would need its own `§5` line and its own field on the relevant transaction/quote model if it's ever added.
