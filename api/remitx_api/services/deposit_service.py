@@ -151,8 +151,6 @@ def process_deposits(bank_statement: str | list[dict]) -> ProcessDepositsResult:
                 row, deposit_repo, transaction_repo, account_repo
             )
         except Exception:
-            # Never log the row itself — only its non-sensitive fields —
-            # and re-raise so the batch still aborts as it always has.
             logger.error(
                 "Failed to process statement line (reference=%s, "
                 "currency=%s): unexpected error",
