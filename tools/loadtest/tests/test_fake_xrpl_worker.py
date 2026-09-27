@@ -40,7 +40,7 @@ def test_a_knob_passed_through_empty_falls_back_to_its_default(monkeypatch):
     """Compose passes an unset pass-through variable as an empty string."""
     worker = load(monkeypatch, LOADTEST_BURN_P50_S="", LOADTEST_BURN_FAILURE_RATE="")
 
-    assert worker.BURN_P50_S == 4.0
+    assert worker.BURN_P50_S == 8.61
     assert worker.FAILURE_RATE == 0
 
 

@@ -32,7 +32,7 @@ def _setting(name: str, default: str) -> float:
     return float(os.environ.get(name) or default)
 
 
-# Placeholders until QA's numbers are in (see qa_xrpl_timings.sql).
+# Calibrated from QA XRPL burns (see qa_xrpl_timings.sql); profiles override.
 BURN_P50_S = _setting("LOADTEST_BURN_P50_S", "8.61")
 BURN_P95_S = _setting("LOADTEST_BURN_P95_S", "10.24")
 # Share of burns that fail the way a rejected Payment does. Zero by default so
