@@ -30,7 +30,7 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
 
         <div className="relative z-20 mt-auto p-8">
           <p className="text-sm text-muted-foreground">
-            ZAR → RLUSD on XRPL Testnet. Academic prototype — no real funds.
+            ZAR → UCTUSD on XRPL Testnet. Academic prototype — no real funds.
           </p>
         </div>
       </div>

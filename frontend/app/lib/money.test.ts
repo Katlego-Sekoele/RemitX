@@ -73,9 +73,9 @@ describe("formatMoney", () => {
     expect(plain(formatMoney("5", "USD"))).toBe("USD 5.00")
   })
 
-  it("calls the token RLUSD", () => {
-    expect(plain(formatMoney("52.43", "uctusd"))).toBe("RLUSD 52.43")
-    expect(currencyLabel("uctusd")).toBe("RLUSD")
+  it("calls the token UCTUSD", () => {
+    expect(plain(formatMoney("52.43", "uctusd"))).toBe("UCTUSD 52.43")
+    expect(currencyLabel("uctusd")).toBe("UCTUSD")
   })
 
   it("keeps digits a float would drop", () => {
@@ -105,10 +105,10 @@ describe("rates", () => {
 
   it("labels the inverted token rate from the quote currencies", () => {
     expect(formatFiatToTokenExchangeRate("0.05405405", "ZAR", "uctusd")).toBe(
-      "1 RLUSD = R 18.5000"
+      "1 UCTUSD = R 18.5000"
     )
     expect(formatFiatToTokenExchangeRate("1", "USD", "uctusd")).toBe(
-      "1 RLUSD = USD 1.0000"
+      "1 UCTUSD = USD 1.0000"
     )
   })
 })

@@ -5642,7 +5642,7 @@
     }
   },
   "info": {
-    "description": "ZAR to RLUSD remittance on the XRP Ledger Testnet. Authenticated routes take a Clerk session token as a bearer token.",
+    "description": "ZAR to UCTUSD remittance on the XRP Ledger Testnet. Authenticated routes take a Clerk session token as a bearer token.",
     "title": "RemitX API",
     "version": "0.1.0"
   },
@@ -10853,7 +10853,7 @@
         ]
       },
       "post": {
-        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The RLUSD/uctusd transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.\n\nRefusals: 403 if the caller is no longer KYC-verified; 400 for an unknown\nquote, a beneficiary with no fiat account in the quote's payout currency,\nor one that no longer fits the available balance or what is left of\ntoday's or this month's allowance (the refusal names the limit and what\nis left of it); 409 if the quote was already used or has expired. A\nrefused quote stays active.",
+        "description": "Turns an active quote into a remittance send: inserts its pending ledger legs and\nqueues the settlement worker task. The UCTUSD transfer does not\nstart until this call has committed \u2014 see Transaction_Flow_Context.md\n\u00a72 Phase B2/C.\n\nRefusals: 403 if the caller is no longer KYC-verified; 400 for an unknown\nquote, a beneficiary with no fiat account in the quote's payout currency,\nor one that no longer fits the available balance or what is left of\ntoday's or this month's allowance (the refusal names the limit and what\nis left of it); 409 if the quote was already used or has expired. A\nrefused quote stays active.",
         "operationId": "confirm_remittance",
         "requestBody": {
           "content": {

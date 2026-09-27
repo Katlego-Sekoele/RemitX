@@ -49,8 +49,8 @@ function purpose(type: PlatformAccountType, currency: string): string {
     case "REMITX_REVENUE":
       return `The transfer fee and FX margin earned on transfers sent in ${currency}.`
     case "REMITX_XRPL_WALLET":
-      return "Every transfer settles through this wallet on the XRP Ledger Testnet, and its RLUSD is burned back to the issuer from here."
+      return "Every transfer settles through this wallet on the XRP Ledger Testnet, and its UCTUSD is burned back to the issuer from here."
     case "EXTERNAL":
-      return "The RLUSD issuer. It pre-funded the treasury wallet, and every burn returns RLUSD to it."
+      return "The UCTUSD issuer. It pre-funded the treasury wallet, and every burn returns UCTUSD to it."
   }
 }

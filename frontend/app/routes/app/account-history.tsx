@@ -131,9 +131,9 @@ function AccountHeader({ account }: { account: AccountRead }) {
           <ArrowsClockwiseIcon />
           <AlertTitle>Why this balance returns to 0</AlertTitle>
           <AlertDescription>
-            RLUSD only passes through this wallet. When you send, your ZAR is
-            converted to RLUSD and paid straight to your recipient&apos;s
-            wallet. When you receive, the RLUSD is converted into your payout
+            UCTUSD only passes through this wallet. When you send, your ZAR is
+            converted to UCTUSD and paid straight to your recipient&apos;s
+            wallet. When you receive, the UCTUSD is converted into your payout
             currency straight away. Each movement links to its settlement on the
             XRP Ledger Testnet. {SETTLEMENT_TOKEN_NOTE}
           </AlertDescription>
@@ -208,7 +208,7 @@ function History({ account }: { account: AccountRead }) {
           <EmptyTitle>Nothing here yet</EmptyTitle>
           <EmptyDescription>
             {account.kind === "settlement"
-              ? "RLUSD movements appear here when you send or receive a transfer."
+              ? "UCTUSD movements appear here when you send or receive a transfer."
               : "Deposits and transfers appear here once they happen."}
           </EmptyDescription>
         </EmptyHeader>

@@ -20,7 +20,7 @@ const FEATURES = [
   {
     title: "Cash-in first, always",
     description:
-      "RLUSD never moves until simulated ZAR payment is confirmed. No premature settlement.",
+      "UCTUSD never moves until simulated ZAR payment is confirmed. No premature settlement.",
   },
   {
     title: "Async ledger settlement",

@@ -37,9 +37,9 @@ const FEATURES = [
         aria-hidden
       />
     ),
-    title: "Quote ZAR → RLUSD",
+    title: "Quote ZAR → UCTUSD",
     description:
-      "Enter how much rand you want to send and see the live FX path to RLUSD.",
+      "Enter how much rand you want to send and see the live FX path to UCTUSD.",
   },
   {
     icon: <ReceiptIcon className="size-6" weight="duotone" aria-hidden />,
@@ -57,19 +57,19 @@ const FEATURES = [
     icon: <QueueIcon className="size-6" weight="duotone" aria-hidden />,
     title: "Settle on Testnet",
     description:
-      "A background worker pushes RLUSD on the XRP Ledger Testnet — async, not fragile.",
+      "A background worker pushes UCTUSD on the XRP Ledger Testnet — async, not fragile.",
   },
   {
     icon: <WalletIcon className="size-6" weight="duotone" aria-hidden />,
     title: "Receive in-wallet",
     description:
-      "Recipients open a custodial web wallet and see RLUSD land where it belongs.",
+      "Recipients open a custodial web wallet and see UCTUSD land where it belongs.",
   },
   {
     icon: <BankIcon className="size-6" weight="duotone" aria-hidden />,
     title: "Cash out if you want",
     description:
-      "Keep RLUSD or request a simulated fiat cash-out when they need local money.",
+      "Keep UCTUSD or request a simulated fiat cash-out when they need local money.",
   },
 ]
 
@@ -83,7 +83,7 @@ export function HowItWorks() {
               How sending works
             </p>
             <h2 className="max-w-2xl font-heading text-3xl font-semibold tracking-tight text-balance text-foreground md:text-4xl">
-              From rand in your pocket to RLUSD in theirs.
+              From rand in your pocket to UCTUSD in theirs.
             </h2>
             <p className="max-w-xl text-base text-muted-foreground md:text-lg">
               A full remittance journey for people who send money — quote,

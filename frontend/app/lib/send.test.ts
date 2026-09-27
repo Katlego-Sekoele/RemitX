@@ -318,7 +318,7 @@ describe("quoteLines", () => {
       "FX margin",
       "Amount converted",
       "Exchange rate",
-      "RLUSD sent",
+      "UCTUSD sent",
       "Recipient gets",
       "Recipient cash-out fee",
       "Estimated payout if recipient withdraws",
@@ -331,8 +331,8 @@ describe("quoteLines", () => {
       "R 20.00",
       "R 10.00",
       "R 970.00",
-      "1 RLUSD = R 18.5000",
-      "RLUSD 52.43",
+      "1 UCTUSD = R 18.5000",
+      "UCTUSD 52.43",
       "ZWL 15,733.40",
       "ZWL 118.00",
       "ZWL 15,615.40",
@@ -369,7 +369,7 @@ describe("quoteLines", () => {
 
     expect(received).toEqual([
       "Exchange rate",
-      "RLUSD sent",
+      "UCTUSD sent",
       "Received",
       "Recipient cash-out fee",
       "Estimated payout if recipient withdraws",

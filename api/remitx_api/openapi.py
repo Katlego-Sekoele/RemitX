@@ -31,7 +31,7 @@ SPEC_PATH = Path(__file__).resolve().parent.parent.parent / "frontend" / "openap
 TITLE = "RemitX API"
 VERSION = "0.1.0"
 DESCRIPTION = (
-    "ZAR to RLUSD remittance on the XRP Ledger Testnet. Authenticated routes "
+    "ZAR to UCTUSD remittance on the XRP Ledger Testnet. Authenticated routes "
     "take a Clerk session token as a bearer token."
 )
 

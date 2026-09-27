@@ -10,8 +10,8 @@ export function LandingCta() {
             Ready to send your first remittance?
           </h2>
           <p className="max-w-lg text-base text-muted-foreground md:text-lg">
-            Create an account, run mock KYC, and move ZAR to RLUSD with fees you
-            see before you confirm.
+            Create an account, run mock KYC, and move ZAR to UCTUSD with fees
+            you see before you confirm.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
             <LandingAuthActions signUpLabel="Create account" />

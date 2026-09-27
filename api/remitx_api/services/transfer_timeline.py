@@ -42,7 +42,7 @@ def transfer_timeline(
         TimelineStage(
             3,
             "Settling on XRPL Testnet",
-            "RLUSD is moving on the XRP Ledger Testnet.",
+            "UCTUSD is moving on the XRP Ledger Testnet.",
             processed_at,
         ),
         TimelineStage(
