@@ -5,8 +5,9 @@
    granted as the target's IAM admin if it has one, and with no granter
    otherwise.
 2. **Plan.** Build the people from the scenario and the data files, decide
-   who gets a Clerk account (staff first, then senders, then recipients, up
-   to the cap), and put their sign-ups on the timeline.
+   who gets a Clerk account (staff first, then senders who can finish KYC,
+   then other senders, then recipients, up to the cap), and put their
+   sign-ups on the timeline.
 3. **Replay.** Run the timeline over the last `days` days (sim.py). Stories
    schedule their own follow-ups.
 4. **Top up the treasury** by what simulated burns took (direct.py).
@@ -46,6 +47,7 @@ from remitx_seeder.stories.kyc import (
     PATH_APPROVE,
     PATH_MORE_INFO,
     PATH_MORE_INFO_NO_REPLY,
+    PATH_NEVER,
     PATH_REJECT,
     KycStory,
     plan_path,
@@ -190,6 +192,23 @@ def _guarantee_edge_cases(ctx: RunContext) -> None:
         )
 
 
+# Fixed KYC paths that never leave a verified sender — prefer not to spend
+# scarce Clerk slots on them when the live tail (or a near-full cap) needs
+# senders who can actually sign in and remit.
+_CLERK_DEAD_END_PATHS = {
+    PATH_NEVER,
+    PATH_ABANDON,
+    PATH_REJECT,
+    PATH_MORE_INFO_NO_REPLY,
+}
+
+
+def _sender_can_finish_kyc(person: SeededPerson) -> bool:
+    if person.persona.extra.get("late_signup"):
+        return False
+    return not (person.kyc_path_fixed and person.kyc_path in _CLERK_DEAD_END_PATHS)
+
+
 def _allocate_clerk_accounts(ctx: RunContext, clerk_enabled: bool) -> None:
     if not clerk_enabled:
         ctx.log("No Clerk key for this target: everyone is database-only.")
@@ -197,11 +216,12 @@ def _allocate_clerk_accounts(ctx: RunContext, clerk_enabled: bool) -> None:
     with ctx.clock.real_time():
         existing = ctx.clerk.user_count()
     capacity = max(0, ctx.scenario.clerk_user_cap - existing)
-    order = (
-        [p for p in ctx.people.values() if p.persona.role == "staff"]
-        + [p for p in ctx.people.values() if p.persona.role == "sender"]
-        + [p for p in ctx.people.values() if p.persona.role == "recipient"]
-    )
+    staff = [p for p in ctx.people.values() if p.persona.role == "staff"]
+    senders = [p for p in ctx.people.values() if p.persona.role == "sender"]
+    recipients = [p for p in ctx.people.values() if p.persona.role == "recipient"]
+    preferred_senders = [p for p in senders if _sender_can_finish_kyc(p)]
+    other_senders = [p for p in senders if not _sender_can_finish_kyc(p)]
+    order = staff + preferred_senders + other_senders + recipients
     for person in order[:capacity]:
         person.wants_clerk_account = True
     ctx.log(
