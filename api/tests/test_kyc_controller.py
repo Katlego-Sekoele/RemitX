@@ -480,6 +480,32 @@ def test_approval_copies_the_verified_name_and_country_onto_the_user(app_context
     assert stored.country == "ZW"
 
 
+def test_approval_copies_the_verified_mobile_number_onto_the_user(app_context):
+    """The profile contact page reads `users.mobile_number`, so an approval
+    seeds it from the application instead of leaving the user to re-enter
+    what they already gave during verification."""
+    reviewer = make_user()
+    user = make_user()
+    application = insert_application(
+        user.id,
+        KycStatus.UNDER_REVIEW,
+        full_name="Tendai Moyo",
+        residential_country="ZW",
+        mobile_number=" +27821234567 ",
+    )
+
+    KycController().transition(
+        application.application_id,
+        KycStatus.APPROVED,
+        expected_version=1,
+        actor_user_id=reviewer.id,
+    )
+
+    db.session.expire_all()
+    stored = db.session.get(User, user.id)
+    assert stored.mobile_number == "+27821234567"
+
+
 def test_only_an_approval_copies_the_name_onto_the_user(app_context):
     reviewer = make_user()
     user = make_user()
