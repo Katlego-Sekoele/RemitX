@@ -14,4 +14,5 @@ COPY tools/loadtest/ tools/loadtest/
 
 RUN pip install --upgrade pip && pip install -e api -e tools/seeder
 
-CMD ["sh", "-c", "python -m remitx_seeder seed --target loadtest --scenario loadtest && python tools/loadtest/prepare.py"]
+# run.sh overrides the command to pass the profile's extracted seed scenario.
+CMD ["python", "tools/loadtest/prepare.py"]

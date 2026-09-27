@@ -57,21 +57,19 @@ from `.env.qa` are blanked, not filled from the repo-root `.env`.
 
 ## The loadtest target
 
-`loadtest` belongs to the load test ([tools/loadtest](../loadtest/README.md)) and seeds the throwaway stack:
-`make loadtest` runs the seeder inside that throwaway stack with the
-`loadtest` scenario. Its settings come from the committed
-`tools/loadtest/loadtest.env`, which names only that stack's own database and
-bucket and no Clerk key, so everyone it seeds is database-only. It is not
-meant for the UI.
+`loadtest` belongs to the load test ([tools/loadtest](../loadtest/README.md))
+and seeds the throwaway stack. `make loadtest` runs the seeder inside that
+stack with the **seed block from a load-test profile**
+(`tools/loadtest/profiles/*.json`), not a scenario under `scenarios/` here.
+Stack credentials come from the committed `tools/loadtest/loadtest.env`, which
+names only that stack's own database and bucket and no Clerk key, so everyone
+it seeds is database-only. It is not meant for the UI.
 
-Run it with
-`python -m remitx_seeder seed --target loadtest --scenario loadtest` from
-inside that stack. It is not meant for the UI.
-
-The scenario is a few hundred senders over two weeks, almost all verified,
-with beneficiaries and deposits sized well above what they send
+The default profile's seed is thousands of senders over two weeks, almost all
+verified, with beneficiaries and deposits sized well above what they send
 (`deposit_headroom`). Rare KYC paths are turned down so a load run is not
-spent on abandoned drafts. `clerk_user_cap` is 0.
+spent on abandoned drafts. `clerk_user_cap` is 0. Edit the profile to change
+the population or the Locust shape.
 
 ## Signing in as a seeded person
 

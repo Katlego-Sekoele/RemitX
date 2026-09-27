@@ -29,7 +29,7 @@ Monorepo with two apps sharing one env file:
 - [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [tools/seeder/](tools/seeder/) — local-only QA test-data seeder (NiceGUI). Never deployed; drives the backend's own controllers, services and worker tasks. See its [README](tools/seeder/README.md) and [ADR 0001](docs/adr/0001-qa-seeder-drives-the-service-layer.md)
-- [tools/loadtest/](tools/loadtest/) — Locust load test on a throwaway Docker stack, seeded by the seeder; never calls Clerk, the rate API or the XRPL. See its [README](tools/loadtest/README.md)
+- [tools/loadtest/](tools/loadtest/) — Locust load test on a throwaway Docker stack, seeded by the seeder; never calls Clerk, the rate API or the XRPL. Profiles can sweep API/worker compute after one seed; each run emits a commit-able `report.canvas.tsx`. See its [README](tools/loadtest/README.md)
 - [Makefile](Makefile) — shortcuts for the commands below; `make` lists them
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
 - [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
@@ -107,11 +107,19 @@ A backend change that breaks the seeder fails its CI job: update the story in `t
 ### Load test (Docker only)
 
 ```bash
-make loadtest        # build, seed a fresh stack, run Locust, delete the stack
+make loadtest        # build, seed once, run Locust (optional compute sweep), delete stack
 make loadtest-down   # delete the stack after an interrupted or KEEP_STACK=1 run
+make loadtest-canvas RESULTS=tools/loadtest/results/<ts>  # rebuild summary + canvas
 ```
 
-The report lands in `tools/loadtest/results/<timestamp>/report.html`. The API verifies Locust's self-signed tokens through `CLERK_JWT_KEY` (networkless Clerk verification), and the worker's XRPL burn is simulated with a delay calibrated by `tools/loadtest/qa_xrpl_timings.sql`.
+Each run writes `tools/loadtest/results/<timestamp>/` with commit-able
+`profile.json`, `summary.json`, and `report.canvas.tsx` (brief performance
+metrics). Locust CSVs/HTML stay gitignored under `compute/<name>/`. Edit
+`tools/loadtest/profiles/*.json` for population, Locust user steps, burn
+timings, CPU/memory, and optional `compute` sweep (`LOADTEST_PROFILE`, default
+`default`; use `compute-sweep` for API 0.1 then 1.0 CPU). Locust tokens use
+`CLERK_JWT_KEY`; the worker's XRPL burn is simulated with a delay calibrated by
+`tools/loadtest/qa_xrpl_timings.sql`.
 
 ### Git hooks
 

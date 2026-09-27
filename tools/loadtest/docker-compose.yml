@@ -8,13 +8,22 @@
 
 name: remitx-loadtest
 
-# Migrations, the API and the worker run the production image (api/Dockerfile).
-x-api-image: &api-image
+# Migrations, the API and the worker share one production image (api/Dockerfile).
+# Only `migrate` builds it: Compose v2.40+ races when several services with the
+# same `image:` each have `build:`, and fails with "image already exists".
+x-api-runtime: &api-runtime
   image: remitx-loadtest-api
-  build: ../../api
   env_file: loadtest.env
+  environment:
+    # From the profile via run.sh (QueuePool sized for Neon Free at 2 CU).
+    DATABASE_POOL_SIZE:
+    DATABASE_MAX_OVERFLOW:
 
 services:
+  # Sized like Neon Free autoscaling 0.25→2 CU: max_connections is fixed at
+  # 839 (min(2, 8×0.25)=2 CU), RAM/CPU at the 2 CU ceiling (~8 GB). PgBouncer
+  # is not in this stack; production pooled endpoints add max_client_conn=10k
+  # and default_pool_size=0.9×max_connections (755). See Neon docs.
   postgres:
     image: postgres:16-alpine
     environment:
@@ -23,6 +32,12 @@ services:
       # No password: only this stack's internal network can reach it, and it
       # is deleted after every run.
       POSTGRES_HOST_AUTH_METHOD: trust
+    command:
+      - postgres
+      - -c
+      - max_connections=${LOADTEST_POSTGRES_MAX_CONNECTIONS:-839}
+    cpus: ${LOADTEST_POSTGRES_CPUS:-2}
+    mem_limit: ${LOADTEST_POSTGRES_MEMORY:-8g}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -66,14 +81,16 @@ services:
       "
 
   migrate:
-    <<: *api-image
+    <<: *api-runtime
+    build: ../../api
     command: alembic upgrade head
     depends_on:
       postgres:
         condition: service_healthy
 
   # Seeds the database through the backend's own code, then prepare.py stores
-  # rates, a signing key pair and the people Locust acts as.
+  # rates, a signing key pair and the people Locust acts as. The seed scenario
+  # is the profile's `seed` block, written by run.sh.
   seeder:
     build:
       context: ../..
@@ -81,6 +98,14 @@ services:
     env_file: loadtest.env
     volumes:
       - run_data:/run-data
+      - ${LOADTEST_SEED_SCENARIO}:/seed-scenario.json:ro
+    command:
+      - sh
+      - -c
+      - >-
+        python -m remitx_seeder seed --target loadtest
+        --scenario /seed-scenario.json &&
+        python tools/loadtest/prepare.py
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -89,7 +114,7 @@ services:
     profiles: [tools]
 
   api:
-    <<: *api-image
+    <<: *api-runtime
     # CLERK_JWT_KEY is the public half of the key pair prepare.py generated.
     command:
       - sh
@@ -100,8 +125,8 @@ services:
         exec python -m remitx_api
     volumes:
       - run_data:/run-data:ro
-    # One CPU by default; 0.1 matches a Render free instance.
-    cpus: ${LOADTEST_API_CPUS:-1}
+    # Render free: 0.1 CPU / 512 MB.
+    cpus: ${LOADTEST_API_CPUS:-0.1}
     mem_limit: ${LOADTEST_API_MEMORY:-512m}
     depends_on:
       migrate:
@@ -117,7 +142,7 @@ services:
   # The real worker, except that the XRPL burn is simulated with a delay
   # calibrated on QA's real settlements (fake_xrpl_worker.py).
   worker:
-    <<: *api-image
+    <<: *api-runtime
     command: python /loadtest/fake_xrpl_worker.py
     environment:
       CELERY_CONCURRENCY: ${LOADTEST_CELERY_CONCURRENCY:-2}
@@ -127,8 +152,8 @@ services:
       LOADTEST_BURN_FAILURE_RATE:
     volumes:
       - ./fake_xrpl_worker.py:/loadtest/fake_xrpl_worker.py:ro
-    cpus: ${LOADTEST_WORKER_CPUS:-1}
-    # A Render free instance's memory; each Celery process costs ~100 MB.
+    cpus: ${LOADTEST_WORKER_CPUS:-0.1}
+    # Render free: 0.1 CPU / 512 MB; each Celery process costs ~100 MB.
     mem_limit: ${LOADTEST_WORKER_MEMORY:-512m}
     depends_on:
       migrate:

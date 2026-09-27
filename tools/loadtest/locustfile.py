@@ -204,8 +204,8 @@ class SteppedLoad(LoadTestShape):
     """Hold each user count for a while, then step up. Where response times
     bend and errors start is the number to report.
 
-    LOADTEST_STEPS is the user counts in order, LOADTEST_STEP_SECONDS how long
-    each one lasts, LOADTEST_SPAWN_RATE how many users start per second.
+    run.sh loads these from the profile (LOADTEST_STEPS, LOADTEST_STEP_SECONDS,
+    LOADTEST_SPAWN_RATE). Edit tools/loadtest/profiles/*.json to change them.
     """
 
     # `or`, not a get() default: compose passes an unset knob through as "".
