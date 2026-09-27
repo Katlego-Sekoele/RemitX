@@ -1,5 +1,11 @@
-# Locust reports and logs, one folder per run.
-results/
+# Locust reports and logs, one folder per run. Commit the graded canvas +
+# compact summary (and the profile copy); leave bulky CSVs/HTML/logs out.
+results/**
+!results/**/
+!results/**/profile.json
+!results/**/summary.json
+!results/**/performance-report.html
+!results/**/compute/**/report.html
 # Tool caches.
 .pytest_cache/
 .ruff_cache/

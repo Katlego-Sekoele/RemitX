@@ -2,19 +2,19 @@
 # Runs the load test end to end on a throwaway stack, then deletes the stack.
 #
 #   make loadtest        (or tools/loadtest/run.sh)
+#   LOADTEST_PROFILE=default make loadtest
+#   LOADTEST_PROFILE=compute-sweep make loadtest
 #
-# Builds the images, seeds a fresh Postgres through the seeder, starts the API
-# and worker, and runs Locust headless. The report lands in
-# tools/loadtest/results/<timestamp>/. Every container, network and volume the
-# stack created is deleted at the end, whether the run passed, failed or was
-# interrupted. KEEP_STACK=1 leaves it running instead; `make loadtest-down`
-# deletes it later.
+# Loads a profile from tools/loadtest/profiles/ (population, Locust shape,
+# simulated burn, optional compute sweep of API/worker/Postgres), builds the
+# stack, seeds a fresh Postgres once, then for each compute step recreates
+# Postgres + API + worker, runs Locust headless, and writes stats under
+# compute/<name>/. Finally it builds summary.json + report.canvas.tsx and
+# deletes the stack.
+# KEEP_STACK=1 leaves the stack up; `make loadtest-down` deletes it later.
 #
-# Knobs (all optional): LOADTEST_STEPS, LOADTEST_STEP_SECONDS,
-# LOADTEST_SPAWN_RATE, LOADTEST_BURN_P50_S, LOADTEST_BURN_P95_S,
-# LOADTEST_BURN_FAILURE_RATE, LOADTEST_CELERY_CONCURRENCY,
-# LOADTEST_API_CPUS, LOADTEST_API_MEMORY, LOADTEST_WORKER_CPUS,
-# LOADTEST_WORKER_MEMORY. See README.md.
+# Edit profiles/*.json to change the run. Operational only: LOADTEST_PROFILE
+# (default default), KEEP_STACK.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,8 +27,32 @@ LOADTEST_UID="$(id -u)"
 LOADTEST_GID="$(id -g)"
 export LOADTEST_UID LOADTEST_GID
 
+profile_name="${LOADTEST_PROFILE:-default}"
+seed_scenario="$results/seed-scenario.json"
+profile_env="$results/profile.env"
+
+# Prefer the seeder venv (has remitx_seeder for seed validation); fall back to
+# whatever python3 is on PATH with tools/seeder on PYTHONPATH.
+if [[ -x "$here/../seeder/.venv/bin/python" ]]; then
+  profile_python=("$here/../seeder/.venv/bin/python")
+else
+  profile_python=(env PYTHONPATH="$here/../seeder${PYTHONPATH:+:$PYTHONPATH}" python3)
+fi
+
+echo "==> Profile: $profile_name"
+"${profile_python[@]}" "$here/loadtest_profile.py" apply "$profile_name" \
+  --write-seed "$seed_scenario" \
+  --exports >"$profile_env"
+# shellcheck disable=SC1090
+set -a && source "$profile_env" && set +a
+export LOADTEST_SEED_SCENARIO="$seed_scenario"
+cp "$here/profiles/${profile_name}.json" "$results/profile.json"
+
+compute_json="$results/compute-steps.json"
+"${profile_python[@]}" "$here/loadtest_profile.py" compute-steps "$profile_name" \
+  >"$compute_json"
+
 teardown() {
-  "${compose[@]}" logs --no-color api worker >"$results/services.log" 2>&1 || true
   if [[ "${KEEP_STACK:-0}" == "1" ]]; then
     echo "==> KEEP_STACK=1: the stack is still up. Delete it with: make loadtest-down"
     return
@@ -49,7 +73,45 @@ if ! "${compose[@]}" run --rm -T seeder >"$results/seed.log" 2>&1; then
 fi
 tail -n 1 "$results/seed.log"
 
-echo "==> Running Locust (starts the API and worker first)"
-"${compose[@]}" run --rm locust
+# Seed already brought up migrate + minio-setup (one-shots). Only wait on
+# long-running shared services here; Postgres is recreated per compute step
+# but keeps its volume so the seeded data survives.
+echo "==> Starting shared infrastructure (redis, minio)"
+"${compose[@]}" up -d --wait redis minio
 
-echo "==> Report: $results/report.html"
+compute_names=()
+while IFS= read -r compute_name; do
+  [[ -n "$compute_name" ]] && compute_names+=("$compute_name")
+done < <(
+  "${profile_python[@]}" -c "
+import json, sys
+for step in json.load(open(sys.argv[1])):
+    print(step['name'])
+" "$compute_json"
+)
+
+for compute_name in "${compute_names[@]}"; do
+  echo "==> Compute: $compute_name"
+  step_dir="$results/compute/$compute_name"
+  mkdir -p "$step_dir"
+
+  "${profile_python[@]}" "$here/loadtest_profile.py" exports-for \
+    "$profile_name" "$compute_name" >"$step_dir/profile.env"
+  # shellcheck disable=SC1090
+  set -a && source "$step_dir/profile.env" && set +a
+
+  echo "==> Recreating postgres + API + worker ($compute_name: API ${LOADTEST_API_CPUS} CPU / worker ${LOADTEST_WORKER_CPUS} CPU / postgres ${LOADTEST_POSTGRES_CPUS} CPU)"
+  "${compose[@]}" up -d --force-recreate --wait postgres
+  "${compose[@]}" up -d --force-recreate --wait api worker
+
+  echo "==> Running Locust → compute/$compute_name/"
+  LOADTEST_RESULTS_DIR="$step_dir" "${compose[@]}" run --rm locust
+  "${compose[@]}" logs --no-color api worker postgres \
+    >"$step_dir/services.log" 2>&1 || true
+done
+
+echo "==> Writing summary.json, report.canvas.tsx, performance-report.html"
+"${profile_python[@]}" "$here/to_canvas.py" "$results"
+
+echo "==> Report: $results/performance-report.html"
+echo "==> Summary: $results/summary.json"

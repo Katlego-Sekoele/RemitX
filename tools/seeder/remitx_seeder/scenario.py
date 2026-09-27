@@ -132,6 +132,14 @@ class Scenario:
                 value = getattr(group, f.name)
                 if f.name.endswith("_rate") and not 0 <= value <= 1:
                     raise ValueError(f"{f.name} must be between 0 and 1")
+        delay = self.kyc.review_delay_hours
+        if len(delay) != 2:
+            raise ValueError(
+                "kyc.review_delay_hours must be [low, high] hours from submit "
+                "to review, not a list of discrete values"
+            )
+        if delay[0] > delay[1]:
+            raise ValueError("kyc.review_delay_hours low must be <= high")
 
 
 def _nested(kind, raw: dict, label: str):

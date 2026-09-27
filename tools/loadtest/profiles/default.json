@@ -1,0 +1,79 @@
+{
+  "name": "default",
+  "description": "Locust load matching Render free (0.1 CPU / 512 MB) and Neon Free autoscaling 0.25–2 CU (max_connections 839, ~8 GB at the ceiling).",
+  "seed": {
+    "name": "loadtest",
+    "description": "Load-test population: verified, well-funded senders with beneficiaries, all database-only.",
+    "seed": 20260926,
+    "days": 14,
+    "senders": 2500,
+    "recipients": {
+      "ZW": 500,
+      "NA": 200,
+      "ZA": 400,
+      "US": 100
+    },
+    "staff": {
+      "compliance_analyst": 20,
+      "compliance_officer": 20,
+      "treasury_operator": 20,
+      "payout_operator": 10,
+      "support_agent": 10
+    },
+    "clerk_user_cap": 0,
+    "ensure_every_path": false,
+    "email_domain": "example.com",
+    "kyc": {
+      "never_start_rate": 0.0,
+      "abandon_rate": 0.0,
+      "more_info_rate": 0.05,
+      "more_info_no_reply_rate": 0.0,
+      "reject_rate": 0.02,
+      "reapply_rate": 0.4,
+      "override_rate": 0.05,
+      "tier_two_rate": 0.5,
+      "pep_rate": 0.0,
+      "other_source_rate": 0.05,
+      "high_volume_rate": 0.0,
+      "review_delay_hours": [1, 48]
+    },
+    "money": {
+      "dormant_rate": 0.0,
+      "reference_typo_rate": 0.0,
+      "resolve_pending_rate": 1.0,
+      "quote_abandon_rate": 0.1,
+      "settlement_failure_rate": 0.0,
+      "deposit_headroom": 40
+    },
+    "live_settlements": 0,
+    "live_token_budget": 0.0
+  },
+  "locust": {
+    "steps": [10, 25, 50, 100, 250, 500, 1000],
+    "step_seconds": 120,
+    "spawn_rate": 10
+  },
+  "burn": {
+    "p50_s": 8.61,
+    "p95_s": 10.24,
+    "failure_rate": 0
+  },
+  "api": {
+    "cpus": 0.1,
+    "memory": "512m"
+  },
+  "worker": {
+    "celery_concurrency": 2,
+    "cpus": 0.1,
+    "memory": "512m"
+  },
+  "postgres": {
+    "cpus": 2,
+    "memory": "8g",
+    "max_connections": 839
+  },
+  "database_pool": {
+    "pool_size": 100,
+    "max_overflow": 177
+  }
+}

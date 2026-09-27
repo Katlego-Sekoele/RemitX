@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from remitx_api.db.request_db_session import (
     current_request_db_session,
@@ -27,6 +27,50 @@ def _set_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
         cursor.close()
 
 
+def _uses_neon_pooler(database_url: str) -> bool:
+    """Neon’s pooled hostnames include ``-pooler`` (PgBouncer, up to 10k clients)."""
+    return "-pooler." in database_url or "-pooler-" in database_url
+
+
+def _postgres_pool_kwargs(database_url: str) -> dict:
+    """Pool settings for Postgres, sized for Neon Free.
+
+    Neon enforces three layers (see Neon connection-pooling docs):
+
+    - ``max_client_conn`` (10 000): clients to PgBouncer on the pooled endpoint
+    - ``default_pool_size`` (0.9 × ``max_connections``): active transactions
+      PgBouncer will open to Postgres (755 when ``max_connections`` is 839)
+    - ``max_connections``: direct Postgres slots (and the base for the above)
+
+    For Free autoscaling **0.25→2 CU**, Neon fixes ``max_connections`` at 839
+    via ``min(max_cu, 8×min_cu)`` — not 104. The table value 104 applies only
+    to a *fixed* 0.25 CU compute.
+
+    Pooled URLs (``-pooler`` in the host) use ``NullPool`` so SQLAlchemy does
+    not put a second QueuePool (default 5+10) in front of PgBouncer. Direct
+    URLs use QueuePool; defaults (10+20) leave headroom for the API plus two
+    Celery children. Override with ``DATABASE_POOL_SIZE`` /
+    ``DATABASE_MAX_OVERFLOW`` (the load-test profile raises these under 839).
+    """
+    import os
+
+    if _uses_neon_pooler(database_url):
+        return {"poolclass": NullPool, "pool_pre_ping": True}
+
+    pool_size = int(os.getenv("DATABASE_POOL_SIZE", "10"))
+    max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "20"))
+    if pool_size < 1:
+        raise ValueError("DATABASE_POOL_SIZE must be >= 1")
+    if max_overflow < 0:
+        raise ValueError("DATABASE_MAX_OVERFLOW must be >= 0")
+    return {
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
+
+
 def build_engine(database_url: str):
     """Create an engine, pinning in-memory SQLite to a single connection.
 
@@ -48,7 +92,7 @@ def build_engine(database_url: str):
         )
     if database_url.startswith("sqlite"):
         return create_engine(database_url)
-    engine = create_engine(database_url, pool_pre_ping=True, pool_recycle=300)
+    engine = create_engine(database_url, **_postgres_pool_kwargs(database_url))
     adopt_row_security_role(engine)
     return engine
 

@@ -8,8 +8,8 @@ child process inherits it.
 
 A simulated burn takes about as long as a real testnet one: a lognormal delay
 through the median and 95th percentile of QA's real settlements
-(qa_xrpl_timings.sql), overridable with LOADTEST_BURN_P50_S and
-LOADTEST_BURN_P95_S. Its hashes start 10AD ("load"), so they can never be
+(qa_xrpl_timings.sql). run.sh sets LOADTEST_BURN_P50_S / P95_S from the
+profile's `burn` section. Its hashes start 10AD ("load"), so they can never be
 mistaken for real ones or for the seeder's (5EED).
 """
 

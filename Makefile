@@ -73,12 +73,20 @@ seeder-test: ## Run the seeder tests (needs SEEDER_TEST_DATABASE_URL)
 
 ##@ Load test (tools/loadtest)
 
-.PHONY: loadtest loadtest-down
-loadtest: ## Load-test the API on a throwaway stack; report in tools/loadtest/results/
+.PHONY: loadtest loadtest-down loadtest-canvas
+loadtest: ## Load-test the API (LOADTEST_PROFILE=default); report in tools/loadtest/results/
 	tools/loadtest/run.sh
 
 loadtest-down: ## Delete the load-test stack after an interrupted or KEEP_STACK=1 run
 	$(LOADTEST_COMPOSE) down --volumes --remove-orphans
+
+loadtest-canvas: ## Rebuild summary + canvas + HTML (RESULTS=tools/loadtest/results/<ts>)
+	@test -n "$(RESULTS)" || (echo "Set RESULTS=tools/loadtest/results/<timestamp>" >&2; exit 1)
+	@if [ -x tools/seeder/.venv/bin/python ]; then \
+	  tools/seeder/.venv/bin/python tools/loadtest/to_canvas.py "$(RESULTS)"; \
+	else \
+	  PYTHONPATH=tools/seeder python3 tools/loadtest/to_canvas.py "$(RESULTS)"; \
+	fi
 
 ##@ Git hooks
 
