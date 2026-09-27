@@ -10,7 +10,7 @@ import type { AccountRead } from "~/client"
 export type AccountKind = AccountRead["kind"]
 
 /** What the UI calls the settlement token, whatever the API names it. */
-export const SETTLEMENT_TOKEN_LABEL = "RLUSD"
+export const SETTLEMENT_TOKEN_LABEL = "UCTUSD"
 
 /** The token's API name. Quote lines still carry this code. */
 export const TOKEN_CURRENCY = "uctusd"
@@ -20,7 +20,7 @@ export const TOKEN_LABEL = SETTLEMENT_TOKEN_LABEL
 
 /** Said once, wherever the token first appears on a page. */
 export const SETTLEMENT_TOKEN_NOTE =
-  "Test token on the XRP Ledger Testnet, the lecturer-approved stand-in for RLUSD."
+  "Test token on the XRP Ledger Testnet, the lecturer-approved stand-in for a real settlement asset."
 
 export const TOKEN_NOTE = SETTLEMENT_TOKEN_NOTE
 
@@ -58,7 +58,7 @@ export function currencyName(currency: string, kind: AccountKind = "fiat") {
   return CURRENCY_NAMES[currency] ?? currency
 }
 
-/** "R 1,000.00", "ZWL 1,354.37", "RLUSD 54.05". */
+/** "R 1,000.00", "ZWL 1,354.37", "UCTUSD 54.05". */
 export function formatMoney(
   amount: string,
   currency: string,

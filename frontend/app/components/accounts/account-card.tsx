@@ -183,7 +183,7 @@ export function AccountCard({ account }: { account: AccountRead }) {
 
 function purpose(account: AccountRead): string {
   if (account.kind === "settlement") {
-    return "Transfers settle through this wallet on the XRP Ledger Testnet. RLUSD you receive is converted into your payout currency automatically."
+    return "Transfers settle through this wallet on the XRP Ledger Testnet. UCTUSD you receive is converted into your payout currency automatically."
   }
   if (acceptsDeposits(account)) {
     return "Add money by EFT, quoting this reference. Share it so a sender can add you and pay you in ZAR."

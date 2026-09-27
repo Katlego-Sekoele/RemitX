@@ -50,7 +50,7 @@ function PlatformAccountsPage() {
           <PageHeaderTitle>{pageRoutingContext?.title}</PageHeaderTitle>
           <PageHeaderDescription>
             RemitX&apos;s bank and fee revenue accounts in each settlement
-            currency, the XRPL treasury wallet, and the RLUSD issuer.
+            currency, the XRPL treasury wallet, and the UCTUSD issuer.
           </PageHeaderDescription>
         </PageHeader>
 

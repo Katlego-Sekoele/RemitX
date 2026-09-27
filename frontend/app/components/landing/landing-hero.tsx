@@ -17,7 +17,7 @@ export function LandingHero() {
           </div>
 
           <h1 className="max-w-xl text-3xl font-semibold tracking-tight text-balance text-foreground md:text-4xl lg:text-5xl">
-            Send ZAR. Land RLUSD for the people who need it.
+            Send ZAR. Land UCTUSD for the people who need it.
           </h1>
 
           <p className="max-w-lg text-base text-muted-foreground md:text-lg">

@@ -36,7 +36,7 @@ export async function invalidateAccounts(queryClient: QueryClient) {
 
 export function accountTitle(account: AccountRead) {
   return account.kind === "settlement"
-    ? "RLUSD wallet · XRPL Testnet"
+    ? "UCTUSD wallet · XRPL Testnet"
     : currencyName(account.currency)
 }
 
@@ -44,7 +44,7 @@ export function accountTitle(account: AccountRead) {
  * on one line; the testnet qualifier stays on the page. */
 export function accountNavLabel(account: AccountRead) {
   return account.kind === "settlement"
-    ? "RLUSD wallet"
+    ? "UCTUSD wallet"
     : currencyName(account.currency)
 }
 

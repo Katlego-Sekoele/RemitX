@@ -1,7 +1,7 @@
 {
   "name": "RemitX",
   "short_name": "RemitX",
-  "description": "Cross-border remittance from South African rand to RLUSD on the XRP Ledger Testnet.",
+  "description": "Cross-border remittance from South African rand to UCTUSD on the XRP Ledger Testnet.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
