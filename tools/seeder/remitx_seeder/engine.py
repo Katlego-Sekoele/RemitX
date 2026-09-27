@@ -72,6 +72,7 @@ def preflight() -> uuid.UUID | None:
     from remitx_api.config import Config
     from remitx_api.extensions import db
     from remitx_api.models.orm.account import (
+        PAYOUT_CURRENCIES,
         TYPE_PLATFORM_FIAT,
         TYPE_PLATFORM_REVENUE,
     )
@@ -87,7 +88,7 @@ def preflight() -> uuid.UUID | None:
         for label in (REMITX_TREASURY_WALLET_LABEL, Config().UCTUSD_ISSUER_LABEL)
         if accounts.get_platform_account_by_label(label) is None
     ]
-    for currency in ("ZAR", "USD", "ZWL", "NAD"):
+    for currency in PAYOUT_CURRENCIES:
         if accounts.get_platform_account(TYPE_PLATFORM_FIAT, currency) is None:
             missing.append(f"{currency} bank account")
     if accounts.get_platform_account(TYPE_PLATFORM_REVENUE, "ZAR") is None:
