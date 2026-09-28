@@ -160,6 +160,7 @@ def _guarantee_edge_cases(ctx: RunContext) -> None:
     def tier_two(person: SeededPerson) -> None:
         declare_source_of_wealth(rng, person.persona)
         person.force_tier_two = True
+        path(PATH_APPROVE)(person)
 
     def high_volume(person: SeededPerson) -> None:
         person.persona.expected_monthly_volume_zar = STANDARD_MONTHLY_LIMIT_ZAR + 12000
