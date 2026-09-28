@@ -6,6 +6,7 @@ import pytest
 
 from remitx_seeder.rates import HistoricalRateProvider
 from remitx_seeder.scenario import Scenario, list_scenarios, load_scenario
+from remitx_seeder.stories.kyc import PATH_APPROVE
 from remitx_seeder.stories.money import floor_send, round_send, typo
 from remitx_seeder.stories.timing import SAST, business_time, paydays
 
@@ -110,3 +111,33 @@ def test_typos_never_match_the_real_reference():
 
     for _ in range(100):
         assert typo(Ctx, "tendai1-zar") != "tendai1-zar"
+
+
+def test_tier_two_edge_case_is_fixed_to_approved_path():
+    from remitx_seeder.clerk import FakeClerkGateway
+    from remitx_seeder.clock import SimClock
+    from remitx_seeder.context import RunContext
+    from remitx_seeder.engine import _guarantee_edge_cases, _plan_people
+
+    now = datetime(2026, 9, 28, tzinfo=UTC)
+    ctx = RunContext(
+        scenario=Scenario(senders=14),
+        run_id="run-test",
+        clock=SimClock(),
+        clerk=FakeClerkGateway(existing_users=0),
+        emit=lambda _: None,
+        window_start=now,
+        window_end=now,
+    )
+    _plan_people(ctx)
+    _guarantee_edge_cases(ctx)
+
+    person = next(
+        p
+        for p in ctx.people.values()
+        if p.persona.extra.get("edge_case") == "tier 2 approval"
+    )
+    assert person.force_tier_two
+    assert person.persona.source_of_wealth
+    assert person.kyc_path_fixed
+    assert person.kyc_path == PATH_APPROVE
