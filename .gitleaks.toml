@@ -16,7 +16,7 @@ disabledRules = [
 
 [[allowlists]]
 description = "env templates with placeholder credentials"
-paths = ['''\.env\.example$''']
+paths = ['''\.env(\.minimal)?\.example$''']
 
 [[allowlists]]
 description = "documentation placeholders explicitly marked REDACTED"

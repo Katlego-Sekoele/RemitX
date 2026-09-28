@@ -36,7 +36,7 @@ Monorepo with two apps sharing one env file:
 
 ## Environment configuration
 
-**A single root `.env` is the only source of config** for the API, the frontend, and both compose files. [api/remitx_api/config.py](api/remitx_api/config.py) walks up from the package to load the *repo-root* `.env` explicitly — there is no `api/.env`. Copy `.env.example` to `.env` on first setup; adding a new setting means updating `.env.example` too.
+**A single root `.env` is the only source of config** for the API, the frontend, and both compose files. [api/remitx_api/config.py](api/remitx_api/config.py) walks up from the package to load the *repo-root* `.env` explicitly — there is no `api/.env`. Copy `.env.minimal.example` to `.env` on first setup (only what local dev needs; everything else has a default). Adding a new setting means updating `.env.example` too, and `.env.minimal.example` as well if local dev can't run without it.
 
 `.env` is gitignored and a pre-commit hook hard-blocks committing any file named `.env` or `.env.*` (templates named `*.example` excepted).
 

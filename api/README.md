@@ -11,7 +11,7 @@ JSON REST API for the RemitX FX remittance platform. Built with FastAPI.
 From the **repo root**:
 
 ```bash
-cp .env.example .env
+cp .env.minimal.example .env   # then fill in the blanks
 cd api
 python3 -m venv .venv
 source .venv/bin/activate
@@ -20,7 +20,7 @@ pip install -e '.[dev]'
 
 ## Configuration
 
-All environment variables live in the repo root `.env` (see `.env.example`). The API, frontend, and docker compose all read from that single file.
+All environment variables live in the repo root `.env`. `.env.minimal.example` lists what local development needs; `.env.example` documents every setting. The API, frontend, and docker compose all read from that single file.
 
 Docker injects the same variables into containers; SQLite defaults to `api/remitx.db` when `DATABASE_URL` is unset.
 
