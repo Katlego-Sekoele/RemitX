@@ -97,13 +97,17 @@ docs/                Brief, deployment guide, ADRs and design specs
 ### 1. Configure
 
 A single root `.env` configures the API, the frontend and both compose files.
+For local development you only need the values in `.env.minimal.example`:
 
 ```bash
-cp .env.example .env
+cp .env.minimal.example .env
 ```
 
-At a minimum, fill in `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` and
-`EXCHANGE_RATE_API_KEY`. `.env.example` documents every other setting.
+Fill in `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` and
+`EXCHANGE_RATE_API_KEY`; the rest is pre-filled for the Docker stack. Every
+other setting has a working default. `.env.example` documents all of them, so
+copy a line from it only when you want to override one. Copy to `.env`, not
+`.env.local`: Vite would read `.env.local`, but the API and compose would not.
 
 ### 2. Create the platform wallet (optional)
 
