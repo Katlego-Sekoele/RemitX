@@ -338,7 +338,6 @@ def create_quote(
             f"beneficiary has no account in {receiver_payout_currency}"
         )
 
-    # Check the sender's available balance
     available = accounts.get_available_balance(sender_account.account_id)
     if available < sender_amount:
         logger.info(

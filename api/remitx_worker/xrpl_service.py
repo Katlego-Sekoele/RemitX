@@ -45,28 +45,21 @@ def burn_tokens(amount: Decimal) -> str:
     ledger reports anything other than `tesSUCCESS`.
     """
     config = Config()
-    # Initialize a JsonRpcClient with the XRPL testnet URL from the config
     client = JsonRpcClient(config.XRPL_TESTNET_URL)
-    # Call the _load_treasury_wallet function to get the treasury wallet object
     wallet = _load_treasury_wallet()
 
     payment = Payment(
         account=wallet.address,
-        # get the issuer address from the config
         destination=config.UCTUSD_ISSUER,
         amount=IssuedCurrencyAmount(
             currency=config.UCTUSD_CURRENCY_CODE_HEX,
             issuer=config.UCTUSD_ISSUER,
             value=str(amount),
         ),
-        # Create a Payment transaction to send the specified amount of the
-        # platform token from the treasury wallet to the issuer.
     )
-    # Submit the payment transaction to the XRPL and wait for it to be validated.
     response = submit_and_wait(payment, client, wallet)
     result = response.result.get("meta", {}).get("TransactionResult")
 
     if result != "tesSUCCESS":
         raise RuntimeError(f"burn Payment failed: {result}")
-    # Return the hash of the validated transaction.
     return response.result["hash"]

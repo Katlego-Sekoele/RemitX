@@ -415,7 +415,6 @@ def _insert_deposit(
     actor_user_id: uuid.UUID | None = None,
 ) -> Deposit:
     account = _find_account(reference, currency, account_repo)
-    # If no account matches the reference, create a pending transaction and deposit
     if account is None:
         logger.info(
             "No deposit account for reference %s (amount=%s): recording as pending",
@@ -442,7 +441,6 @@ def _insert_deposit(
             )
         )
 
-    # Else we have a user account, so create a confirmed transaction and deposit
     transaction = transaction_repo.add(
         Transaction(
             type=TYPE_DEPOSIT,

@@ -125,12 +125,10 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
         )
         raise
 
-    # Get the sender's fiat currency account using the quote's sender_currency
     sender_account = accounts.get_user_account(
         quote.sender_user_id, quote.sender_currency
     )
 
-    # Check the sender's available balance covers the quote's sender amount
     available = accounts.get_available_balance_locked(sender_account.account_id)
     if available < quote.sender_amount:
         # Revert the quote status back to ACTIVE if the balance is insufficient
@@ -285,7 +283,6 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
             quote_id=quote.quote_id,
         )
     )
-    # Record
     remittance = remittances.add(
         Remittance(
             quote_id=quote.quote_id,

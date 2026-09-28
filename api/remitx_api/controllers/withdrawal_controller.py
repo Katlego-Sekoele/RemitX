@@ -9,7 +9,6 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import withdrawal_service
 
 
-# dataclass is used to create immutable view models for withdrawals
 @dataclass(frozen=True)
 class WithdrawalView:
     """View model for a withdrawal."""
@@ -47,7 +46,6 @@ class WithdrawalController:
 
     def list_user_withdrawal_history(self, user_id: uuid.UUID) -> list[WithdrawalView]:
         """A user's own withdrawal history"""
-        # Call the service layer to get all withdrawals for the users
         return [
             self._view(withdrawal, transaction)
             for withdrawal, transaction in withdrawal_service.list_user_withdrawals(

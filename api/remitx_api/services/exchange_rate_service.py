@@ -54,15 +54,13 @@ def get_active_rate(
     if quote_currency not in SUPPORTED_CURRENCIES:
         raise UnsupportedCurrencyError(f"unsupported quote currency {quote_currency!r}")
 
-    now = now or datetime.now(UTC)  # Default to current time if not provided
+    now = now or datetime.now(UTC)
     repo = ExchangeRateRepository()
 
-    # Get the most recent valid rate for a pair, if any
     existing = repo.get_current_rate(base_currency, quote_currency, now)
     if existing is not None:
         return existing
 
-    # If there is no valid rate, fetch a new one from the external API and store it
     try:
         rate_value = rate_provider().get_rate(base_currency, quote_currency)
     except RateFetchError:
