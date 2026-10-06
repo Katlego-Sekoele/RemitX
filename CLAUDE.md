@@ -192,6 +192,10 @@ Rules:
 - Icons: `@phosphor-icons/react` (project default in [frontend/components.json](frontend/components.json)).
 - More detail: [frontend/README.md](frontend/README.md) and [.cursor/rules/frontend-ui.mdc](.cursor/rules/frontend-ui.mdc).
 
+## Stokvel integration tracking
+
+[docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. **Update it before opening a PR** that touches stokvel work: add the changelog row, record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
+
 ## Agent skills
 
 ### Issue tracker
