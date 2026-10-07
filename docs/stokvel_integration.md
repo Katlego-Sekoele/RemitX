@@ -169,7 +169,7 @@ _TBD (Role 1): names and return values for `getStokvel`, `getCycle`, `hasPaid(id
 | UCTUSD distributor | `0xE054D006c45586251872a7EA17Af40b907745293` |
 | Stokvel contract address | _TBD (after deployment)_ |
 
-The sidechain has no trust lines; a wallet address is enough to hold UCTUSD. Test XRP pays gas (faucet: XRPL EVM Testnet).
+The sidechain has no trust lines; a wallet address is enough to hold UCTUSD. Test XRP pays gas (faucet: XRPL EVM Testnet). 
 
 ### Wallet roles (addresses only, never keys)
 
