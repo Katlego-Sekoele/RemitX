@@ -1,6 +1,6 @@
 # Stokvel ticket plan
 
-Draft for the team. Nothing here is on GitHub yet. Sources: [ftc_project_brief.md](ftc_project_brief.md) (graded), [stokvel_integration.md](stokvel_integration.md) (shared contract), and the open issues #197–#209 on Katlego-Sekoele/RemitX (bodies read).
+Draft for the team. The tickets were created on GitHub on 2026-10-07 (see "GitHub issues" at the bottom). If the plan and an issue disagree, tell the plan's owner and update both. Sources: [ftc_project_brief.md](ftc_project_brief.md) (graded), [stokvel_integration.md](stokvel_integration.md) (shared contract), and the open issues #197–#209 on Katlego-Sekoele/RemitX (bodies read).
 
 ## How the tickets are written
 
@@ -774,10 +774,84 @@ Claire is the backend lead and has the longest chain. If one round is not workin
 4. **By Fri 23 Oct:** R4-09, R4-12, R3-07, R3-10, R3-11, R3-08, R6-04 to R6-06, code freeze.
 5. **Mon 26 – Wed 28 Oct:** R6-07 and rehearsal.
 
-## Creating the tickets
+## GitHub issues
 
-On approval:
-1. Create the four new milestones with the proposed due dates.
-2. Create the tickets with `gh issue create`, one per section above, each with its milestone, label (`enhancement`, `question` for decisions) and assignee.
-3. Edit the existing issues per "Edits".
-4. Add the new issue numbers to the progress table in `docs/stokvel_integration.md` and a changelog row.
+Created on 2026-10-07 in Katlego-Sekoele/RemitX: 67 new issues and 4 new milestones, with due dates on 8 milestones. Issues for Karabo and Mridula carry the label `for-karabo` or `for-mridula` because they are not repo collaborators yet; assign them when they are added. The OI-1 to OI-5 open issues have no tickets yet, by decision.
+
+**Old issues.** #199, #200, #201, #202, #203, #204, #205, #206 and #209 were closed as not planned (not deleted) and replaced by new issues that carry the original text in a collapsible section; their milestones were cleared so they do not count as progress. Reopen one to revert. #207 and #208 (the decision issues) were kept open and updated in place. PR #211 now says "Part of #277".
+
+| Old issue | Replaced by |
+|---|---|
+| #199 | #217 (R1-03) |
+| #200 | #216 (R1-02) |
+| #201 | #273 |
+| #202 | #274 |
+| #203 | #275 |
+| #204 | #276 |
+| #205 | #277 |
+| #206 | #278 |
+| #209 | #229 (R2-07) |
+
+| Ticket | Issue |
+|---|---|
+| D1 | #212 |
+| D3 | #213 |
+| D4 | #214 |
+| R1-01 | #215 |
+| R1-02 | #216 |
+| R1-03 | #217 |
+| R1-04 | #218 |
+| R1-05 | #219 |
+| R1-06 | #220 |
+| R2-01 | #221 |
+| R2-02 | #222 |
+| R2-02a | #223 |
+| R2-02b | #224 |
+| R2-03 | #225 |
+| R2-04 | #226 |
+| R2-05 | #227 |
+| R2-06 | #228 |
+| R2-07 | #229 |
+| R2-08 | #230 |
+| R2-09 | #231 |
+| R2-10 | #232 |
+| R2-11 | #233 |
+| R2-12 | #234 |
+| R2-13 | #235 |
+| R2-14 | #236 |
+| R2-15 | #237 |
+| R3-01 | #238 |
+| R3-02 | #239 |
+| R3-03 | #240 |
+| R3-04 | #241 |
+| R3-05 | #242 |
+| R3-06 | #243 |
+| R3-07 | #244 |
+| R3-08 | #245 |
+| R3-09 | #246 |
+| R3-10 | #247 |
+| R3-11 | #248 |
+| R3-12 | #249 |
+| R4-01 | #250 |
+| R4-02 | #251 |
+| R4-03 | #252 |
+| R4-04 | #253 |
+| R4-05 | #254 |
+| R4-06 | #255 |
+| R4-07 | #256 |
+| R4-08 | #257 |
+| R4-09 | #258 |
+| R4-10 | #259 |
+| R4-11 | #260 |
+| R4-12 | #261 |
+| R5-01 | #262 |
+| R5-02 | #263 |
+| R5-03 | #264 |
+| R1-07 | #265 |
+| R6-01 | #266 |
+| R6-02 | #267 |
+| R6-03 | #268 |
+| R6-04 | #269 |
+| R6-05 | #270 |
+| R6-06 | #271 |
+| R6-07 | #272 |
