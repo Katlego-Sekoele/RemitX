@@ -72,6 +72,27 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
     error ZeroInterval();
     error StartTimeInPast(uint64 startTime);
     error CycleStarted(bytes32 id);
+    error CycleNotStarted(bytes32 id);
+    error StokvelIsClosed(bytes32 id);
+    error NotMember(bytes32 id, bytes32 memberId);
+    error AlreadyPaid(bytes32 id, uint8 round, bytes32 memberId);
+    error WrongAmount(uint256 expected, uint256 actual);
+    error RoundNotOpen(uint8 round, uint8 openRound);
+    error RoundOutOfRange(uint8 round);
+
+    event ContributionMade(
+        bytes32 indexed id,
+        uint8 indexed round,
+        bytes32 indexed memberId,
+        uint256 amount
+    );
+    event RoundFinalised(
+        bytes32 indexed id,
+        uint8 indexed round,
+        bytes32 recipientId,
+        uint256 pool
+    );
+    event StokvelClosed(bytes32 indexed id);
 
     constructor(
         address admin,
@@ -145,6 +166,47 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
         emit StokvelUpdated(id, members, contribution, startTime, interval);
     }
 
+    /// @notice Record one Member's Contribution to a round, pulling the
+    /// tokens from the Treasury Wallet. Finalises any round that is ready.
+    /// @dev Trust assumption: members hold no keys (brief section 7), so the
+    /// contract cannot know who really paid. It trusts the operator to name
+    /// the right `memberId`; the backend ledger is the evidence for that.
+    ///
+    /// Rounds fill in order: round N+1 accepts contributions only once round
+    /// N is full. Round N finalises when round N+1 is also full, or at once
+    /// if N is the last round. Deadlines are informational, so a late
+    /// contribution is still accepted.
+    /// @param amount Must equal the stokvel's contribution. Passed explicitly
+    /// so a backend amount bug (e.g. wrong decimals) reverts here.
+    function contribute(
+        bytes32 id,
+        uint8 round,
+        bytes32 memberId,
+        uint256 amount
+    ) external onlyRole(OPERATOR_ROLE) whenNotPaused nonReentrant {
+        Stokvel storage s = _stokvels[id];
+        if (!_exists(id)) revert StokvelNotFound(id);
+        if (s.closed) revert StokvelIsClosed(id);
+        // Terms can change until the start, so no money may arrive before it.
+        if (block.timestamp < s.startTime) revert CycleNotStarted(id);
+        uint8 open = _openRound(id, s);
+        if (round != open) revert RoundNotOpen(round, open);
+        if (!isMember[id][memberId]) revert NotMember(id, memberId);
+        if (paid[id][round][memberId]) {
+            revert AlreadyPaid(id, round, memberId);
+        }
+        if (amount != s.contribution) revert WrongAmount(s.contribution, amount);
+
+        paid[id][round][memberId] = true; // mark this member as having paid
+        paidCount[id][round] += 1; //increment count of paid members
+        roundPool[id][round] += amount; // add to the round's pool
+        emit ContributionMade(id, round, memberId, amount); // log the contribution
+
+        token.safeTransferFrom(msg.sender, address(this), amount); // pull the tokens from the Treasury Wallet
+
+        _finaliseReady(id, s); // finalise any rounds that are now ready to be closed
+    }
+
     // ---------------------------------------------------------------------
     // Views
     // ---------------------------------------------------------------------
@@ -185,12 +247,71 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
         return block.timestamp >= _stokvels[id].startTime;
     }
 
+    /// @notice The only round that currently accepts contributions.
+    function openRound(bytes32 id) external view returns (uint8) {
+        Stokvel storage s = _stokvels[id];
+        if (!_exists(id)) revert StokvelNotFound(id);
+        if (s.closed) revert StokvelIsClosed(id);
+        return _openRound(id, s);
+    }
+
+    /// @notice Scheduled payout time (the round's Deadline). Informational:
+    /// a round actually finalises when the next round fills, not on a timer.
+    function payoutTime(bytes32 id, uint8 round) external view returns (uint256) {
+        Stokvel storage s = _stokvels[id];
+        if (!_exists(id)) revert StokvelNotFound(id);
+        if (round >= s.members.length) revert RoundOutOfRange(round);
+        // uint256 maths so extreme start/interval values cannot overflow.
+        return uint256(s.startTime) + (uint256(round) + 1) * s.interval;
+    }
+
+    /// @notice The member entitled to the next round to finalise.
+    function nextRecipient(bytes32 id) external view returns (bytes32) {
+        Stokvel storage s = _stokvels[id];
+        if (!_exists(id)) revert StokvelNotFound(id);
+        if (s.closed) revert StokvelIsClosed(id);
+        return s.members[s.currentRound];
+    }
+
     // ---------------------------------------------------------------------
     // Internal
     // ---------------------------------------------------------------------
 
     function _exists(bytes32 id) internal view returns (bool) {
         return _stokvels[id].members.length != 0;
+    }
+
+    /// @dev The round after the last one to finalise, once that one is full.
+    function _openRound(
+        bytes32 id,
+        Stokvel storage s
+    ) internal view returns (uint8) {
+        uint8 r = s.currentRound;
+        return paidCount[id][r] == s.members.length ? r + 1 : r;
+    }
+
+    /// @dev Finalises every round that is ready: at most two per call (the
+    /// second-last and last rounds finalise together). State is zeroed and
+    /// advanced before each transfer, so a reentrant call finds nothing left
+    /// to release (and `nonReentrant` blocks it anyway).
+    function _finaliseReady(bytes32 id, Stokvel storage s) internal {
+        uint256 n = s.members.length; // members = number of rounds in cycle, one per member
+        while (!s.closed) { // stop once the last round finalises and closes the cycle
+            uint8 r = s.currentRound; // the round to finalise, if full
+            if (paidCount[id][r] != n) return; // if not full yet do nothing
+            bool last = r + 1 == n; // the last round finalises immediately, no next round to wait for
+            if (!last && paidCount[id][r + 1] != n) return; // if not last, wait for the next round to fill before finalising
+
+            uint256 pool = roundPool[id][r];
+            roundPool[id][r] = 0; //empty the pool before transferring, so a reentrant call finds nothing to release
+            s.currentRound = r + 1; //move to the next round before transferring, so a reentrant call finds nothing to release
+            if (last) s.closed = true; //close after final round
+
+            emit RoundFinalised(id, r, s.members[r], pool); //who recieives it and how much
+            if (last) emit StokvelClosed(id);
+
+            token.safeTransfer(releaseTarget, pool); //move te tokens
+        }
     }
 
     /// @dev Validates and writes terms. Expects `members` to be empty.
