@@ -463,3 +463,4 @@ describe("StokvelVault: contributions and finalisation", () => {
     })
   })
 })
+
