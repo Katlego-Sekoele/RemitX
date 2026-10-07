@@ -259,3 +259,4 @@ describe("StokvelVault: pause and resume", () => {
     })
   })
 })
+
