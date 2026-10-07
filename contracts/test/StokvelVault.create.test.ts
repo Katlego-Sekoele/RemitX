@@ -574,3 +574,4 @@ describe("StokvelVault: stokvels and cycles", () => {
     })
   })
 })
+
