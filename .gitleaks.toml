@@ -172,10 +172,10 @@ keywords = [
 
 [[rules]]
 id = "remitx-ethereum-private-key"
-description = "Ethereum-style hex private key (0x + 64 hex digits)"
-regex = '''(?i)(?:private[_-]?key|eth[_-]?key|wallet[_-]?key)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}(0x[a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)'''
+description = "Ethereum-style hex private key (64 hex digits, 0x prefix optional)"
+regex = '''(?i)(?:private[_-]?key|eth[_-]?key|wallet[_-]?key|evm[_-]?(?:\w+?[_-])?key)[\s'"]{0,3}(?:=|:)[\x60'"\s=]{0,5}((?:0x)?[a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)'''
 entropy = 3
-keywords = ["0x", "private_key", "wallet_key"]
+keywords = ["0x", "private_key", "wallet_key", "eth_key", "evm_"]
 
 # --- XRPL / remittance (project-specific) ---
 
