@@ -30,6 +30,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-07 | Proposals, Deviations, 1, 5, 6 | Added P5: manual admin finalise as a fallback to automatic finalisation (route `POST /admin/stokvels/{id}/rounds/{n}/finalise`) | |
 | 2026-10-07 | 3, 8, 9 | Synced with the product deviations file: recommend keeping the ledger status names; contribution amount, fees (with the fee-to-fiat suggestion), deadline, limits and key storage listed as product confirmations; Treasury Wallet created | |
 | 2026-10-07 | Decisions, 8 | D1 records lecturer approval of the EVM move (Marc). Added open question: are the fee and margin converted back to fiat | |
+| 2026-10-07 | 9 | GitHub issues recreated from the ticket plan: #199–#206 and #209 closed and replaced (#217, #216, #273–#278, #229); #207 and #208 kept; mapping in the ticket plan ("GitHub issues") | |
 | 2026-10-07 | 7, 9, Deviations | TrustMeBank deposits and withdrawals (#202, #203) are now required, not optional | |
 | 2026-10-07 | 3, 4, 5, 8, 9 | Review fixes: P2 now mentions the payout time; P5 listed before P6; `stokvel_sync_state` added to section 3; pause and cancel take a `reason`; section 9 records PR #211 (#205 and part of #204); added an open question on log redaction hiding transaction hashes | |
 | 2026-10-07 | 5, 8, 9 | Added the stokvel audit log of admin actions (section 5): new audit actions and subjects on the existing `audit_log`, viewed through `GET /admin/audit` | |
@@ -400,21 +401,21 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 
 | Step | Status | Issues | Notes |
 |---|---|---|---|
-| Replace the XRPL layer with EVM | In progress | #204 | See "EVM switch-over" below. PR #211 (open) adds the worker-only key loader in `evm_service.py` and the `web3` dependency; sending transactions, the burn and the XRPL removal remain |
-| Treasury Wallet as EVM address, encrypted key | In progress | #205 | PR #211 (open, not merged): wallet creation script, worker-only key loader, log redaction, extended gitleaks rule and leak tests. Still open: operator role at deployment (#200), UCTUSD funding, and recording the address in section 2 |
-| Burn UCTUSD on EVM | Not started | #206 | Needs burn-method answer |
+| Replace the XRPL layer with EVM | In progress | #276 (was #204) | See "EVM switch-over" below. PR #211 (open) adds the worker-only key loader in `evm_service.py` and the `web3` dependency; sending transactions, the burn and the XRPL removal remain |
+| Treasury Wallet as EVM address, encrypted key | In progress | #277 (was #205) | PR #211 (open, not merged): wallet creation script, worker-only key loader, log redaction, extended gitleaks rule and leak tests. Still open: operator role at deployment (#200), UCTUSD funding, and recording the address in section 2 |
+| Burn UCTUSD on EVM | Not started | #278 (was #206) | Needs burn-method answer |
 | Contract: stokvels and cycles | Not started | #197 | |
 | Contract: contributions and finalisation | Not started | #198 | |
-| Contract: pause and resume | Not started | #199 | |
-| Contract tests and testnet deployment | Not started | #200 | Brief deadline: Fri 9 Oct |
-| Backend connection to the contract | Not started | #201 | |
-| Members create stokvels and invite others | Not started | #209 | |
+| Contract: pause and resume | Not started | #217 (was #199) | |
+| Contract tests and testnet deployment | Not started | #216 (was #200) | Brief deadline: Fri 9 Oct |
+| Backend connection to the contract | Not started | #273 (was #201) | |
+| Members create stokvels and invite others | Not started | #229 (was #209) | |
 | DB models and migrations | Not started | | Section 3 |
 | Worker tasks | Not started | | Section 4 |
 | API routes | Not started | | Section 5 |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
 | Frontend screens | Not started | | Member, Organiser, invitations, admin pause |
-| TrustMeBank deposits and withdrawals | Not started | #202, #203 | Required in this build (optional in the brief) |
+| TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not started | #208 | Open question |
 
 ### Brief timeline
