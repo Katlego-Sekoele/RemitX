@@ -8,6 +8,84 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #199 Stokvel contract: pause and resume
+
+**Date:** 2026-10-07
+**Branch:** `feature/199-pause-resume` (stacked on
+`feature/198-stokvel-contributions`)
+**Status:** Contract part done, tests passing (69 in total, 12 new).
+Backend and frontend parts not started (see "Left open").
+
+### What changed
+
+- `pause()` and `unpause()`, admin role only (OpenZeppelin `Pausable`).
+  OpenZeppelin's `Paused(account)` and `Unpaused(account)` events record who
+  did it. The public `paused()` view lets the backend show the state.
+- `contribute` already had `whenNotPaused` (#198). Finalisation only runs
+  inside `contribute`, so pausing stops every token movement: contributions,
+  finalisation and pool release.
+- **New constructor check `AdminIsOperator`:** deployment reverts if the
+  admin and the operator are the same address.
+
+### Files
+
+- `contracts/src/StokvelVault.sol`
+- `contracts/test/StokvelVault.pause.test.ts`
+- `contracts/smart_contracts_changes.md`
+
+### Acceptance criteria
+
+- [x] The operator and ordinary accounts cannot pause or resume. The admin
+  can, and the events record the admin's address.
+- [x] While paused, every token-moving call reverts with `EnforcedPause`.
+  This includes a contribution that would trigger finalisation, and a
+  contribution to a different stokvel. Token balances and all round state
+  are identical before and after.
+- [x] After resuming, payout conditions are unchanged. A round one short is
+  still one short, nothing finalises on resume (even after deadlines pass
+  during the pause), and the duplicate and round-order rules still apply.
+  The ticket's example runs as written, and a full cycle completes across
+  repeated pause and resume.
+- [ ] Backend shows the paused state and refuses to submit while paused.
+  **Not done.** It needs the backend chain client from #201 and #205.
+
+### Decisions
+
+- **Create and update are not paused.** The ticket defines pause as
+  halting contributions, finalisation and refunds, which are the
+  token-moving calls. Create and update move no tokens, and gating them
+  would give the Administrator a say over a group's terms, which the ticket
+  rules out. This closes the open question from #197.
+- **Views keep working while paused**, so the backend and admin screen can
+  still show every stokvel's state.
+- **The admin and operator must be different keys at deployment.** This
+  enforces the ticket's rule that the key that moves tokens must not also
+  control the emergency stop. Limitation: the admin can still grant itself
+  `OPERATOR_ROLE` later through `AccessControl`. That is inherent to
+  role management, and the audit log (and on-chain `RoleGranted` events)
+  is the control.
+- **Pause is checked first.** A paused contract reverts with
+  `EnforcedPause` even for otherwise invalid input, so callers get one
+  clear reason.
+- **Refunds:** not built yet (#208). Any refund function added later must
+  carry `whenNotPaused`.
+
+### Left open / for later tickets
+
+- **Backend (this ticket, blocked):** an admin route and controller that
+  call `pause()` and `unpause()`, write to the audit log, expose
+  `paused()`, and refuse stokvel submissions while paused. The API has no
+  EVM client yet: web3.py, the RPC URL and the contract address arrive with
+  #201 and #204, and key storage with #205. Pausing also needs the
+  **admin** key on the server, separate from the Treasury Wallet key, which
+  #205 does not cover yet.
+- **Frontend (this ticket, blocked):** the pause and resume control on the
+  admin screen depends on the backend route above.
+- **Deployment (#200):** pass different addresses for `admin` and
+  `operator`.
+
+---
+
 ## #198 Stokvel contract: contributions and finalisation
 
 **Date:** 2026-10-07

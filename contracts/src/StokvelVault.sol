@@ -12,7 +12,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 /// Only opaque IDs and counters live on-chain; names, people and fiat
 /// accounts stay in the RemitX database (brief section 7.4).
 /// @dev Roles:
-///  - DEFAULT_ADMIN_ROLE (Administrator): manages roles; pause/resume (#199).
+///  - DEFAULT_ADMIN_ROLE (Administrator): manages roles; pause and resume.
+///    Must not be the operator, so the key that moves tokens cannot also
+///    control the emergency stop.
 ///  - OPERATOR_ROLE (Treasury Wallet): the only address that creates
 ///    stokvels, contributes and finalises.
 contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
@@ -62,6 +64,7 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
     );
 
     error ZeroAddress();
+    error AdminIsOperator();
     error ZeroStokvelId();
     error StokvelExists(bytes32 id);
     error StokvelNotFound(bytes32 id);
@@ -106,11 +109,32 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
             address(token_) == address(0) ||
             releaseTarget_ == address(0)
         ) revert ZeroAddress();
+        // The key that moves tokens must not also hold the emergency stop.
+        if (admin == operator) revert AdminIsOperator();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, operator);
         token = token_;
         releaseTarget = releaseTarget_;
+    }
+
+    // ---------------------------------------------------------------------
+    // Administrator actions
+    // ---------------------------------------------------------------------
+
+    /// @notice Emergency stop for every stokvel at once. While paused,
+    /// `contribute` reverts, and with it finalisation and every token
+    /// movement. State is untouched, so resuming restores it exactly.
+    /// @dev Creating and updating stokvels stay available: they move no
+    /// tokens, and the Administrator has no say over a group's terms.
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    /// @notice Resume after `pause`. Payout conditions are unchanged: a
+    /// round that was one contribution short is still one short.
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
     }
 
     // ---------------------------------------------------------------------
