@@ -74,8 +74,19 @@ on-chain.
   and a test fails if it drifts from the contract.
 - **Address:** `STOKVEL_CONTRACT_ADDRESS` in the root `.env`, also recorded in
   [deployments/](deployments/) and doc §2 after each deployment.
-- **Amounts** are UCTUSD smallest units (18 decimals). The Treasury Wallet
-  must `approve` the contract for UCTUSD before contributing.
+- **Amounts** are UCTUSD smallest units (18 decimals).
+- **Allowance** (agreed with the backend; doc §1 "Treasury allowance"):
+  `contribute` pulls from the Treasury with `safeTransferFrom`, so the
+  Treasury must approve the contract first.
+  - Approve once per contract address at setup:
+    `UCTUSD.approve(STOKVEL_CONTRACT_ADDRESS, type(uint256).max)`.
+  - Before each `contribute`, check `allowance(treasury, contract)` and
+    re-approve if it is below the contribution. This also covers a redeploy
+    to a new address.
+  - This is safe because the contract only pulls from `msg.sender`, and only
+    the operator (the Treasury itself) can call `contribute`.
+  - A missing allowance reverts with the token's
+    `ERC20InsufficientAllowance`, which is a backend fault.
 - **Errors** map to API responses in doc §6.
 
 ## Develop

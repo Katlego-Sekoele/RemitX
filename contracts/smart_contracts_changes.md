@@ -83,6 +83,24 @@ cycle first. It stays as a defensive check.
 - randomised or property-based testing of schedules and payment orders
 - cancel and refund (not built, #220)
 
+### Treasury allowance (added 2026-10-08)
+
+Claire asked whether the Treasury should approve once or once per
+contribution. Decision: a **one-off `approve(vault, max)`** per contract
+address, plus a check before each `contribute` that re-approves if the
+allowance is low.
+
+**Why this is safe:** the vault only pulls from `msg.sender`, and only the
+operator (the Treasury) can call `contribute`, so the allowance can only be
+spent by Treasury-signed calls. Per-contribution approvals would double the
+transactions for no extra protection.
+
+A missing allowance reverts with the token's `ERC20InsufficientAllowance`,
+which is a backend 500. This is recorded in the README and in doc §1 and §6
+(PR #283). Claire also confirmed §1 and §6, and that the contribution stays
+fixed in `createStokvel` for all cycles; she will fix the per-cycle wording in
+the backend sections (§3, R2-10, OI-5) herself.
+
 ### Left open
 
 - Doc §1 links the README once #283 and this branch are merged.
