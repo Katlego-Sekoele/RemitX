@@ -34,6 +34,8 @@ database rather than relying on a log line to find it again.
 """
 
 import os
+import re
+import uuid
 from decimal import Decimal, localcontext
 from typing import Any
 
@@ -99,6 +101,9 @@ _PRECISION = 80
 # The only fields a caller may set; the rest are filled in here so that every
 # send uses the treasury's nonce, this chain's id and a legacy gas price.
 _CALLER_TX_FIELDS = frozenset({"to", "data", "value"})
+
+# A UUID string once its hyphens are removed, as uuidToBytes32 checks it.
+_UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
 
 
 def _load_treasury_account() -> LocalAccount:
@@ -199,6 +204,25 @@ def from_base_units(value: int) -> Decimal:
     with localcontext() as context:
         context.prec = _PRECISION
         return Decimal(value).scaleb(-Config().UCTUSD_EVM_DECIMALS)
+
+
+def uuid_to_bytes32(value: uuid.UUID | str) -> bytes:
+    """A database UUID as a contract `bytes32` ID: its 16 bytes, then 16 zeros.
+
+    Stokvel and member IDs are packed left-aligned. Must produce the same bytes
+    as `uuidToBytes32` in contracts/test/helpers.ts, and accepts the same
+    strings: hyphens are removed and exactly 32 hex digits (any case) must
+    remain, so `{...}` and `urn:uuid:` forms are rejected. Raises `ValueError`
+    for a string that is not a UUID and `TypeError` for anything else.
+    """
+    if isinstance(value, str):
+        digits = value.replace("-", "")
+        if not _UUID_HEX.fullmatch(digits):
+            raise ValueError(f"not a UUID: {value!r}")
+        return bytes.fromhex(digits) + bytes(16)
+    if not isinstance(value, uuid.UUID):
+        raise TypeError(f"value must be a UUID or str, not {type(value).__name__}")
+    return value.bytes + bytes(16)
 
 
 def get_native_balance(address: str, w3: Web3 | None = None) -> Decimal:

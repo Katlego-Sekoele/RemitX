@@ -4,6 +4,7 @@ No network: a real `Web3` sits on a fake provider that answers the JSON-RPC
 calls these helpers make, so web3's own encoding and formatting still run.
 """
 
+import uuid
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ from remitx_worker.evm_service import (
     send_transaction,
     submit_transaction,
     to_base_units,
+    uuid_to_bytes32,
     wait_for_receipt,
 )
 from tests.evm_helpers import configure_fake_treasury
@@ -160,6 +162,63 @@ def test_from_base_units_rejects_anything_but_an_int(value):
 def test_from_base_units_rejects_negatives():
     with pytest.raises(ValueError):
         from_base_units(-1)
+
+
+# --- uuid_to_bytes32 -------------------------------------------------------------
+
+# docs/stokvel_integration.md section 1, "Units and IDs".
+DOC_UUID = "5f0c2a1e-8d3b-4c6a-9e71-2b4f6d8a0c13"
+DOC_BYTES32 = "0x5f0c2a1e8d3b4c6a9e712b4f6d8a0c1300000000000000000000000000000000"
+
+
+def test_uuid_to_bytes32_matches_the_integration_doc():
+    assert Web3.to_hex(uuid_to_bytes32(DOC_UUID)) == DOC_BYTES32
+
+
+def test_uuid_to_bytes32_gives_the_same_bytes_for_a_uuid_and_its_string():
+    value = uuid.UUID(DOC_UUID)
+
+    assert uuid_to_bytes32(value) == uuid_to_bytes32(str(value))
+
+
+def test_uuid_to_bytes32_is_always_32_bytes():
+    for value in (uuid.UUID(int=0), uuid.UUID(int=2**128 - 1), uuid.uuid4()):
+        packed = uuid_to_bytes32(value)
+        assert len(packed) == 32
+        assert packed[16:] == bytes(16)
+
+
+def test_uuid_to_bytes32_accepts_uppercase():
+    assert uuid_to_bytes32(DOC_UUID.upper()) == uuid_to_bytes32(DOC_UUID)
+
+
+def test_uuid_to_bytes32_accepts_32_hex_digits_without_hyphens():
+    assert Web3.to_hex(uuid_to_bytes32(DOC_UUID.replace("-", ""))) == DOC_BYTES32
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "not-a-uuid",
+        DOC_UUID[:-1],
+        DOC_UUID + "0",
+        DOC_UUID.replace("5", "g"),
+        DOC_UUID + "\n",
+        # Forms uuid.UUID accepts but uuidToBytes32 does not.
+        "{" + DOC_UUID + "}",
+        "urn:uuid:" + DOC_UUID,
+    ],
+)
+def test_uuid_to_bytes32_rejects_strings_that_are_not_uuids(value):
+    with pytest.raises(ValueError, match="not a UUID"):
+        uuid_to_bytes32(value)
+
+
+@pytest.mark.parametrize("value", [None, 123, uuid.UUID(DOC_UUID).bytes])
+def test_uuid_to_bytes32_rejects_other_types(value):
+    with pytest.raises(TypeError):
+        uuid_to_bytes32(value)
 
 
 # --- balances ------------------------------------------------------------------
