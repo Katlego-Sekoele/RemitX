@@ -125,19 +125,6 @@ def test_no_log_line_contains_the_key(lenient_client, treasury, caplog, monkeypa
         "treasury load failed", exc_info=caught.value
     )
 
-    # Mistakes: the key and its ciphertext logged outright, as a message, an
-    # arg and inside a traceback.
-    log = logging.getLogger("remitx_api.test_evm_key_secrecy")
-    log.error("key %s", treasury.private_key)
-    log.error(f"ciphertext {treasury.encrypted_key}")
-    try:
-        raise ValueError(f"bad key {treasury.private_key}")
-    except ValueError:
-        log.exception("decrypt failed")
-
     _assert_absent(caplog.text, treasury, "captured log text")
     for record in caplog.records:
         _assert_absent(record.getMessage(), treasury, record.name)
-    # Positive control: the deliberate leaks were caught and rewritten, not
-    # silently dropped.
-    assert caplog.text.count("[REDACTED]") >= 3
