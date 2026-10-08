@@ -83,7 +83,8 @@ on-chain.
 ```bash
 cd contracts
 npm ci
-npx hardhat test          # 68 tests
+npx hardhat test          # 69 tests
+npx hardhat coverage      # line and branch coverage
 npm run export:abi        # after any interface change; commit abi/
 ```
 

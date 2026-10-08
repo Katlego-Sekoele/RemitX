@@ -13,7 +13,7 @@ taken (and why), and anything left open for a later ticket.
 **Date:** 2026-10-08
 **Branch:** `feature/219-readme-abi-adr` (stacked on
 `feature/218-deploy-testnet`)
-**Status:** Done, tests passing (68: 67 plus the ABI drift test)
+**Status:** Done, tests passing (69; 99.1% branch coverage)
 
 ### What changed
 
@@ -59,6 +59,29 @@ taken (and why), and anything left open for a later ticket.
   is named after the contract so the two cannot be confused. The plan's file
   names are suggestions.
 - **ADR numbered 0002;** 0001 is the QA seeder ADR on `main`.
+
+### Coverage check (added 2026-10-08)
+
+`npx hardhat coverage` showed 100% of lines but only 93% of branches. The
+gaps, now fixed in this branch (69 tests):
+- **A mislabelled test.** The "payout goes backwards between rounds" case
+  tripped the earlier "payout before deadline" check, so the backwards rule
+  was never exercised on its own. There is now a separate test where every
+  round is valid on its own and only the order is wrong.
+- **Constructor zero addresses.** Only the token was tested; now admin,
+  operator, token and release target are each tested.
+- **Unknown stokvel ID.** `getCycle` and `isFinalisable` with an unknown
+  stokvel are now tested.
+
+Branch coverage is now 99.1%. The one uncovered branch (`round >= n` in
+`_isFinalisable`) cannot be reached, because both callers reject a closed
+cycle first. It stays as a defensive check.
+
+**Not covered by any automated test yet:**
+- behaviour on the real testnet: gas, block times, RPC (#218)
+- the deploy and ABI export scripts, which were only run by hand
+- randomised or property-based testing of schedules and payment orders
+- cancel and refund (not built, #220)
 
 ### Left open
 

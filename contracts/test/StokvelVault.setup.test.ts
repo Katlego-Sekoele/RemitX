@@ -46,9 +46,17 @@ describe("StokvelVault: setup", () => {
     it("rejects a zero address, admin == operator, and a cap below 2", async () => {
       const [a, b, c, d] = await ethers.getSigners()
       const Vault = await ethers.getContractFactory("StokvelVault")
-      await expect(
-        Vault.deploy(a, b, ethers.ZeroAddress, d, 3),
-      ).to.be.revertedWithCustomError(Vault, "ZeroAddress")
+      const Z = ethers.ZeroAddress
+      for (const args of [
+        [Z, b, c, d],
+        [a, Z, c, d],
+        [a, b, Z, d],
+        [a, b, c, Z],
+      ] as const) {
+        await expect(
+          Vault.deploy(...args, 3),
+        ).to.be.revertedWithCustomError(Vault, "ZeroAddress")
+      }
       await expect(Vault.deploy(a, a, c, d, 3)).to.be.revertedWithCustomError(
         Vault,
         "AdminIsOperator",
@@ -265,11 +273,23 @@ describe("StokvelVault: setup", () => {
         s.starts[2] = s.starts[1] - 1n
         s.deadlines[2] = s.starts[2]
       }, 2)
-      // Round 2 pays out before round 1.
-      await bad((s) => {
-        s.payouts[2] = s.payouts[1] - 1n
-        s.deadlines[2] = s.starts[2]
-      }, 2)
+    })
+
+    it("rejects payout times that go backwards, even when each round is valid", async () => {
+      const { vault, operator } = await loadFixture(createdFixture)
+      const t = BigInt(await time.latest()) + 60n
+      // Each round has start <= deadline <= payout and starts move forward,
+      // but round 2 pays out before round 1.
+      const starts = [t, t + 10n, t + 20n]
+      const deadlines = [t, t + 10n, t + 20n]
+      const payouts = [t + 100n, t + 1000n, t + 500n]
+      await expect(
+        vault
+          .connect(operator)
+          .startCycle(id, MEMBERS, starts, deadlines, payouts),
+      )
+        .to.be.revertedWithCustomError(vault, "InvalidSchedule")
+        .withArgs(2)
     })
 
     it("allows equal times (start = deadline = payout, and between rounds)", async () => {
