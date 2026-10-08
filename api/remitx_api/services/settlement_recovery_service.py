@@ -82,9 +82,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
     for remittance, settlement_leg in rows:
         legs = list(
             db.session.scalars(
-                select(Transaction).where(
-                    Transaction.quote_id == remittance.quote_id
-                )
+                select(Transaction).where(Transaction.quote_id == remittance.quote_id)
             )
         )
         counts = {
@@ -129,9 +127,7 @@ def get_stuck_settlement(quote_id: uuid.UUID) -> StuckSettlement | None:
 def retry_enqueue(quote_id: uuid.UUID) -> None:
     """Re-queue ``settle_remittance`` when every leg is still ``pending``."""
     legs = list(
-        db.session.scalars(
-            select(Transaction).where(Transaction.quote_id == quote_id)
-        )
+        db.session.scalars(select(Transaction).where(Transaction.quote_id == quote_id))
     )
     if not legs:
         raise UnknownSettlementQuoteError(quote_id)
