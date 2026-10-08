@@ -18,12 +18,14 @@ from remitx_worker.evm_service import (
     get_native_balance,
     get_token_balance,
     get_web3,
+    send_transaction,
     submit_transaction,
     to_base_units,
     wait_for_receipt,
 )
 from tests.evm_helpers import configure_fake_treasury
 from web3 import Web3
+from web3.exceptions import TimeExhausted
 from web3.providers.base import BaseProvider
 
 CHAIN_ID = 1449000
@@ -277,3 +279,59 @@ def test_submit_transaction_rejects_caller_set_fees_and_nonces(monkeypatch):
             submit_transaction({"to": Account.create().address, field: 1}, w3=w3)
 
     assert provider.calls == []
+
+
+# --- send_transaction -------------------------------------------------------------
+
+
+def _receipt_web3(wait):
+    return SimpleNamespace(eth=SimpleNamespace(wait_for_transaction_receipt=wait))
+
+
+def _fake_submit(monkeypatch):
+    submitted = []
+
+    def submit(tx, w3=None):
+        submitted.append((tx, w3))
+        return TX_HASH
+
+    monkeypatch.setattr(evm_service, "submit_transaction", submit)
+    return submitted
+
+
+def test_send_transaction_returns_the_hash_and_block(monkeypatch):
+    submitted = _fake_submit(monkeypatch)
+    waited = []
+
+    def wait(tx_hash, timeout):
+        waited.append((tx_hash, timeout))
+        return {"transactionHash": tx_hash, "status": 1, "blockNumber": 4242}
+
+    w3 = _receipt_web3(wait)
+    tx = {"to": Account.create().address, "data": "0x1234"}
+
+    assert send_transaction(tx, timeout=30, w3=w3) == (TX_HASH, 4242)
+    assert submitted == [(tx, w3)]
+    assert waited == [(TX_HASH, 30)]
+
+
+def test_send_transaction_raises_on_a_revert(monkeypatch):
+    _fake_submit(monkeypatch)
+    w3 = _receipt_web3(
+        lambda tx_hash, timeout: {"status": 0, "blockNumber": 4242},
+    )
+
+    with pytest.raises(RuntimeError, match="reverted"):
+        send_transaction({"to": Account.create().address}, w3=w3)
+
+
+def test_send_transaction_lets_a_timeout_propagate(monkeypatch):
+    _fake_submit(monkeypatch)
+
+    def wait(tx_hash, timeout):
+        raise TimeExhausted(f"{tx_hash} not mined in {timeout}s")
+
+    with pytest.raises(TimeExhausted):
+        send_transaction(
+            {"to": Account.create().address}, timeout=1, w3=_receipt_web3(wait)
+        )

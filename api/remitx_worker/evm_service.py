@@ -258,3 +258,20 @@ def wait_for_receipt(tx_hash: str, timeout: float = 120, w3: Web3 | None = None)
     if receipt["status"] == 0:
         raise RuntimeError(f"EVM transaction {tx_hash} reverted")
     return receipt
+
+
+def send_transaction(
+    tx: dict[str, Any], timeout: float = 120, w3: Web3 | None = None
+) -> tuple[str, int]:
+    """Submit `tx` as the Treasury Wallet, wait for it, return (hash, block).
+
+    `submit_transaction` followed by `wait_for_receipt` on one client. A revert
+    raises `RuntimeError`. On web3's `TimeExhausted` the transaction may still
+    be mined, but the caller never sees its hash, so it cannot wait on it
+    again and a retry would send a second transaction. Retry-safe flows must
+    call `submit_transaction`, store the hash, then call `wait_for_receipt`.
+    """
+    w3 = w3 or get_web3()
+    tx_hash = submit_transaction(tx, w3=w3)
+    receipt = wait_for_receipt(tx_hash, timeout=timeout, w3=w3)
+    return tx_hash, receipt["blockNumber"]
