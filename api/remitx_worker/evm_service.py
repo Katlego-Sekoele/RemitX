@@ -162,8 +162,8 @@ def get_web3() -> Web3:
 
 
 def token_contract(w3: Web3) -> Contract:
-    """The UCTUSD ERC-20 at `UCTUSD_EVM_CONTRACT_ADDRESS`."""
-    address = Web3.to_checksum_address(Config().UCTUSD_EVM_CONTRACT_ADDRESS)
+    """The UCTUSD ERC-20 at `UCTUSD_CONTRACT_ADDRESS`."""
+    address = Web3.to_checksum_address(Config().UCTUSD_CONTRACT_ADDRESS)
     return w3.eth.contract(address=address, abi=ERC20_ABI)
 
 

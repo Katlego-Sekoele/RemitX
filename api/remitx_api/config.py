@@ -201,9 +201,9 @@ class Config:
     # UCTUSD as an ERC-20 on the EVM chain - unrelated to UCTUSD_ISSUER above,
     # which is the XRPL issued currency.
     @property
-    def UCTUSD_EVM_CONTRACT_ADDRESS(self) -> str:
+    def UCTUSD_CONTRACT_ADDRESS(self) -> str:
         return os.getenv(
-            "UCTUSD_EVM_CONTRACT_ADDRESS", "0x7055071C7B79A859d9514e62833BFf041ce71074"
+            "UCTUSD_CONTRACT_ADDRESS", "0x7055071C7B79A859d9514e62833BFf041ce71074"
         )
 
     @property

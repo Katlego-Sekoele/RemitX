@@ -19,7 +19,7 @@ EVM_DEFAULTS = {
     "EVM_RPC_URL": "https://rpc.testnet.xrplevm.org",
     "EVM_CHAIN_ID": 1449000,
     "EVM_EXPLORER_URL": "https://explorer.testnet.xrplevm.org",
-    "UCTUSD_EVM_CONTRACT_ADDRESS": "0x7055071C7B79A859d9514e62833BFf041ce71074",
+    "UCTUSD_CONTRACT_ADDRESS": "0x7055071C7B79A859d9514e62833BFf041ce71074",
     "UCTUSD_EVM_DECIMALS": 18,
     "EVM_TREASURY_ADDRESS": "",
     "STOKVEL_CONTRACT_ADDRESS": "",
@@ -41,7 +41,7 @@ def test_evm_settings_read_env(monkeypatch):
         "EVM_RPC_URL": "http://localhost:8545",
         "EVM_CHAIN_ID": "31337",
         "EVM_EXPLORER_URL": "http://localhost:4000",
-        "UCTUSD_EVM_CONTRACT_ADDRESS": "0x" + "11" * 20,
+        "UCTUSD_CONTRACT_ADDRESS": "0x" + "11" * 20,
         "UCTUSD_EVM_DECIMALS": "6",
         "EVM_TREASURY_ADDRESS": "0x" + "22" * 20,
         "STOKVEL_CONTRACT_ADDRESS": "0x" + "33" * 20,
@@ -56,7 +56,7 @@ def test_evm_settings_read_env(monkeypatch):
     for name in (
         "EVM_RPC_URL",
         "EVM_EXPLORER_URL",
-        "UCTUSD_EVM_CONTRACT_ADDRESS",
+        "UCTUSD_CONTRACT_ADDRESS",
         "EVM_TREASURY_ADDRESS",
         "STOKVEL_CONTRACT_ADDRESS",
     ):

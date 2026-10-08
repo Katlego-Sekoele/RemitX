@@ -60,7 +60,7 @@ def _evm_settings(monkeypatch):
     for name in (
         "EVM_RPC_URL",
         "EVM_CHAIN_ID",
-        "UCTUSD_EVM_CONTRACT_ADDRESS",
+        "UCTUSD_CONTRACT_ADDRESS",
         "UCTUSD_EVM_DECIMALS",
     ):
         monkeypatch.delenv(name, raising=False)
