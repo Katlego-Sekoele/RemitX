@@ -164,6 +164,20 @@ jobs:
       # answer 503, so a missing one must not block the whole rollout.
       TF_VAR_object_storage_access_key_id: ${{ secrets.TF_VAR_object_storage_access_key_id }}
       TF_VAR_object_storage_secret_access_key: ${{ secrets.TF_VAR_object_storage_secret_access_key }}
+      # XRPL EVM Testnet (stokvel Treasury Wallet). Optional for now, so absent
+      # from the required list below: the GitHub values do not exist yet, an
+      # unset one arrives as "" and Terraform leaves it out of the services'
+      # environment. They become required once set. The two secrets reach the
+      # worker only.
+      TF_VAR_evm_encryption_key: ${{ secrets.TF_VAR_evm_encryption_key }}
+      TF_VAR_evm_treasury_private_key_encrypted: ${{ secrets.TF_VAR_evm_treasury_private_key_encrypted }}
+      TF_VAR_evm_treasury_address: ${{ vars.TF_VAR_evm_treasury_address }}
+      TF_VAR_evm_rpc_url: ${{ vars.TF_VAR_evm_rpc_url }}
+      TF_VAR_evm_chain_id: ${{ vars.TF_VAR_evm_chain_id }}
+      TF_VAR_evm_explorer_url: ${{ vars.TF_VAR_evm_explorer_url }}
+      TF_VAR_uctusd_evm_contract_address: ${{ vars.TF_VAR_uctusd_evm_contract_address }}
+      TF_VAR_uctusd_evm_decimals: ${{ vars.TF_VAR_uctusd_evm_decimals }}
+      TF_VAR_stokvel_contract_address: ${{ vars.TF_VAR_stokvel_contract_address }}
     steps:
       - uses: actions/checkout@v4
 
