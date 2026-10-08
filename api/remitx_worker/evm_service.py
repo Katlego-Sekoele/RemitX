@@ -12,9 +12,10 @@ than through `remitx_api.config.Config`, so the API's config object has no way
 to hand either secret out.
 
 Models `xrpl_service._load_treasury_wallet`. The web3.py helpers below it
-(#204) sit alongside XRPL rather than replacing it: normal remittances still
-settle on the XRP Ledger Testnet through `xrpl_service`. Nothing calls these
-helpers yet; the burn (#206) and contributions and events (#201) build on them.
+(#221, #222) will replace the XRPL path, which still exists until it is
+removed in #225 (part of #276): until then normal remittances settle on the
+XRP Ledger Testnet through `xrpl_service`. Nothing calls these helpers yet;
+the burn (#278) and the stokvel contract connection (#273) build on them.
 
 Fees: transactions use legacy `gasPrice`. The RPC does report EIP-1559 fields
 (`eth_feeHistory` returned `baseFeePerGas` in October 2026), but no type-2
@@ -23,14 +24,17 @@ transaction has been tested on this chain, and a legacy price taken from
 
 Nonces: `submit_transaction` takes the Treasury Wallet's *pending* nonce at the
 moment it builds. Two tasks sending from the wallet at once can read the same
-nonce, so one replaces or is rejected in favour of the other. #206 and #201
-must serialise sends from the Treasury Wallet (one lock or one single-
-concurrency queue).
+nonce, so one replaces or is rejected in favour of the other. Every task that
+sends from the Treasury Wallet must be serialised with the others (one lock or
+one single-concurrency queue): the burn (#278), the contribution tasks and the
+scheduled release task that calls `finalise` (#273).
 
 Logging: `remitx_api.log_redaction` hides any `0x` + 64 hex digits, because
 that is what a private key looks like. Transaction and block hashes have the
 same shape, so they read `[REDACTED]` in logs too. Persist a hash in the
-database rather than relying on a log line to find it again.
+database rather than relying on a log line to find it again. Packed `bytes32`
+IDs (`uuid_to_bytes32`) are also `0x` + 64 hex digits and are hidden the same
+way, so log the UUID form of a stokvel or member ID, not the bytes32.
 """
 
 import os

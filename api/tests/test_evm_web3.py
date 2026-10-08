@@ -1,4 +1,4 @@
-"""The worker's web3.py helpers for the XRPL EVM Treasury Wallet (#204).
+"""The worker's web3.py helpers for the XRPL EVM Treasury Wallet (#221, #222).
 
 No network: a real `Web3` sits on a fake provider that answers the JSON-RPC
 calls these helpers make, so web3's own encoding and formatting still run.
