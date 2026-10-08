@@ -3,7 +3,7 @@ Create the RemitX treasury wallet on XRPL EVM Testnet: an EVM address whose
 private key is Fernet-encrypted before it is written to .env.
 
 This is separate from the XRPL platform wallet (create_xprl_platform_wallet.py),
-which keeps serving normal remittances. UCTUSD on the EVM chain is a plain
+the EVM chain is replacing XRPL. UCTUSD on the EVM chain is a plain
 ERC-20, so there are no trust lines and nothing to open - the script only reads
 the wallet's native and UCTUSD balances. It never builds or signs a transaction.
 
