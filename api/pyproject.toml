@@ -5,7 +5,10 @@ description = "RemitX JSON API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
-    "pydantic>=2.0",
+    # Exact pin: frontend/openapi.json is generated from pydantic's JSON
+    # schema, so a new release can change it and fail test_openapi.py.
+    # Bump deliberately and regenerate the spec in the same commit.
+    "pydantic==2.13.5",
     "uvicorn[standard]>=0.32.0",
     "sqlalchemy>=2.0.0,<2.1",
     "alembic>=1.13.0",
