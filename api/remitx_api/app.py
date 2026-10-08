@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from remitx_api.config import Config
 from remitx_api.errors.base import DomainError
 from remitx_api.extensions import db
-from remitx_api.log_redaction import install_log_redaction
 from remitx_api.middleware import MaxBodySizeMiddleware, RequestIdMiddleware
 from remitx_api.openapi import DESCRIPTION, TAGS, TITLE, VERSION, operation_id
 from remitx_api.routes import register_routers
@@ -25,8 +24,6 @@ async def _lifespan(app: FastAPI):
 
 
 def create_app(config_class: type[Config] = Config) -> FastAPI:
-
-    install_log_redaction()
     config = config_class()
     app = FastAPI(
         title=TITLE,

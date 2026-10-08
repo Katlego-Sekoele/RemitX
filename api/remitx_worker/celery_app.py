@@ -2,9 +2,6 @@ from celery import Celery
 from celery.schedules import schedule
 from celery.signals import worker_ready
 from remitx_api.config import Config
-from remitx_api.log_redaction import install_log_redaction
-
-install_log_redaction()
 
 # Config, not os.getenv, so the worker loads the same root .env as the API.
 celery = Celery(
