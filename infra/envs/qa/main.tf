@@ -67,6 +67,29 @@ locals {
     PLATFORM_WALLET_ADDRESS    = var.platform_wallet_address
   }
 
+  # XRPL EVM Testnet public settings (stokvel Treasury Wallet). Empty values
+  # are dropped so the app's Config defaults apply instead of "".
+  evm_env = { for name, value in {
+    EVM_RPC_URL                 = var.evm_rpc_url
+    EVM_CHAIN_ID                = var.evm_chain_id
+    EVM_EXPLORER_URL            = var.evm_explorer_url
+    UCTUSD_EVM_CONTRACT_ADDRESS = var.uctusd_evm_contract_address
+    UCTUSD_EVM_DECIMALS         = var.uctusd_evm_decimals
+    EVM_TREASURY_ADDRESS        = var.evm_treasury_address
+    STOKVEL_CONTRACT_ADDRESS    = var.stokvel_contract_address
+  } : name => value if value != "" }
+
+  # The EVM treasury key and the key that decrypts it. Only the worker signs,
+  # so these reach worker_env alone, and only once they are set.
+  evm_worker_secrets = merge(
+    nonsensitive(var.evm_encryption_key != "") ? {
+      EVM_ENCRYPTION_KEY = var.evm_encryption_key
+    } : {},
+    nonsensitive(var.evm_treasury_private_key_encrypted != "") ? {
+      EVM_TREASURY_PRIVATE_KEY_ENCRYPTED = var.evm_treasury_private_key_encrypted
+    } : {},
+  )
+
   # Quote and limit settings are read by the API. The worker never prices a send.
   quote_env = {
     EXCHANGE_RATE_API_KEY        = var.exchange_rate_api_key
@@ -84,14 +107,14 @@ locals {
     MONTHLY_LIMIT_ZAR            = var.monthly_limit_zar
   }
 
-  worker_env = merge(local.runtime_env, local.xrpl_env, {
+  worker_env = merge(local.runtime_env, local.xrpl_env, local.evm_env, {
     PLATFORM_WALLET_SEED_ENCRYPTED = var.platform_wallet_seed_encrypted
-  })
+  }, local.evm_worker_secrets)
 
   # One map for the module and the api_env_vars output. The service ignores
   # env_vars after creation, so the output is what actually reaches Render;
   # a hand-kept copy there silently dropped keys.
-  api_env = merge(local.runtime_env, local.xrpl_env, local.quote_env, {
+  api_env = merge(local.runtime_env, local.xrpl_env, local.evm_env, local.quote_env, {
     CORS_ORIGINS    = local.cors_origins
     WORKER_WAKE_URL = "${trimsuffix(module.worker.url, "/")}/health"
     # Only the API signs upload and download URLs; the worker never touches

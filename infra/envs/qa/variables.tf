@@ -219,3 +219,64 @@ variable "object_storage_secret_access_key" {
   sensitive = true
   default   = ""
 }
+
+# --- XRPL EVM Testnet (stokvel Treasury Wallet) ---
+# All optional for now: the GitHub values do not exist yet. An empty value is
+# left out of the services' environment, so the API's Config default applies
+# (public settings) or the setting stays unset (secrets).
+
+variable "evm_encryption_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Fernet key that decrypts the EVM treasury key. GitHub secret TF_VAR_evm_encryption_key. Worker only."
+}
+
+variable "evm_treasury_private_key_encrypted" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Fernet-encrypted EVM treasury private key. GitHub secret TF_VAR_evm_treasury_private_key_encrypted. Worker only."
+}
+
+variable "evm_treasury_address" {
+  type        = string
+  default     = ""
+  description = "Treasury Wallet EVM address. GitHub variable TF_VAR_evm_treasury_address."
+}
+
+variable "evm_rpc_url" {
+  type        = string
+  default     = ""
+  description = "XRPL EVM Testnet JSON-RPC URL. GitHub variable TF_VAR_evm_rpc_url."
+}
+
+variable "evm_chain_id" {
+  type        = string
+  default     = ""
+  description = "XRPL EVM Testnet chain id (1449000). GitHub variable TF_VAR_evm_chain_id."
+}
+
+variable "evm_explorer_url" {
+  type        = string
+  default     = ""
+  description = "Block explorer base URL. GitHub variable TF_VAR_evm_explorer_url."
+}
+
+variable "uctusd_evm_contract_address" {
+  type        = string
+  default     = ""
+  description = "UCTUSD ERC-20 contract address. GitHub variable TF_VAR_uctusd_evm_contract_address."
+}
+
+variable "uctusd_evm_decimals" {
+  type        = string
+  default     = ""
+  description = "UCTUSD ERC-20 decimals (18). GitHub variable TF_VAR_uctusd_evm_decimals."
+}
+
+variable "stokvel_contract_address" {
+  type        = string
+  default     = ""
+  description = "Stokvel contract address, once deployed (#200). GitHub variable TF_VAR_stokvel_contract_address."
+}
