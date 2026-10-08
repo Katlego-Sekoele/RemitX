@@ -43,6 +43,12 @@ export const PAYOUT_CURRENCIES = [
   "USD",
   "ZWL",
   "NAD",
+  "EUR",
+  "GBP",
+  "BWP",
+  "LSL",
+  "MWK",
+  "MZN",
 ] as const satisfies readonly PayoutCurrency[]
 
 export function isPayoutCurrency(value: unknown): value is PayoutCurrency {

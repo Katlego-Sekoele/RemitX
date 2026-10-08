@@ -103,7 +103,7 @@ def test_open_account_rejects_settlement_token(verified_client):
 def test_open_account_rejects_unsupported_currency(verified_client):
     client, _sender = verified_client
 
-    response = client.post(ACCOUNTS, json={"currency": "EUR"})
+    response = client.post(ACCOUNTS, json={"currency": "JPY"})
 
     assert response.status_code == 422
 

@@ -48,7 +48,7 @@ describe("search params", () => {
   })
 
   it("ignores a currency or step it doesn't know", () => {
-    const search = readSendSearch(new URLSearchParams("currency=EUR&step=sent"))
+    const search = readSendSearch(new URLSearchParams("currency=JPY&step=sent"))
     expect(search.currency).toBeNull()
     expect(search.step).toBeNull()
   })

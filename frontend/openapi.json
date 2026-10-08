@@ -4047,7 +4047,13 @@
           "ZAR",
           "USD",
           "ZWL",
-          "NAD"
+          "NAD",
+          "EUR",
+          "GBP",
+          "BWP",
+          "LSL",
+          "MWK",
+          "MZN"
         ],
         "title": "PayoutCurrency",
         "type": "string"

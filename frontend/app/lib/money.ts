@@ -29,11 +29,17 @@ const CURRENCY_NAMES: Record<string, string> = {
   USD: "US dollar",
   ZWL: "Zimbabwean dollar",
   NAD: "Namibian dollar",
+  EUR: "Euro",
+  GBP: "British pound",
+  BWP: "Botswana pula",
+  LSL: "Lesotho loti",
+  MWK: "Malawian kwacha",
+  MZN: "Mozambican metical",
 }
 
 // Local symbols that don't collide with another currency RemitX handles.
 // USD and NAD both write "$", so they keep their codes.
-const SYMBOLS: Record<string, string> = { ZAR: "R" }
+const SYMBOLS: Record<string, string> = { ZAR: "R", EUR: "€", GBP: "£" }
 
 /** "R" for rand, otherwise the currency's own code (`formatMoney`'s prefix,
  * for a line that builds its own string rather than calling it). */
