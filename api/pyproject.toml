@@ -14,7 +14,7 @@ dependencies = [
     "celery>=5.4.0",
     "redis>=5.0.0",
     "clerk-backend-api>=7.0.0,<8",
-    "xrpl-py>=4.3.0",
+    "xrpl-py>=4.3.0",  # decommissioned
     # Fernet decryption of the XRPL seed and the EVM treasury key (worker only).
     "cryptography>=42.0.0",
     # Derives the EVM treasury account from its decrypted key (worker only).

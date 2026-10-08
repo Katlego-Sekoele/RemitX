@@ -140,6 +140,8 @@ class Config:
     def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
         return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
 
+    # XRPL is being decommissioned (#276, removed in #225). No EVM code reads
+    # these settings; they are kept for reference and rollback.
     # XRPL testnet + UCTUSD issued-currency settings, shared with
     # platform_wallet/scripts/create_xprl_platform_wallet.py (same env vars,
     # same defaults) — read here too so remitx_worker/xrpl_service.py doesn't

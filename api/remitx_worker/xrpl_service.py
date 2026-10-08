@@ -1,5 +1,9 @@
 """The one piece of real on-chain code in the worker: burning uctusd.
 
+DECOMMISSIONED (#276): kept for reference and possible rollback. It is still
+called by `remitx_worker.tasks.burn_treasury_tokens` today, and will stop
+being called once the burn moves to EVM (#278).
+
 Burning an XRPL issued currency means sending it back to its issuer — the
 issuer can freely reissue, so absorbing a balance back into it is the
 standard way to destroy one. Used by
