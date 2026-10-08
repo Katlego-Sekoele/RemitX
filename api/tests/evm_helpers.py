@@ -29,5 +29,5 @@ def configure_fake_treasury(monkeypatch) -> FakeTreasury:
 
     monkeypatch.setenv("EVM_TREASURY_ADDRESS", account.address)
     monkeypatch.setenv("EVM_ENCRYPTION_KEY", encryption_key)
-    monkeypatch.setenv("EVM_TREASURY_PRIVATE_KEY_ENCRYPTED", encrypted_key)
+    monkeypatch.setenv("EVM_TREASURY_KEY_ENCRYPTED", encrypted_key)
     return FakeTreasury(account.address, private_key, encryption_key, encrypted_key)

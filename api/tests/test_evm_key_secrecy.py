@@ -20,7 +20,7 @@ from remitx_api.models.orm.user import User
 from remitx_worker.evm_service import _load_treasury_account
 from tests.evm_helpers import configure_fake_treasury
 
-SECRET_SETTINGS = ("EVM_ENCRYPTION_KEY", "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED")
+SECRET_SETTINGS = ("EVM_ENCRYPTION_KEY", "EVM_TREASURY_KEY_ENCRYPTED")
 
 
 # --- (a) the API side never touches the key ---------------------------------

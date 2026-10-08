@@ -70,7 +70,7 @@ def test_rejects_a_mismatched_address(monkeypatch):
 def test_rejects_ciphertext_that_is_not_a_private_key(monkeypatch):
     treasury = configure_fake_treasury(monkeypatch)
     not_a_key = Fernet(treasury.encryption_key.encode()).encrypt(b"hello").decode()
-    monkeypatch.setenv("EVM_TREASURY_PRIVATE_KEY_ENCRYPTED", not_a_key)
+    monkeypatch.setenv("EVM_TREASURY_KEY_ENCRYPTED", not_a_key)
 
     with pytest.raises(RuntimeError, match="valid EVM private key") as caught:
         _load_treasury_account()
@@ -82,7 +82,7 @@ def test_rejects_ciphertext_that_is_not_a_private_key(monkeypatch):
 @pytest.mark.parametrize(
     "missing",
     [
-        "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED",
+        "EVM_TREASURY_KEY_ENCRYPTED",
         "EVM_ENCRYPTION_KEY",
         "EVM_TREASURY_ADDRESS",
     ],

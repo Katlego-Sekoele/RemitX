@@ -117,15 +117,15 @@ def _save_to_env(account: LocalAccount) -> None:
     """Encrypt the key and record the address and encrypted key in .env."""
     encrypted = _encrypt_secret(Web3.to_hex(account.key), _get_encryption_key())
     set_key(str(_ENV_PATH), "EVM_TREASURY_ADDRESS", account.address)
-    set_key(str(_ENV_PATH), "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED", encrypted)
-    print("Wrote EVM_TREASURY_ADDRESS and EVM_TREASURY_PRIVATE_KEY_ENCRYPTED to .env.")
+    set_key(str(_ENV_PATH), "EVM_TREASURY_KEY_ENCRYPTED", encrypted)
+    print("Wrote EVM_TREASURY_ADDRESS and EVM_TREASURY_KEY_ENCRYPTED to .env.")
 
 
 # 1. Load the treasury wallet from .env, or create one
 def _load_existing_wallet() -> LocalAccount | None:
     """Treasury wallet from .env if one was already created, else None."""
     address = os.environ.get("EVM_TREASURY_ADDRESS")
-    encrypted_key = os.environ.get("EVM_TREASURY_PRIVATE_KEY_ENCRYPTED")
+    encrypted_key = os.environ.get("EVM_TREASURY_KEY_ENCRYPTED")
     encryption_key = os.environ.get("EVM_ENCRYPTION_KEY")
     if not (address and encrypted_key):
         return None
@@ -138,7 +138,7 @@ def _load_existing_wallet() -> LocalAccount | None:
         account = Account.from_key(_decrypt_secret(encrypted_key, encryption_key))
     except InvalidToken:
         raise SystemExit(
-            "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED cannot be decrypted with "
+            "EVM_TREASURY_KEY_ENCRYPTED cannot be decrypted with "
             "EVM_ENCRYPTION_KEY; wrong key?"
         ) from None
     # Catches a rotated key or a hand-edited address before anything relies on it.
@@ -166,10 +166,10 @@ def create_treasury_wallet() -> LocalAccount:
 
     # Half a record in .env and no backup: a new key would orphan it.
     if os.environ.get("EVM_TREASURY_ADDRESS") or os.environ.get(
-        "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED"
+        "EVM_TREASURY_KEY_ENCRYPTED"
     ):
         raise SystemExit(
-            "EVM_TREASURY_ADDRESS / EVM_TREASURY_PRIVATE_KEY_ENCRYPTED are only "
+            "EVM_TREASURY_ADDRESS / EVM_TREASURY_KEY_ENCRYPTED are only "
             "partly set in .env and there is no backup; fix .env by hand."
         )
 
@@ -197,9 +197,9 @@ def read_balances(w3: Web3, address: str) -> tuple[str, str]:
     """(native balance in XRP, UCTUSD balance), both read-only."""
     native = w3.from_wei(w3.eth.get_balance(address), "ether")
 
-    token_address = _setting("UCTUSD_EVM_CONTRACT_ADDRESS", DEFAULT_UCTUSD_CONTRACT)
+    token_address = _setting("UCTUSD_CONTRACT_ADDRESS", DEFAULT_UCTUSD_CONTRACT)
     if not Web3.is_address(token_address):
-        raise SystemExit("UCTUSD_EVM_CONTRACT_ADDRESS is not set to a valid address.")
+        raise SystemExit("UCTUSD_CONTRACT_ADDRESS is not set to a valid address.")
     token_address = Web3.to_checksum_address(token_address)
     if not w3.eth.get_code(token_address):
         raise SystemExit(f"No contract deployed at {token_address} on this chain.")
