@@ -8,6 +8,82 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #218 R1-04 Deploy to the XRPL EVM Testnet
+
+**Date:** 2026-10-08
+**Branch:** `feature/218-deploy-testnet` (stacked on
+`feature/212-contract-interface-d12`)
+**Status:** Script ready and tested locally. **Not deployed:** the
+deployer has 0 test XRP (waiting on #224).
+
+### What changed
+
+- **`hardhat.config.ts`:** loads the repo-root `.env` (with `dotenv`) and
+  adds the `xrplEvmTestnet` network (RPC `https://rpc.testnet.xrplevm.org`,
+  chain 1449000) and Blockscout explorer settings for `hardhat verify`. The
+  deployer key is read only from `DEPLOYER_PRIVATE_KEY` in the environment.
+- **`scripts/deploy.ts`** deploys `StokvelVault` with admin = deployer,
+  operator = Treasury Wallet, token = UCTUSD, release target = Treasury
+  Wallet (D2) and `maxMembers` = 3 (DEC-3).
+  - **Pre-flight checks:** settings present and valid, deployer ≠ Treasury,
+    a contract exists at the UCTUSD address with 18 decimals, the deployer
+    has gas, and no existing deployment record would be overwritten
+    (`FORCE_REDEPLOY=1` to replace one).
+  - **Post-deploy checks:** roles, token, release target, `maxMembers`,
+    not paused.
+  - **On testnet** it writes `deployments/xrplEvmTestnet.json` (address,
+    block, tx hash, constructor arguments) and prints the
+    `STOKVEL_CONTRACT_ADDRESS` line and the verify command.
+  - **On the local Hardhat network** it deploys a mock token and writes
+    nothing (a dry run).
+- npm scripts: `deploy:local` and `deploy:testnet`.
+- Local `.env` (gitignored): `DEPLOYER_ADDRESS`, `DEPLOYER_PRIVATE_KEY` and
+  `EVM_TREASURY_ADDRESS`.
+
+### Files
+
+- `contracts/hardhat.config.ts`, `contracts/package.json`,
+  `contracts/package-lock.json` (adds `dotenv`)
+- `contracts/scripts/deploy.ts` (new)
+- `contracts/smart_contracts_changes.md`
+
+### Verified
+
+- `npm run deploy:local`: deploys, and all 7 post-deploy checks pass.
+- `npm run deploy:testnet` against the real testnet: connects to chain
+  1449000, loads the deployer key, finds UCTUSD (`UCTUSD`, 18 decimals), then
+  stops with "Deployer … has no test XRP" before sending anything.
+
+### Acceptance criteria
+
+- [x] The deployment script reads the deployer key from the environment
+  only.
+- [x] The deployer is a separate address from the Treasury Wallet
+  (`0x4948b5bf3C39d63a24918de9B0346B6159f7829C`), and its key is only in the
+  local `.env`. The script refuses to deploy if they match.
+- [ ] Funded with test XRP (#224, Claire).
+- [ ] Deploy with the UCTUSD address; operator role to the Treasury Wallet;
+  admin role stays with the deployer. The script does this and checks it;
+  it just needs to run.
+- [ ] Verify the contract on the explorer. The command is printed after
+  deploy. The Blockscout API URL in the config is the explorer's standard
+  `/api` path and has not been tried yet.
+- [ ] Record the contract address in doc §2 and `.env.example`
+  (`STOKVEL_CONTRACT_ADDRESS`).
+- [ ] **Done when:** a `contribute` call from the Treasury Wallet succeeds on
+  testnet. This needs the Treasury key, which Claire holds (encrypted, #277
+  and #224), so it is either run by her or by the backend once R2-02 lands.
+
+### How to deploy (once funded)
+
+```bash
+cd contracts
+npm run deploy:testnet
+# then run the printed verify command, and add STOKVEL_CONTRACT_ADDRESS
+```
+
+---
+
 ## #212 DEC-1 Reconcile the contract interface (with #215 R1-01 views and #213 DEC-3 member cap)
 
 **Date:** 2026-10-08
