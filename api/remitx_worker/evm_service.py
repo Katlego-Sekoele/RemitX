@@ -2,7 +2,7 @@
 
 The stokvel Treasury Wallet is an address on the XRPL EVM Testnet. Its private
 key sits in the environment Fernet-encrypted
-(`EVM_TREASURY_PRIVATE_KEY_ENCRYPTED`), and the key that decrypts it
+(`EVM_TREASURY_KEY_ENCRYPTED`), and the key that decrypts it
 (`EVM_ENCRYPTION_KEY`) is a separate setting, never stored with it. Both are
 written by `platform_wallet/scripts/create_evm_platform_wallet.py`.
 
@@ -30,12 +30,12 @@ def _load_treasury_account() -> LocalAccount:
     the key or its ciphertext, and decryption errors are raised `from None` so
     no chained exception does either.
     """
-    encrypted_key = os.environ.get("EVM_TREASURY_PRIVATE_KEY_ENCRYPTED", "")
+    encrypted_key = os.environ.get("EVM_TREASURY_KEY_ENCRYPTED", "")
     encryption_key = os.environ.get("EVM_ENCRYPTION_KEY", "")
     address = os.environ.get("EVM_TREASURY_ADDRESS", "")
     if not (encrypted_key and encryption_key and address):
         raise RuntimeError(
-            "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED / EVM_ENCRYPTION_KEY / "
+            "EVM_TREASURY_KEY_ENCRYPTED / EVM_ENCRYPTION_KEY / "
             "EVM_TREASURY_ADDRESS not configured"
         )
 
@@ -46,8 +46,7 @@ def _load_treasury_account() -> LocalAccount:
     except (InvalidToken, ValueError):
         # ValueError: EVM_ENCRYPTION_KEY is not a valid Fernet key at all.
         raise RuntimeError(
-            "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED could not be decrypted with "
-            "EVM_ENCRYPTION_KEY"
+            "EVM_TREASURY_KEY_ENCRYPTED could not be decrypted with EVM_ENCRYPTION_KEY"
         ) from None
 
     try:
@@ -56,8 +55,7 @@ def _load_treasury_account() -> LocalAccount:
         # Broad on purpose: bad hex is a ValueError, but a wrong-length key is
         # eth_keys' own ValidationError, and either may echo the input.
         raise RuntimeError(
-            "EVM_TREASURY_PRIVATE_KEY_ENCRYPTED does not decrypt to a valid "
-            "EVM private key"
+            "EVM_TREASURY_KEY_ENCRYPTED does not decrypt to a valid EVM private key"
         ) from None
 
     # Addresses are public, so naming both is safe. Compared case-insensitively
