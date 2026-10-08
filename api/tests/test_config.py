@@ -1,3 +1,4 @@
+import pytest
 from remitx_api.config import Config, TestConfig
 
 
@@ -61,3 +62,20 @@ def test_evm_settings_read_env(monkeypatch):
         "STOKVEL_CONTRACT_ADDRESS",
     ):
         assert getattr(config, name) == overrides[name]
+
+
+def test_max_stokvel_members_defaults_to_three(monkeypatch):
+    monkeypatch.delenv("MAX_STOKVEL_MEMBERS", raising=False)
+    assert Config().MAX_STOKVEL_MEMBERS == 3
+
+
+def test_max_stokvel_members_reads_env(monkeypatch):
+    monkeypatch.setenv("MAX_STOKVEL_MEMBERS", "12")
+    assert Config().MAX_STOKVEL_MEMBERS == 12
+
+
+@pytest.mark.parametrize("value", ["1", "256"])
+def test_max_stokvel_members_rejects_out_of_range(monkeypatch, value):
+    monkeypatch.setenv("MAX_STOKVEL_MEMBERS", value)
+    with pytest.raises(ValueError, match="MAX_STOKVEL_MEMBERS"):
+        _ = Config().MAX_STOKVEL_MEMBERS

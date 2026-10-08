@@ -214,10 +214,20 @@ class Config:
     def EVM_TREASURY_ADDRESS(self) -> str:
         return os.getenv("EVM_TREASURY_ADDRESS", "")
 
-    # Set once the stokvel contract is deployed (#200).
+    # Set once the stokvel contract is deployed (#218).
     @property
     def STOKVEL_CONTRACT_ADDRESS(self) -> str:
         return os.getenv("STOKVEL_CONTRACT_ADDRESS", "")
+
+    # Must equal the deployed stokvel contract's maxMembers.
+    @property
+    def MAX_STOKVEL_MEMBERS(self) -> int:
+        value = int(os.getenv("MAX_STOKVEL_MEMBERS", "3"))
+        if not 2 <= value <= 255:
+            raise ValueError(
+                f"MAX_STOKVEL_MEMBERS must be between 2 and 255, got {value}"
+            )
+        return value
 
     # exchangerate-api.com key, used by services/exchange_rate_provider.py.
     @property
