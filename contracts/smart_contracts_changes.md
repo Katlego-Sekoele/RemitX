@@ -8,6 +8,147 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #212 DEC-1 Reconcile the contract interface (with #215 R1-01 views and #213 DEC-3 member cap)
+
+**Date:** 2026-10-08
+**Branch:** `feature/212-contract-interface-d12` (stacked on
+`feature/199-pause-resume`)
+**Status:** Contract and tests done (67 passing). Doc §1 not yet updated
+(see "Left open").
+
+### Why
+
+On 2026-10-07 the team agreed doc decision D12 and a new contract interface
+in `docs/stokvel_integration.md` §1, after #197–#199 were built. The
+backend codes against §1, so the contract now follows it. #199, #200 and
+#201 were replaced by #217, #216 and #273.
+
+### What changed
+
+- **Stokvels and cycles are separate.**
+  `createStokvel(id, contribution)` registers a stokvel.
+  `startCycle(id, memberIds, roundStartTimes, roundDeadlines, payoutTimes)`
+  fixes the members (array order is the payout order) and the round
+  schedule. `updateStokvel` and the single `startTime`/`interval` are gone.
+  A new cycle can start once the previous one closes, which closes the old
+  "no next cycle" open item from #198.
+- **Payout-time gate (D12):** round N releases only when it is fully paid,
+  round N+1 is fully paid (or N is the last round), **and**
+  `block.timestamp >= payoutTimes[N]`. A contribution that completes the
+  condition after the payout time releases in the same transaction, as
+  before.
+- **New external `finalise(id, round)`** (operator, `whenNotPaused`,
+  `nonReentrant`) for rounds that become due with time. It releases exactly
+  the requested round, which must be the next to release.
+- **`contribute(id, round, memberId)` has no `amount` again,** matching
+  §1. `WrongAmount` now means the vault received less than the contribution:
+  it measures its balance before and after the pull.
+- **`maxMembers` is a constructor argument (DEC-3):** 3 for the prototype,
+  minimum 2. It replaces the `MAX_MEMBERS = 12` constant.
+- **Views (R1-01):** `getStokvel`, `getCycle`, `hasPaid`, `roundPool`,
+  `isFinalisable`, plus `isMember`, `paidCount` and `openRound`. All except
+  `getCycle` read the current cycle.
+- **Events (§1 names):** `StokvelCreated(id, contribution)`,
+  `CycleStarted(id, cycle)`,
+  `ContributionMade(id, cycle, round, memberId, amount)`,
+  `RoundFinalised(id, cycle, round, memberId, pool)` and
+  `CycleClosed(id, cycle)`. `id` and `memberId` are indexed.
+- **Errors (§1 names):** `NotMember`, `AlreadyPaid`, `WrongRound`,
+  `WrongAmount`, `NotYetFinalisable`, `AlreadyFinalised`, `CycleNotOpen`,
+  `UnknownStokvel` and `MaxMembersExceeded`, plus input-validation errors
+  (`ZeroId`, `StokvelExists`, `ZeroContribution`, `CycleInProgress`,
+  `TooFewMembers`, `ZeroMemberId`, `DuplicateMember`,
+  `ScheduleLengthMismatch`, `InvalidSchedule`, `UnknownCycle`,
+  `InvalidMaxMembers`, `ZeroAddress`, `AdminIsOperator`).
+- **IDs** are database UUIDs packed left-aligned into `bytes32`.
+  `uuidToBytes32` in `test/helpers.ts` is the reference packing; the backend
+  must match it.
+- `startCycle` was split into the `_beginCycle` and `_validateSchedule`
+  helpers to stay under the EVM's stack limit, without switching to the
+  `viaIR` compiler mode.
+
+### Files
+
+- `contracts/src/StokvelVault.sol` (rewritten)
+- `contracts/src/mocks/FeeOnTransferToken.sol` (new; for the `WrongAmount`
+  test)
+- `contracts/test/helpers.ts` (new; shared fixtures and `uuidToBytes32`)
+- `contracts/test/StokvelVault.setup.test.ts` (new; replaces
+  `StokvelVault.create.test.ts`)
+- `contracts/test/StokvelVault.contribute.test.ts`,
+  `StokvelVault.pause.test.ts` (rewritten)
+- `contracts/test/StokvelVault.views.test.ts` (new)
+
+### Acceptance criteria
+
+DEC-1 (#212):
+- [x] `finalise` requires the paid condition **and**
+  `block.timestamp >= payoutTimes[round]`; `startCycle` takes `payoutTimes`;
+  "too early" raises `NotYetFinalisable`.
+- [x] `createStokvel` shape, `startCycle`, and event names now match §1.
+- [ ] Update doc §1 to match the contract as built, and comment on #197 and
+  #198.
+- [ ] Tell Claire and Sian once §1 is stable.
+
+R1-01 (#215):
+- [x] `getStokvel`, `getCycle`, `hasPaid`, `roundPool` and `isFinalisable`,
+  with a test each. The `isFinalisable` tests cover the paid condition alone,
+  the time alone, and both together.
+- [ ] Write their signatures into doc §1.
+
+R1-02 (#216), the two new tests it asks for:
+- [x] Finalise is rejected before the payout time even when all have paid.
+- [x] A round blocked after its payout time while a member has not paid is
+  then released once they pay, in the same transaction.
+
+DEC-3 (#213), contract side:
+- [x] `maxMembers` is set at deployment; 3 goes in the deploy script (#218).
+
+### Decisions
+
+- **The error is named `CycleNotOpen`, not `CycleClosed`.** §1 uses
+  `CycleClosed` for both an event and an error, and Solidity does not allow
+  one name for both. The event keeps the §1 name.
+- **`cycle` was added to `ContributionMade` and `RoundFinalised`.** §1 has
+  multiple cycles, but its events had no cycle number, so event sync (R2-13)
+  could not tell cycles apart.
+- **Start times and deadlines are stored but not enforced.** Only payout
+  times are a hard gate (D7, D12). Rounds still fill in order, and members
+  can pay ahead.
+- **The schedule must be ordered.** Within each round, start ≤ deadline ≤
+  payout. Start and payout times may not go backwards between rounds. Equal
+  times are allowed. This guarantees that the round released next is always
+  the earliest one due.
+- **`finalise` releases exactly one round.** It must be the next round to
+  release; an earlier one gives `AlreadyFinalised` and a later one
+  `NotYetFinalisable`. The scheduled task calls it once per due round.
+- **`isFinalisable` ignores pause** and reports only the release
+  conditions. Check `paused()` separately.
+- **Member IDs should be per-stokvel row UUIDs** (for example
+  `stokvel_members.id`), not user IDs, so one person's stokvels cannot be
+  linked on-chain. This replaces the earlier HMAC suggestion: random UUIDs
+  are not guessable, and a per-stokvel row ID is not linkable.
+- **Pause is unchanged:** `contribute` and `finalise` stop, while
+  `createStokvel`, `startCycle` and the views keep working.
+
+### Left open / for later tickets
+
+- **Doc §1 update (DEC-1 and R1-01 "done when"):** the doc lives on `main`.
+  It needs the `CycleNotOpen` name, `cycle` in the two events, the extra
+  validation errors, the view signatures, `maxMembers` in the constructor,
+  and the `uuidToBytes32` packing.
+- **Cancel and refund (#220 R1-06)** waits on #208. Any refund function
+  must carry `whenNotPaused`.
+- **Deploy (#218):** use constructor
+  `(admin = deployer, operator = Treasury Wallet, UCTUSD
+  0x7055071C7B79A859d9514e62833BFf041ce71074, releaseTarget = Treasury
+  Wallet, maxMembers = 3)`.
+- **Product questions still open:** P2 (legal review of the payout hold)
+  and P6 (merge the deadline and payout time). If P6 merges them, the
+  contract needs no change: pass the same value for both.
+
+---
+
 ## #199 Stokvel contract: pause and resume
 
 **Date:** 2026-10-07
