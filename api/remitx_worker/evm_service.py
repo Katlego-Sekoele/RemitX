@@ -29,12 +29,10 @@ sends from the Treasury Wallet must be serialised with the others (one lock or
 one single-concurrency queue): the burn (#278), the contribution tasks and the
 scheduled release task that calls `finalise` (#273).
 
-Logging: `remitx_api.log_redaction` hides any `0x` + 64 hex digits, because
-that is what a private key looks like. Transaction and block hashes have the
-same shape, so they read `[REDACTED]` in logs too. Persist a hash in the
-database rather than relying on a log line to find it again. Packed `bytes32`
-IDs (`uuid_to_bytes32`) are also `0x` + 64 hex digits and are hidden the same
-way, so log the UUID form of a stokvel or member ID, not the bytes32.
+Logging: nothing scrubs log lines. Never log a transaction dict, an account
+object or a decrypted key, and log a stokvel or member ID in its UUID form,
+not as `bytes32`. Persist a transaction hash in the database so it can be
+found again.
 """
 
 import os
