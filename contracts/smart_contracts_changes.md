@@ -8,6 +8,64 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #219 R1-05 Contract README, ABI export and ADR
+
+**Date:** 2026-10-08
+**Branch:** `feature/219-readme-abi-adr` (stacked on
+`feature/218-deploy-testnet`)
+**Status:** Done, tests passing (68: 67 plus the ABI drift test)
+
+### What changed
+
+- **`contracts/README.md`:**
+  - the trust assumption (brief §7.4): the contract trusts the backend to
+    identify the contributing member
+  - how stokvels, cycles, rounds and the release rule work
+  - roles, the ID packing and the privacy rule
+  - how the backend uses the contract, plus develop and deploy commands
+  - it points to doc §1 as the interface source of truth
+- **`contracts/abi/StokvelVault.json`:** the exported ABI the backend loads
+  (66 entries: functions, events and errors). Committed.
+- **`contracts/scripts/export-abi.js`** and `npm run export:abi`, which
+  compiles and then writes the ABI.
+- **`contracts/test/abi.test.ts`:** fails if the committed ABI no longer
+  matches the compiled contract. Checked: with a stale ABI file it fails.
+- **`docs/adr/0002-one-contract-many-stokvels.md`:** why one shared contract
+  rather than one per stokvel (doc D4), and what that implies: shared funds
+  isolated by per-round accounting, a contract-wide pause, bounded loops, and
+  no upgrades.
+
+### Files
+
+- `contracts/README.md`, `contracts/abi/StokvelVault.json`,
+  `contracts/scripts/export-abi.js`, `contracts/test/abi.test.ts` (new)
+- `docs/adr/0002-one-contract-many-stokvels.md` (new)
+- `contracts/package.json` (the `export:abi` script)
+- `contracts/smart_contracts_changes.md`
+
+### Acceptance criteria
+
+- [x] State that the contract trusts the backend to identify the
+  contributing member (README "Trust assumption").
+- [x] Export the ABI to a path the backend reads:
+  `contracts/abi/StokvelVault.json`.
+- [x] ADR: one contract holding many stokvels (D4).
+- [x] **Done when** the backend can load the ABI without copying it by
+  hand. It is a committed JSON file, kept in sync by the test.
+
+### Decisions
+
+- **The ABI file is `StokvelVault.json`, not the plan's `Stokvel.json`.** It
+  is named after the contract so the two cannot be confused. The plan's file
+  names are suggestions.
+- **ADR numbered 0002;** 0001 is the QA seeder ADR on `main`.
+
+### Left open
+
+- Doc §1 links the README once #283 and this branch are merged.
+
+---
+
 ## #218 R1-04 Deploy to the XRPL EVM Testnet
 
 **Date:** 2026-10-08
