@@ -19,6 +19,9 @@ dependencies = [
     "cryptography>=42.0.0",
     # Derives the EVM treasury account from its decrypted key (worker only).
     "eth-account==0.14.0",
+    # XRPL EVM Testnet client for the stokvel Treasury Wallet (worker only).
+    # Same pin as platform_wallet/scripts/requirements.txt.
+    "web3==8.0.0",
     # S3 client for Neon Object Storage (MinIO locally) — KYC document uploads.
     "boto3>=1.35.0",
 ]
