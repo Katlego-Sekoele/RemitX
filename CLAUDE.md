@@ -10,6 +10,7 @@ Hard constraints from the brief:
 
 - XRPL **Testnet only**. No mainnet accounts, no real funds, no production blockchain credentials.
 - XRPL private keys stored in the DB must be encrypted, with the encryption key held outside that database. Keys must never be returned via the API, logged, or committed.
+- XRPL Testnet still serves normal remittances. The stokvel Treasury Wallet is a separate EVM address on the **XRPL EVM Testnet** (chain id 1449000, Testnet only), holding UCTUSD as an ERC-20. Its private key is Fernet-encrypted with the encryption key held elsewhere, and only the worker decrypts it and signs ([api/remitx_worker/evm_service.py](api/remitx_worker/evm_service.py)); the API's `Config` exposes neither secret.
 - Uploaded KYC documents live in object storage, never in Postgres. Uploads are POSTed to the API, which identifies the file by its leading bytes before writing it to the bucket; reads are signed URLs that expire in minutes, and every one is written to the audit log.
 - RLUSD settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting).
 - RLUSD transfer may not start until the simulated ZAR cash-in is confirmed.

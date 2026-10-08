@@ -2,6 +2,8 @@
 
 Cross-border remittance prototype. Sender in South Africa pays ZAR, beneficiary in Zimbabwe receives ZWL, settled with `uctusd` tokens on the XRP Ledger Testnet.
 
+> **Note (#204):** everything in this file still runs on the XRP Ledger Testnet. The stokvel Treasury Wallet is a separate EVM address on the XRPL EVM Testnet (chain id 1449000), served by `remitx_worker/evm_service.py`. Nothing in the flows below uses it yet.
+
 ---
 
 ## 1. Ledger Model

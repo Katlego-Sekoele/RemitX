@@ -81,6 +81,15 @@ Hobby includes two custom domains: Production `remitx.tech` and QA
 | `TF_VAR_monthly_limit_zar_unverified` | **Variable** | Unverified monthly limit, ZAR |
 | `TF_VAR_daily_limit_zar` | **Variable** | Verified daily limit, ZAR |
 | `TF_VAR_monthly_limit_zar` | **Variable** | Verified monthly limit, ZAR |
+| `TF_VAR_evm_encryption_key` | Secret | Fernet key that decrypts the EVM treasury key (`EVM_ENCRYPTION_KEY`). Optional for now. **Worker only.** |
+| `TF_VAR_evm_treasury_private_key_encrypted` | Secret | Encrypted EVM treasury key (`EVM_TREASURY_PRIVATE_KEY_ENCRYPTED`). Optional for now. **Worker only.** |
+| `TF_VAR_evm_treasury_address` | **Variable** | Treasury Wallet EVM address on XRPL EVM Testnet. Optional for now. API and worker. |
+| `TF_VAR_evm_rpc_url` | **Variable** | XRPL EVM Testnet JSON-RPC URL (default `https://rpc.testnet.xrplevm.org`). Optional. API and worker. |
+| `TF_VAR_evm_chain_id` | **Variable** | Chain id (default `1449000`). Optional. API and worker. |
+| `TF_VAR_evm_explorer_url` | **Variable** | Explorer base URL (default `https://explorer.testnet.xrplevm.org`). Optional. API and worker. |
+| `TF_VAR_uctusd_evm_contract_address` | **Variable** | UCTUSD ERC-20 address (default in `.env.example`). Optional. API and worker. |
+| `TF_VAR_uctusd_evm_decimals` | **Variable** | UCTUSD ERC-20 decimals (default `18`). Optional. API and worker. |
+| `TF_VAR_stokvel_contract_address` | **Variable** | Stokvel contract address, set after its deployment (#200). Optional. API and worker. |
 
 The **Variable** rows are GitHub environment variables (`vars`), not secrets.
 Quote, fee, and limit values land on the API. The XRPL rows land on the API
@@ -89,6 +98,15 @@ on the worker only. Copy the non-secret values from `.env.example` when QA
 and Production should match local. Add the same names to both the `qa` and
 `prod` environments. A rollout with any of them empty fails in the
 `terraform` job before apply.
+
+The `TF_VAR_evm_*`, `TF_VAR_uctusd_evm_*` and `TF_VAR_stokvel_contract_address`
+rows are the exception: they are **optional** and not in the required-input
+check, because the GitHub values do not exist yet. An unset one reaches
+Terraform as `""` and is left out of the services' environment, so the public
+settings fall back to the API's `Config` defaults (the XRPL EVM Testnet values
+in `.env.example`). The two EVM secrets land on the **worker only**, never on
+the API, and only once they are set. Add them to the required check in
+`deploy.yml` once they are set in both environments.
 
 4. Apply **shared first**. QA and Production read `remitx-shared` via
    `terraform_remote_state`. Shared apply authorizes those workspaces as

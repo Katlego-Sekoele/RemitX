@@ -108,6 +108,29 @@ A push that only touches the pipeline or docs runs `terraform` but no deploy
 jobs — there is no new application code to roll out. Use a manual run if you
 want the services redeployed as well.
 
+## XRPL EVM Treasury Wallet (stokvel)
+
+Normal remittances still settle on the **XRP Ledger Testnet**. The stokvel
+Treasury Wallet is a separate address on the **XRPL EVM Testnet** (chain id
+`1449000`), holding UCTUSD as an ERC-20 and paying gas in test XRP. It is
+created by `platform_wallet/scripts/create_evm_platform_wallet.py`.
+
+| Setting | Secret? | Reaches |
+|---------|---------|---------|
+| `EVM_ENCRYPTION_KEY` | yes | worker only |
+| `EVM_TREASURY_PRIVATE_KEY_ENCRYPTED` | yes | worker only |
+| `EVM_TREASURY_ADDRESS` | no | API and worker |
+| `EVM_RPC_URL`, `EVM_CHAIN_ID`, `EVM_EXPLORER_URL` | no | API and worker |
+| `UCTUSD_EVM_CONTRACT_ADDRESS`, `UCTUSD_EVM_DECIMALS` | no | API and worker |
+| `STOKVEL_CONTRACT_ADDRESS` | no | API and worker (set after #200) |
+
+Each is a Terraform input from the matching `TF_VAR_*` GitHub environment
+secret or variable (see [infra/README.md](../infra/README.md)). All are
+optional for now: an unset public value falls back to the API's `Config`
+default, and the secrets are added to the worker only once they are set. Only
+the worker decrypts the key and signs (`api/remitx_worker/evm_service.py`); the
+API's `Config` has no setting for either secret.
+
 ## Object storage (KYC documents)
 
 Uploaded identity documents are bytes, and bytes do not belong in Postgres — a
