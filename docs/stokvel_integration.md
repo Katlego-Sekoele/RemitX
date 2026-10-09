@@ -44,6 +44,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 1, 2, 6, 8, 9, 10, 13, 14 | Review fixes on #283: error order marked *pending #291* (on main a repeat payment into a filled round still reports `WrongRound`, and a nonexistent round is accepted); files and features from #284, #285 and the fix branch marked "not on main yet"; ID scheme added as an open question (Katlego's review) and flagged in section 1; `CycleNotOpen` maps to neutral `cycle_not_open`; `ERC20InsufficientBalance` mapped (Treasury out of UCTUSD); UCTUSD checked on testnet: re-approve from non-zero is fine, and `burn(uint256)` works from the Treasury (answers the burn-method question, to confirm on #278) | |
 | 2026-10-09 | 1, 9, 13 | #291 merged: section 1 error order is now what `main` does (pending markers removed); tests 71 on `main` | |
 | 2026-10-09 | 2, 9, 13 | Contract deployed: `StokvelVault` at `0x2f240705314BB79780522635eA47d20072CB8Fe1` (block 8995825), verified on Sourcify; deployment record and `STOKVEL_CONTRACT_ADDRESS` in PR #284; smoke test from the Treasury pending | |
+| 2026-10-09 | 2 | `DEPLOYER_PRIVATE_KEY`: listed in `.env.example` as a commented, empty placeholder (#284); the value stays in the deployer's local `.env` | |
 
 ---
 
@@ -243,7 +244,7 @@ Added to `.env.example` (and `.env.minimal.example` if local dev needs them). Th
 | `EVM_TREASURY_KEY_ENCRYPTED` | Encrypted Treasury Wallet private key; decryption key held outside the database |
 | `EVM_ENCRYPTION_KEY` | Fernet key that decrypts it (as `XRPL_ENCRYPTION_KEY` does today) |
 | `MAX_STOKVEL_MEMBERS` | Member cap (3 for the prototype; see P3). Must equal the contract's `maxMembers` |
-| `DEPLOYER_PRIVATE_KEY` | **Deployer's local `.env` only** (never `.env.example`, never committed, never on Render). Read only by `contracts/scripts/deploy.ts`; the deployer becomes the contract admin |
+| `DEPLOYER_PRIVATE_KEY` | **The value lives only in the deployer's local `.env`**: never committed, never on Render. `.env.example` lists it only as a commented-out, empty placeholder (PR #284). Read only by `contracts/scripts/deploy.ts`; the deployer becomes the contract admin |
 
 The contract deploy script (`npm run deploy:testnet` in `contracts/`; **Pending, not on main yet**, PR #284) reads `EVM_RPC_URL`, `EVM_CHAIN_ID`, `UCTUSD_CONTRACT_ADDRESS`, `EVM_TREASURY_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `DEPLOYER_PRIVATE_KEY` from the repo-root `.env`, with section 2's values as defaults for the public ones.
 
