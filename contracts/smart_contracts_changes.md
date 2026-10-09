@@ -10,11 +10,14 @@ taken (and why), and anything left open for a later ticket.
 
 ## #218 R1-04 Deploy to the XRPL EVM Testnet
 
-**Date:** 2026-10-08
-**Branch:** `feature/218-deploy-testnet` (stacked on
-`feature/212-contract-interface-d12`)
-**Status:** Script ready and tested locally. **Not deployed:** the
-deployer has 0 test XRP (waiting on #224).
+**Date:** 2026-10-08 (script), 2026-10-09 (deployed)
+**Branch:** `feature/218-deploy-testnet` (rebased onto `main` after #282
+and #291 merged)
+**Status:** **Deployed 2026-10-09** at
+`0x2f240705314BB79780522635eA47d20072CB8Fe1` (block 8995825, tx
+`0xd22e36e8…6ce8fa`), from a contract identical to `main` including the #291
+fix. Verified on Sourcify (exact match). Waiting on the Treasury
+`contribute` smoke test (Claire).
 
 ### What changed
 
@@ -61,18 +64,35 @@ deployer has 0 test XRP (waiting on #224).
 - [x] The deployer is a separate address from the Treasury Wallet
   (`0x4948b5bf3C39d63a24918de9B0346B6159f7829C`), and its key is only in the
   local `.env`. The script refuses to deploy if they match.
-- [ ] Funded with test XRP (#224, Claire).
-- [ ] Deploy with the UCTUSD address; operator role to the Treasury Wallet;
-  admin role stays with the deployer. The script does this and checks it;
-  it just needs to run.
-- [ ] Verify the contract on the explorer. The command is printed after
-  deploy. The Blockscout API URL in the config is the explorer's standard
-  `/api` path and has not been tried yet.
-- [ ] Record the contract address in doc §2 and `.env.example`
-  (`STOKVEL_CONTRACT_ADDRESS`).
+- [x] Funded with test XRP (#224, Claire): 98.83 XRP.
+- [x] Deployed with the UCTUSD address; operator role to the Treasury Wallet;
+  admin role stays with the deployer. All 7 post-deploy checks passed (admin
+  on deployer, operator on Treasury, Treasury not admin, token, release
+  target, `maxMembers` 3, not paused).
+- [x] Verify the contract. **Verified on Sourcify** (creation and runtime
+  exact match): https://repo.sourcify.dev/1449000/0x2f240705314BB79780522635eA47d20072CB8Fe1.
+  The explorer's own verifier failed ("Unable to verify"): its compiler list
+  has no Solidity 0.8.24. hardhat-verify's Sourcify support also failed,
+  because it calls Sourcify's removed v1 API. Hence the new
+  `npm run verify:sourcify` script, which uses API v2. The explorer page does
+  not show "verified" yet; Blockscout usually imports Sourcify verifications
+  later. If the demo needs decoded events on the explorer, check again
+  before the demo.
+- [x] Record the contract address: `.env.example` and the local `.env`
+  (`STOKVEL_CONTRACT_ADDRESS`), `contracts/deployments/xrplEvmTestnet.json`,
+  and doc §2 (PR #283).
 - [ ] **Done when:** a `contribute` call from the Treasury Wallet succeeds on
   testnet. This needs the Treasury key, which Claire holds (encrypted, #277
   and #224), so it is either run by her or by the backend once R2-02 lands.
+
+### Also added on deploy day
+
+- `contracts/scripts/verify-sourcify.js` and `npm run verify:sourcify`, which
+  verify the recorded deployment on Sourcify (API v2).
+- `contracts/deployments/xrplEvmTestnet.json`: address, block, tx hash,
+  constructor arguments.
+- The PR was rebased onto `main` (force-push) so that it holds only its own
+  commit after #282 and #291 were rebase-merged.
 
 ### How to deploy (once funded)
 

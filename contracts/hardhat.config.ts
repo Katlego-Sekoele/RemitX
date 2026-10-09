@@ -47,6 +47,9 @@ const config: HardhatUserConfig = {
       },
     ],
   },
+  // The explorer's own verifier has no Solidity 0.8.24 compiler, and
+  // hardhat-verify's Sourcify support uses Sourcify's removed v1 API
+  // (checked 2026-10-09). Verify with `npm run verify:sourcify` instead.
   sourcify: { enabled: false },
 }
 
