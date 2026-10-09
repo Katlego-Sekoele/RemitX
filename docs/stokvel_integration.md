@@ -43,6 +43,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
 | 2026-10-09 | 1, 2, 6, 8, 9, 10, 13, 14 | Review fixes on #283: error order marked *pending #291* (on main a repeat payment into a filled round still reports `WrongRound`, and a nonexistent round is accepted); files and features from #284, #285 and the fix branch marked "not on main yet"; ID scheme added as an open question (Katlego's review) and flagged in section 1; `CycleNotOpen` maps to neutral `cycle_not_open`; `ERC20InsufficientBalance` mapped (Treasury out of UCTUSD); UCTUSD checked on testnet: re-approve from non-zero is fine, and `burn(uint256)` works from the Treasury (answers the burn-method question, to confirm on #278) | |
 | 2026-10-09 | 1, 9, 13 | #291 merged: section 1 error order is now what `main` does (pending markers removed); tests 71 on `main` | |
+| 2026-10-09 | 2, 9, 13 | Contract deployed: `StokvelVault` at `0x2f240705314BB79780522635eA47d20072CB8Fe1` (block 8995825), verified on Sourcify; deployment record and `STOKVEL_CONTRACT_ADDRESS` in PR #284; smoke test from the Treasury pending | |
 
 ---
 
@@ -215,7 +216,7 @@ All views except `getCycle` read the stokvel's **current (latest) cycle**. Each 
 | RPC URL | `https://rpc.testnet.xrplevm.org` |
 | UCTUSD address | `0x7055071C7B79A859d9514e62833BFf041ce71074` (18 decimals) |
 | UCTUSD distributor | `0xE054D006c45586251872a7EA17Af40b907745293` |
-| Stokvel contract address | _TBD (after deployment)_ |
+| Stokvel contract address | `0x2f240705314BB79780522635eA47d20072CB8Fe1` (`StokvelVault`, deployed 2026-10-09, block 8995825; `maxMembers` 3). Source verified on Sourcify (exact match): https://repo.sourcify.dev/1449000/0x2f240705314BB79780522635eA47d20072CB8Fe1. Explorer: https://explorer.testnet.xrplevm.org/address/0x2f240705314BB79780522635eA47d20072CB8Fe1 |
 
 The sidechain has no trust lines; a wallet address is enough to hold UCTUSD. Test XRP pays gas (faucet: XRPL EVM Testnet). 
 
@@ -466,7 +467,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract: contributions and finalisation | Done | #198, #212 | Merged in PR #282: payout-time gate (D12), external `finalise` |
 | Contract: pause and resume | Done | #217 (was #199) | Merged in PR #282 (contract only; backend route is R3-07 #244, admin control R4-07 #256) |
 | Contract tests | Done | #216 (was #200) | 71 on `main`: hand-written tests for every rule plus randomised invariant tests (80 runs × 60 steps against a reference model), from #282 and #291. PR #285 adds the coverage fixes and the ABI drift test (73; 100% lines, 99% branches) |
-| Contract testnet deployment | In progress | #218 | Deploy script in PR #284 (pre- and post-deploy checks; writes `contracts/deployments/xrplEvmTestnet.json`). Deployer funded 2026-10-09; deploy, explorer verification and the address in section 2 next. A `contribute` from the Treasury Wallet (Role 2 holds the key) closes it. Brief deadline: Fri 9 Oct |
+| Contract testnet deployment | Deployed (smoke test pending) | #218 | Deployed 2026-10-09 at `0x2f24…8Fe1` (section 2) from the fixed contract (#291); all post-deploy checks passed; verified on Sourcify. Record and `.env.example` in PR #284 (open). Closes when a `contribute` from the Treasury Wallet succeeds on testnet (Role 2 holds the key; needs `createStokvel`, `startCycle`, `approve`, `contribute`) |
 | Contract README, ABI export, ADR | In review | #219 | PR #285: `contracts/README.md`, `contracts/abi/StokvelVault.json` (the ABI the backend loads), `docs/adr/0002-one-contract-many-stokvels.md` |
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
 | Contract cancel and refund | Blocked | #220 | Waits on #208 |
@@ -558,7 +559,8 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `contracts/smart_contracts_changes.md` | Per-ticket log of contract changes and decisions | #282 |
 | `contracts/hardhat.config.ts` | Compiler settings (on main, #282); `xrplEvmTestnet` network, explorer verification and `.env` loading (#284, open) | #282, #284 |
 | `contracts/scripts/deploy.ts` | Deploy script (`npm run deploy:local`, `npm run deploy:testnet`) | #284 (open, not on main yet) |
-| `contracts/deployments/xrplEvmTestnet.json` | Deployed address, block, tx hash and constructor arguments (written by the deploy script) | #218 (not created until the deploy) |
+| `contracts/deployments/xrplEvmTestnet.json` | Deployed address, block, tx hash and constructor arguments (written by the deploy script) | #284 (open, not on main yet) |
+| `contracts/scripts/verify-sourcify.js` | Verifies the recorded deployment on Sourcify v2 (`npm run verify:sourcify`); the explorer's verifier lacks solc 0.8.24 | #284 (open, not on main yet) |
 | `contracts/abi/StokvelVault.json` | Exported ABI the backend loads | #285 (open, not on main yet) |
 | `contracts/scripts/export-abi.js` | Writes the ABI from the build (`npm run export:abi`) | #285 (open, not on main yet) |
 | `contracts/README.md` | Contract overview: trust assumption, rules, roles, IDs, backend usage, deploy | #285 (open, not on main yet) |
