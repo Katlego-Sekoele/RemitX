@@ -158,6 +158,24 @@ Found by Kerry while testing.
   all 69 pass. Branch coverage of `contribute` is complete.
 - No interface change: the function signatures, errors and events are the
   same, so the ABI is unchanged.
+- **Randomised invariant tests** (`test/StokvelVault.invariants.test.ts`).
+  Both bugs came from situations nobody wrote a test for, so hand-picked
+  tests are not enough on their own. 80 random runs of 60 steps, with 3 and
+  2 members, mix contributions (right and wrong rounds, wrong members,
+  duplicates), `finalise` calls, time jumps, pause and resume, and new
+  cycles. After every step the contract must match a small reference model
+  of the rules, and these must hold:
+  - the vault holds exactly the unreleased pools;
+  - nothing is paid into a round that does not exist;
+  - each round is released once, to the right member, for the full pool.
+  Seeds are fixed, so a failure can be replayed.
+- **Checked that they work:**
+  - On `main`'s old contract they fail at once. They also found a third
+    ordering issue: a non-member paying a wrong round got `WrongRound`
+    instead of `NotMember`; the new order (member first) fixes it.
+  - With each bug put back into the fixed contract on its own, they catch
+    each one.
+  - 71 tests in total; the random suites add about 40 s.
 
 ### Left open / for later tickets
 
