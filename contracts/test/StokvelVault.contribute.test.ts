@@ -116,9 +116,8 @@ describe("StokvelVault: contributions and release", () => {
 
       await op.contribute(id, 0, THANDI)
       await op.contribute(id, 0, LERATO)
-      await expect(op.contribute(id, 0, SIPHO))
-        .to.be.revertedWithCustomError(vault, "WrongRound")
-        .withArgs(0, 1)
+      // Round 1 is now open; rounds Sipho has not paid that are not open
+      // report WrongRound.
       for (const r of [2, 3, 255]) {
         await expect(op.contribute(id, r, SIPHO))
           .to.be.revertedWithCustomError(vault, "WrongRound")
@@ -132,8 +131,38 @@ describe("StokvelVault: contributions and release", () => {
       for (const r of [0, 1, 2]) await payRound(op, r)
       expect(await vault.openRound(id)).to.equal(3)
       await expect(op.contribute(id, 2, SIPHO))
-        .to.be.revertedWithCustomError(vault, "WrongRound")
-        .withArgs(2, 3)
+        .to.be.revertedWithCustomError(vault, "AlreadyPaid")
+        .withArgs(2, SIPHO)
+      // No round 3 exists: nothing may be paid into it (funds would be stuck).
+      for (const m of [SIPHO, THANDI, LERATO]) {
+        await expect(op.contribute(id, 3, m))
+          .to.be.revertedWithCustomError(vault, "WrongRound")
+          .withArgs(3, 3)
+      }
+      expect(await vault.roundPool(id, 3)).to.equal(0)
+    })
+
+    it("a repeat payment into a round that has filled reports AlreadyPaid, not WrongRound", async () => {
+      const { vault, operator } = await loadFixture(startedFixture)
+      const op = vault.connect(operator)
+      await payRound(op, 0)
+      expect(await vault.openRound(id)).to.equal(1)
+      for (const m of [SIPHO, THANDI, LERATO]) {
+        await expect(op.contribute(id, 0, m))
+          .to.be.revertedWithCustomError(vault, "AlreadyPaid")
+          .withArgs(0, m)
+      }
+    })
+
+    it("a repeat payment into a released round reports AlreadyPaid", async () => {
+      const { vault, operator } = await loadFixture(duePayoutsFixture)
+      const op = vault.connect(operator)
+      await payRound(op, 0)
+      await payRound(op, 1) // releases round 0
+      expect((await vault.getCycle(id, 1)).nextToFinalise).to.equal(1)
+      await expect(op.contribute(id, 0, SIPHO))
+        .to.be.revertedWithCustomError(vault, "AlreadyPaid")
+        .withArgs(0, SIPHO)
     })
 
     it("rejects a short transfer (WrongAmount) and leaves no state", async () => {

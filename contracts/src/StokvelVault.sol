@@ -216,17 +216,24 @@ contract StokvelVault is AccessControl, Pausable, ReentrancyGuard {
     /// that has become due.
     /// @dev Rounds fill in order: a round accepts contributions only once
     /// every earlier round is fully paid. Deadlines are informational.
+    /// A repeat payment is checked before the round, so it always reports
+    /// `AlreadyPaid`, even once that round has filled and the open round
+    /// has moved on.
     function contribute(
         bytes32 id,
         uint8 round,
         bytes32 memberId
     ) external onlyRole(OPERATOR_ROLE) whenNotPaused nonReentrant {
         (Stokvel storage s, uint32 cycle, Cycle storage c) = _openCycle(id);
-        uint8 open = _openRound(id, cycle, c);
-        if (round != open) revert WrongRound(round, open);
         if (!_isMember[id][cycle][memberId]) revert NotMember(memberId);
         if (_paid[id][cycle][round][memberId]) {
             revert AlreadyPaid(round, memberId);
+        }
+        uint8 open = _openRound(id, cycle, c);
+        // `open` equals the member count once every round is paid; no round
+        // that high exists, so nothing may be paid into it.
+        if (round != open || open >= c.members.length) {
+            revert WrongRound(round, open);
         }
 
         uint256 amount = s.contribution;
