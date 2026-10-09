@@ -6,3 +6,5 @@ cache/
 typechain-types/
 coverage/
 coverage.json
+# Records of throwaway local-node deploys (npx hardhat node).
+deployments/localhost.json

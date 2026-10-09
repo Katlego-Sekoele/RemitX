@@ -101,6 +101,30 @@ which is a backend 500. This is recorded in the README and in doc §1 and §6
 fixed in `createStokvel` for all cycles; she will fix the per-cycle wording in
 the backend sections (§3, R2-10, OI-5) herself.
 
+### Deploy script fixes from Claire's #285 review (2026-10-09)
+
+Two of her points were already fixed when #284 merged into this branch: the
+config loads `contracts/.env`, and the messages point there. The doc is
+also in the PR. Fixed now:
+- **A failed post-deploy check no longer loses the address.** The script
+  prints the address and writes `deployments/<network>.json` as soon as the
+  contract exists, then runs the checks and records the result
+  (`postDeployChecks`: `"passed"` or `{ failed: [...] }`). On failure it
+  says the contract is deployed but must not be used. Tested by forcing a
+  check to fail on a local node: the address is recorded, marked failed.
+- **Blank `.env` values fall back to the defaults.** `||` instead of `??`
+  in `hardhat.config.ts`, and an `env()` helper in `deploy.ts`, so
+  `EVM_CHAIN_ID=` no longer means chain 0. Tested against the testnet with
+  blank chain ID, RPC URL, member cap and token address: it ran every
+  pre-flight check and stopped only at "already deployed".
+- **Only the in-process network is a dry run.** A `localhost` node keeps the
+  contract, so it now gets `deployments/localhost.json` (gitignored).
+- README: no hard-coded test count; lists `verify:sourcify` and localhost;
+  describes the new order. `.env.example`: commented `# FORCE_REDEPLOY=1`
+  with a "one-off" note. The deploy script's "next" step points to
+  `npm run verify:sourcify`, because the explorer's verifier cannot verify
+  this contract.
+
 ### Backend review notes (2026-10-09)
 
 Claire (Role 2) confirmed §1 and §6, and the allowance approach. Added to the

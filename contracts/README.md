@@ -98,7 +98,7 @@ on-chain.
 ```bash
 cd contracts
 npm ci
-npx hardhat test          # 69 tests
+npx hardhat test          # all tests (hand-written and randomised)
 npx hardhat coverage      # line and branch coverage
 npm run export:abi        # after any interface change; commit abi/
 ```
@@ -128,12 +128,17 @@ Settings come from the repo-root `.env`, except the deployer key, which goes in 
 | `MAX_STOKVEL_MEMBERS` | Optional; defaults to 3 |
 
 ```bash
-npm run deploy:local      # dry run on a local chain; writes nothing
+npm run deploy:local      # dry run on the in-process chain; writes nothing
 npm run deploy:testnet    # XRPL EVM Testnet (chain 1449000)
+npm run verify:sourcify   # verify the recorded deployment on Sourcify
+# against a running `npx hardhat node`: npx hardhat run scripts/deploy.ts --network localhost
 ```
 
 The script checks the settings, the token and the deployer's gas before
 sending anything, and refuses to overwrite an existing deployment record
-unless `FORCE_REDEPLOY=1`. After deploying it checks the roles and settings,
-writes `deployments/xrplEvmTestnet.json`, and prints the verify command and
-the `STOKVEL_CONTRACT_ADDRESS` line.
+unless `FORCE_REDEPLOY=1`. A blank setting (`MAX_STOKVEL_MEMBERS=`) counts as
+unset and falls back to its default. As soon as the contract exists it prints
+the address and writes `deployments/<network>.json`, then checks the roles and
+settings and adds the result (`postDeployChecks`). A failed check still leaves
+the address recorded, marked as failed. It then prints the
+`STOKVEL_CONTRACT_ADDRESS` line and the verify command.
