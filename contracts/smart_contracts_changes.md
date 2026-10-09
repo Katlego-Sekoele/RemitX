@@ -93,8 +93,14 @@ fix. Verified on Sourcify (exact match). Waiting on the Treasury
   constructor arguments.
 - `.env.example`: a commented-out, empty `# DEPLOYER_PRIVATE_KEY=` placeholder
   with a warning, so the setting is discoverable (repo rule: new settings go
-  in `.env.example`) without ever holding a value. The real key stays only in
-  the deployer's local `.env`.
+  in `.env.example`) without ever holding a value.
+- **The deployer key moved to `contracts/.env`** (gitignored, mode 600), out
+  of the repo-root `.env`. Docker compose loads the root `.env` into the API
+  and worker containers (`env_file: .env`), so the contract admin key was
+  reaching containers that never need it. `hardhat.config.ts` now loads
+  `contracts/.env` for the key and the root `.env` for everything else.
+  Checked: the deploy script still finds the key (it stops only at "already
+  deployed"), and the root `.env` no longer contains it.
 - The PR was rebased onto `main` (force-push) so that it holds only its own
   commit after #282 and #291 were rebase-merged.
 

@@ -5,10 +5,13 @@ import { ethers, network } from "hardhat"
 // Deploy StokvelVault (#218).
 //
 //   npm run deploy:local     dry run on the in-process Hardhat network
-//   npm run deploy:testnet   XRPL EVM Testnet, using the repo-root .env
+//   npm run deploy:testnet   XRPL EVM Testnet
 //
-// Testnet settings (repo-root .env; names from docs/stokvel_integration.md §2):
-//   DEPLOYER_PRIVATE_KEY     deployer key; becomes the contract admin
+// Testnet settings (names from docs/stokvel_integration.md §2):
+//   DEPLOYER_PRIVATE_KEY     in contracts/.env (NOT the repo-root .env, which
+//                            docker compose loads into the app); becomes the
+//                            contract admin
+//   the rest below           repo-root .env
 //   EVM_TREASURY_ADDRESS     Treasury Wallet; operator and release target (D2)
 //   UCTUSD_CONTRACT_ADDRESS  optional, defaults to the brief's UCTUSD address
 //   MAX_STOKVEL_MEMBERS      optional, defaults to 3 (DEC-3)
@@ -30,7 +33,7 @@ function requireAddress(name: string, value: string | undefined): string {
 
 async function main() {
   const [deployer, localTreasury] = await ethers.getSigners()
-  if (!deployer) fail("No deployer account. Set DEPLOYER_PRIVATE_KEY in the repo-root .env")
+  if (!deployer) fail("No deployer account. Set DEPLOYER_PRIVATE_KEY in contracts/.env")
 
   const { chainId } = await ethers.provider.getNetwork()
   const maxMembers = Number(process.env.MAX_STOKVEL_MEMBERS ?? 3)

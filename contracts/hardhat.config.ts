@@ -3,7 +3,11 @@ import dotenv from "dotenv"
 import { HardhatUserConfig } from "hardhat/config"
 import "@nomicfoundation/hardhat-toolbox"
 
-// The repo-root .env is the single source of config (see CLAUDE.md).
+// contracts/.env holds the deployer key only. It is kept out of the
+// repo-root .env because docker compose loads that file into the API and
+// worker containers, which must never see the contract admin key.
+dotenv.config({ path: path.resolve(__dirname, ".env") })
+// The repo-root .env is the single source for every other setting (CLAUDE.md).
 dotenv.config({ path: path.resolve(__dirname, "../.env") })
 
 // Defaults are the public values from docs/stokvel_integration.md section 2.

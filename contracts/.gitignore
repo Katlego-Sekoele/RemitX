@@ -1,3 +1,5 @@
+# Deployer key lives here (see hardhat.config.ts); never commit it.
+.env
 node_modules/
 artifacts/
 cache/
