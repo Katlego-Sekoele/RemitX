@@ -114,11 +114,11 @@ TypeScript is pinned to 5.8 because TypeScript 7 breaks `ts-node`.
 
 ## Deploy
 
-Settings come from the repo-root `.env`:
+Settings come from the repo-root `.env`, except the deployer key, which goes in `contracts/.env` (gitignored). Docker compose loads the root `.env` into the API and worker containers, and they must never see the contract admin key.
 
 | Name | Meaning |
 |---|---|
-| `DEPLOYER_PRIVATE_KEY` | Deployer key; becomes the admin. **Local `.env` only, never committed** |
+| `DEPLOYER_PRIVATE_KEY` | Deployer key; becomes the admin. **In `contracts/.env` only, never committed.** Back it up: it is the only key that can pause or unpause |
 | `EVM_TREASURY_ADDRESS` | Treasury Wallet: operator and release target |
 | `UCTUSD_CONTRACT_ADDRESS` | Optional; defaults to the brief's UCTUSD address |
 | `MAX_STOKVEL_MEMBERS` | Optional; defaults to 3 |
