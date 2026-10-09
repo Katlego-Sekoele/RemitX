@@ -91,6 +91,10 @@ fix. Verified on Sourcify (exact match). Waiting on the Treasury
   verify the recorded deployment on Sourcify (API v2).
 - `contracts/deployments/xrplEvmTestnet.json`: address, block, tx hash,
   constructor arguments.
+- `.env.example`: a commented-out, empty `# DEPLOYER_PRIVATE_KEY=` placeholder
+  with a warning, so the setting is discoverable (repo rule: new settings go
+  in `.env.example`) without ever holding a value. The real key stays only in
+  the deployer's local `.env`.
 - The PR was rebased onto `main` (force-push) so that it holds only its own
   commit after #282 and #291 were rebase-merged.
 
