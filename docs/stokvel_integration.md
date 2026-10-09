@@ -40,6 +40,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 1 | MVP decision: the contribution amount is fixed per stokvel for all cycles; a new amount means a new stokvel | |
 | 2026-10-09 | 2, 8, 9, 10, 13, 14 | Contract work brought up to date: section 2 lists the deploy script's settings and `DEPLOYER_PRIVATE_KEY` (local only); section 8 resolves the contract side of the contribution amount and the Treasury allowance, defers per-cycle amounts, and adds the admin-key question for pause (#244); section 9 marks the contract, tests and pause done (PR #282 merged), deployment in progress (#284) and README/ABI/ADR in review (#285); sections 10, 13 and 14 list the contract features, files and scripts | |
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
+| 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
 
 ---
 
@@ -459,7 +460,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract: stokvels and cycles, interface (DEC-1) | Done | #197, #212, #215 | Merged in PR #282 (2026-10-08); #279–#281 closed as superseded. Matches section 1 and D12 |
 | Contract: contributions and finalisation | Done | #198, #212 | Merged in PR #282: payout-time gate (D12), external `finalise` |
 | Contract: pause and resume | Done | #217 (was #199) | Merged in PR #282 (contract only; backend route is R3-07 #244, admin control R4-07 #256) |
-| Contract tests | Done | #216 (was #200) | 69 tests, 100% lines and 99% branches (`npx hardhat coverage`); coverage fixes in PR #285 |
+| Contract tests | Done | #216 (was #200) | 73 tests once the open PRs merge: hand-written tests for every rule (100% lines, 99% branches) plus randomised invariant tests (80 runs × 60 steps against a reference model). Coverage fixes in PR #285; randomised tests and the duplicate-error fix in branch `fix/duplicate-contribution-error` |
 | Contract testnet deployment | In progress | #218 | Deploy script in PR #284 (pre- and post-deploy checks; writes `contracts/deployments/xrplEvmTestnet.json`). Deployer funded 2026-10-09; deploy, explorer verification and the address in section 2 next. A `contribute` from the Treasury Wallet (Role 2 holds the key) closes it. Brief deadline: Fri 9 Oct |
 | Contract README, ABI export, ADR | In review | #219 | PR #285: `contracts/README.md`, `contracts/abi/StokvelVault.json` (the ABI the backend loads), `docs/adr/0002-one-contract-many-stokvels.md` |
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
@@ -547,7 +548,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `docs/stokvel_integration.md` | This tracking document | |
 | `contracts/` (Hardhat 2, Solidity 0.8.24, OpenZeppelin v5) | Contract project; `npm ci && npx hardhat test` | #282 |
 | `contracts/src/StokvelVault.sol` | The stokvel contract (section 1) | #282 |
-| `contracts/test/` | Tests: setup, contribute, pause, views, ABI drift; `helpers.ts` has the fixtures and `uuidToBytes32`, the reference ID packing | #282, #285 |
+| `contracts/test/` | Tests: setup, contribute, pause, views, ABI drift, randomised invariants; `helpers.ts` has the fixtures and `uuidToBytes32`, the reference ID packing | #282, #285, fix branch |
 | `contracts/src/mocks/` | Test-only tokens (`MockUCTUSD`, `ReentrantToken`, `FeeOnTransferToken`); never deployed | #282 |
 | `contracts/smart_contracts_changes.md` | Per-ticket log of contract changes and decisions | #282 |
 | `contracts/hardhat.config.ts` | Compiler settings; `xrplEvmTestnet` network and explorer verification; loads the repo-root `.env` | #282, #284 |
