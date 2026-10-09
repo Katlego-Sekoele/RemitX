@@ -87,6 +87,10 @@ on-chain.
     the operator (the Treasury itself) can call `contribute`.
   - A missing allowance reverts with the token's
     `ERC20InsufficientAllowance`, which is a backend fault.
+- **Token errors are not in this ABI.** `ERC20InsufficientAllowance`
+  (`0xfb8f41b2`) and `ERC20InsufficientBalance` (`0xe450d38c`, the Treasury
+  is out of UCTUSD) come from UCTUSD during `contribute`'s pull. Decode revert
+  data against this ABI and OpenZeppelin's ERC20 errors (`IERC20Errors`).
 - **Errors** map to API responses in doc §6.
 
 ## Develop

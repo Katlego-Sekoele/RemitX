@@ -101,6 +101,14 @@ which is a backend 500. This is recorded in the README and in doc §1 and §6
 fixed in `createStokvel` for all cycles; she will fix the per-cycle wording in
 the backend sections (§3, R2-10, OI-5) herself.
 
+### Backend review notes (2026-10-09)
+
+Claire (Role 2) confirmed §1 and §6, and the allowance approach. Added to the
+README and doc §1: UCTUSD's `ERC20InsufficientAllowance` and
+`ERC20InsufficientBalance` are not in `abi/StokvelVault.json`, so the backend
+decodes reverts against OpenZeppelin's ERC20 errors too (selectors listed).
+ID scheme: she agrees on the packed UUID for the MVP, pending Marc.
+
 ### Contribution amount per cycle (decided 2026-10-09)
 
 **Decision for the MVP:** the contribution amount stays fixed in
