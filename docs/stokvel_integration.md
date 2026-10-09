@@ -35,6 +35,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-07 | 3, 4, 5, 8, 9 | Review fixes: P2 now mentions the payout time; P5 listed before P6; `stokvel_sync_state` added to section 3; pause and cancel take a `reason`; section 9 records PR #211 (#205 and part of #204); added an open question on log redaction hiding transaction hashes | |
 | 2026-10-07 | 5, 8, 9 | Added the stokvel audit log of admin actions (section 5): new audit actions and subjects on the existing `audit_log`, viewed through `GET /admin/audit` | |
 | 2026-10-07 | Decisions, Proposals, 1, 3, 4, 8, 11, 12 | D5 amended and D12 added: a round is released only when it is fully paid **and** its payout time has passed (Organiser-set); a scheduled backend task releases due rounds. Deadline stays informational. Added P6 (merge deadline and payout time) | |
+| 2026-10-09 | Decisions, Proposals, Deviations, 1, 3, 4, 5, 8, 9 | P4 (cancellation and refunds) rejected as out of scope (#208, [ADR 0003](adr/0003-no-stokvel-cancellation-or-refunds.md)). Removed `cancel`, `refund`, their events, `stokvel.refund`, `stokvel_refund`, the `cancelled` status and the cancel route and audit action. D7 no longer mentions refunds. The possible future design is in the product file, "Future extension: cancellation and refunds" | |
 
 ---
 
@@ -48,7 +49,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | D4 | One contract deployment holds many stokvels (`mapping(stokvelId => Stokvel)`), each with nested cycles and a per-round pool. History is events plus minimal storage (paid, finalised, entitled member). | Design session |
 | D5 | Finalise is automatic. Round N releases once every member has contributed to round N+1 **and round N's payout time has passed** (D12). The last round of a cycle releases once every member has contributed to it and its payout time has passed. | CONTEXT.md, team 2026-10-07 |
 | D6 | The Stokvel is the remittance **sender**. The pool is paid to the scheduled member's Payout beneficiary through the existing remittance flow. Fee and margin are deducted from the pool. | CONTEXT.md |
-| D7 | Contributions are paid from the member's fiat account in the Stokvel currency and refunded as the original fiat amount. The deadline is informational only; there are no penalties on the platform. | CONTEXT.md |
+| D7 | Contributions are paid from the member's fiat account in the Stokvel currency and are not refunded (P4 rejected). The deadline is informational only; there are no penalties on the platform. | CONTEXT.md |
 | D8 | A Stokvel has no sending limits. Each contribution counts toward the member's own limits. Joining needs the required KYC standing. | CONTEXT.md |
 | D9 | The Stokvel gets a ledger `accounts` row of a new type `STOKVEL` (token currency) and is the sender of its payout remittance. | Team, 2026-10-06 |
 | D10 | The "hold the payout until the recipient pays the next round" idea is already covered by D5. The CONTEXT.md rule stays. A per-member early release (release as soon as the recipient alone has paid the next round) is not adopted. | Team, 2026-10-06 |
@@ -64,26 +65,25 @@ These come from the dev team and need product approval before they are treated a
 | P1 | **Users create stokvels and invite other users**, instead of a RemitX admin creating them (brief §2 step 1). | Scales better and removes the admin bottleneck. The admin keeps oversight only. | Proposed |
 | P2 | **Payout hold to reduce defaulting after payout.** The contract holds a round's pool until the next round is fully paid **and the round's Organiser-set payout time has passed** (D12), so a member who has already been paid cannot stop contributing without blocking everyone. The final round has no next round, so it pays out once everyone has paid it and its payout time has passed. | Mitigates the default risk the brief names. It is the same rule as D5. | Proposed, needs legal review |
 | P3 | **Member cap of 3 for the prototype, built to grow.** One constant sets the limit: backend `MAX_STOKVEL_MEMBERS`, and a `maxMembers` value in the contract set at deployment. No fixed-size arrays; round counts are `uint8` (up to 255); cycle length equals the number of members. Raising the limit to 10 or 12 (#197) is a config change. | Brief says three members. Building for more costs little now. | Proposed |
-| P4 | **Cancellation.** Ending a stokvel, including partway through a cycle, stops future rounds and refunds unfinalised contributions in the original fiat. Possibly admin-only, on request. | Reverses the brief's "refunds out of scope". | Open (#208) |
+| P4 | **Cancellation.** Ending a stokvel, including partway through a cycle, stops future rounds and refunds unfinalised contributions in the original fiat. Possibly admin-only, on request. | Reverses the brief's "refunds out of scope". | **Rejected 2026-10-09: out of scope, not built** (#208, [ADR 0003](adr/0003-no-stokvel-cancellation-or-refunds.md)). Possible future design: [product file](stokvel_product_deviations.md), "Future extension: cancellation and refunds" |
 | P5 | **Manual admin finalise as a fallback.** Finalisation stays automatic (D5), but the Administrator can also trigger it for a round if the automatic release fails. The contract still enforces the release conditions, so a call on a round that is not ready is rejected (`NotYetFinalisable`). Also gives the demo a natural way to show a blocked finalisation. | Restores the brief's admin finalise (§7.3) as a safety net. Covers a failed trigger only, not a paused contract or RPC outage. | Proposed |
 | P6 | **Merge the contribution deadline and the payout time into one date per round.** The build keeps both (deadline informational, payout time a hard gate) because that is the smallest change. | One date is simpler for Organisers and members. | Question for product |
 
 **Legal questions for product (P2):** is a payout that is conditional on a later contribution permitted under South African consumer-protection law and the stokvel exemption from the Banks Act? Trade-off to note: one late payer delays everyone's payout, because every member must have paid before a round releases.
 
-**Stuck rounds (D12, P2):** if a member never pays, the round stays blocked for everyone indefinitely. There are no penalties (D7), so the only way out is cancellation and refunds (P4). Product should see this trade-off, which makes P4 more important.
+**Stuck rounds (D12, P2):** if a member never pays, the round stays blocked for everyone indefinitely. There are no penalties (D7) and no cancellation (P4 rejected), so there is no on-platform way out: members settle it among themselves. Accepted for the prototype; the demo shows the blocked round.
 
 ## Deviations from the brief
 
-The brief (§2, §7, §9) describes one stokvel, three members, an administrator who sets it up and finalises each round, and lists multiple stokvels and refunds as out of scope. This build extends it:
+The brief (§2, §7, §9) describes one stokvel, three members, an administrator who sets it up and finalises each round, and lists multiple stokvels and refunds as out of scope. This build extends it (refunds stay out of scope, see P4):
 
 - Many stokvels in one contract, multiple cycles, user-created with invitations (D3, D4, P1).
 - A round releases only when fully paid **and** its Organiser-set payout time has passed (D12), matching brief §7.1. The contribution deadline stays informational.
 - Finalisation is automatic (D5), with a manual Administrator finalise as a fallback (P5); the brief has the administrator do it every round.
-- Refunds on mid-round cancellation (P4).
 - TrustMeBank deposits and withdrawals (#202, #203), optional in the brief, are built as required.
 - The XRP Ledger is replaced by the EVM chain (D1).
 
-The final demo must still show everything the brief requires: three synthetic members across three rounds, a round blocked because one member has not paid, and a duplicate contribution and an early finalisation being rejected. If the contract is not deployed and tested by Friday 9 October, reduce scope (drop cancellation and multi-cycle first, then TrustMeBank deposits and withdrawals, #202 and #203, last), as the brief instructs.
+The final demo must still show everything the brief requires: three synthetic members across three rounds, a round blocked because one member has not paid, and a duplicate contribution and an early finalisation being rejected. If the contract is not deployed and tested by Friday 9 October, reduce scope (drop multi-cycle first, then TrustMeBank deposits and withdrawals, #202 and #203, last), as the brief instructs.
 
 ---
 
@@ -103,7 +103,7 @@ The final demo must still show everything the brief requires: three synthetic me
 | Role | Held by | Can |
 |---|---|---|
 | `DEFAULT_ADMIN_ROLE` | Platform owner | Grant roles, pause and resume |
-| `OPERATOR_ROLE` | Backend, via the Treasury Wallet | Create stokvels, start cycles, submit contributions, finalise, refund |
+| `OPERATOR_ROLE` | Backend, via the Treasury Wallet | Create stokvels, start cycles, submit contributions, finalise |
 
 The contract relies on the backend to identify the contributing member (brief §7.4); document this in the contract README.
 
@@ -115,9 +115,7 @@ The contract relies on the backend to identify the contributing member (brief §
 | `startCycle(bytes32 id, bytes32[] memberIds, uint64[] roundStartTimes, uint64[] roundDeadlines, uint64[] payoutTimes)` | Operator | Fix members (payout order = array order) and the schedule for a new cycle. `roundDeadlines` is informational; `payoutTimes` is enforced by `finalise` (D12) |
 | `contribute(bytes32 id, uint8 round, bytes32 memberId)` | Operator | Pull `contribution` UCTUSD from the Treasury Wallet and record it against member and round |
 | `finalise(bytes32 id, uint8 round)` | Operator | Release the round's pool to the Treasury Wallet and record the entitled member. Reverts unless the release conditions hold: the paid condition (D5) **and** `block.timestamp >= payoutTimes[round]` (D12) |
-| `cancel(bytes32 id)` | Operator (admin-requested) | Stop the stokvel; mark contributions to unfinalised rounds refundable |
-| `refund(bytes32 id, uint8 round, bytes32 memberId)` | Operator | Return one refundable contribution to the Treasury Wallet |
-| `pause()` / `unpause()` | Admin | Halt or resume contributions, finalisation and refunds for every stokvel; never bypasses conditions |
+| `pause()` / `unpause()` | Admin | Halt or resume contributions and finalisation for every stokvel; never bypasses conditions |
 
 **Automatic finalisation (D5, D12):** when a `contribute` call completes round N+1 (every member has paid it) and round N's payout time has already passed, the same transaction finalises round N. If everyone paid before the payout time, nothing happens on-chain until the time passes: the backend's scheduled release task (section 4) then calls `finalise`. `finalise` remains externally callable so the backend can release the last round, and so the demo can show an early call being rejected. No person needs to trigger it; the Administrator can as a fallback (P5).
 
@@ -133,7 +131,7 @@ Uses OpenZeppelin `AccessControl`, `Pausable`, `ReentrancyGuard` and `SafeERC20`
 | `WrongAmount` | The transferred amount differs from the locked contribution |
 | `NotYetFinalisable` | Release conditions are not met: not all members paid the next round, the last round is not fully paid, or the round's payout time has not passed |
 | `AlreadyFinalised` | The round was already released |
-| `CycleClosed` | The cycle ended, or the stokvel was cancelled |
+| `CycleClosed` | The cycle ended |
 | `UnknownStokvel` | The stokvel ID is not registered |
 | `MaxMembersExceeded` | `startCycle` is given more members than `maxMembers` |
 
@@ -147,8 +145,6 @@ Access and pause failures use OpenZeppelin's own errors.
 | `RoundFinalised(bytes32 indexed id, uint8 round, bytes32 indexed memberId, uint256 pool)` | `id`, `memberId` | `round`, `pool` |
 | `CycleStarted(bytes32 indexed id, uint32 cycle)` | `id` | `cycle` |
 | `CycleClosed(bytes32 indexed id, uint32 cycle)` | `id` | `cycle` |
-| `StokvelCancelled(bytes32 indexed id)` | `id` | |
-| `ContributionRefunded(bytes32 indexed id, uint8 round, bytes32 indexed memberId, uint256 amount)` | `id`, `memberId` | `round`, `amount` |
 
 Events are the history. The contract's storage holds only what rules need: per-round paid flags, per-round pool, finalised flags, the entitled member per round, and the current cycle and round.
 
@@ -207,7 +203,7 @@ Keys never appear in the frontend, API responses, logs or git.
 
 | Table | Key columns | Migration |
 |---|---|---|
-| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount`, `max_members` (default from config), `status` (`draft`, `active`, `cancelled`), `current_cycle_id`, `account_id` (its `STOKVEL` ledger account), `created_at` | |
+| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount`, `max_members` (default from config), `status` (`draft`, `active`), `current_cycle_id`, `account_id` (its `STOKVEL` ledger account), `created_at` | |
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number`, `status` (`forming`, `active`, `closed`), `current_round`, `round_count`, `token_contribution_amount` (locked at start), `started_at`, `closed_at` | |
 | `stokvel_rounds` | `cycle_id`, `round`, `start_time`, `deadline` (informational), `payout_time` (hard gate, D12) | |
 | `stokvel_members` | `id`, `stokvel_id`, `user_id`, `joined_at`, `left_at`, `status` (membership across cycles) | |
@@ -229,7 +225,7 @@ Differences from the first sketch (a `stokvel` table plus a `stokvel_member` tab
 | Change | Detail |
 |---|---|
 | New account type | `STOKVEL` (currency: the token). Update the `accounts_type_valid` CHECK, and relax `accounts_owner_matches_type` and `accounts_reference_matches_type` for it (no user, no reference). One per stokvel. |
-| New transaction types | `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account), `stokvel_pool_release` (contract → Treasury Wallet → stokvel account), `stokvel_refund`. Update `transactions_type_valid` (precedent: `V20260921_1400__add_burn_and_payout_transaction_types.py`). |
+| New transaction types | `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account), `stokvel_pool_release` (contract → Treasury Wallet → stokvel account). Update `transactions_type_valid` (precedent: `V20260921_1400__add_burn_and_payout_transaction_types.py`). |
 | Payout legs | Reuse the existing `remittance`, `fee`, `token_burn` and `beneficiary_payout` legs grouped by `quote_id`, with the stokvel account as sender, so the proven settlement worker and its idempotency are reused. A separate `STOKVEL_REMITTANCE` type was suggested; see section 8. |
 | Quote sender | `quotes.sender_user_id` is NOT NULL today. Make it nullable and add `stokvel_id` (or `sender_account_id`). Stokvel quotes skip `require_can_send` (D8). |
 | Chain-neutral names | `transactions.xrpl_tx_hash` → `onchain_tx_hash`; account type `REMITX_XRPL_WALLET` → `REMITX_EVM_WALLET`; seeded label "RemitX XRPL Treasury Wallet" → "RemitX Treasury Wallet" (also in `remittance_service.py`; the two must match). |
@@ -264,7 +260,6 @@ _The brief's wording of the remittance statuses (`created → burning → burnt 
 | Submit contribution | UNIQUE (`cycle_id`, `round`, `member_id`); guarded `pending → processing` claim in the worker; contract `AlreadyPaid` |
 | Release pool | UNIQUE (`cycle_id`, `round`) on `stokvel_payouts`; guarded `pending → processing` claim; contract `AlreadyFinalised` |
 | Credit remittance | Existing guarded group-confirm on `quote_id` (`confirm_treasury_burn`); a retry must not repeat the release, burn or credit |
-| Refund | Guarded status transition on the contribution; contract refund-once flag |
 
 ---
 
@@ -280,7 +275,6 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `stokvel.settle_payout` | `payout_id` | `release_pool` on success | Creates the stokvel-sender quote and remittance, then hands to the existing `settle_remittance` / burn chain |
 | `stokvel.release_due_rounds` | none (beat) | Celery beat | Finds rounds whose payout time has passed and whose paid condition holds but are not yet released, and queues `stokvel.release_pool` for each. Idempotent: the claim guard and the contract's `AlreadyFinalised` stop a double release (D12) |
 | `stokvel.sync_events` | none (beat) | Celery beat | Reads contract logs from the last processed block; updates the database idempotently |
-| `stokvel.refund` | `contribution_id` | Cancellation | Claim guard; refund original fiat to the source account |
 
 ### Contract event → database update
 
@@ -289,7 +283,6 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `ContributionMade` | Mark the contribution `confirmed`, store hash and block |
 | `RoundFinalised` | Mark the payout `released`, trigger `stokvel.settle_payout` |
 | `CycleClosed` | Close the cycle; open the continuation choice for members |
-| `StokvelCancelled` / `ContributionRefunded` | Mark the stokvel `cancelled`; queue refunds |
 
 ---
 
@@ -312,7 +305,6 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `GET /stokvels/{id}` | Member | Member screen data: group, amount, schedule, order, paid and outstanding, round and payout status, hashes, remittance references |
 | `POST /admin/stokvel-contract/pause` and `/unpause` | Administrator | Emergency stop and resume. Pause takes a required `reason` in the request body |
 | `POST /admin/stokvels/{id}/rounds/{n}/finalise` | Administrator | Manual fallback if automatic finalisation fails (if P5 is approved). Audit-logged. A round that is not ready returns 409 `round_not_finalisable` |
-| `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel (if P4 is approved). Takes a required `reason` in the request body |
 
 ### Audit log of admin actions
 
@@ -323,9 +315,8 @@ Admin actions on stokvels are recorded in the **existing** audit log (`audit_log
 | Pause the contract | `stokvel.contract.paused` | `stokvel_contract` | a fixed constant id (like `AUDIT_LOG_INDEX_SUBJECT_ID`) | paused flag; `reason` required |
 | Resume the contract | `stokvel.contract.unpaused` | `stokvel_contract` | same constant | paused flag |
 | Manual finalise (P5) | `stokvel.round.finalised_manually` | `stokvel` | stokvel id | cycle, round, release status, transaction hash if known |
-| Cancel a stokvel (P4) | `stokvel.cancelled` | `stokvel` | stokvel id | stokvel status, number of contributions queued for refund; `reason` required |
 
-- Only actions by a real staff member are logged here (`actor_user_id` is never null). The automatic release, event sync and refund tasks are system actions; their trail is the ledger, `stokvel_payouts` and the contract events.
+- Only actions by a real staff member are logged here (`actor_user_id` is never null). The automatic release and event sync tasks are system actions; their trail is the ledger, `stokvel_payouts` and the contract events.
 - To show only stokvel entries, filter `GET /admin/audit` by `subject_type=stokvel` or `stokvel_contract`; an optional `action_prefix=stokvel.` filter is suggested so one call returns both.
 - The admin audit page gets a stokvel filter (R4-12).
 
@@ -372,9 +363,9 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 |---|---|---|---|
 | One Treasury Wallet, or a separate settlement wallet for pool release (#207)? D2 chooses one wallet; the wallet has been created. Confirm | Open | Role 1, Product | |
 | Burn method (#206): does UCTUSD have a `burn()` function, or do we transfer to a dead address? Check the token on the explorer | Open | Role 1 | |
-| Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution). Refunds return the original fiat amount entered | Open, product to confirm | Product, Roles 2, 3 | |
+| Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution) | Open, product to confirm | Product, Roles 2, 3 | |
 | New `STOKVEL_REMITTANCE` type, or reuse the existing remittance legs with the stokvel account as sender (this doc's recommendation)? | Open | Roles 2, 3 | |
-| Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | Open | Product | |
+| Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | Resolved 2026-10-09: no mid-cycle cancellation and no refunds; the brief's position stands | Product | [0003](adr/0003-no-stokvel-cancellation-or-refunds.md) |
 | Do fee and margin come out of the pool or from members? CONTEXT.md says the pool (D6) | Confirm | Product | |
 | Are the fee and margin taken from the pool converted back to fiat, and if so how? Suggestion: convert them to fiat at finalisation and deduct them from the pool before the payout, so beneficiaries receive their payout in fiat after fees | Open, product decision | Product | |
 | Contribution deadline informational only, with no penalties on the platform (D7)? | Confirm | Product | |
@@ -382,7 +373,7 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Treasury key storage: the encrypted key sits in `.env` rather than a database column (as the wallet seed does today). Acceptable? | Confirm | Product | |
 | Approve P5 (manual admin finalise fallback)? | Open | Product | |
 | Merge the contribution deadline and payout time into one date per round (P6)? | Open | Product | |
-| Stuck round if a member never pays: accept it, relying on cancellation (P4) as the exit? | Open | Product | |
+| Stuck round if a member never pays: accept it, relying on cancellation (P4) as the exit? | Resolved 2026-10-09: accepted, with no on-platform exit (P4 rejected) | Product | [0003](adr/0003-no-stokvel-cancellation-or-refunds.md) |
 | Should an admin's look at a stokvel's member data (for oversight) also be logged, as KYC reads are? | Open | Product, Role 5 | |
 | PR #211's log redaction also hides EVM transaction hashes in logs (they look like keys) until exact-value redaction lands in #204. Acceptable for debugging and the demo? | Open | Role 2, Role 6 | |
 | Demo timing: payout times a few minutes apart, and how to show a stuck round | Deferred | Role 6 | |
@@ -416,7 +407,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
 | Frontend screens | Not started | | Member, Organiser, invitations, admin pause |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
-| Stokvel cancellation | Not started | #208 | Open question |
+| Stokvel cancellation | Out of scope | #208 | Rejected (ADR 0003). R1-06 (#220) and R3-09 (#246) dropped |
 
 ### Brief timeline
 
@@ -433,7 +424,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 2. **Contract** (#197–#200): Hardhat or Foundry project in `contracts/`, tests per brief §7.5, deploy and record the address in section 2.
 3. **Backend stokvel domain**: models and migrations → repositories → controllers → thin routes. Copy the shape of `confirm_remittance` for contributions: lock the user, check standing and limits, check available balance, insert pending legs sharing a group id.
 4. **Settlement** (#201): contribution submit and confirm, event sync, pool release → stokvel account → remittance → existing burn chain. A retried settlement must not duplicate release, burn or credit.
-5. **Frontend**: member and Organiser screens, invitations, admin pause and cancel, using shadcn/ui and Aceternity per CLAUDE.md; run `npm run generate:api`.
+5. **Frontend**: member and Organiser screens, invitations, admin pause, using shadcn/ui and Aceternity per CLAUDE.md; run `npm run generate:api`.
 6. **Testing and demo**: three members × three rounds, blocked round, duplicate contribution, early finalisation, settlement retry test, seeder story updates.
 
 ### EVM switch-over: what changes
@@ -449,7 +440,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | `remitx_worker/tasks.py` | Burn and confirm tasks keep their shape; call `evm_service` |
 | Tests | Worker burn tests mock `xrpl_service`: repoint at `evm_service` |
 | `tools/seeder`, `tools/loadtest/fake_xrpl_worker.py` | Update for EVM |
-| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels, the `STOKVEL` ledger account, and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
+| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels, the `STOKVEL` ledger account, and the single Treasury Wallet |
 
 ## 10. Features added
 

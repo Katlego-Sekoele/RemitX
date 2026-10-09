@@ -15,7 +15,7 @@ The **Member** who created a **Stokvel**. They create the stokvel, set its attri
 _Avoid_: Owner, admin, creator
 
 **Administrator**:
-A platform operator with oversight of all stokvels. Distinct from an **Organiser**; has no role in running any one stokvel. Can pause and resume the whole stokvel contract as an emergency stop, which halts contributions, finalisation and refunds for every stokvel but never bypasses their conditions.
+A platform operator with oversight of all stokvels. Distinct from an **Organiser**; has no role in running any one stokvel. Can pause and resume the whole stokvel contract as an emergency stop, which halts contributions and finalisation for every stokvel but never bypasses their conditions.
 _Avoid_: Admin (ambiguous with Organiser)
 
 **Member**:

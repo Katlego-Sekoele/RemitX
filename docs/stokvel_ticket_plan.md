@@ -17,7 +17,7 @@ These were found while checking tickets against the brief. They are settled by t
 
 | # | Brief | This build (doc) | What to do |
 |---|---|---|---|
-| 1 | §9 out of scope: refunds, multiple stokvels, automated scheduling | Doc extends: many stokvels in one contract (D4), user-created with invitations (D3), cancel and refund (P4), repeat cycles | The brief's core path is built first. Cancel, refund and repeat cycles are *extension* tickets in their own milestone |
+| 1 | §9 out of scope: refunds, multiple stokvels, automated scheduling | Doc extends: many stokvels in one contract (D4), user-created with invitations (D3), repeat cycles. Cancel and refund (P4) were rejected on 2026-10-09 (#208, ADR 0003), so refunds stay out of scope | The brief's core path is built first. Repeat cycles are *extension* tickets in their own milestone |
 | 2 | §7.1: finalise only when all have paid **and the payout time has passed** | D5 and D12: round N releases once every member has paid round N+1 **and** its Organiser-set payout time has passed. The contribution deadline stays informational. A blocked round stays blocked until the last member pays | Decided (2026-10-07). D1 writes it into doc §1. A scheduled task (R3-11) releases rounds that are due. Product is asked whether to merge deadline and payout time (P6) |
 | 3 | §2 step 4: the administrator finalises each round | D5: automatic by default. `finalise` stays externally callable, and the Administrator can trigger it manually as a fallback (P5) | Recorded deviation. R1 tests the early call. Manual admin finalise is R3-10 and R4-11 (pending product approval of P5) |
 | 4 | §7.3 admin screen: finalise rounds, pause, resume | Finalise (fallback), pause and resume | Admin screen has all three if P5 is approved; otherwise pause and resume only. A blocked finalisation is shown by clicking Finalise on a round that is not ready |
@@ -53,7 +53,7 @@ Five exist. Two are empty and are reused for the frontend. Four are new.
 | Connect Frontend to Backend | exists (empty) | Screens wired to real routes, client regenerated | Fri 23 Oct |
 | Testing, Security and Demo | **new** | CI, security checklist, seeder, end-to-end and retry tests, demo | Fri 23 Oct (freeze); demo Wed 28 Oct |
 | Bank API Integration and Bank Deposit simulation switch over | exists | #202, #203 (optional in the brief, but required in this build) | Fri 16 Oct |
-| Extensions Beyond the Brief | **new** | Cancel, refund, repeat cycles | none; start only after Fri 16 Oct if one round works end to end |
+| Extensions Beyond the Brief | **new** | Repeat cycles (cancel and refund dropped, #208) | none; start only after Fri 16 Oct if one round works end to end |
 
 ## Edits to existing tickets
 
@@ -61,7 +61,7 @@ Five exist. Two are empty and are reused for the frontend. Four are new.
 |---|---|---|---|
 | #197, #198 | Kerry | (closed) | No edit. D1 reconciles them with the doc |
 | #199 pause and resume | Kerry | Contract | Contract only. Move the backend route to R3-07 and the admin control to R4-07. Keep the acceptance boxes for the contract |
-| #200 tests and deployment | Kerry (Mridula supports) | Contract | Tests only, per brief §7.5. Move deployment to R1-04. Move the cancellation test to R1-06 |
+| #200 tests and deployment | Kerry (Mridula supports) | Contract | Tests only, per brief §7.5. Move deployment to R1-04. Drop the cancellation test (#208: out of scope) |
 | #201 backend connection | Claire | Stokvel Backend Domain | Convert to an epic. Task list links R2-09 to R2-15 and R3-03 to R3-05. Remove the stale "quote-sender shape" question: D9 decided a `STOKVEL` account |
 | #202 TrustMeBank deposits | Katlego | Bank API | Add the task list and an `ENABLE_TRUSTMEBANK` flag. Add a task to fill doc §7. Size L, core (no longer optional) |
 | #203 TrustMeBank withdrawals | Katlego | Bank API | Add the task list. Decision already made in the issue: Option B first. Size L, core (no longer optional). Depends on #202 |
@@ -69,7 +69,7 @@ Five exist. Two are empty and are reused for the frontend. Four are new.
 | #205 Treasury Wallet and key | Claire | EVM | **Key storage changes: the encrypted private key lives in `.env` (`EVM_TREASURY_KEY_ENCRYPTED`, Fernet-encrypted, as the XRPL wallet seed does today), not in a database column.** Drop "stored encrypted in the database" and the DB-row example. Remove the gitleaks rule and the no-leak tests: they move to R5-03 (Katlego owns hardening; Claire already did both in PR #211, open). Funding and the UCTUSD request move to R2-02b. PR #211 (open) covers the wallet script, key loader, redaction, gitleaks rule and leak tests; the operator role at deployment (#200) and UCTUSD funding are still open |
 | #206 EVM burn | Sian | EVM | Add the task list. Depends on R1-05 (burn method). Repoint the worker burn tests from `xrpl_service` to `evm_service` |
 | #207 settlement wallet | Sian | EVM | Close with an ADR: Option A matches D2. Move the reconciliation check to R3-06 and the security note to R5-03. Correct the "pays the beneficiary" wording |
-| #208 cancellation decision | Sian (decider: product) | Extensions | Move to Extensions. State a deadline: Fri 9 Oct, before R1-06 is built |
+| #208 cancellation decision | Sian (decider: product) | Extensions | **Decided 2026-10-09: out of scope.** Close with ADR 0003; R1-06 and R3-09 dropped |
 | #209 create stokvel | Claire | Stokvel Backend Domain | Narrow to "create and list stokvels" (API only). Invitations go to R2-08, the frontend to R4-03 and R4-04. Fix the lapse rule. Fix the cap to config (D3). Tables go to R2-05 |
 
 ### Files for the existing issues
@@ -88,7 +88,7 @@ _Suggestions only, to help implementation._
 | #205 | `platform_wallet/scripts/`, `api/remitx_api/config.py`, `.env.example`, `docs/stokvel_integration.md` (§2). The gitleaks rule and leak tests move to R5-03 |
 | #206 | `api/remitx_worker/evm_service.py` (burn), `api/remitx_worker/tasks.py` (`burn_treasury_tokens`), `api/tests/test_worker_burn_treasury_tokens.py` |
 | #207 | `docs/adr/NNNN-single-treasury-wallet.md` |
-| #208 | `docs/stokvel_integration.md` (P4), `CONTEXT.md` ("Cancellation", if approved) |
+| #208 | `docs/adr/0003-no-stokvel-cancellation-or-refunds.md`, `docs/stokvel_integration.md` (P4), `docs/stokvel_product_deviations.md` (future extension section), `CONTEXT.md` (Administrator) |
 | #209 | As R2-07 |
 
 ## New tickets
@@ -131,7 +131,7 @@ Tickets are listed in ID order within each role; extension tickets are marked in
 
 #### D4. Decide the contribution amount rule and the remittance status names
 **Owner:** Sian (with Claire) · **Milestone:** Stokvel Backend Domain · **Size:** S · **Type:** core · **Refs:** brief §7.2; doc §3, §8
-- [ ] Contribution amount (product to confirm): fixed token amount or fixed fiat amount? If a fixed token amount, debit = token amount × live rate at contribution; refunds return the original fiat amount entered.
+- [ ] Contribution amount (product to confirm): fixed token amount or fixed fiat amount? If a fixed token amount, debit = token amount × live rate at contribution.
 - [ ] Decide the remittance status names the frontend will show (brief `created → burning → burnt → credited` vs the ledger's `pending → processing → confirmed | failed`). Recommendation: the ledger's, pending product confirmation.
 - [ ] Record both in doc §3 and §8.
 **Files:**
@@ -185,7 +185,8 @@ See "Edits": contract only. Owner Kerry. Size S.
 - Change: `contracts/package.json` (ABI export script)
 **Done when:** the backend can load the ABI without copying it by hand.
 
-#### R1-06. Cancel and refund in the contract
+#### R1-06. Cancel and refund in the contract (dropped)
+**Dropped 2026-10-09:** #208 decided that cancellation and refunds are out of scope ([ADR 0003](adr/0003-no-stokvel-cancellation-or-refunds.md)). Kept here for reference; the possible future design is in the [product file](stokvel_product_deviations.md), "Future extension: cancellation and refunds".
 **Owner:** Kerry · **Milestone:** Extensions Beyond the Brief · **Size:** M · **Type:** extension · **Depends on:** #208 approved · **Refs:** doc P4
 - [ ] `cancel`, `refund` and events `StokvelCancelled`, `ContributionRefunded`.
 - [ ] Pause also blocks refunds.
@@ -380,7 +381,7 @@ _Rebalanced 2026-10-07: R3-07, R3-08, R3-10 and R3-12 (admin pause, manual final
 #### R3-01. Ledger changes: `STOKVEL` account type and new transaction types
 **Owner:** Sian · **Milestone:** Stokvel Backend Domain · **Size:** M · **Type:** core · **Refs:** doc §3 "Ledger changes", D9
 - [ ] Add `STOKVEL` to `accounts_type_valid`; relax `accounts_owner_matches_type` and `accounts_reference_matches_type` for it.
-- [ ] Add `stokvel_contribution`, `stokvel_pool_release`, `stokvel_refund` to `transactions_type_valid` (precedent: `V20260921_1400__add_burn_and_payout_transaction_types.py`).
+- [ ] Add `stokvel_contribution` and `stokvel_pool_release` to `transactions_type_valid` (precedent: `V20260921_1400__add_burn_and_payout_transaction_types.py`).
 - [ ] Migration, `alembic check`, ADR "stokvel ledger account".
 **Files:**
 - Create: `api/alembic/versions/V…__stokvel_ledger_account_and_types.py`, `api/tests/test_stokvel_ledger.py`, `docs/adr/NNNN-stokvel-ledger-account.md`
@@ -457,7 +458,8 @@ _Rebalanced 2026-10-07: R3-07, R3-08, R3-10 and R3-12 (admin pause, manual final
 - Change: `api/remitx_api/repositories/transaction_repository.py`, `api/remitx_worker/evm_service.py` (balance read)
 **Done when:** the check passes after three rounds in the seeded demo.
 
-#### R3-09. Refund task and cancel route
+#### R3-09. Refund task and cancel route (dropped)
+**Dropped 2026-10-09:** #208 decided that cancellation and refunds are out of scope ([ADR 0003](adr/0003-no-stokvel-cancellation-or-refunds.md)). Kept here for reference; the possible future design is in the [product file](stokvel_product_deviations.md), "Future extension: cancellation and refunds".
 **Owner:** Sian · **Milestone:** Extensions Beyond the Brief · **Size:** M · **Type:** extension · **Depends on:** #208, R1-06, R3-12 · **Refs:** doc P4
 - [ ] `stokvel.refund`, guarded so a retry never refunds twice.
 - [ ] `POST /admin/stokvels/{id}/cancel`, with a required `reason` in the request body.
@@ -491,15 +493,15 @@ _Rebalanced 2026-10-07: R3-07, R3-08, R3-10 and R3-12 (admin pause, manual final
 
 #### R3-12. Stokvel audit actions for admin actions
 **Owner:** Katlego (moved from Sian; supports: Sian) · **Milestone:** Settlement and Payout · **Size:** S · **Type:** core · **Refs:** doc §5 "Audit log of admin actions"; existing `audit_service.record_audit`, `GET /admin/audit`
-- [ ] Add audit actions `stokvel.contract.paused`, `stokvel.contract.unpaused`, `stokvel.round.finalised_manually`, `stokvel.cancelled` and subjects `stokvel`, `stokvel_contract` (with a fixed constant subject id for the contract) to the enums.
-- [ ] Entries hold ids, round numbers, statuses and transaction hashes only; no PII. `reason` required for pause and cancel.
+- [ ] Add audit actions `stokvel.contract.paused`, `stokvel.contract.unpaused`, `stokvel.round.finalised_manually` and subjects `stokvel`, `stokvel_contract` (with a fixed constant subject id for the contract) to the enums.
+- [ ] Entries hold ids, round numbers, statuses and transaction hashes only; no PII. `reason` required for pause.
 - [ ] Optional `action_prefix` filter on `GET /admin/audit` so one call lists every `stokvel.` entry.
 - [ ] Tests: each action writes one entry in the same transaction as the admin action; a rolled-back action leaves no entry; the new filter works.
 - [ ] Update doc §5 if the action names change.
 **Files:**
 - Change: `api/remitx_api/models/orm/audit_log.py` (new enum members), `api/remitx_api/controllers/audit_controller.py` and `api/remitx_api/routes/admin/audit.py` (optional filter), `api/remitx_api/models/schemas/audit.py` (if it lists subjects), `api/tests/test_audit_log.py`, `frontend/openapi.json` (regenerated by `python scripts/export_openapi.py`)
 - Create: `api/tests/test_stokvel_audit.py`
-**Done when:** the pause, resume, manual finalise and cancel actions each leave an audit entry that shows up in `GET /admin/audit`, and nothing else writes to it.
+**Done when:** the pause, resume and manual finalise actions each leave an audit entry that shows up in `GET /admin/audit`, and nothing else writes to it.
 
 ---
 
@@ -740,8 +742,8 @@ Found in the 2026-10-07 review of this plan and the integration doc. Each needs 
 **Done when:** a `contribute` call from the Treasury Wallet succeeds with the allowance in place, and the approval step is written down.
 
 #### OI-3. Missing dependency on the `stokvel_contract.py` wrapper
-**Problem:** R3-07, R3-10 and R3-09 all call `stokvel_contract.py` (`pause`, `unpause`, `finalise`, `cancel`, `refund`). R2-10 creates it, and none of those tickets lists R2-10 as a dependency.
-**Needed:** either add R2-10 as a dependency to R3-07, R3-09 and R3-10, or split the wrapper into its own small ticket that the others depend on.
+**Problem:** R3-07 and R3-10 both call `stokvel_contract.py` (`pause`, `unpause`, `finalise`). R2-10 creates it, and none of those tickets lists R2-10 as a dependency.
+**Needed:** either add R2-10 as a dependency to R3-07 and R3-10, or split the wrapper into its own small ticket that the others depend on.
 **Owner / size:** to assign (S, or a plan edit only).
 **Done when:** every ticket that uses the wrapper lists what creates it.
 
@@ -762,7 +764,7 @@ Found in the 2026-10-07 review of this plan and the integration doc. Each needs 
 ## If Role 2 is late
 
 Claire is the backend lead and has the longest chain. If one round is not working end to end by Tue 13 Oct, in this order:
-1. Drop R2-15 and R3-09 (already extensions).
+1. Drop R2-15 (already an extension; R3-09 was dropped with #208).
 2. Move R2-14 to Sian.
 3. Move R4-09's wiring to the person who finishes first.
 
