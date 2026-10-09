@@ -101,6 +101,19 @@ which is a backend 500. This is recorded in the README and in doc §1 and §6
 fixed in `createStokvel` for all cycles; she will fix the per-cycle wording in
 the backend sections (§3, R2-10, OI-5) herself.
 
+### Contribution amount per cycle (decided 2026-10-09)
+
+**Decision for the MVP:** the contribution amount stays fixed in
+`createStokvel` for every cycle of a stokvel. To use a different amount, the
+Organiser creates a new stokvel. The old one cannot be deleted on-chain; it
+stays inactive with its history once its last cycle closes. The backend can
+mark it ended in the database.
+
+Per-cycle amounts (moving the amount into `startCycle`) were considered and
+dropped for the MVP. That would be an interface change needing doc §1, the
+backend's agreement and, once deployed, a redeploy. Recorded in doc §1 (PR
+#283).
+
 ### Left open
 
 - Doc §1 links the README once #283 and this branch are merged.
