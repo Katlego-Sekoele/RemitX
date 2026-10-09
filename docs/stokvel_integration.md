@@ -41,6 +41,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 2, 8, 9, 10, 13, 14 | Contract work brought up to date: section 2 lists the deploy script's settings and `DEPLOYER_PRIVATE_KEY` (local only); section 8 resolves the contract side of the contribution amount and the Treasury allowance, defers per-cycle amounts, and adds the admin-key question for pause (#244); section 9 marks the contract, tests and pause done (PR #282 merged), deployment in progress (#284) and README/ABI/ADR in review (#285); sections 10, 13 and 14 list the contract features, files and scripts | |
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
 | 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
+| 2026-10-09 | 1, 2, 6, 8, 9, 10, 13, 14 | Review fixes on #283: error order marked *pending #291* (on main a repeat payment into a filled round still reports `WrongRound`, and a nonexistent round is accepted); files and features from #284, #285 and the fix branch marked "not on main yet"; ID scheme added as an open question (Katlego's review) and flagged in section 1; `CycleNotOpen` maps to neutral `cycle_not_open`; `ERC20InsufficientBalance` mapped (Treasury out of UCTUSD); UCTUSD checked on testnet: re-approve from non-zero is fine, and `burn(uint256)` works from the Treasury (answers the burn-method question, to confirm on #278) | |
 
 ---
 
@@ -95,12 +96,12 @@ The final demo must still show everything the brief requires: three synthetic me
 
 ## 1. Contract interface (Role 1)
 
-> Confirmed by Role 1 on 2026-10-08 against the contract as built: `contracts/src/StokvelVault.sol` (branch `feature/212-contract-interface-d12`, 67 passing tests). Cancel and refund are not built yet (R1-06, #220, waiting on #208); they are listed as planned.
+> Confirmed by Role 1 against the contract on `main` (`contracts/src/StokvelVault.sol`, merged in #282), **with two open items**: (1) the error order marked *pending #291* below changes when the fix PR #291 merges; (2) the ID scheme (packed UUID vs a separate generated `bytes32`) is still under discussion (section 8). Cancel and refund are not built yet (R1-06, #220, waiting on #208); they are listed as planned.
 
 ### Units and IDs
 
 - Amounts are in UCTUSD's smallest unit (18 decimals).
-- Stokvel and member IDs are database UUIDs packed into `bytes32`, left-aligned (the 16 UUID bytes first, the rest zero). Example: `5f0c2a1e-8d3b-4c6a-9e71-2b4f6d8a0c13` → `0x5f0c2a1e8d3b4c6a9e712b4f6d8a0c1300000000000000000000000000000000`. The reference helper is `uuidToBytes32` in `contracts/test/helpers.ts`; the backend helper must produce the same bytes.
+- Stokvel and member IDs are database UUIDs packed into `bytes32`, left-aligned (the 16 UUID bytes first, the rest zero). Example: `5f0c2a1e-8d3b-4c6a-9e71-2b4f6d8a0c13` → `0x5f0c2a1e8d3b4c6a9e712b4f6d8a0c1300000000000000000000000000000000`. The reference helper is `uuidToBytes32` in `contracts/test/helpers.ts`; the backend helper must produce the same bytes. **Open (section 8):** whether to pack the UUID like this or give each stokvel and member a separate generated `bytes32` ID. The contract accepts any non-zero `bytes32` either way; this is a backend decision.
 - **Member IDs are per-stokvel row UUIDs** (`stokvel_members.id`), not user IDs. Everything on-chain is public and permanent; a user ID would link one person's stokvels.
 - Limits: minimum members 2 (constant `MIN_MEMBERS`). Maximum is `maxMembers`, a constructor argument (3 for the prototype; see P3).
 - Contribution amount is a fixed UCTUSD amount set by `createStokvel` and used for every cycle of that stokvel. **MVP decision (2026-10-09):** the amount cannot change between cycles; to use a different amount, the Organiser creates a new stokvel (the old one stays on-chain, inactive, with its history). Per-cycle amounts are a possible later change (move the amount into `startCycle`), not in the MVP.
@@ -149,6 +150,7 @@ Uses OpenZeppelin `AccessControl`, `Pausable`, `ReentrancyGuard` and `SafeERC20`
 - **One-off approval at setup:** the Treasury calls `UCTUSD.approve(STOKVEL_CONTRACT_ADDRESS, type(uint256).max)` once per contract address.
 - **Check before each `contribute`:** the worker reads `UCTUSD.allowance(treasury, vault)` and re-approves if it is below the contribution. This also covers a redeploy, because a new contract address needs a new approval.
 - **Why not one approval per contribution:** the vault only ever pulls from `msg.sender`, and only `OPERATOR_ROLE` (the Treasury) can call `contribute`, so the allowance can only be spent by Treasury-signed calls. Per-contribution approvals would double the transactions and add nonce ordering without adding protection.
+- **Re-approving is safe on UCTUSD:** checked on the testnet (2026-10-09, simulated `eth_call`) that `approve` from a non-zero allowance to a new non-zero amount succeeds. There is no USDT-style "set to zero first" rule. UCTUSD behaves like an OpenZeppelin ERC20.
 - **A missing or short allowance** reverts with the token's `ERC20InsufficientAllowance` (from UCTUSD, not the vault). It is a backend fault, not a user error (section 6).
 
 ### Custom errors
@@ -156,8 +158,8 @@ Uses OpenZeppelin `AccessControl`, `Pausable`, `ReentrancyGuard` and `SafeERC20`
 | Error | Raised when |
 |---|---|
 | `NotMember(bytes32 memberId)` | The member ID is not in the stokvel's current cycle |
-| `AlreadyPaid(uint8 round, bytes32 memberId)` | The member has already contributed to that round, including a round that has since filled or been released. Checked before `WrongRound`, so a repeat payment always reports this |
-| `WrongRound(uint8 round, uint8 openRound)` | The round is not the one currently open for contributions, or does not exist. `openRound` equals the member count once every round is paid, and then every round is rejected |
+| `AlreadyPaid(uint8 round, bytes32 memberId)` | The member has already contributed to that round. **Pending #291:** on `main` today the round is checked first, so a repeat payment into a round that has already filled reports `WrongRound`. Once #291 merges, the order is member, already paid, round: a repeat payment always reports `AlreadyPaid` (even into a released round), and a non-member always gets `NotMember` |
+| `WrongRound(uint8 round, uint8 openRound)` | The round is not the one currently open for contributions. `openRound` equals the member count once every round is paid. **Pending #291:** on `main` today a payment into that nonexistent round (round = member count) is wrongly accepted; #291 rejects it. Do not deploy before #291 merges |
 | `WrongAmount(uint256 expected, uint256 received)` | The vault received a different amount from the contribution (it measures its own balance before and after the pull) |
 | `NotYetFinalisable(uint8 round)` | Release conditions are not met: not the next round to release, not all members paid the next round, the last round is not fully paid, or the round's payout time has not passed |
 | `AlreadyFinalised(uint8 round)` | The round was already released |
@@ -241,7 +243,7 @@ Added to `.env.example` (and `.env.minimal.example` if local dev needs them). Th
 | `MAX_STOKVEL_MEMBERS` | Member cap (3 for the prototype; see P3). Must equal the contract's `maxMembers` |
 | `DEPLOYER_PRIVATE_KEY` | **Deployer's local `.env` only** (never `.env.example`, never committed, never on Render). Read only by `contracts/scripts/deploy.ts`; the deployer becomes the contract admin |
 
-The contract deploy script (`npm run deploy:testnet` in `contracts/`) reads `EVM_RPC_URL`, `EVM_CHAIN_ID`, `UCTUSD_CONTRACT_ADDRESS`, `EVM_TREASURY_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `DEPLOYER_PRIVATE_KEY` from the repo-root `.env`, with section 2's values as defaults for the public ones.
+The contract deploy script (`npm run deploy:testnet` in `contracts/`; **Pending, not on main yet**, PR #284) reads `EVM_RPC_URL`, `EVM_CHAIN_ID`, `UCTUSD_CONTRACT_ADDRESS`, `EVM_TREASURY_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `DEPLOYER_PRIVATE_KEY` from the repo-root `.env`, with section 2's values as defaults for the public ones.
 
 Keys never appear in the frontend, API responses, logs or git.
 
@@ -393,10 +395,11 @@ _TBD per endpoint: request and response shape, errors._
 | `WrongAmount` | 500 `contribution_amount_mismatch` | "Something went wrong. Please try again." (backend bug, not user error) |
 | `NotYetFinalisable` | 409 `round_not_finalisable` | "This round can't be paid out yet." |
 | `AlreadyFinalised` | 409 `round_already_finalised` | "This round has already been paid out." |
-| `CycleNotOpen` (was `CycleClosed`) | 409 `cycle_closed` | "This cycle has ended." (also raised before the first cycle starts) |
+| `CycleNotOpen` (was `CycleClosed`) | 409 `cycle_not_open` | "This stokvel has no active cycle right now." Raised both before the first cycle starts and after a cycle closes, so the wording is neutral; the API can use `getStokvel` to say which |
 | `MaxMembersExceeded` | 422 `too_many_members` | "A stokvel can have at most {max} members." |
 | OpenZeppelin `EnforcedPause` | 503 `stokvel_paused` | "Stokvels are temporarily paused." |
 | Token `ERC20InsufficientAllowance` (from UCTUSD, not the vault) | 500 `treasury_allowance_missing` | "Something went wrong. Please try again." (backend fault: re-approve, see section 1 "Treasury allowance") |
+| Token `ERC20InsufficientBalance` (from UCTUSD: the Treasury Wallet has run out of UCTUSD) | 503 `treasury_funds_low` | "Contributions are temporarily unavailable. Please try again later." (operations fault: top up the Treasury; alert the operator. The likeliest failure on testnet. Confirmed on the live token, 2026-10-09) |
 
 _Roles 1, 2 and 4 to confirm codes and wording._
 
@@ -420,7 +423,8 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Question | Status | Owner | ADR |
 |---|---|---|---|
 | One Treasury Wallet, or a separate settlement wallet for pool release (#207)? D2 chooses one wallet; the wallet has been created. Confirm | Open | Role 1, Product | |
-| Burn method (#206): does UCTUSD have a `burn()` function, or do we transfer to a dead address? Check the token on the explorer | Open | Role 1 | |
+| Burn method (#206): does UCTUSD have a `burn()` function, or do we transfer to a dead address? Check the token on the explorer | **Answered, to confirm on #278 (R1-07):** the token has `burn(uint256)` and `burnFrom`, and `burn(amount)` called by the Treasury succeeds (simulated on the testnet, 2026-10-09). No dead-address transfer is needed | Role 1 | |
+| Contract IDs: pack the database UUID into `bytes32` (current section 1), or give each stokvel and member a separate generated `bytes32` ID (Katlego, #283 review)? The contract accepts either. Packing needs no extra column and lets event sync map an ID straight back to its row; a separate ID keeps on-chain IDs unrelated to the database | Open: asked Marc (@marclevin). Recommendation for the MVP: packed UUID | Roles 1, 2 | |
 | Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution). Refunds return the original fiat amount entered | **Contract side resolved (2026-10-09):** a fixed UCTUSD amount set in `createStokvel` for all cycles, confirmed by the backend; a new amount means a new stokvel (MVP). Still for product: the fiat debit rule (live rate at contribution) | Product, Roles 2, 3 | |
 | Per-cycle contribution amounts (move the amount into `startCycle`, so the Organiser can change it between cycles)? | Deferred: not in the MVP (2026-10-09). An interface change and a redeploy if wanted later | Role 1, Product | |
 | Admin (deployer) key for pause and unpause on the server: R3-07 (#244) must sign `pause()` with the **admin** key, not the Treasury key, and #277 does not cover storing it. Store it the same way as the Treasury key, or keep pause as a manual step run by the key holder? | Open | Roles 1, 3 | |
@@ -506,7 +510,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | `remitx_worker/tasks.py` | Burn and confirm tasks keep their shape; call `evm_service` |
 | Tests | Worker burn tests mock `xrpl_service`: repoint at `evm_service` |
 | `tools/seeder`, `tools/loadtest/fake_xrpl_worker.py` | Update for EVM |
-| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, PR #285), the `STOKVEL` ledger account, and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
+| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels (written in PR #285, not on main yet: `docs/adr/0002-one-contract-many-stokvels.md`), the `STOKVEL` ledger account, and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
 
 ## 10. Features added
 
@@ -515,8 +519,8 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Feature | What it does | Owner | PR |
 |---|---|---|---|
 | Stokvel contract (`StokvelVault`) | One contract for every stokvel: create stokvels, start cycles (members, schedule), contributions filled in order, automatic release and `finalise` under D5 and D12, admin pause and resume, member cap set at deployment. 69 tests | Kerry (Role 1) | #282 (merged) |
-| Contract deploy script | `npm run deploy:testnet`: deploys with admin = deployer, operator and release target = Treasury Wallet, UCTUSD, `maxMembers` 3; checks settings, token, gas and roles; records the deployment | Kerry (Role 1) | #284 |
-| Contract ABI for the backend | `contracts/abi/StokvelVault.json`, regenerated by `npm run export:abi`; a test fails if it drifts from the contract | Kerry (Role 1) | #285 |
+| Contract deploy script | `npm run deploy:testnet`: deploys with admin = deployer, operator and release target = Treasury Wallet, UCTUSD, `maxMembers` 3; checks settings, token, gas and roles; records the deployment | Kerry (Role 1) | #284 (open, not on main yet) |
+| Contract ABI for the backend | `contracts/abi/StokvelVault.json`, regenerated by `npm run export:abi`; a test fails if it drifts from the contract | Kerry (Role 1) | #285 (open, not on main yet) |
 
 ## 11. How things are connected
 
@@ -551,13 +555,13 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `contracts/test/` | Tests: setup, contribute, pause, views, ABI drift, randomised invariants; `helpers.ts` has the fixtures and `uuidToBytes32`, the reference ID packing | #282, #285, fix branch |
 | `contracts/src/mocks/` | Test-only tokens (`MockUCTUSD`, `ReentrantToken`, `FeeOnTransferToken`); never deployed | #282 |
 | `contracts/smart_contracts_changes.md` | Per-ticket log of contract changes and decisions | #282 |
-| `contracts/hardhat.config.ts` | Compiler settings; `xrplEvmTestnet` network and explorer verification; loads the repo-root `.env` | #282, #284 |
-| `contracts/scripts/deploy.ts` | Deploy script (`npm run deploy:local`, `npm run deploy:testnet`) | #284 |
-| `contracts/deployments/xrplEvmTestnet.json` | Deployed address, block, tx hash and constructor arguments (written by the deploy script) | #218 (after deploy) |
-| `contracts/abi/StokvelVault.json` | Exported ABI the backend loads | #285 |
-| `contracts/scripts/export-abi.js` | Writes the ABI from the build (`npm run export:abi`) | #285 |
-| `contracts/README.md` | Contract overview: trust assumption, rules, roles, IDs, backend usage, deploy | #285 |
-| `docs/adr/0002-one-contract-many-stokvels.md` | ADR for D4 (one contract holds every stokvel) | #285 |
+| `contracts/hardhat.config.ts` | Compiler settings (on main, #282); `xrplEvmTestnet` network, explorer verification and `.env` loading (#284, open) | #282, #284 |
+| `contracts/scripts/deploy.ts` | Deploy script (`npm run deploy:local`, `npm run deploy:testnet`) | #284 (open, not on main yet) |
+| `contracts/deployments/xrplEvmTestnet.json` | Deployed address, block, tx hash and constructor arguments (written by the deploy script) | #218 (not created until the deploy) |
+| `contracts/abi/StokvelVault.json` | Exported ABI the backend loads | #285 (open, not on main yet) |
+| `contracts/scripts/export-abi.js` | Writes the ABI from the build (`npm run export:abi`) | #285 (open, not on main yet) |
+| `contracts/README.md` | Contract overview: trust assumption, rules, roles, IDs, backend usage, deploy | #285 (open, not on main yet) |
+| `docs/adr/0002-one-contract-many-stokvels.md` | ADR for D4 (one contract holds every stokvel) | #285 (open, not on main yet) |
 
 ## 14. Functions created
 
@@ -566,5 +570,5 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `createStokvel`, `startCycle`, `contribute`, `finalise`, `pause`, `unpause` | `contracts/src/StokvelVault.sol` | Contract interface (section 1) | #282 |
 | `getStokvel`, `getCycle`, `hasPaid`, `roundPool`, `isFinalisable`, `isMember`, `paidCount`, `openRound` | `contracts/src/StokvelVault.sol` | Contract views (section 1) | #282 |
 | `uuidToBytes32` | `contracts/test/helpers.ts` | UUID → left-aligned `bytes32`; the backend's helper must match | #282 |
-| `npm run deploy:local`, `npm run deploy:testnet` | `contracts/scripts/deploy.ts` | Dry run on a local chain; deploy to the XRPL EVM Testnet | #284 |
-| `npm run export:abi` | `contracts/scripts/export-abi.js` | Compile and write `contracts/abi/StokvelVault.json` | #285 |
+| `npm run deploy:local`, `npm run deploy:testnet` | `contracts/scripts/deploy.ts` | Dry run on a local chain; deploy to the XRPL EVM Testnet | #284 (open, not on main yet) |
+| `npm run export:abi` | `contracts/scripts/export-abi.js` | Compile and write `contracts/abi/StokvelVault.json` | #285 (open, not on main yet) |
