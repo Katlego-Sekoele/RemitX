@@ -42,6 +42,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
 | 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
 | 2026-10-09 | 1, 2, 6, 8, 9, 10, 13, 14 | Review fixes on #283: error order marked *pending #291* (on main a repeat payment into a filled round still reports `WrongRound`, and a nonexistent round is accepted); files and features from #284, #285 and the fix branch marked "not on main yet"; ID scheme added as an open question (Katlego's review) and flagged in section 1; `CycleNotOpen` maps to neutral `cycle_not_open`; `ERC20InsufficientBalance` mapped (Treasury out of UCTUSD); UCTUSD checked on testnet: re-approve from non-zero is fine, and `burn(uint256)` works from the Treasury (answers the burn-method question, to confirm on #278) | |
+| 2026-10-09 | 1, 9, 13 | #291 merged: section 1 error order is now what `main` does (pending markers removed); tests 71 on `main` | |
 
 ---
 
@@ -96,7 +97,7 @@ The final demo must still show everything the brief requires: three synthetic me
 
 ## 1. Contract interface (Role 1)
 
-> Confirmed by Role 1 against the contract on `main` (`contracts/src/StokvelVault.sol`, merged in #282), **with two open items**: (1) the error order marked *pending #291* below changes when the fix PR #291 merges; (2) the ID scheme (packed UUID vs a separate generated `bytes32`) is still under discussion (section 8). Cancel and refund are not built yet (R1-06, #220, waiting on #208); they are listed as planned.
+> Confirmed by Role 1 against the contract on `main` (`contracts/src/StokvelVault.sol`, merged in #282), including the error-order fix from #291 (merged 2026-10-09), **with one open item**: the ID scheme (packed UUID vs a separate generated `bytes32`) is still under discussion (section 8). Cancel and refund are not built yet (R1-06, #220, waiting on #208); they are listed as planned.
 
 ### Units and IDs
 
@@ -158,8 +159,8 @@ Uses OpenZeppelin `AccessControl`, `Pausable`, `ReentrancyGuard` and `SafeERC20`
 | Error | Raised when |
 |---|---|
 | `NotMember(bytes32 memberId)` | The member ID is not in the stokvel's current cycle |
-| `AlreadyPaid(uint8 round, bytes32 memberId)` | The member has already contributed to that round. **Pending #291:** on `main` today the round is checked first, so a repeat payment into a round that has already filled reports `WrongRound`. Once #291 merges, the order is member, already paid, round: a repeat payment always reports `AlreadyPaid` (even into a released round), and a non-member always gets `NotMember` |
-| `WrongRound(uint8 round, uint8 openRound)` | The round is not the one currently open for contributions. `openRound` equals the member count once every round is paid. **Pending #291:** on `main` today a payment into that nonexistent round (round = member count) is wrongly accepted; #291 rejects it. Do not deploy before #291 merges |
+| `AlreadyPaid(uint8 round, bytes32 memberId)` | The member has already contributed to that round, including one that has since filled or been released. `contribute` checks member, then already paid, then round (#291), so a repeat payment always reports `AlreadyPaid` and a non-member always gets `NotMember` |
+| `WrongRound(uint8 round, uint8 openRound)` | The round is not the one currently open for contributions, or does not exist. `openRound` equals the member count once every round is paid, and then every round is rejected (#291) |
 | `WrongAmount(uint256 expected, uint256 received)` | The vault received a different amount from the contribution (it measures its own balance before and after the pull) |
 | `NotYetFinalisable(uint8 round)` | Release conditions are not met: not the next round to release, not all members paid the next round, the last round is not fully paid, or the round's payout time has not passed |
 | `AlreadyFinalised(uint8 round)` | The round was already released |
@@ -464,7 +465,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract: stokvels and cycles, interface (DEC-1) | Done | #197, #212, #215 | Merged in PR #282 (2026-10-08); #279–#281 closed as superseded. Matches section 1 and D12 |
 | Contract: contributions and finalisation | Done | #198, #212 | Merged in PR #282: payout-time gate (D12), external `finalise` |
 | Contract: pause and resume | Done | #217 (was #199) | Merged in PR #282 (contract only; backend route is R3-07 #244, admin control R4-07 #256) |
-| Contract tests | Done | #216 (was #200) | 73 tests once the open PRs merge: hand-written tests for every rule (100% lines, 99% branches) plus randomised invariant tests (80 runs × 60 steps against a reference model). Coverage fixes in PR #285; randomised tests and the duplicate-error fix in branch `fix/duplicate-contribution-error` |
+| Contract tests | Done | #216 (was #200) | 71 on `main`: hand-written tests for every rule plus randomised invariant tests (80 runs × 60 steps against a reference model), from #282 and #291. PR #285 adds the coverage fixes and the ABI drift test (73; 100% lines, 99% branches) |
 | Contract testnet deployment | In progress | #218 | Deploy script in PR #284 (pre- and post-deploy checks; writes `contracts/deployments/xrplEvmTestnet.json`). Deployer funded 2026-10-09; deploy, explorer verification and the address in section 2 next. A `contribute` from the Treasury Wallet (Role 2 holds the key) closes it. Brief deadline: Fri 9 Oct |
 | Contract README, ABI export, ADR | In review | #219 | PR #285: `contracts/README.md`, `contracts/abi/StokvelVault.json` (the ABI the backend loads), `docs/adr/0002-one-contract-many-stokvels.md` |
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
@@ -552,7 +553,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `docs/stokvel_integration.md` | This tracking document | |
 | `contracts/` (Hardhat 2, Solidity 0.8.24, OpenZeppelin v5) | Contract project; `npm ci && npx hardhat test` | #282 |
 | `contracts/src/StokvelVault.sol` | The stokvel contract (section 1) | #282 |
-| `contracts/test/` | Tests: setup, contribute, pause, views, ABI drift, randomised invariants; `helpers.ts` has the fixtures and `uuidToBytes32`, the reference ID packing | #282, #285, fix branch |
+| `contracts/test/` | Tests: setup, contribute, pause, views, randomised invariants (on main), ABI drift (#285, open); `helpers.ts` has the fixtures and `uuidToBytes32`, the reference ID packing | #282, #291, #285 |
 | `contracts/src/mocks/` | Test-only tokens (`MockUCTUSD`, `ReentrantToken`, `FeeOnTransferToken`); never deployed | #282 |
 | `contracts/smart_contracts_changes.md` | Per-ticket log of contract changes and decisions | #282 |
 | `contracts/hardhat.config.ts` | Compiler settings (on main, #282); `xrplEvmTestnet` network, explorer verification and `.env` loading (#284, open) | #282, #284 |
