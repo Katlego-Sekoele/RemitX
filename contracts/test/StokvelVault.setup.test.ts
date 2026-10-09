@@ -54,7 +54,7 @@ describe("StokvelVault: setup", () => {
         [a, b, c, Z],
       ] as const) {
         await expect(
-          Vault.deploy(...args, 3),
+          Vault.deploy(args[0], args[1], args[2], args[3], 3),
         ).to.be.revertedWithCustomError(Vault, "ZeroAddress")
       }
       await expect(Vault.deploy(a, a, c, d, 3)).to.be.revertedWithCustomError(

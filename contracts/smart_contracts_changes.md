@@ -119,6 +119,11 @@ also in the PR. Fixed now:
   pre-flight check and stopped only at "already deployed".
 - **Only the in-process network is a dry run.** A `localhost` node keeps the
   contract, so it now gets `deployments/localhost.json` (gitignored).
+- **Test type errors fixed.** `tsc --noEmit` found 4 errors in test files
+  (3 already on `main`, 1 from this PR's coverage fix): the token from
+  `deployContract` was untyped, and a constructor spread. Tests ran fine
+  regardless, because Hardhat does not type-check them. Now 0 errors outside
+  the generated `typechain-types/`.
 - README: no hard-coded test count; lists `verify:sourcify` and localhost;
   describes the new order. `.env.example`: commented `# FORCE_REDEPLOY=1`
   with a "one-off" note. The deploy script's "next" step points to
