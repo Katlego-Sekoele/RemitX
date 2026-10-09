@@ -14,11 +14,14 @@ dependencies = [
     "celery>=5.4.0",
     "redis>=5.0.0",
     "clerk-backend-api>=7.0.0,<8",
-    "xrpl-py>=4.3.0",
+    "xrpl-py>=4.3.0",  # decommissioned
     # Fernet decryption of the XRPL seed and the EVM treasury key (worker only).
     "cryptography>=42.0.0",
     # Derives the EVM treasury account from its decrypted key (worker only).
     "eth-account==0.14.0",
+    # XRPL EVM Testnet client for the stokvel Treasury Wallet (worker only).
+    # Same pin as platform_wallet/scripts/requirements.txt.
+    "web3==8.0.0",
     # S3 client for Neon Object Storage (MinIO locally) — KYC document uploads.
     "boto3>=1.35.0",
 ]

@@ -11,15 +11,101 @@ which the API never imports. The settings are read with `os.environ` rather
 than through `remitx_api.config.Config`, so the API's config object has no way
 to hand either secret out.
 
-Models `xrpl_service._load_treasury_wallet`. Signing is built on top of this in
-#204.
+Models `xrpl_service._load_treasury_wallet`. The web3.py helpers below it
+(#221, #222) will replace the XRPL path, which still exists until it is
+removed in #225 (part of #276): until then normal remittances settle on the
+XRP Ledger Testnet through `xrpl_service`. Nothing calls these helpers yet;
+the burn (#278) and the stokvel contract connection (#273) build on them.
+
+Fees: transactions use legacy `gasPrice`. The RPC does report EIP-1559 fields
+(`eth_feeHistory` returned `baseFeePerGas` in October 2026), but no type-2
+transaction has been tested on this chain, and a legacy price taken from
+`eth_gasPrice` is accepted by any EVM node.
+
+Nonces: `submit_transaction` takes the Treasury Wallet's *pending* nonce at the
+moment it builds. Two tasks sending from the wallet at once can read the same
+nonce, so one replaces or is rejected in favour of the other. Every task that
+sends from the Treasury Wallet must be serialised with the others (one lock or
+one single-concurrency queue): the burn (#278), the contribution tasks and the
+scheduled release task that calls `finalise` (#273).
+
+Logging: nothing scrubs log lines. Never log a transaction dict, an account
+object or a decrypted key, and log a stokvel or member ID in its UUID form,
+not as `bytes32`. Persist a transaction hash in the database so it can be
+found again.
 """
 
 import os
+import re
+import uuid
+from decimal import Decimal, localcontext
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
+from remitx_api.config import Config
+from web3 import Web3
+from web3.contract import Contract
+
+# Enough of ERC-20 for balances, approvals and transfers.
+ERC20_ABI = [
+    {
+        "name": "balanceOf",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [{"name": "account", "type": "address"}],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "name": "decimals",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint8"}],
+    },
+    {
+        "name": "allowance",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "spender", "type": "address"},
+        ],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "name": "approve",
+        "type": "function",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "spender", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+        ],
+        "outputs": [{"name": "", "type": "bool"}],
+    },
+    {
+        "name": "transfer",
+        "type": "function",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "to", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+        ],
+        "outputs": [{"name": "", "type": "bool"}],
+    },
+]
+
+# Enough digits for any uint256 (78) at full precision. Decimal's default of 28
+# would silently round a balance of 10^10 tokens or more at 18 decimals.
+_PRECISION = 80
+
+# The only fields a caller may set; the rest are filled in here so that every
+# send uses the treasury's nonce, this chain's id and a legacy gas price.
+_CALLER_TX_FIELDS = frozenset({"to", "data", "value"})
+
+# A UUID string once its hyphens are removed, as uuidToBytes32 checks it.
+_UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
 
 
 def _load_treasury_account() -> LocalAccount:
@@ -66,3 +152,152 @@ def _load_treasury_account() -> LocalAccount:
             f"EVM_TREASURY_ADDRESS is {address}"
         )
     return account
+
+
+def get_web3() -> Web3:
+    """A client for `EVM_RPC_URL` that refuses any chain but `EVM_CHAIN_ID`."""
+    config = Config()
+    w3 = Web3(Web3.HTTPProvider(config.EVM_RPC_URL, request_kwargs={"timeout": 30}))
+    chain_id = w3.eth.chain_id
+    if chain_id != config.EVM_CHAIN_ID:
+        # The URL is left out: a hosted RPC URL can carry an API key.
+        raise RuntimeError(
+            f"EVM_RPC_URL reports chain id {chain_id}, expected "
+            f"EVM_CHAIN_ID {config.EVM_CHAIN_ID}"
+        )
+    return w3
+
+
+def token_contract(w3: Web3) -> Contract:
+    """The UCTUSD ERC-20 at `UCTUSD_CONTRACT_ADDRESS`."""
+    address = Web3.to_checksum_address(Config().UCTUSD_CONTRACT_ADDRESS)
+    return w3.eth.contract(address=address, abi=ERC20_ABI)
+
+
+def to_base_units(amount: Decimal) -> int:
+    """UCTUSD as a Decimal -> integer base units, scaled by the token's decimals.
+
+    The one place a token amount becomes an on-chain integer. Rejects floats
+    (and anything else not a Decimal), non-finite and negative amounts, and any
+    precision finer than one base unit, rather than rounding.
+    """
+    if not isinstance(amount, Decimal):
+        raise TypeError(f"amount must be a Decimal, not {type(amount).__name__}")
+    if not amount.is_finite():
+        raise ValueError(f"amount must be finite, got {amount}")
+    if amount < 0:
+        raise ValueError(f"amount must not be negative, got {amount}")
+    with localcontext() as context:
+        context.prec = _PRECISION
+        scaled = amount.scaleb(Config().UCTUSD_EVM_DECIMALS)
+        if scaled != scaled.to_integral_value():
+            raise ValueError(
+                f"{amount} has more than {Config().UCTUSD_EVM_DECIMALS} decimal places"
+            )
+        return int(scaled)
+
+
+def from_base_units(value: int) -> Decimal:
+    """Integer base units -> UCTUSD as a Decimal. The inverse of `to_base_units`."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"value must be an int, not {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"value must not be negative, got {value}")
+    with localcontext() as context:
+        context.prec = _PRECISION
+        return Decimal(value).scaleb(-Config().UCTUSD_EVM_DECIMALS)
+
+
+def uuid_to_bytes32(value: uuid.UUID | str) -> bytes:
+    """A database UUID as a contract `bytes32` ID: its 16 bytes, then 16 zeros.
+
+    Stokvel and member IDs are packed left-aligned. Must produce the same bytes
+    as `uuidToBytes32` in contracts/test/helpers.ts, and accepts the same
+    strings: hyphens are removed and exactly 32 hex digits (any case) must
+    remain, so `{...}` and `urn:uuid:` forms are rejected. Raises `ValueError`
+    for a string that is not a UUID and `TypeError` for anything else.
+    """
+    if isinstance(value, str):
+        digits = value.replace("-", "")
+        if not _UUID_HEX.fullmatch(digits):
+            raise ValueError(f"not a UUID: {value!r}")
+        return bytes.fromhex(digits) + bytes(16)
+    if not isinstance(value, uuid.UUID):
+        raise TypeError(f"value must be a UUID or str, not {type(value).__name__}")
+    return value.bytes + bytes(16)
+
+
+def get_native_balance(address: str, w3: Web3 | None = None) -> Decimal:
+    """The address's test XRP (gas) balance. The native coin has 18 decimals."""
+    w3 = w3 or get_web3()
+    wei = w3.eth.get_balance(Web3.to_checksum_address(address))
+    return Web3.from_wei(wei, "ether")
+
+
+def get_token_balance(address: str, w3: Web3 | None = None) -> Decimal:
+    """The address's UCTUSD balance."""
+    w3 = w3 or get_web3()
+    raw = (
+        token_contract(w3).functions.balanceOf(Web3.to_checksum_address(address)).call()
+    )
+    return from_base_units(raw)
+
+
+def submit_transaction(tx: dict[str, Any], w3: Web3 | None = None) -> str:
+    """Sign `tx` as the Treasury Wallet, send it, and return its hash.
+
+    `tx` may only set `to`, `data` and `value`. The nonce (pending), chain id,
+    legacy `gasPrice` and gas estimate are filled in here. Does not wait for
+    the transaction to be mined: store the returned hash first, then call
+    `wait_for_receipt`, so a retry can wait on that hash instead of sending a
+    second transaction. See the module docstring on nonce collisions.
+    """
+    extra = set(tx) - _CALLER_TX_FIELDS
+    if extra:
+        raise ValueError(f"unsupported transaction fields: {sorted(extra)}")
+    w3 = w3 or get_web3()
+    account = _load_treasury_account()
+
+    full_tx: dict[str, Any] = {
+        "value": 0,
+        **tx,
+        "from": account.address,
+        "nonce": w3.eth.get_transaction_count(account.address, "pending"),
+        "chainId": Config().EVM_CHAIN_ID,
+        "gasPrice": w3.eth.gas_price,
+    }
+    full_tx["gas"] = w3.eth.estimate_gas(full_tx)
+
+    signed = account.sign_transaction(full_tx)
+    return Web3.to_hex(w3.eth.send_raw_transaction(signed.raw_transaction))
+
+
+def wait_for_receipt(tx_hash: str, timeout: float = 120, w3: Web3 | None = None):
+    """Wait for `tx_hash` to be mined and return its receipt.
+
+    Raises `RuntimeError` if the transaction reverted (status 0). If it is not
+    mined within `timeout` seconds, web3's `TimeExhausted` propagates and the
+    caller may wait on the same hash again.
+    """
+    w3 = w3 or get_web3()
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
+    if receipt["status"] == 0:
+        raise RuntimeError(f"EVM transaction {tx_hash} reverted")
+    return receipt
+
+
+def send_transaction(
+    tx: dict[str, Any], timeout: float = 120, w3: Web3 | None = None
+) -> tuple[str, int]:
+    """Submit `tx` as the Treasury Wallet, wait for it, return (hash, block).
+
+    `submit_transaction` followed by `wait_for_receipt` on one client. A revert
+    raises `RuntimeError`. On web3's `TimeExhausted` the transaction may still
+    be mined, but the caller never sees its hash, so it cannot wait on it
+    again and a retry would send a second transaction. Retry-safe flows must
+    call `submit_transaction`, store the hash, then call `wait_for_receipt`.
+    """
+    w3 = w3 or get_web3()
+    tx_hash = submit_transaction(tx, w3=w3)
+    receipt = wait_for_receipt(tx_hash, timeout=timeout, w3=w3)
+    return tx_hash, receipt["blockNumber"]

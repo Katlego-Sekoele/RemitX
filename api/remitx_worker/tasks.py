@@ -24,6 +24,7 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.services import queue_service
 from sqlalchemy import select, update
 
+# xrpl_service is decommissioned (#276); replaced by evm_service in #278.
 from remitx_worker import xrpl_service
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope

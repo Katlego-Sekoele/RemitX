@@ -78,6 +78,7 @@ class Config:
         return os.getenv("CLERK_JWT_KEY", "").strip()
 
     # Written by platform_wallet/scripts/create_xprl_platform_wallet.py.
+    # Decommissioned (#276, removed in #225); no EVM code reads it.
     @property
     def XRPL_ENCRYPTION_KEY(self) -> str:
         return os.getenv("XRPL_ENCRYPTION_KEY", "")
@@ -132,6 +133,9 @@ class Config:
     def OBJECT_STORAGE_SECRET_ACCESS_KEY(self) -> str:
         return os.getenv("OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
 
+    # XRPL is being decommissioned (#276, removed in #225). No EVM code reads
+    # the settings from here through UCTUSD_ISSUER_LABEL, or XRPL_ENCRYPTION_KEY
+    # above; they are kept for reference and rollback.
     @property
     def PLATFORM_WALLET_ADDRESS(self) -> str:
         return os.getenv("PLATFORM_WALLET_ADDRESS", "")
@@ -178,6 +182,56 @@ class Config:
     @property
     def UCTUSD_ISSUER_LABEL(self) -> str:
         return os.getenv("UCTUSD_ISSUER_LABEL", "UCTUSD Issuer (Exchange)")
+
+    # --- XRPL EVM Testnet (stokvel Treasury Wallet), public settings only ---
+    #
+    # Same env vars and defaults as
+    # platform_wallet/scripts/create_evm_platform_wallet.py, read by
+    # remitx_worker/evm_service.py. The treasury's encrypted key and the key
+    # that decrypts it are deliberately not here: evm_service.py reads them
+    # with os.environ, so this object can never hand either one out.
+    @property
+    def EVM_RPC_URL(self) -> str:
+        return os.getenv("EVM_RPC_URL", "https://rpc.testnet.xrplevm.org")
+
+    @property
+    def EVM_CHAIN_ID(self) -> int:
+        return int(os.getenv("EVM_CHAIN_ID", "1449000"))
+
+    @property
+    def EVM_EXPLORER_URL(self) -> str:
+        return os.getenv("EVM_EXPLORER_URL", "https://explorer.testnet.xrplevm.org")
+
+    # UCTUSD as an ERC-20 on the EVM chain - unrelated to UCTUSD_ISSUER above,
+    # which is the XRPL issued currency.
+    @property
+    def UCTUSD_CONTRACT_ADDRESS(self) -> str:
+        return os.getenv(
+            "UCTUSD_CONTRACT_ADDRESS", "0x7055071C7B79A859d9514e62833BFf041ce71074"
+        )
+
+    @property
+    def UCTUSD_EVM_DECIMALS(self) -> int:
+        return int(os.getenv("UCTUSD_EVM_DECIMALS", "18"))
+
+    @property
+    def EVM_TREASURY_ADDRESS(self) -> str:
+        return os.getenv("EVM_TREASURY_ADDRESS", "")
+
+    # Set once the stokvel contract is deployed (#218).
+    @property
+    def STOKVEL_CONTRACT_ADDRESS(self) -> str:
+        return os.getenv("STOKVEL_CONTRACT_ADDRESS", "")
+
+    # Must equal the deployed stokvel contract's maxMembers.
+    @property
+    def MAX_STOKVEL_MEMBERS(self) -> int:
+        value = int(os.getenv("MAX_STOKVEL_MEMBERS", "3"))
+        if not 2 <= value <= 255:
+            raise ValueError(
+                f"MAX_STOKVEL_MEMBERS must be between 2 and 255, got {value}"
+            )
+        return value
 
     # exchangerate-api.com key, used by services/exchange_rate_provider.py.
     @property
