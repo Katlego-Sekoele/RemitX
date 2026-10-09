@@ -1,4 +1,7 @@
 """
+DECOMMISSIONED (#276): replaced by create_evm_platform_wallet.py; kept for
+reference and rollback.
+
 Create and fund the RemitX platform wallet on the XRPL testnet, and open its
 UCTUSD trust line.
 

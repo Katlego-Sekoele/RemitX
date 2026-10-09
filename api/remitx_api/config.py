@@ -78,6 +78,7 @@ class Config:
         return os.getenv("CLERK_JWT_KEY", "").strip()
 
     # Written by platform_wallet/scripts/create_xprl_platform_wallet.py.
+    # Decommissioned (#276, removed in #225); no EVM code reads it.
     @property
     def XRPL_ENCRYPTION_KEY(self) -> str:
         return os.getenv("XRPL_ENCRYPTION_KEY", "")
@@ -132,6 +133,9 @@ class Config:
     def OBJECT_STORAGE_SECRET_ACCESS_KEY(self) -> str:
         return os.getenv("OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
 
+    # XRPL is being decommissioned (#276, removed in #225). No EVM code reads
+    # the settings from here through UCTUSD_ISSUER_LABEL, or XRPL_ENCRYPTION_KEY
+    # above; they are kept for reference and rollback.
     @property
     def PLATFORM_WALLET_ADDRESS(self) -> str:
         return os.getenv("PLATFORM_WALLET_ADDRESS", "")
@@ -140,8 +144,6 @@ class Config:
     def PLATFORM_WALLET_SEED_ENCRYPTED(self) -> str:
         return os.getenv("PLATFORM_WALLET_SEED_ENCRYPTED", "")
 
-    # XRPL is being decommissioned (#276, removed in #225). No EVM code reads
-    # these settings; they are kept for reference and rollback.
     # XRPL testnet + UCTUSD issued-currency settings, shared with
     # platform_wallet/scripts/create_xprl_platform_wallet.py (same env vars,
     # same defaults) — read here too so remitx_worker/xrpl_service.py doesn't
