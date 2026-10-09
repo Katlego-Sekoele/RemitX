@@ -183,10 +183,9 @@ describe("StokvelVault: pause and resume", () => {
       await expect(op.finalise(id, 0))
         .to.be.revertedWithCustomError(f.vault, "NotYetFinalisable")
         .withArgs(0)
-      await expect(op.contribute(id, 1, SIPHO)).to.be.revertedWithCustomError(
-        f.vault,
-        "WrongRound",
-      )
+      await expect(op.contribute(id, 1, SIPHO))
+        .to.be.revertedWithCustomError(f.vault, "AlreadyPaid")
+        .withArgs(1, SIPHO)
       expect(await f.token.balanceOf(f.releaseTarget.address)).to.equal(0)
     })
 

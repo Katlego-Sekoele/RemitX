@@ -131,6 +131,34 @@ DEC-3 (#213), contract side:
 - **Pause is unchanged:** `contribute` and `finalise` stop, while
   `createStokvel`, `startCycle` and the views keep working.
 
+### Fix (2026-10-09): duplicate error and a payment into a round that does not exist
+
+Branch `fix/duplicate-contribution-error`, from `main` after #282 merged.
+Found by Kerry while testing.
+
+- **Wrong error for a duplicate.** A member paying a round they had already
+  paid got `WrongRound` instead of `AlreadyPaid` once that round had filled,
+  because `contribute` checked the round before the duplicate. While the round
+  was still filling, the error was correct, which is why the tests missed it;
+  one test even asserted the wrong error. `contribute` now checks membership,
+  then "already paid", then the round, so a repeat payment always reports
+  `AlreadyPaid` (including into a round that has already been released). This
+  matters for the demo ("a duplicate contribution is rejected") and for the
+  §6 message the user sees.
+- **Funds could get stuck.** Once every round of a cycle was paid but not yet
+  released (waiting for payout times), `openRound` equals the member count,
+  and `contribute` for that round number, which does not exist, was accepted:
+  tokens went into a pool that could never be released. `contribute` now
+  rejects any round at or beyond the member count with `WrongRound`. The
+  contract is not deployed yet, so no funds were affected.
+- **Tests:** three tests that asserted the old behaviour now expect
+  `AlreadyPaid`. Two new regression tests cover a duplicate into a full round
+  and into a released round, and a new check covers paying the nonexistent
+  round. On `main`'s old contract these tests fail in 4 places; with the fix,
+  all 69 pass. Branch coverage of `contribute` is complete.
+- No interface change: the function signatures, errors and events are the
+  same, so the ABI is unchanged.
+
 ### Left open / for later tickets
 
 - **Doc §1 update (DEC-1 and R1-01 "done when"):** the doc lives on `main`.
