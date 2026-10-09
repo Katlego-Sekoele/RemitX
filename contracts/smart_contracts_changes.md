@@ -8,6 +8,155 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #219 R1-05 Contract README, ABI export and ADR
+
+**Date:** 2026-10-08
+**Branch:** `feature/219-readme-abi-adr` (stacked on
+`feature/218-deploy-testnet`)
+**Status:** Done, tests passing (69; 99.1% branch coverage)
+
+### What changed
+
+- **`contracts/README.md`:**
+  - the trust assumption (brief §7.4): the contract trusts the backend to
+    identify the contributing member
+  - how stokvels, cycles, rounds and the release rule work
+  - roles, the ID packing and the privacy rule
+  - how the backend uses the contract, plus develop and deploy commands
+  - it points to doc §1 as the interface source of truth
+- **`contracts/abi/StokvelVault.json`:** the exported ABI the backend loads
+  (66 entries: functions, events and errors). Committed.
+- **`contracts/scripts/export-abi.js`** and `npm run export:abi`, which
+  compiles and then writes the ABI.
+- **`contracts/test/abi.test.ts`:** fails if the committed ABI no longer
+  matches the compiled contract. Checked: with a stale ABI file it fails.
+- **`docs/adr/0002-one-contract-many-stokvels.md`:** why one shared contract
+  rather than one per stokvel (doc D4), and what that implies: shared funds
+  isolated by per-round accounting, a contract-wide pause, bounded loops, and
+  no upgrades.
+
+### Files
+
+- `contracts/README.md`, `contracts/abi/StokvelVault.json`,
+  `contracts/scripts/export-abi.js`, `contracts/test/abi.test.ts` (new)
+- `docs/adr/0002-one-contract-many-stokvels.md` (new)
+- `contracts/package.json` (the `export:abi` script)
+- `contracts/smart_contracts_changes.md`
+
+### Acceptance criteria
+
+- [x] State that the contract trusts the backend to identify the
+  contributing member (README "Trust assumption").
+- [x] Export the ABI to a path the backend reads:
+  `contracts/abi/StokvelVault.json`.
+- [x] ADR: one contract holding many stokvels (D4).
+- [x] **Done when** the backend can load the ABI without copying it by
+  hand. It is a committed JSON file, kept in sync by the test.
+
+### Decisions
+
+- **The ABI file is `StokvelVault.json`, not the plan's `Stokvel.json`.** It
+  is named after the contract so the two cannot be confused. The plan's file
+  names are suggestions.
+- **ADR numbered 0002;** 0001 is the QA seeder ADR on `main`.
+
+### Coverage check (added 2026-10-08)
+
+`npx hardhat coverage` showed 100% of lines but only 93% of branches. The
+gaps, now fixed in this branch (69 tests):
+- **A mislabelled test.** The "payout goes backwards between rounds" case
+  tripped the earlier "payout before deadline" check, so the backwards rule
+  was never exercised on its own. There is now a separate test where every
+  round is valid on its own and only the order is wrong.
+- **Constructor zero addresses.** Only the token was tested; now admin,
+  operator, token and release target are each tested.
+- **Unknown stokvel ID.** `getCycle` and `isFinalisable` with an unknown
+  stokvel are now tested.
+
+Branch coverage is now 99.1%. The one uncovered branch (`round >= n` in
+`_isFinalisable`) cannot be reached, because both callers reject a closed
+cycle first. It stays as a defensive check.
+
+**Not covered by any automated test yet:**
+- behaviour on the real testnet: gas, block times, RPC (#218)
+- the deploy and ABI export scripts, which were only run by hand
+- randomised or property-based testing of schedules and payment orders
+- cancel and refund (not built, #220)
+
+### Treasury allowance (added 2026-10-08)
+
+Claire asked whether the Treasury should approve once or once per
+contribution. Decision: a **one-off `approve(vault, max)`** per contract
+address, plus a check before each `contribute` that re-approves if the
+allowance is low.
+
+**Why this is safe:** the vault only pulls from `msg.sender`, and only the
+operator (the Treasury) can call `contribute`, so the allowance can only be
+spent by Treasury-signed calls. Per-contribution approvals would double the
+transactions for no extra protection.
+
+A missing allowance reverts with the token's `ERC20InsufficientAllowance`,
+which is a backend 500. This is recorded in the README and in doc §1 and §6
+(PR #283). Claire also confirmed §1 and §6, and that the contribution stays
+fixed in `createStokvel` for all cycles; she will fix the per-cycle wording in
+the backend sections (§3, R2-10, OI-5) herself.
+
+### Deploy script fixes from Claire's #285 review (2026-10-09)
+
+Two of her points were already fixed when #284 merged into this branch: the
+config loads `contracts/.env`, and the messages point there. The doc is
+also in the PR. Fixed now:
+- **A failed post-deploy check no longer loses the address.** The script
+  prints the address and writes `deployments/<network>.json` as soon as the
+  contract exists, then runs the checks and records the result
+  (`postDeployChecks`: `"passed"` or `{ failed: [...] }`). On failure it
+  says the contract is deployed but must not be used. Tested by forcing a
+  check to fail on a local node: the address is recorded, marked failed.
+- **Blank `.env` values fall back to the defaults.** `||` instead of `??`
+  in `hardhat.config.ts`, and an `env()` helper in `deploy.ts`, so
+  `EVM_CHAIN_ID=` no longer means chain 0. Tested against the testnet with
+  blank chain ID, RPC URL, member cap and token address: it ran every
+  pre-flight check and stopped only at "already deployed".
+- **Only the in-process network is a dry run.** A `localhost` node keeps the
+  contract, so it now gets `deployments/localhost.json` (gitignored).
+- **Test type errors fixed.** `tsc --noEmit` found 4 errors in test files
+  (3 already on `main`, 1 from this PR's coverage fix): the token from
+  `deployContract` was untyped, and a constructor spread. Tests ran fine
+  regardless, because Hardhat does not type-check them. Now 0 errors outside
+  the generated `typechain-types/`.
+- README: no hard-coded test count; lists `verify:sourcify` and localhost;
+  describes the new order. `.env.example`: commented `# FORCE_REDEPLOY=1`
+  with a "one-off" note. The deploy script's "next" step points to
+  `npm run verify:sourcify`, because the explorer's verifier cannot verify
+  this contract.
+
+### Backend review notes (2026-10-09)
+
+Claire (Role 2) confirmed §1 and §6, and the allowance approach. Added to the
+README and doc §1: UCTUSD's `ERC20InsufficientAllowance` and
+`ERC20InsufficientBalance` are not in `abi/StokvelVault.json`, so the backend
+decodes reverts against OpenZeppelin's ERC20 errors too (selectors listed).
+ID scheme: she agrees on the packed UUID for the MVP, pending Marc.
+
+### Contribution amount per cycle (decided 2026-10-09)
+
+**Decision for the MVP:** the contribution amount stays fixed in
+`createStokvel` for every cycle of a stokvel. To use a different amount, the
+Organiser creates a new stokvel. The old one cannot be deleted on-chain; it
+stays inactive with its history once its last cycle closes. The backend can
+mark it ended in the database.
+
+Per-cycle amounts (moving the amount into `startCycle`) were considered and
+dropped for the MVP. That would be an interface change needing doc §1, the
+backend's agreement and, once deployed, a redeploy. Recorded in doc §1 (PR
+#283).
+
+### Left open
+
+- Doc §1 links the README once #283 and this branch are merged.
+
+---
+
 ## #218 R1-04 Deploy to the XRPL EVM Testnet
 
 **Date:** 2026-10-08 (script), 2026-10-09 (deployed)

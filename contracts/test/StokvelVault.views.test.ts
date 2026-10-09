@@ -39,6 +39,9 @@ describe("StokvelVault: views", () => {
     expect(c.payoutTimes).to.deep.equal(sched.payouts)
     expect(c.nextToFinalise).to.equal(0)
     expect(c.closed).to.be.false
+    await expect(vault.getCycle(unknown, 1))
+      .to.be.revertedWithCustomError(vault, "UnknownStokvel")
+      .withArgs(unknown)
     for (const cycle of [0, 2]) {
       await expect(vault.getCycle(id, cycle))
         .to.be.revertedWithCustomError(vault, "UnknownCycle")
@@ -92,6 +95,9 @@ describe("StokvelVault: views", () => {
     // Released: no longer finalisable.
     await op.finalise(id, 0)
     expect(await vault.isFinalisable(id, 0)).to.be.false
+    await expect(vault.isFinalisable(unknown, 0))
+      .to.be.revertedWithCustomError(vault, "UnknownStokvel")
+      .withArgs(unknown)
     // No cycle yet: false rather than a revert.
     const fresh = uuidToBytes32(crypto.randomUUID())
     await op.createStokvel(fresh, CONTRIBUTION)

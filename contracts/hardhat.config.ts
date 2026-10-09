@@ -11,8 +11,9 @@ dotenv.config({ path: path.resolve(__dirname, ".env") })
 dotenv.config({ path: path.resolve(__dirname, "../.env") })
 
 // Defaults are the public values from docs/stokvel_integration.md section 2.
-const EVM_RPC_URL = process.env.EVM_RPC_URL ?? "https://rpc.testnet.xrplevm.org"
-const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID ?? 1449000)
+// `||`, not `??`: a blank line such as `EVM_CHAIN_ID=` falls back too.
+const EVM_RPC_URL = process.env.EVM_RPC_URL?.trim() || "https://rpc.testnet.xrplevm.org"
+const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID?.trim() || 1449000)
 // Read only from the environment, never from source control (#218).
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY
 

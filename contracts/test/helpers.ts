@@ -1,5 +1,6 @@
 import { ethers } from "hardhat"
 import { time } from "@nomicfoundation/hardhat-network-helpers"
+import type { ReentrantToken } from "../typechain-types"
 
 /**
  * Database UUID -> bytes32, left-aligned: the 16 UUID bytes first, the rest
@@ -51,7 +52,11 @@ export async function deploy(
   maxMembers = MAX_MEMBERS,
 ) {
   const [admin, operator, outsider, releaseTarget] = await ethers.getSigners()
-  const token = await ethers.deployContract(tokenName)
+  // Typed as the widest test token (MockUCTUSD plus `arm`); only the
+  // reentrancy tests deploy a ReentrantToken and call `arm`.
+  const token = (await ethers.deployContract(
+    tokenName,
+  )) as unknown as ReentrantToken
   const vault = await ethers.deployContract("StokvelVault", [
     admin.address,
     operator.address,
