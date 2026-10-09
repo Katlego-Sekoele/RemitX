@@ -1,0 +1,49 @@
+// Stokvel group tables (R2-04, #226). Render (needs graphviz's `dot`):
+//   npx @softwaretechnik/dbml-renderer@1.0.30 -i stokvel_group_tables.dbml -f dot \
+//     | grep -v 'style=invis' \
+//     | sed 's/rankdir=LR;/rankdir=LR; nodesep=0.6; ranksep=1.4;/; s/"transparent"/"white"/' \
+//     | dot -Tsvg -o stokvel_group_tables.svg
+// (!) in the diagram means NOT NULL.
+// users and accounts are stubs: only the columns these tables reference.
+
+Table users {
+  id uuid [pk]
+}
+
+Table accounts {
+  account_id uuid [pk]
+}
+
+Table stokvels {
+  id uuid [pk, note: 'on-chain id (bytes32)']
+  organiser_user_id uuid [not null, ref: > users.id]
+  name text [not null]
+  currency text [not null, note: 'Stokvel currency (fiat)']
+  contribution_amount "numeric(20,8)" [not null, note: 'fiat, fixed for life']
+  created_at timestamptz [not null]
+}
+
+Table stokvel_members {
+  id uuid [pk, note: 'on-chain memberId']
+  stokvel_id uuid [not null, ref: > stokvels.id]
+  user_id uuid [not null, ref: > users.id]
+  account_id uuid [not null, ref: > accounts.account_id, note: 'pays contributions']
+  invitation_id uuid [unique, ref: - stokvel_invitations.id, note: 'null for the Organiser']
+  joined_at timestamptz [not null]
+  left_at timestamptz [note: 'null while a member']
+
+  Note: 'unique (stokvel_id, user_id) where left_at is null'
+}
+
+Table stokvel_invitations {
+  id uuid [pk]
+  stokvel_id uuid [not null, ref: > stokvels.id]
+  invitee_user_id uuid [not null, ref: > users.id]
+  invited_by_user_id uuid [not null, ref: > users.id]
+  status text [not null, note: 'pending | accepted | declined | revoked | lapsed']
+  created_at timestamptz [not null]
+  status_changed_at timestamptz
+  status_changed_by_user_id uuid [ref: > users.id]
+
+  Note: 'unique (stokvel_id, invitee_user_id) where status = pending'
+}

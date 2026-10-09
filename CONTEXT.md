@@ -23,7 +23,7 @@ A platform user who belongs to a **Stokvel**, contributes each round and receive
 _Avoid_: Participant, contributor
 
 **Invitation**:
-A **Stokvel** creator's request that another platform user join as a **Member**. Joining happens only between cycles, never partway through one. An invitation that has not been accepted when the **Organiser** starts a **Cycle** lapses, and its recipient is not a member of that cycle.
+A **Stokvel** creator's request that another platform user join as a **Member**. Joining happens only between cycles, never partway through one. An invitation that has not been accepted when the **Organiser** starts a **Cycle** lapses, and its recipient is not a member of that cycle. The **Organiser** may revoke an invitation while it is pending.
 _Avoid_: Invite link, request
 
 **Cycle**:
@@ -39,7 +39,7 @@ The fiat currency a **Stokvel** is denominated in, set by the **Organiser**. Eve
 _Avoid_: Contribution currency
 
 **Contribution**:
-A **Member**'s fixed payment into a **Round**, paid from their fiat account in the **Stokvel currency**, converted by the platform into **UCTUSD** and held by the stokvel contract. Counts toward the member's own sending limits; a **Stokvel** has none.
+A **Member**'s fixed fiat payment into a **Round**, the same amount for every round and cycle of the **Stokvel**, paid from their fiat account in the **Stokvel currency**, converted by the platform into **UCTUSD** and held by the stokvel contract. Counts toward the member's own sending limits; a **Stokvel** has none.
 _Avoid_: Deposit (that is a ZAR cash-in), payment
 
 **Payout order**:
