@@ -1,5 +1,20 @@
+import path from "path"
+import dotenv from "dotenv"
 import { HardhatUserConfig } from "hardhat/config"
 import "@nomicfoundation/hardhat-toolbox"
+
+// contracts/.env holds the deployer key only. It is kept out of the
+// repo-root .env because docker compose loads that file into the API and
+// worker containers, which must never see the contract admin key.
+dotenv.config({ path: path.resolve(__dirname, ".env") })
+// The repo-root .env is the single source for every other setting (CLAUDE.md).
+dotenv.config({ path: path.resolve(__dirname, "../.env") })
+
+// Defaults are the public values from docs/stokvel_integration.md section 2.
+const EVM_RPC_URL = process.env.EVM_RPC_URL ?? "https://rpc.testnet.xrplevm.org"
+const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID ?? 1449000)
+// Read only from the environment, never from source control (#218).
+const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -15,6 +30,31 @@ const config: HardhatUserConfig = {
     sources: "./src",
     tests: "./test",
   },
+  networks: {
+    xrplEvmTestnet: {
+      url: EVM_RPC_URL,
+      chainId: EVM_CHAIN_ID,
+      accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
+    },
+  },
+  // Source verification on the XRPL EVM Testnet explorer (Blockscout).
+  etherscan: {
+    apiKey: { xrplEvmTestnet: "blockscout" },
+    customChains: [
+      {
+        network: "xrplEvmTestnet",
+        chainId: EVM_CHAIN_ID,
+        urls: {
+          apiURL: "https://explorer.testnet.xrplevm.org/api",
+          browserURL: "https://explorer.testnet.xrplevm.org",
+        },
+      },
+    ],
+  },
+  // The explorer's own verifier has no Solidity 0.8.24 compiler, and
+  // hardhat-verify's Sourcify support uses Sourcify's removed v1 API
+  // (checked 2026-10-09). Verify with `npm run verify:sourcify` instead.
+  sourcify: { enabled: false },
 }
 
 export default config

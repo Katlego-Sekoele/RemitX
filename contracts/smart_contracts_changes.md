@@ -8,6 +8,112 @@ taken (and why), and anything left open for a later ticket.
 
 ---
 
+## #218 R1-04 Deploy to the XRPL EVM Testnet
+
+**Date:** 2026-10-08 (script), 2026-10-09 (deployed)
+**Branch:** `feature/218-deploy-testnet` (rebased onto `main` after #282
+and #291 merged)
+**Status:** **Deployed 2026-10-09** at
+`0x2f240705314BB79780522635eA47d20072CB8Fe1` (block 8995825, tx
+`0xd22e36e8…6ce8fa`), from a contract identical to `main` including the #291
+fix. Verified on Sourcify (exact match). Waiting on the Treasury
+`contribute` smoke test (Claire).
+
+### What changed
+
+- **`hardhat.config.ts`:** loads the repo-root `.env` (with `dotenv`) and
+  adds the `xrplEvmTestnet` network (RPC `https://rpc.testnet.xrplevm.org`,
+  chain 1449000) and Blockscout explorer settings for `hardhat verify`. The
+  deployer key is read only from `DEPLOYER_PRIVATE_KEY` in the environment.
+- **`scripts/deploy.ts`** deploys `StokvelVault` with admin = deployer,
+  operator = Treasury Wallet, token = UCTUSD, release target = Treasury
+  Wallet (D2) and `maxMembers` = 3 (DEC-3).
+  - **Pre-flight checks:** settings present and valid, deployer ≠ Treasury,
+    a contract exists at the UCTUSD address with 18 decimals, the deployer
+    has gas, and no existing deployment record would be overwritten
+    (`FORCE_REDEPLOY=1` to replace one).
+  - **Post-deploy checks:** roles, token, release target, `maxMembers`,
+    not paused.
+  - **On testnet** it writes `deployments/xrplEvmTestnet.json` (address,
+    block, tx hash, constructor arguments) and prints the
+    `STOKVEL_CONTRACT_ADDRESS` line and the verify command.
+  - **On the local Hardhat network** it deploys a mock token and writes
+    nothing (a dry run).
+- npm scripts: `deploy:local` and `deploy:testnet`.
+- Local `.env` (gitignored): `DEPLOYER_ADDRESS`, `DEPLOYER_PRIVATE_KEY` and
+  `EVM_TREASURY_ADDRESS`.
+
+### Files
+
+- `contracts/hardhat.config.ts`, `contracts/package.json`,
+  `contracts/package-lock.json` (adds `dotenv`)
+- `contracts/scripts/deploy.ts` (new)
+- `contracts/smart_contracts_changes.md`
+
+### Verified
+
+- `npm run deploy:local`: deploys, and all 7 post-deploy checks pass.
+- `npm run deploy:testnet` against the real testnet: connects to chain
+  1449000, loads the deployer key, finds UCTUSD (`UCTUSD`, 18 decimals), then
+  stops with "Deployer … has no test XRP" before sending anything.
+
+### Acceptance criteria
+
+- [x] The deployment script reads the deployer key from the environment
+  only.
+- [x] The deployer is a separate address from the Treasury Wallet
+  (`0x4948b5bf3C39d63a24918de9B0346B6159f7829C`), and its key is only in the
+  local `.env`. The script refuses to deploy if they match.
+- [x] Funded with test XRP (#224, Claire): 98.83 XRP.
+- [x] Deployed with the UCTUSD address; operator role to the Treasury Wallet;
+  admin role stays with the deployer. All 7 post-deploy checks passed (admin
+  on deployer, operator on Treasury, Treasury not admin, token, release
+  target, `maxMembers` 3, not paused).
+- [x] Verify the contract. **Verified on Sourcify** (creation and runtime
+  exact match): https://repo.sourcify.dev/1449000/0x2f240705314BB79780522635eA47d20072CB8Fe1.
+  The explorer's own verifier failed ("Unable to verify"): its compiler list
+  has no Solidity 0.8.24. hardhat-verify's Sourcify support also failed,
+  because it calls Sourcify's removed v1 API. Hence the new
+  `npm run verify:sourcify` script, which uses API v2. The explorer page does
+  not show "verified" yet; Blockscout usually imports Sourcify verifications
+  later. If the demo needs decoded events on the explorer, check again
+  before the demo.
+- [x] Record the contract address: `.env.example` and the local `.env`
+  (`STOKVEL_CONTRACT_ADDRESS`), `contracts/deployments/xrplEvmTestnet.json`,
+  and doc §2 (PR #283).
+- [ ] **Done when:** a `contribute` call from the Treasury Wallet succeeds on
+  testnet. This needs the Treasury key, which Claire holds (encrypted, #277
+  and #224), so it is either run by her or by the backend once R2-02 lands.
+
+### Also added on deploy day
+
+- `contracts/scripts/verify-sourcify.js` and `npm run verify:sourcify`, which
+  verify the recorded deployment on Sourcify (API v2).
+- `contracts/deployments/xrplEvmTestnet.json`: address, block, tx hash,
+  constructor arguments.
+- `.env.example`: a commented-out, empty `# DEPLOYER_PRIVATE_KEY=` placeholder
+  with a warning, so the setting is discoverable (repo rule: new settings go
+  in `.env.example`) without ever holding a value.
+- **The deployer key moved to `contracts/.env`** (gitignored, mode 600), out
+  of the repo-root `.env`. Docker compose loads the root `.env` into the API
+  and worker containers (`env_file: .env`), so the contract admin key was
+  reaching containers that never need it. `hardhat.config.ts` now loads
+  `contracts/.env` for the key and the root `.env` for everything else.
+  Checked: the deploy script still finds the key (it stops only at "already
+  deployed"), and the root `.env` no longer contains it.
+- The PR was rebased onto `main` (force-push) so that it holds only its own
+  commit after #282 and #291 were rebase-merged.
+
+### How to deploy (once funded)
+
+```bash
+cd contracts
+npm run deploy:testnet
+# then run the printed verify command, and add STOKVEL_CONTRACT_ADDRESS
+```
+
+---
+
 ## #212 DEC-1 Reconcile the contract interface (with #215 R1-01 views and #213 DEC-3 member cap)
 
 **Date:** 2026-10-08

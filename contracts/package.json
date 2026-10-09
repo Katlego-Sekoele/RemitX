@@ -4,11 +4,15 @@
   "description": "RemitX stokvel smart contracts (XRPL EVM Testnet)",
   "scripts": {
     "build": "hardhat compile",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts",
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network xrplEvmTestnet",
+    "verify:sourcify": "node scripts/verify-sourcify.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.6.1",
+    "dotenv": "^16.6.1",
     "hardhat": "^2.29.1",
     "ts-node": "^10.9.2",
     "typescript": "~5.8"
