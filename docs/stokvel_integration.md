@@ -49,6 +49,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 1, 8 | Backend review (Role 2): section 1 notes that UCTUSD's `ERC20InsufficientAllowance` / `ERC20InsufficientBalance` are not in the vault ABI (selectors given; decode with OpenZeppelin's ERC20 errors); ID scheme: backend agrees on packed UUID for the MVP, pending Marc | |
 | 2026-10-09 | 2, 9, 10, 13, 14 | #283 and #284 merged; with #285, the README, ABI and ADR land too, so the "not on main yet" markers are removed and the contract rows are Done (deployment: smoke test pending) | |
 | 2026-10-09 | 2 | Deploy script (Claire's #285 review): records the address before the post-deploy checks; blank settings fall back to defaults; `FORCE_REDEPLOY` documented | |
+| 2026-10-09 | Proposals, 3, 5, 8, 9, 13, 14 | R2-04 (#226): `stokvels`, `stokvel_members` and `stokvel_invitations` built with row-level security (section 3). Product: fixed fiat contribution for the stokvel's life; cancellation, refunds and disputes not in v1 (P4); members and invitees see a stokvel's invitations; former members keep their history. Dropped `max_members` and `stokvels.status`; `current_cycle_id` moves to R2-05, `account_id` to R3-01; invitations can be revoked | |
 
 ---
 
@@ -78,7 +79,7 @@ These come from the dev team and need product approval before they are treated a
 | P1 | **Users create stokvels and invite other users**, instead of a RemitX admin creating them (brief §2 step 1). | Scales better and removes the admin bottleneck. The admin keeps oversight only. | Proposed |
 | P2 | **Payout hold to reduce defaulting after payout.** The contract holds a round's pool until the next round is fully paid **and the round's Organiser-set payout time has passed** (D12), so a member who has already been paid cannot stop contributing without blocking everyone. The final round has no next round, so it pays out once everyone has paid it and its payout time has passed. | Mitigates the default risk the brief names. It is the same rule as D5. | Proposed, needs legal review |
 | P3 | **Member cap of 3 for the prototype, built to grow.** One constant sets the limit: backend `MAX_STOKVEL_MEMBERS`, and a `maxMembers` value in the contract set at deployment. No fixed-size arrays; round counts are `uint8` (up to 255); cycle length equals the number of members. Raising the limit to 10 or 12 (#197) is a config change. | Brief says three members. Building for more costs little now. | Proposed |
-| P4 | **Cancellation.** Ending a stokvel, including partway through a cycle, stops future rounds and refunds unfinalised contributions in the original fiat. Possibly admin-only, on request. | Reverses the brief's "refunds out of scope". | Open (#208) |
+| P4 | **Cancellation.** Ending a stokvel, including partway through a cycle, stops future rounds and refunds unfinalised contributions in the original fiat. Possibly admin-only, on request. | Reverses the brief's "refunds out of scope". | **Not in v1** (product, 2026-10-09): cancellation, refunds and disputes are out of scope (#208) |
 | P5 | **Manual admin finalise as a fallback.** Finalisation stays automatic (D5), but the Administrator can also trigger it for a round if the automatic release fails. The contract still enforces the release conditions, so a call on a round that is not ready is rejected (`NotYetFinalisable`). Also gives the demo a natural way to show a blocked finalisation. | Restores the brief's admin finalise (§7.3) as a safety net. Covers a failed trigger only, not a paused contract or RPC outage. | Proposed |
 | P6 | **Merge the contribution deadline and the payout time into one date per round.** The build keeps both (deadline informational, payout time a hard gate) because that is the smallest change. | One date is simpler for Organisers and members. | Question for product |
 
@@ -265,12 +266,12 @@ Keys never appear in the frontend, API responses, logs or git.
 
 | Table | Key columns | Migration |
 |---|---|---|
-| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount`, `max_members` (default from config), `status` (`draft`, `active`, `cancelled`), `current_cycle_id`, `account_id` (its `STOKVEL` ledger account), `created_at` | |
-| `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number`, `status` (`forming`, `active`, `closed`), `current_round`, `round_count`, `token_contribution_amount` (locked at start), `started_at`, `closed_at` | |
+| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (fiat, fixed for the stokvel's life), `created_at`. Planned: `current_cycle_id` (R2-05), `account_id` (its `STOKVEL` ledger account, R3-01), `token_contribution_amount` (the UCTUSD amount sent to `createStokvel`, R2-10) | `V20261009_1801__stokvel_group_tables` |
+| `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number`, `status` (`forming`, `active`, `closed`), `current_round`, `round_count`, `started_at`, `closed_at` | |
 | `stokvel_rounds` | `cycle_id`, `round`, `start_time`, `deadline` (informational), `payout_time` (hard gate, D12) | |
-| `stokvel_members` | `id`, `stokvel_id`, `user_id`, `joined_at`, `left_at`, `status` (membership across cycles) | |
+| `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_cycle_members` | `cycle_id`, `member_id`, `payout_position`, `payout_beneficiary_id`, `payout_currency`, `continued`, `locked` (per-cycle order and beneficiary, locked once the cycle starts) | |
-| `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `status` (`pending`, `accepted`, `declined`, `lapsed`), `created_at`, `responded_at` | |
+| `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `invited_by_user_id`, `status` (`pending`, `accepted`, `declined`, `revoked`, `lapsed`), `created_at`, `status_changed_at`, `status_changed_by_user_id`. Status changes once, so these two columns are its history; inviting again is a new row. One pending invitation per user per stokvel; only the invitee accepts or declines | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_contributions` | `id`, `cycle_id`, `round`, `member_id`, `amount_fiat`, `amount_token`, `tx_id` (ledger), `onchain_tx_hash`, `block_number`, `status`; UNIQUE (`cycle_id`, `round`, `member_id`) | |
 | `stokvel_payouts` | `id`, `cycle_id`, `round`, `member_id`, `release_status`, `quote_id`, `remittance_id`, `release_tx_hash`, `burn_tx_hash`; UNIQUE (`cycle_id`, `round`) | |
 | `stokvel_sync_state` | `id`, `last_processed_block`, `updated_at` (cursor for `stokvel.sync_events`; proposed, ticket R2-13) | |
@@ -278,9 +279,22 @@ Keys never appear in the frontend, API responses, logs or git.
 Differences from the first sketch (a `stokvel` table plus a `stokvel_member` table):
 
 - "Contributed this month or not" is **derived** from `stokvel_contributions`, not stored. A flag would go stale. A round is a contribution period set by the Organiser, not a calendar month.
-- `number_of_members` is derived from members and capped by `max_members`.
+- `number_of_members` is derived from members and capped by `MAX_STOKVEL_MEMBERS` (the contract's `maxMembers` is one value for every stokvel).
+- A stokvel's state (draft or active) is derived from its cycles, not stored.
 - Cycles, per-cycle payout order and the locked beneficiary need their own tables because membership and beneficiary can change between cycles but are fixed within one.
 - `current_round` and `current_cycle_id` are kept as columns for cheap reads.
+
+### Row-level security
+
+As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `FORCE ROW LEVEL SECURITY`. Workers, migrations and admin routes see every row. A member means a current or former member.
+
+| Table | A customer reads | A customer writes |
+|---|---|---|
+| `stokvels` | Stokvels they organise, are a member of, or hold a pending invitation to | As Organiser |
+| `stokvel_members` | Their own rows and their fellow members' | Their own rows |
+| `stokvel_invitations` | Their own, plus every invitation of a stokvel they are a member of or hold a pending invitation to | As invitee or Organiser |
+
+The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation`, because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Test: `api/tests/test_stokvel_group_models.py` (`postgres` lane).
 
 ### Ledger changes
 
@@ -300,7 +314,7 @@ Differences from the first sketch (a `stokvel` table plus a `stokvel_member` tab
 | Contribution | `pending → processing → confirmed \| failed` |
 | Pool release | `pending → processing → released \| failed` |
 | Remittance | `pending → processing → confirmed \| failed` (the existing transaction states; `created`, `burning`, `burnt` and `credited` are not separate states) |
-| Invitation | `pending → accepted \| declined \| lapsed` |
+| Invitation | `pending → accepted \| declined \| revoked \| lapsed` |
 | Cycle | `forming → active → closed` |
 
 _The brief's wording of the remittance statuses (`created → burning → burnt → credited`) differs from the existing ledger states. Recommendation: keep the ledger states, because the ledger already uses them and switching to the brief's names would likely need several changes. Product to confirm before the frontend depends on either._
@@ -362,6 +376,7 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `POST /stokvels/{id}/invitations` | Organiser | Invite a user |
 | `POST /invitations/{id}/accept` | Invitee | Accept an invitation |
 | `POST /invitations/{id}/decline` | Invitee | Decline an invitation |
+| `POST /invitations/{id}/revoke` | Organiser | Revoke a pending invitation |
 | `PUT /stokvels/{id}/payout-order` | Organiser | Set the payout order before a cycle |
 | `PUT /stokvels/{id}/members/me/beneficiary` | Member | Choose beneficiary and payout currency for the next cycle |
 | `POST /stokvels/{id}/cycles` | Organiser | Start a cycle (needs at least 2 ready members, every one with a beneficiary) |
@@ -370,7 +385,7 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `GET /stokvels/{id}` | Member | Member screen data: group, amount, schedule, order, paid and outstanding, round and payout status, hashes, remittance references |
 | `POST /admin/stokvel-contract/pause` and `/unpause` | Administrator | Emergency stop and resume. Pause takes a required `reason` in the request body |
 | `POST /admin/stokvels/{id}/rounds/{n}/finalise` | Administrator | Manual fallback if automatic finalisation fails (if P5 is approved). Audit-logged. A round that is not ready returns 409 `round_not_finalisable` |
-| `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel (if P4 is approved). Takes a required `reason` in the request body |
+| `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel. **Not in v1** (P4). Takes a required `reason` in the request body |
 
 ### Audit log of admin actions
 
@@ -433,11 +448,11 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | One Treasury Wallet, or a separate settlement wallet for pool release (#207)? D2 chooses one wallet; the wallet has been created. Confirm | Open | Role 1, Product | |
 | Burn method (#206): does UCTUSD have a `burn()` function, or do we transfer to a dead address? Check the token on the explorer | **Answered, to confirm on #278 (R1-07):** the token has `burn(uint256)` and `burnFrom`, and `burn(amount)` called by the Treasury succeeds (simulated on the testnet, 2026-10-09). No dead-address transfer is needed | Role 1 | |
 | Contract IDs: pack the database UUID into `bytes32` (current section 1), or give each stokvel and member a separate generated `bytes32` ID (Katlego, #283 review)? The contract accepts either. Packing needs no extra column and lets event sync map an ID straight back to its row; a separate ID keeps on-chain IDs unrelated to the database | Open: asked Marc (@marclevin). Roles 1 and 2 (backend) agree on the packed UUID for the MVP (2026-10-09); the backend ID helper waits for Marc's reply | Roles 1, 2 | |
-| Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution). Refunds return the original fiat amount entered | **Contract side resolved (2026-10-09):** a fixed UCTUSD amount set in `createStokvel` for all cycles, confirmed by the backend; a new amount means a new stokvel (MVP). Still for product: the fiat debit rule (live rate at contribution) | Product, Roles 2, 3 | |
-| Per-cycle contribution amounts (move the amount into `startCycle`, so the Organiser can change it between cycles)? | Deferred: not in the MVP (2026-10-09). An interface change and a redeploy if wanted later | Role 1, Product | |
+| Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution). Refunds return the original fiat amount entered | **Resolved (product, 2026-10-09): fixed fiat.** Each member pays the stokvel's fixed fiat amount from their account in the Stokvel currency. The contract's UCTUSD amount is fixed at `createStokvel` for all cycles; a new amount means a new stokvel (MVP). The Treasury carries the difference when the rate moves (ticket: book the rate difference) | Product, Roles 2, 3 | |
+| Per-cycle contribution amounts (move the amount into `startCycle`, so the Organiser can change it between cycles)? | Deferred: not in the MVP (2026-10-09). Within a cycle the amount is always fixed. An interface change and a redeploy if wanted later | Role 1, Product | |
 | Admin (deployer) key for pause and unpause on the server: R3-07 (#244) must sign `pause()` with the **admin** key, not the Treasury key, and #277 does not cover storing it. Store it the same way as the Treasury key, or keep pause as a manual step run by the key holder? | Open | Roles 1, 3 | |
 | New `STOKVEL_REMITTANCE` type, or reuse the existing remittance legs with the stokvel account as sender (this doc's recommendation)? | Open | Roles 2, 3 | |
-| Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | Open | Product | |
+| Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | **Resolved (product, 2026-10-09):** not in v1, nor refunds or disputes | Product | |
 | Do fee and margin come out of the pool or from members? CONTEXT.md says the pool (D6) | Confirm | Product | |
 | Are the fee and margin taken from the pool converted back to fiat, and if so how? Suggestion: convert them to fiat at finalisation and deduct them from the pool before the payout, so beneficiaries receive their payout in fiat after fees | Open, product decision | Product | |
 | Contribution deadline informational only, with no penalties on the platform (D7)? | Confirm | Product | |
@@ -451,7 +466,7 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Demo timing: payout times a few minutes apart, and how to show a stuck round | Deferred | Role 6 | |
 | Legal status of P2 (payout conditional on the next contribution) | Open | Product | |
 | Remittance status names: brief's `created → burning → burnt → credited` vs existing ledger states. Recommendation: keep the ledger states (fewer changes) | Open, product to confirm | Product, Roles 2, 3 | |
-| Row-level security for the new stokvel tables | Open | Roles 2, 3 | |
+| Row-level security for the new stokvel tables | **Resolved (2026-10-09):** section 3, "Row-level security"; R2-05 and R2-06 reuse the same functions | Roles 2, 3 | |
 | Seeder and load test: update stories and `tools/loadtest/fake_xrpl_worker.py` for EVM | Open | Role 6 | |
 
 Resolved: finalisation is automatic (D5); a manual admin finalise is kept as a fallback, pending approval (P5).
@@ -476,16 +491,16 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract testnet deployment | Deployed (smoke test pending) | #218 | Deployed 2026-10-09 at `0x2f24…8Fe1` (section 2) from the fixed contract (#291); all post-deploy checks passed; verified on Sourcify. Record and `.env.example` merged in #284. Closes when a `contribute` from the Treasury Wallet succeeds on testnet (Role 2 holds the key; needs `createStokvel`, `startCycle`, `approve`, `contribute`) |
 | Contract README, ABI export, ADR | Done | #219 | PR #285: `contracts/README.md`, `contracts/abi/StokvelVault.json` (the ABI the backend loads), `docs/adr/0002-one-contract-many-stokvels.md` |
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
-| Contract cancel and refund | Blocked | #220 | Waits on #208 |
+| Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
 | Members create stokvels and invite others | Not started | #229 (was #209) | |
-| DB models and migrations | Not started | | Section 3 |
+| DB models and migrations | In progress | #226, #227, #228 | Section 3. Group tables with RLS (#226) in review; cycle and contribution tables next |
 | Worker tasks | Not started | | Section 4 |
 | API routes | Not started | | Section 5 |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
 | Frontend screens | Not started | | Member, Organiser, invitations, admin pause |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
-| Stokvel cancellation | Not started | #208 | Open question |
+| Stokvel cancellation | Not in v1 | #208 | P4 |
 
 ### Brief timeline
 
@@ -571,6 +586,10 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `contracts/scripts/export-abi.js` | Writes the ABI from the build (`npm run export:abi`) | #285 |
 | `contracts/README.md` | Contract overview: trust assumption, rules, roles, IDs, backend usage, deploy | #285 |
 | `docs/adr/0002-one-contract-many-stokvels.md` | ADR for D4 (one contract holds every stokvel) | #285 |
+| `api/remitx_api/models/orm/stokvel.py`, `stokvel_member.py`, `stokvel_invitation.py` | Group tables (section 3) | #226 |
+| `api/remitx_api/repositories/stokvel_repository.py`, `stokvel_member_repository.py`, `stokvel_invitation_repository.py` | Their repositories | #226 |
+| `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | Tables, RLS policies and lookup functions | #226 |
+| `api/tests/test_stokvel_group_models.py` | Constraints (SQLite) and RLS (`postgres` lane) | #226 |
 
 ## 14. Functions created
 
@@ -581,3 +600,4 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `uuidToBytes32` | `contracts/test/helpers.ts` | UUID → left-aligned `bytes32`; the backend's helper must match | #282 |
 | `npm run deploy:local`, `npm run deploy:testnet` | `contracts/scripts/deploy.ts` | Dry run on a local chain; deploy to the XRPL EVM Testnet | #284 |
 | `npm run export:abi` | `contracts/scripts/export-abi.js` | Compile and write `contracts/abi/StokvelVault.json` | #285 |
+| `stokvel_is_member`, `stokvel_is_organiser`, `stokvel_has_pending_invitation` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | RLS lookups (section 3) | #226 |
