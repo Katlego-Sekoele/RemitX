@@ -264,6 +264,8 @@ Keys never appear in the frontend, API responses, logs or git.
 
 ### Tables
 
+ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/stokvel_group_tables.svg) (source: the `.dbml` beside it).
+
 | Table | Key columns | Migration |
 |---|---|---|
 | `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (fiat, fixed for the stokvel's life), `created_at`. Planned: `current_cycle_id` (R2-05), `account_id` (its `STOKVEL` ledger account, R3-01), `token_contribution_amount` (the UCTUSD amount sent to `createStokvel`, R2-10) | `V20261009_1801__stokvel_group_tables` |
