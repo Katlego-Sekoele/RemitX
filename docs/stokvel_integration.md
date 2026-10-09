@@ -45,6 +45,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 1, 9, 13 | #291 merged: section 1 error order is now what `main` does (pending markers removed); tests 71 on `main` | |
 | 2026-10-09 | 2, 9, 13 | Contract deployed: `StokvelVault` at `0x2f240705314BB79780522635eA47d20072CB8Fe1` (block 8995825), verified on Sourcify; deployment record and `STOKVEL_CONTRACT_ADDRESS` in PR #284; smoke test from the Treasury pending | |
 | 2026-10-09 | 2 | `DEPLOYER_PRIVATE_KEY`: listed in `.env.example` as a commented, empty placeholder (#284); the value stays in the deployer's local `.env` | |
+| 2026-10-09 | 2 | Deployer key moved to `contracts/.env` so docker compose does not load it into the API and worker containers (#284) | |
 
 ---
 
@@ -244,9 +245,9 @@ Added to `.env.example` (and `.env.minimal.example` if local dev needs them). Th
 | `EVM_TREASURY_KEY_ENCRYPTED` | Encrypted Treasury Wallet private key; decryption key held outside the database |
 | `EVM_ENCRYPTION_KEY` | Fernet key that decrypts it (as `XRPL_ENCRYPTION_KEY` does today) |
 | `MAX_STOKVEL_MEMBERS` | Member cap (3 for the prototype; see P3). Must equal the contract's `maxMembers` |
-| `DEPLOYER_PRIVATE_KEY` | **The value lives only in the deployer's local `.env`**: never committed, never on Render. `.env.example` lists it only as a commented-out, empty placeholder (PR #284). Read only by `contracts/scripts/deploy.ts`; the deployer becomes the contract admin |
+| `DEPLOYER_PRIVATE_KEY` | **The value lives only in the deployer's `contracts/.env`** (gitignored), not the repo-root `.env`, because docker compose loads the root `.env` into the API and worker containers. Never committed, never on Render. `.env.example` lists it only as a commented-out, empty placeholder (PR #284). Read only by `contracts/scripts/deploy.ts`; the deployer becomes the contract admin |
 
-The contract deploy script (`npm run deploy:testnet` in `contracts/`; **Pending, not on main yet**, PR #284) reads `EVM_RPC_URL`, `EVM_CHAIN_ID`, `UCTUSD_CONTRACT_ADDRESS`, `EVM_TREASURY_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `DEPLOYER_PRIVATE_KEY` from the repo-root `.env`, with section 2's values as defaults for the public ones.
+The contract deploy script (`npm run deploy:testnet` in `contracts/`; **Pending, not on main yet**, PR #284) reads `EVM_RPC_URL`, `EVM_CHAIN_ID`, `UCTUSD_CONTRACT_ADDRESS`, `EVM_TREASURY_ADDRESS` and `MAX_STOKVEL_MEMBERS` from the repo-root `.env` (section 2's values are the defaults for the public ones), and `DEPLOYER_PRIVATE_KEY` from `contracts/.env`.
 
 Keys never appear in the frontend, API responses, logs or git.
 
