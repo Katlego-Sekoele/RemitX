@@ -44,7 +44,7 @@ class TransferRead(Schema):
     """One transfer, sent or received, as the caller sees it.
 
     `status` is the settlement leg's: `pending` (queued), `processing`
-    (settling on the XRPL Testnet), `confirmed` or `failed`. `xrpl_tx_hash`
+    (settling on the XRPL Testnet), `confirmed` or `failed`. `evm_tx_hash`
     is the burn transaction's hash, set once the transfer has confirmed.
     """
 
@@ -69,7 +69,7 @@ class TransferRead(Schema):
     settled_at: UtcDateTime | None = Field(
         description="When the transfer confirmed; null until it has."
     )
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     sender_amount: LedgerDecimal | None = Field(
         description="Null on a received transfer, like the sender's fees."
     )

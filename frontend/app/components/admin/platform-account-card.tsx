@@ -7,7 +7,7 @@ type PlatformAccountType = PlatformAccountRead["type"]
 const TYPE_LABEL: Record<PlatformAccountType, string> = {
   REMITX_FIAT: "Bank account",
   REMITX_REVENUE: "Fee revenue",
-  REMITX_XRPL_WALLET: "Treasury wallet",
+  REMITX_EVM_WALLET: "Treasury wallet",
   EXTERNAL: "External counterparty",
 }
 
@@ -48,7 +48,7 @@ function purpose(type: PlatformAccountType, currency: string): string {
       return `RemitX's bank account in ${currency}. Customer deposits, transfers sent in ${currency} and payouts made in it are all booked against it.`
     case "REMITX_REVENUE":
       return `The transfer fee and FX margin earned on transfers sent in ${currency}.`
-    case "REMITX_XRPL_WALLET":
+    case "REMITX_EVM_WALLET":
       return "Every transfer settles through this wallet on the XRP Ledger Testnet, and its RLUSD is burned back to the issuer from here."
     case "EXTERNAL":
       return "The RLUSD issuer. It pre-funded the treasury wallet, and every burn returns RLUSD to it."

@@ -36,8 +36,11 @@ from remitx_api.models.orm.account import CURRENCY_TOKEN
 from remitx_api.models.orm.platform_account_seed import (
     ISSUER_LABEL,
     PLATFORM_ACCOUNT_NAMESPACE,
-    TREASURY_WALLET_LABEL,
 )
+
+# The treasury wallet's label at this point in the chain. It has since been
+# renamed (V20261011_1004__rename_xrpl_wallet_to_evm_wallet).
+TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
 
 # revision identifiers, used by Alembic.
 revision: str = "a77cbaf94587"

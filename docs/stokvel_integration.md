@@ -53,6 +53,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-11 | Decisions, 3, 8, 11 | Product: contribution amount is **fixed token** (UCTUSD), not fixed fiat. `stokvels.contribution_amount` is that UCTUSD amount; member fiat debit = amount × live rate at contribution. D13. Closes #298 (rate-difference booking was only needed under fixed fiat) | #300 |
 | 2026-10-12 | 3, 14 | `stokvels.deactivated_at` (null while in service). Membership `account_id` must be the member's fiat account in the stokvel currency | #300 |
 | 2026-10-13 | 3, 14 | Made stokvel RLS helper and validation functions Neon-compatible: hardened `SECURITY DEFINER` functions replace unsupported custom-GUC function settings while preserving recursive-policy avoidance; PostgreSQL regression coverage added | |
+| 2026-10-11 | 3, 8, 9, 13, 14, EVM switch-over | R3-01 (#238) and R3-02 (#239): `STOKVEL` account type with a non-negative balance, `stokvels.account_id`, transaction types `stokvel_contribution` and `stokvel_pool_release` (`stokvel_refund` dropped with #208); `quotes.stokvel_id` with exactly one sender; `xrpl_tx_hash` renamed **`evm_tx_hash`** (was planned as `onchain_tx_hash`), also for `stokvel_contributions`; treasury type `REMITX_EVM_WALLET`, label "RemitX Treasury Wallet". ADR 0004. Two follow-ups added to section 8 | |
 
 ---
 
@@ -272,13 +273,13 @@ ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/sto
 
 | Table | Key columns | Migration |
 |---|---|---|
-| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service). Planned: `current_cycle_id` (R2-05), `account_id` (its `STOKVEL` ledger account, R3-01) | `V20261009_1801__stokvel_group_tables` |
+| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service), `account_id` (its `STOKVEL` ledger account, R3-01; nullable until the account is created, unique). Planned: `current_cycle_id` (R2-05) | `V20261009_1801__stokvel_group_tables`, `V20261011_1000__stokvel_ledger_account_and_types` |
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number`, `status` (`forming`, `active`, `closed`), `current_round`, `round_count`, `started_at`, `closed_at` | |
 | `stokvel_rounds` | `cycle_id`, `round`, `start_time`, `deadline` (informational), `payout_time` (hard gate, D12) | |
 | `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_cycle_members` | `cycle_id`, `member_id`, `payout_position`, `payout_beneficiary_id`, `payout_currency`, `continued`, `locked` (per-cycle order and beneficiary, locked once the cycle starts) | |
 | `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `invited_by_user_id`, `status` (`pending`, `accepted`, `declined`, `revoked`, `lapsed`), `created_at`, `status_changed_at`, `status_changed_by_user_id`. Status changes once, so these two columns are its history; inviting again is a new row. One pending invitation per user per stokvel; only the invitee accepts or declines | `V20261009_1801__stokvel_group_tables` |
-| `stokvel_contributions` | `id`, `cycle_id`, `round`, `member_id`, `amount_fiat`, `amount_token`, `tx_id` (ledger), `onchain_tx_hash`, `block_number`, `status`; UNIQUE (`cycle_id`, `round`, `member_id`) | |
+| `stokvel_contributions` | `id`, `cycle_id`, `round`, `member_id`, `amount_fiat`, `amount_token`, `tx_id` (ledger), `evm_tx_hash`, `block_number`, `status`; UNIQUE (`cycle_id`, `round`, `member_id`) | |
 | `stokvel_payouts` | `id`, `cycle_id`, `round`, `member_id`, `release_status`, `quote_id`, `remittance_id`, `release_tx_hash`, `burn_tx_hash`; UNIQUE (`cycle_id`, `round`) | |
 | `stokvel_sync_state` | `id`, `last_processed_block`, `updated_at` (cursor for `stokvel.sync_events`; proposed, ticket R2-13) | |
 
@@ -306,11 +307,11 @@ The policies look rows up through the functions `stokvel_is_member`, `stokvel_is
 
 | Change | Detail |
 |---|---|
-| New account type | `STOKVEL` (currency: the token). Update the `accounts_type_valid` CHECK, and relax `accounts_owner_matches_type` and `accounts_reference_matches_type` for it (no user, no reference). One per stokvel. |
-| New transaction types | `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account), `stokvel_pool_release` (contract → Treasury Wallet → stokvel account), `stokvel_refund`. Update `transactions_type_valid` (precedent: `V20260921_1400__add_burn_and_payout_transaction_types.py`). |
+| New account type | **Built (R3-01).** `STOKVEL` (currency: the token), one per stokvel, linked from `stokvels.account_id`. `accounts_type_valid` allows it; `accounts_owner_matches_type` and `accounts_reference_matches_type` needed no change (no user, no reference is already allowed for any type but `USER`). `accounts_stokvel_balance_nonneg`: its balance never goes negative. Created by `AccountRepository.create_stokvel_account` (label `Stokvel <id>`), and not a platform account (left out of `list_platform_accounts`). ADR 0004. |
+| New transaction types | **Built (R3-01).** `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account) and `stokvel_pool_release` (contract → Treasury Wallet → stokvel account), in `transactions_type_valid`. `stokvel_refund` is not added: refunds are not in v1 (#208). |
 | Payout legs | Reuse the existing `remittance`, `fee`, `token_burn` and `beneficiary_payout` legs grouped by `quote_id`, with the stokvel account as sender, so the proven settlement worker and its idempotency are reused. A separate `STOKVEL_REMITTANCE` type was suggested; see section 8. |
-| Quote sender | `quotes.sender_user_id` is NOT NULL today. Make it nullable and add `stokvel_id` (or `sender_account_id`). Stokvel quotes skip `require_can_send` (D8). |
-| Chain-neutral names | `transactions.xrpl_tx_hash` → `onchain_tx_hash`; account type `REMITX_XRPL_WALLET` → `REMITX_EVM_WALLET`; seeded label "RemitX XRPL Treasury Wallet" → "RemitX Treasury Wallet" (also in `remittance_service.py`; the two must match). |
+| Quote sender | **Built (R3-02).** `quotes.sender_user_id` is nullable and `quotes.stokvel_id` names a stokvel sender; CHECK `quotes_one_sender` requires exactly one. Stokvel quotes skip `require_can_send` (D8; R3-05). RLS on `quotes` matches `sender_user_id`, so customers do not see a stokvel's quote through it (section 8). |
+| EVM names | **Built (R3-02).** `transactions.xrpl_tx_hash` → `evm_tx_hash`, in two steps (rule 5 in `api/alembic/README.md`): `evm_tx_hash` is added and backfilled, the worker writes both and code reads `evm_tx_hash`; a later migration drops `xrpl_tx_hash` (section 8). API fields: `evm_tx_hash`, `burn_evm_tx_hash`. Account type `REMITX_XRPL_WALLET` → `REMITX_EVM_WALLET`; seeded label "RemitX XRPL Treasury Wallet" → "RemitX Treasury Wallet" (`remittance_service.py` now imports the seed's label, so the two cannot drift). |
 | Limits | Contributions count toward the member's limits: extend `RemittanceRepository.sent_zar` (or add a parallel sum) so contributions are included. |
 
 ### Status values and transitions
@@ -329,9 +330,9 @@ _The brief's wording of the remittance statuses (`created → burning → burnt 
 
 | Value | Column |
 |---|---|
-| Contribution transaction hash | `stokvel_contributions.onchain_tx_hash` |
+| Contribution transaction hash | `stokvel_contributions.evm_tx_hash` |
 | Pool release hash | `stokvel_payouts.release_tx_hash` |
-| Burn hash | `transactions.onchain_tx_hash` (on the `token_burn` leg) and `stokvel_payouts.burn_tx_hash` |
+| Burn hash | `transactions.evm_tx_hash` (on the `token_burn` leg) and `stokvel_payouts.burn_tx_hash` |
 | Remittance reference | `stokvel_payouts.remittance_id` (→ `remittances`) |
 | Block number | `stokvel_contributions.block_number` |
 
@@ -459,6 +460,8 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Admin (deployer) key for pause and unpause on the server: R3-07 (#244) must sign `pause()` with the **admin** key, not the Treasury key, and #277 does not cover storing it. Store it the same way as the Treasury key, or keep pause as a manual step run by the key holder? | Open | Roles 1, 3 | |
 | New `STOKVEL_REMITTANCE` type, or reuse the existing remittance legs with the stokvel account as sender (this doc's recommendation)? | Open | Roles 2, 3 | |
 | Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | **Resolved (product, 2026-10-09):** not in v1, nor refunds or disputes | Product | |
+| Drop `transactions.xrpl_tx_hash`: once the R3-02 release is live everywhere, a migration copies any hash written only to it into `evm_tx_hash`, then drops the column and stops the worker writing it | Open: follow-up to R3-02 | Role 3 | |
+| A stokvel's payout quote has no `sender_user_id`, so RLS on `quotes`, `remittances` and their `transactions` hides it from members on customer routes (account history shows no counterparty). Policy change, or a server-side read for the member screen? | Open: for R2-14 (#236) and R3-05 (#242) | Roles 2, 3 | 0004 |
 | Do fee and margin come out of the pool or from members? CONTEXT.md says the pool (D6) | Confirm | Product | |
 | Are the fee and margin taken from the pool converted back to fiat, and if so how? Suggestion: convert them to fiat at finalisation and deduct them from the pool before the payout, so beneficiaries receive their payout in fiat after fees | Open, product decision | Product | |
 | Contribution deadline informational only, with no penalties on the platform (D7)? | Confirm | Product | |
@@ -500,7 +503,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
 | Members create stokvels and invite others | Not started | #229 (was #209) | |
-| DB models and migrations | In progress | #226, #227, #228 | Section 3. Group tables with RLS (#226) in review; cycle and contribution tables next |
+| DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Group tables with RLS (#226) in review; ledger account, transaction types, stokvel quote sender and EVM names (#238, #239) in review, built on #226; cycle and contribution tables next |
 | Worker tasks | Not started | | Section 4 |
 | API routes | Not started | | Section 5 |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
@@ -534,12 +537,12 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | `platform_wallet/scripts/create_xprl_platform_wallet.py` | Rewrite: generate an EVM key, Fernet-encrypt it into `.env`, no faucet wallet or trust line |
 | `api/pyproject.toml` | Swap `xrpl-py` for `web3` |
 | `config.py`, `.env.example`, `.env.minimal.example` | New `EVM_*` variables (section 2). Keep `XRPL_*`, `PLATFORM_WALLET_*` and `UCTUSD_ISSUER*` in place, marked decommissioned and unused by EVM code; do not remove them |
-| Migration | Rename `xrpl_tx_hash`, the `REMITX_XRPL_WALLET` type and CHECK, and the seeded wallet label; add `STOKVEL` and the new transaction types |
-| `services/transfer_timeline.py`, `controllers/remittance_controller.py`, settlement-recovery code | Replace "Settling on XRPL Testnet / RLUSD" text and the `xrpl_tx_hash` field |
+| Migration | Done in R3-01 and R3-02 (#238, #239): `xrpl_tx_hash` → `evm_tx_hash` (old column dropped later), the `REMITX_XRPL_WALLET` type and CHECK, the seeded wallet label, `STOKVEL` and the new transaction types |
+| `services/transfer_timeline.py`, `controllers/remittance_controller.py`, settlement-recovery code | Replace "Settling on XRPL Testnet / RLUSD" text (the `xrpl_tx_hash` field is now `evm_tx_hash`, #239) |
 | `remitx_worker/tasks.py` | Burn and confirm tasks keep their shape; call `evm_service` |
 | Tests | Worker burn tests mock `xrpl_service`: repoint at `evm_service` |
 | `tools/seeder`, `tools/loadtest/fake_xrpl_worker.py` | Update for EVM |
-| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, #285), the `STOKVEL` ledger account, and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
+| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, #285), the `STOKVEL` ledger account (done: `docs/adr/0004-stokvel-ledger-account.md`, #238), and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
 
 ## 10. Features added
 
@@ -596,6 +599,13 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/remitx_api/repositories/stokvel_repository.py`, `stokvel_member_repository.py`, `stokvel_invitation_repository.py` | Their repositories | #226 |
 | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | Tables, RLS policies and lookup functions | #226 |
 | `api/tests/test_stokvel_group_models.py` | Constraints (SQLite) and RLS (`postgres` lane) | #226 |
+| `api/alembic/versions/V20261011_1000__stokvel_ledger_account_and_types.py` | `STOKVEL` account type and balance CHECK, stokvel transaction types, `stokvels.account_id` | #238 |
+| `api/alembic/versions/V20261011_1001__quote_sender_stokvel.py` | Nullable `quotes.sender_user_id`, `quotes.stokvel_id`, `quotes_one_sender` | #239 |
+| `api/alembic/versions/V20261011_1002__add_transactions_evm_tx_hash.py`, `V20261011_1003__backfill_transactions_evm_tx_hash.py` | `evm_tx_hash` added beside `xrpl_tx_hash`, then backfilled | #239 |
+| `api/alembic/versions/V20261011_1004__rename_xrpl_wallet_to_evm_wallet.py` | Treasury type `REMITX_EVM_WALLET` and label "RemitX Treasury Wallet" | #239 |
+| `api/tests/test_stokvel_ledger.py` | Stokvel account, transaction types and stokvel quote sender | #238, #239 |
+| `api/tests/test_evm_names_migration.py` | Backfill and treasury rename on Postgres (`postgres` lane) | #239 |
+| `docs/adr/0004-stokvel-ledger-account.md` | ADR for D9 (a stokvel has its own ledger account) | #238 |
 
 ## 14. Functions created
 
@@ -608,3 +618,4 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `npm run export:abi` | `contracts/scripts/export-abi.js` | Compile and write `contracts/abi/StokvelVault.json` | #285 |
 | `stokvel_is_member`, `stokvel_is_organiser`, `stokvel_has_pending_invitation` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | RLS lookups (section 3) | #226 |
 | `stokvel_member_account_is_fiat` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | Member's fiat account in the stokvel currency | #226 |
+| `AccountRepository.create_stokvel_account`, `AccountRepository.get_stokvel_account` | `api/remitx_api/repositories/account_repository.py` | Create a stokvel's `STOKVEL` account and link it; find it by stokvel | #238 |

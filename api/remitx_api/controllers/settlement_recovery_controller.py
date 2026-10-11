@@ -65,7 +65,7 @@ def _view(row: StuckSettlement) -> StuckSettlementRead:
         pending_leg_count=row.pending_leg_count,
         processing_leg_count=row.processing_leg_count,
         failed_leg_count=row.failed_leg_count,
-        burn_xrpl_tx_hash=row.burn_xrpl_tx_hash,
+        burn_evm_tx_hash=row.burn_evm_tx_hash,
         processed_at=row.processed_at,
         recovery_kind=row.recovery_kind,
     )

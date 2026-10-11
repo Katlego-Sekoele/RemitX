@@ -58,7 +58,7 @@ class TransferView:
     processed_at: datetime | None
     settled_at: datetime | None
     # The burn leg's, once the group has confirmed.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     sender_amount: Decimal | None
     sender_currency: str
     sender_transaction_fee: Decimal | None
@@ -102,7 +102,7 @@ def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferVi
         created_at=record.remittance.created_at,
         processed_at=leg.processed_at,
         settled_at=settled_at,
-        xrpl_tx_hash=burn.xrpl_tx_hash if confirmed and burn is not None else None,
+        evm_tx_hash=burn.evm_tx_hash if confirmed and burn is not None else None,
         sender_amount=quote.sender_amount if sent else None,
         sender_currency=quote.sender_currency,
         sender_transaction_fee=quote.sender_transaction_fee if sent else None,

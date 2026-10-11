@@ -322,7 +322,7 @@ function HistoryLine({
           <StatusBadge status={row.status} />
         </TableCell>
         <TableCell>
-          {row.xrpl_tx_hash ? <TxHash hash={row.xrpl_tx_hash} /> : "—"}
+          {row.evm_tx_hash ? <TxHash hash={row.evm_tx_hash} /> : "—"}
         </TableCell>
       </TableRow>
       {expandable && expanded

@@ -7,8 +7,8 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
     TYPE_PLATFORM_FIAT,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.bank_account import BankAccount
@@ -113,7 +113,7 @@ def _seed_overview() -> None:
     )
     wallet = Account(
         user_id=None,
-        type=TYPE_XRPL_WALLET,
+        type=TYPE_EVM_WALLET,
         account_currency=CURRENCY_TOKEN,
         label="overview treasury",
         account_balance=Decimal("80.00"),

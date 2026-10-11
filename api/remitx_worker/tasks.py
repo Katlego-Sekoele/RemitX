@@ -299,9 +299,10 @@ def confirm_treasury_burn(
                 Transaction.quote_id == target_id,
                 Transaction.type == TYPE_TOKEN_BURN,
             )
-            .values(xrpl_tx_hash=tx_hash)
+            .values(evm_tx_hash=tx_hash, xrpl_tx_hash=tx_hash)
             # Add the token burn success hash to the token burn
-            # transaction row
+            # transaction row. `xrpl_tx_hash` is the deprecated name,
+            # written too until the rename finishes rolling out
         )
 
         remittance_transactions = session.execute(

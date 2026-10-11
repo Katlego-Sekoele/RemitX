@@ -28,6 +28,15 @@ import sqlalchemy as sa
 from alembic import op
 from remitx_api.models.orm.platform_account_seed import PLATFORM_ACCOUNT_SEEDS
 
+# The treasury wallet as this revision inserted it. Its type and label have
+# since been renamed (V20261011_1004__rename_xrpl_wallet_to_evm_wallet), and
+# the CHECK at this point in the chain only allows the old type, so a fresh
+# database gets the old values here and the rename migration moves them on.
+_TREASURY_AS_SEEDED = {
+    "type": "REMITX_XRPL_WALLET",
+    "label": "RemitX XRPL Treasury Wallet",
+}
+
 # revision identifiers, used by Alembic.
 revision: str = "198395894d4a"
 down_revision: str | None = "728add2cc9e2"
@@ -64,10 +73,11 @@ def upgrade() -> None:
             "account_currency": seed.currency,
             "account_balance": Decimal("0"),
             "created_at": seeded_at,
+            **(_TREASURY_AS_SEEDED if seed.key == "treasury_wallet" else {}),
         }
         for seed in PLATFORM_ACCOUNT_SEEDS
-        if seed.label not in existing
     ]
+    rows = [row for row in rows if row["label"] not in existing]
     if rows:
         op.bulk_insert(_accounts, rows)
 

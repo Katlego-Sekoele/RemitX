@@ -41,7 +41,7 @@ class LiveSend:
     remittance_id: str | None
     token_amount: str | None
     status: str
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     detail: str = ""
 
 
@@ -179,7 +179,7 @@ def _one(
             transfer = client.get(f"/remittances/{remittance_id}", headers=headers)
             transfer.raise_for_status()
             body = transfer.json()
-            status, tx_hash = body["status"], body.get("xrpl_tx_hash")
+            status, tx_hash = body["status"], body.get("evm_tx_hash")
             if status in TERMINAL:
                 break
         ctx.count(f"live_tail.{status}")

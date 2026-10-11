@@ -25,6 +25,9 @@ Three currency concepts live on this row:
 counts as against the sending limits, which are in rand whatever account the
 money leaves (services/send_limits.py). Locked here like the fees, so a rate
 move after the quote never changes it.
+
+The sender is a user (`sender_user_id`) or, for a stokvel's payout, the
+stokvel itself (`stokvel_id`, D6 in docs/stokvel_integration.md), never both.
 """
 
 import uuid
@@ -66,14 +69,24 @@ class Quote(Base):
             name="quotes_status_valid",
         ),
         CheckConstraint("sender_amount > 0", name="quotes_sender_amount_positive"),
+        # Exactly one sender: a user, or a stokvel paying out its pool
+        CheckConstraint(
+            "(sender_user_id IS NULL) <> (stokvel_id IS NULL)",
+            name="quotes_one_sender",
+        ),
     )
 
     quote_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
-    sender_user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=False, index=True
-    )  # Sender user id
+    # Sender user id. NULL when a stokvel sends.
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    # The sending stokvel, for a stokvel's payout. NULL when a user sends.
+    stokvel_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("stokvels.id"), nullable=True, index=True
+    )
     beneficiary_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False
     )  # Beneficiary user id

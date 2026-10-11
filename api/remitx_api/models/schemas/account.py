@@ -38,13 +38,13 @@ class PlatformAccountRead(Schema):
     against. None has a reference: they are known by `label`."""
 
     account_id: uuid.UUID
-    # e.g. "RemitX SA Bank Account", "RemitX XRPL Treasury Wallet".
+    # e.g. "RemitX SA Bank Account", "RemitX Treasury Wallet".
     label: str
     # REMITX_FIAT: RemitX's bank account in one settlement country.
     # REMITX_REVENUE: the fees it has earned in that currency.
-    # REMITX_XRPL_WALLET: the treasury wallet every transfer settles through.
+    # REMITX_EVM_WALLET: the treasury wallet every transfer settles through.
     # EXTERNAL: a counterparty RemitX doesn't hold, e.g. the uctusd issuer.
-    type: Literal["REMITX_FIAT", "REMITX_REVENUE", "REMITX_XRPL_WALLET", "EXTERNAL"]
+    type: Literal["REMITX_FIAT", "REMITX_REVENUE", "REMITX_EVM_WALLET", "EXTERNAL"]
     currency: str
     # `settlement` for the uctusd (RLUSD) accounts, `fiat` for everything else.
     kind: Literal["fiat", "settlement"]
@@ -83,4 +83,4 @@ class AccountTransactionRead(Schema):
     remittance_id: uuid.UUID | None
     # The transfer's XRPL Testnet burn hash, on every leg of a confirmed
     # transfer.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None

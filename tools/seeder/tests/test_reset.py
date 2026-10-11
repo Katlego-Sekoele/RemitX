@@ -43,6 +43,6 @@ def test_reset_rebuilds_an_empty_ready_database(monkeypatch):
             )
         engine.dispose()
         assert "leftover" not in tables and "users" in tables
-        assert {"RemitX SA Bank Account", "RemitX XRPL Treasury Wallet"} <= labels
+        assert {"RemitX SA Bank Account", "RemitX Treasury Wallet"} <= labels
     finally:
         drop_database(name)

@@ -8,11 +8,11 @@ from remitx_api.errors.accounts import KycNotApprovedToOpenAccountError
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
     TYPE_USER,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.quote import Quote
@@ -74,7 +74,7 @@ def _display_order(account: Account) -> tuple[int, str]:
 _PLATFORM_TYPE_ORDER = (
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
 )
 
@@ -146,7 +146,7 @@ class AccountTransactionView:
     remittance_id: uuid.UUID | None
     # The transfer's burn hash on the XRPL Testnet, on every leg of a
     # confirmed transfer.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ class _Transfer:
     sent: bool
     counterparty_name: str | None
     remittance_id: uuid.UUID | None
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
 
 
 def describe_leg(
@@ -289,7 +289,7 @@ class AccountController:
         wallets = [
             account
             for account in self._accounts.list_platform_accounts()
-            if account.type == TYPE_XRPL_WALLET
+            if account.type == TYPE_EVM_WALLET
             and account.account_currency == CURRENCY_TOKEN
         ]
         available = sum(
@@ -370,7 +370,7 @@ class AccountController:
                     else None
                 ),
                 remittance_id=remittance_ids.get(quote_id),
-                xrpl_tx_hash=burn_hashes.get(quote_id),
+                evm_tx_hash=burn_hashes.get(quote_id),
             )
         return transfers
 
@@ -400,8 +400,8 @@ class AccountController:
             remittance_id=transfer.remittance_id if transfer else None,
             # Every leg of a transfer confirms in the same commit as the burn
             # hash is recorded, so a confirmed leg's hash is the transfer's.
-            xrpl_tx_hash=(
-                transfer.xrpl_tx_hash
+            evm_tx_hash=(
+                transfer.evm_tx_hash
                 if transfer and leg.status == STATUS_CONFIRMED
                 else None
             ),
