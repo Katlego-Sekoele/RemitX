@@ -7,7 +7,12 @@ from decimal import Decimal
 import pytest
 from remitx_api.db.rls import bound_row_security_context
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_USD,
+    CURRENCY_ZAR,
+    TYPE_PLATFORM_FIAT,
+)
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
@@ -114,6 +119,23 @@ def test_a_final_status_needs_its_change_time(app_context):
     _rejected(db.session.flush)
 
 
+def test_a_stokvel_records_when_it_was_decommissioned(app_context):
+    stokvel = _stokvel(make_user())
+    assert stokvel.deactivated_at is None
+    when = datetime.now(UTC)
+    stokvel.deactivated_at = when
+    db.session.commit()
+
+    saved = db.session.get(Stokvel, stokvel.id)
+    assert saved is not None
+    # SQLite returns a naive datetime; Postgres keeps the offset.
+    saved_at = saved.deactivated_at
+    assert saved_at is not None
+    if saved_at.tzinfo is None:
+        saved_at = saved_at.replace(tzinfo=UTC)
+    assert saved_at == when
+
+
 def test_one_active_membership_but_a_former_member_can_rejoin(app_context):
     organiser = make_user()
     stokvel = _stokvel(organiser)
@@ -178,5 +200,67 @@ def test_row_security_scopes_each_customer(postgres_app):
                     {"id": stokvel.id},
                 )
         db.session.rollback()
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
+def test_a_membership_account_is_the_members_fiat_in_the_stokvel_currency(
+    postgres_app,
+):
+    token = db.open_session()
+    try:
+        organiser = make_user()
+        stokvel = _stokvel(organiser)
+        member = make_user()
+        other = make_user()
+        repo = AccountRepository()
+        base_reference = member.base_reference
+        platform = repo.get_platform_account(TYPE_PLATFORM_FIAT, CURRENCY_ZAR)
+        assert platform is not None
+        refused = {
+            "token account": repo.get_or_create_user_account(
+                member.id, base_reference, CURRENCY_TOKEN
+            ).account_id,
+            "other currency": repo.get_or_create_user_account(
+                member.id, base_reference, CURRENCY_USD
+            ).account_id,
+            "someone else's account": repo.get_or_create_user_account(
+                other.id, other.base_reference, CURRENCY_ZAR
+            ).account_id,
+            "platform bank account": platform.account_id,
+        }
+        stokvel_id = stokvel.id
+        member_id = member.id
+        db.session.commit()
+
+        def add(account_id):
+            db.session.add(
+                StokvelMember(
+                    stokvel_id=stokvel_id,
+                    user_id=member_id,
+                    account_id=account_id,
+                )
+            )
+            db.session.flush()
+
+        failures = []
+        for who, account_id in refused.items():
+            try:
+                add(account_id)
+            except IntegrityError as error:
+                db.session.rollback()
+                if "stokvel currency" not in str(error):
+                    failures.append(f"{who}: {error}")
+            else:
+                failures.append(f"{who} was accepted")
+        assert not failures
+
+        add(
+            repo.get_or_create_user_account(
+                member_id, base_reference, CURRENCY_ZAR
+            ).account_id
+        )
+        db.session.commit()
     finally:
         db.close_session(token)

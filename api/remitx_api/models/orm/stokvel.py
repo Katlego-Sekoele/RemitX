@@ -8,6 +8,8 @@ The contract holds only the UCTUSD side; name, Organiser and Stokvel currency
 live here. `contribution_amount` is that fixed UCTUSD amount for the
 stokvel's life (the value sent to `createStokvel`; MVP: a new amount means a
 new stokvel). Members are debited fiat = amount × live rate at contribution.
+`deactivated_at` is when the stokvel was decommissioned, and null while it
+is in service.
 """
 
 import uuid
@@ -51,4 +53,8 @@ class Stokvel(Base):
         nullable=False,
         default=utcnow,
         server_default=text("now()"),
+    )
+    # Null while the stokvel is in service
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

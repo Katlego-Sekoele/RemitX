@@ -51,6 +51,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 2 | Deploy script (Claire's #285 review): records the address before the post-deploy checks; blank settings fall back to defaults; `FORCE_REDEPLOY` documented | |
 | 2026-10-09 | Proposals, 3, 5, 8, 9, 13, 14 | R2-04 (#226): `stokvels`, `stokvel_members` and `stokvel_invitations` built with row-level security (section 3). Product: fixed fiat contribution for the stokvel's life; cancellation, refunds and disputes not in v1 (P4); members and invitees see a stokvel's invitations; former members keep their history. Dropped `max_members` and `stokvels.status`; `current_cycle_id` moves to R2-05, `account_id` to R3-01; invitations can be revoked. New tickets: #297 (revoke route), #298 (rate difference), #299 (invitations screen) | #300 |
 | 2026-10-11 | Decisions, 3, 8, 11 | Product: contribution amount is **fixed token** (UCTUSD), not fixed fiat. `stokvels.contribution_amount` is that UCTUSD amount; member fiat debit = amount × live rate at contribution. D13. Closes #298 (rate-difference booking was only needed under fixed fiat) | #300 |
+| 2026-10-12 | 3, 14 | `stokvels.deactivated_at` (null while in service). Membership `account_id` must be the member's fiat account in the stokvel currency | #300 |
 
 ---
 
@@ -270,7 +271,7 @@ ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/sto
 
 | Table | Key columns | Migration |
 |---|---|---|
-| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`. Planned: `current_cycle_id` (R2-05), `account_id` (its `STOKVEL` ledger account, R3-01) | `V20261009_1801__stokvel_group_tables` |
+| `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service). Planned: `current_cycle_id` (R2-05), `account_id` (its `STOKVEL` ledger account, R3-01) | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number`, `status` (`forming`, `active`, `closed`), `current_round`, `round_count`, `started_at`, `closed_at` | |
 | `stokvel_rounds` | `cycle_id`, `round`, `start_time`, `deadline` (informational), `payout_time` (hard gate, D12) | |
 | `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row | `V20261009_1801__stokvel_group_tables` |
@@ -605,3 +606,4 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `npm run deploy:local`, `npm run deploy:testnet` | `contracts/scripts/deploy.ts` | Dry run on a local chain; deploy to the XRPL EVM Testnet | #284 |
 | `npm run export:abi` | `contracts/scripts/export-abi.js` | Compile and write `contracts/abi/StokvelVault.json` | #285 |
 | `stokvel_is_member`, `stokvel_is_organiser`, `stokvel_has_pending_invitation` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | RLS lookups (section 3) | #226 |
+| `stokvel_member_account_is_fiat` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | Member's fiat account in the stokvel currency | #226 |

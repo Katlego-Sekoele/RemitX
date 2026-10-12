@@ -96,6 +96,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.Column("deactivated_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
             "currency IN ('ZAR', 'USD', 'ZWL', 'NAD')", name="stokvels_currency_valid"
         ),
@@ -254,8 +255,53 @@ def upgrade() -> None:
             """
         )
 
+    op.execute(
+        """
+        CREATE FUNCTION stokvel_member_account_is_fiat()
+          RETURNS trigger LANGUAGE plpgsql
+          SET app.current_user_id = ''
+          AS $$
+        DECLARE
+          found_type text;
+          found_owner uuid;
+          found_currency text;
+          group_currency text;
+        BEGIN
+          SELECT accounts.type, accounts.user_id, accounts.account_currency
+            INTO found_type, found_owner, found_currency
+            FROM accounts
+           WHERE accounts.account_id = NEW.account_id;
+          SELECT stokvels.currency INTO group_currency
+            FROM stokvels
+           WHERE stokvels.id = NEW.stokvel_id;
+          IF found_type IS DISTINCT FROM 'USER'
+             OR found_owner IS DISTINCT FROM NEW.user_id
+             OR found_currency IS DISTINCT FROM group_currency
+          THEN
+            RAISE EXCEPTION
+              'stokvel_members.account_id must be the member''s USER account in the stokvel currency'
+              USING ERRCODE = '23514';
+          END IF;
+          RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER stokvel_member_account_is_fiat
+          BEFORE INSERT OR UPDATE OF account_id, user_id, stokvel_id
+          ON stokvel_members
+          FOR EACH ROW EXECUTE FUNCTION stokvel_member_account_is_fiat()
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute(
+        "DROP TRIGGER IF EXISTS stokvel_member_account_is_fiat ON stokvel_members"
+    )
+    op.execute("DROP FUNCTION IF EXISTS stokvel_member_account_is_fiat()")
     for table in _POLICIES:
         op.execute(f"DROP POLICY IF EXISTS {table}_by_current_user ON {table}")
     for name in _FUNCTIONS:

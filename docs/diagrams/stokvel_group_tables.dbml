@@ -21,13 +21,14 @@ Table stokvels {
   currency text [not null, note: 'Stokvel currency (fiat)']
   contribution_amount "numeric(20,8)" [not null, note: 'UCTUSD, fixed for life']
   created_at timestamptz [not null]
+  deactivated_at timestamptz [note: 'null while in service']
 }
 
 Table stokvel_members {
   id uuid [pk, note: 'on-chain memberId']
   stokvel_id uuid [not null, ref: > stokvels.id]
   user_id uuid [not null, ref: > users.id]
-  account_id uuid [not null, ref: > accounts.account_id, note: 'pays contributions']
+  account_id uuid [not null, ref: > accounts.account_id, note: 'member USER account in the stokvel currency']
   invitation_id uuid [unique, ref: - stokvel_invitations.id, note: 'null for the Organiser']
   joined_at timestamptz [not null]
   left_at timestamptz [note: 'null while a member']
