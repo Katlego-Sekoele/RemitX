@@ -131,7 +131,7 @@ Tickets are listed in ID order within each role; extension tickets are marked in
 
 #### D4. Decide the contribution amount rule and the remittance status names
 **Owner:** Sian (with Claire) · **Milestone:** Stokvel Backend Domain · **Size:** S · **Type:** core · **Refs:** brief §7.2; doc §3, §8
-- [ ] Contribution amount (product to confirm): fixed token amount or fixed fiat amount? If a fixed token amount, debit = token amount × live rate at contribution; refunds return the original fiat amount entered.
+- [x] Contribution amount: **fixed token** (D13, 2026-10-11). Debit = token amount × live rate at contribution; refunds return the original fiat amount entered.
 - [ ] Decide the remittance status names the frontend will show (brief `created → burning → burnt → credited` vs the ledger's `pending → processing → confirmed | failed`). Recommendation: the ledger's, pending product confirmation.
 - [ ] Record both in doc §3 and §8.
 **Files:**
@@ -753,11 +753,7 @@ Found in the 2026-10-07 review of this plan and the integration doc. Each needs 
 **Done when:** with the contract paused, `POST /stokvels/{id}/contributions` is refused with `stokvel_paused`, and the owning ticket says so.
 
 #### OI-5. Contribution amount: the doc contradicts itself
-**Problem:** §1 and §3 already assume a fixed token amount locked at cycle start (`token_contribution_amount`, converted once by the backend). §8 and the product file still ask whether the amount is a fixed token amount or a fixed fiat amount, and how live rates are handled.
-**Needed:** a product decision, then make §1, §3 and §8 agree. If the amount is a fixed fiat amount per contribution, the contract's fixed `contribution` and `WrongAmount` check, or who carries the rate movement, have to change.
-**Related:** D4 (decides the amount rule), R1-01, R2-11, product file.
-**Owner / size:** product decision; D4 owner updates the docs (S).
-**Done when:** one amount model is written in §1, §3 and §8, and D4 records it.
+**Resolved (2026-10-11):** fixed token (D13). `stokvels.contribution_amount` is the UCTUSD amount; member fiat debit = amount × live rate at contribution. §1, §3, §8 and the product file agree. #298 closed.
 
 ## If Role 2 is late
 

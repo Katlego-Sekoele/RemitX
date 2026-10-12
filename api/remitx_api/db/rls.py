@@ -5,7 +5,8 @@ session. ``is_admin_route`` is true when the route requires a permission
 (admin), false for a customer route. Each cursor then copies those onto the
 connection as ``SET LOCAL`` settings, and clears them again after the
 statement; FORCE ROW LEVEL SECURITY on ``kyc_applications``, ``quotes``,
-``remittances``, and ``transactions`` does the filtering. Unbound sessions
+``remittances``, ``transactions``, ``stokvels``, ``stokvel_members`` and
+``stokvel_invitations`` does the filtering. Unbound sessions
 (workers, migrations, tests) leave the settings empty and see every row.
 None of it applies unless the transaction runs as a role that RLS binds —
 see ``adopt_row_security_role``.

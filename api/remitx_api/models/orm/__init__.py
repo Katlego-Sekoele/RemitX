@@ -38,6 +38,12 @@ from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
+from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_invitation import (
+    StokvelInvitation,
+    StokvelInvitationStatus,
+)
+from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.transaction import Transaction
 from remitx_api.models.orm.user import User
@@ -81,6 +87,10 @@ __all__ = [
     "Remittance",
     "Role",
     "RolePermission",
+    "Stokvel",
+    "StokvelInvitation",
+    "StokvelInvitationStatus",
+    "StokvelMember",
     "ToxicCombination",
     "Transaction",
     "User",
