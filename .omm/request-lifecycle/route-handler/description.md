@@ -1,0 +1,1 @@
+Thin handler in api/remitx_api/routes/ (customer) or routes/admin/ (staff). Declares `summary=`, `responses=error_responses(...)`, a request/response `Schema`, and calls one controller method. Function name = OpenAPI operation id = generated client function name.

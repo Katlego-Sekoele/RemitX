@@ -1,0 +1,1 @@
+The enqueue in confirm_remittance happens after commit; a lost publish leaves seven committed `pending` legs that only the worker's reclaim (boot/beat) or the admin retry recovers. Withdrawals settle synchronously; if a real payment gateway is added they should move to the async pattern.

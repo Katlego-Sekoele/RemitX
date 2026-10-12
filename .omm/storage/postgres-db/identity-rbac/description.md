@@ -1,0 +1,1 @@
+users (keyed to Clerk user id, provisioned lazily), roles, permissions (`PermissionCode` vocabulary), user_roles, role_permissions, toxic_combinations (role pairs that may not be held together — segregation of duties). Seeded by models/orm/rbac_seed.py via migrations.

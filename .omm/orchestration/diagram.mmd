@@ -1,0 +1,32 @@
+graph LR
+    confirm-remittance["Confirm remittance\nservices/remittance_service.py"]
+    worker-wake["Worker wake ping\nqueue_service.wake_worker"]
+    redis-queue[("Celery queue\nRedis CELERY_QUEUE")]
+    settle-remittance["settle_remittance\nremitx_worker/tasks.py"]
+    burn-treasury-tokens["burn_treasury_tokens\nremitx_worker/tasks.py"]
+    confirm-treasury-burn["confirm_treasury_burn\nremitx_worker/tasks.py"]
+    ledger-legs[("Ledger legs\ntransactions + accounts")]
+    chain-burn["On-chain burn\nxrpl_service (→ evm_service)"]
+    reclaim-loop["Reclaim (boot + beat)\nremitx_worker/reclaim.py"]
+    admin-recovery["Admin stuck-settlements\nsettlement_recovery_service.py"]
+
+    confirm-remittance -->|"commit 7 pending legs, then send_task"| redis-queue
+    confirm-remittance -->|"after send_task"| worker-wake
+    redis-queue -->|"deliver (acks_late)"| settle-remittance
+    settle-remittance -->|"pending burn leg exists → enqueue"| redis-queue
+    redis-queue -->|"deliver"| burn-treasury-tokens
+    burn-treasury-tokens -->|"claim pending→processing"| ledger-legs
+    burn-treasury-tokens -->|"submit burn, wait for validation"| chain-burn
+    burn-treasury-tokens -->|"enqueue result (hash or error)"| redis-queue
+    redis-queue -->|"deliver"| confirm-treasury-burn
+    confirm-treasury-burn -->|"confirmed + balances, or failed"| ledger-legs
+    reclaim-loop -->|"scan fully pending groups"| ledger-legs
+    reclaim-loop -->|"re-enqueue settle_remittance"| redis-queue
+    admin-recovery -->|"retry fully pending group"| redis-queue
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    classDef store fill:#a6e3a1,stroke:#a6e3a1,color:#1e1e2e
+    classDef external fill:#585b70,stroke:#585b70,color:#cdd6f4
+    class confirm-remittance entry
+    class redis-queue,ledger-legs store
+    class chain-burn external

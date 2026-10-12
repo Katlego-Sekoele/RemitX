@@ -1,0 +1,16 @@
+graph LR
+    postgres-db[("Postgres\nNeon / compose")]
+    kyc-bucket[("KYC document bucket\nNeon Object Storage / MinIO")]
+    redis-broker[("Redis\nRender Key Value / compose")]
+    encrypted-secrets["Encrypted chain keys\nenv vars (Fernet)"]
+    alembic-migrations["Schema migrations\napi/alembic/"]
+
+    alembic-migrations -->|"owns schema, seeds catalogues + platform accounts"| postgres-db
+    postgres-db -->|"kyc_documents row key → object"| kyc-bucket
+    postgres-db -->|"pending rows re-enqueued on wipe"| redis-broker
+    encrypted-secrets -->|"decrypted only in worker to sign burns"| postgres-db
+
+    classDef store fill:#a6e3a1,stroke:#a6e3a1,color:#1e1e2e
+    classDef concern fill:#f38ba8,stroke:#f38ba8,color:#1e1e2e
+    class postgres-db,kyc-bucket,redis-broker store
+    class encrypted-secrets concern

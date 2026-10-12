@@ -1,0 +1,1 @@
+infra/shared/ (HCP workspace `remitx-shared`): `render_project "remitx"` with qa and production environments, and the `keyvalue` module creating one free Render Key Value (`remitx-kv`). QA uses Redis DB /0, Production /1 on the same instance.

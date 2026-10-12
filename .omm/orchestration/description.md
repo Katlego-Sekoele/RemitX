@@ -1,0 +1,1 @@
+Asynchronous remittance settlement over Celery + Redis. The API is the only producer of the first message; the worker chains three tasks (settle → burn → confirm), each idempotent through guarded status predicates on the quote's seven ledger legs. Postgres, not the broker, is the source of truth: a reclaim loop and an admin page re-enqueue work lost from Redis.

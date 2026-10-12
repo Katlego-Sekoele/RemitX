@@ -1,0 +1,1 @@
+`/admin` — operations overview: queue cards (pending KYC, deposits, bank accounts, stuck settlements), operations charts and treasury coverage (components/admin/overview/), fed by routes/admin/operations.py.

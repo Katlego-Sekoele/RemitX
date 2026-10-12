@@ -1,0 +1,1 @@
+The stateful entities of RemitX and the guarded transitions between their states: KYC applications and documents, deposits, quotes, the seven remittance ledger legs, bank accounts and withdrawals — and how one entity's state gates another's (e.g. KYC standing gates quoting; confirmed cash-in is the only spendable balance; a verified bank account gates withdrawal).

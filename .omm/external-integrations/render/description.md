@@ -1,0 +1,1 @@
+Render Hobby workspace, all `plan = free`: `remitx-<env>-api` and `remitx-<env>-worker` web services, `remitx-<env>-web` static site, shared `remitx-kv` Key Value. Auto-deploy off; deploys triggered by .github/scripts/render-deploy.sh after migrations; env vars synced by render-sync-env.sh. Custom domains remitx.tech / qa.remitx.tech for the frontend.

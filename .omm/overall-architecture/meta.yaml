@@ -1,0 +1,21 @@
+created: 2026-10-12T07:13:41.311Z
+updated: 2026-10-12T07:13:59.700Z
+update_count: 7
+last_field: note
+git_commit: dc4296b
+git_branch: main
+children:
+  - api
+  - clerk
+  - dev-tools
+  - exchange-rate-api
+  - frontend
+  - infra
+  - object-storage
+  - platform-wallet
+  - postgres
+  - redis
+  - stokvel-vault
+  - worker
+  - xrpl-evm-testnet
+  - xrpl-testnet

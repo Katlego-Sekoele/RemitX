@@ -1,0 +1,1 @@
+`@app.exception_handler(DomainError)` in api/remitx_api/app.py returns `{"detail": exc.detail}` with `exc.status_code`. Per-area errors live in api/remitx_api/errors/. The 413 from the body guard and FastAPI's HTTPException share the same body shape, so the SPA has one parser.

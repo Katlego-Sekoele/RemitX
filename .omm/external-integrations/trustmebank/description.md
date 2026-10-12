@@ -1,0 +1,1 @@
+Planned mock bank whose authorised payments stand in for real fiat movement in and out of the platform (CONTEXT.md). Required for deposits (#202) and withdrawals (#203) per the stokvel integration plan; today deposits use the admin bank-statement CSV simulation and withdrawals settle internally.

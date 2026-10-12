@@ -1,0 +1,17 @@
+created: 2026-10-12T07:14:39.075Z
+updated: 2026-10-12T07:14:39.262Z
+update_count: 3
+last_field: constraint
+kind: nested-class
+title: api
+children:
+  - auth
+  - controllers
+  - db-layer
+  - errors
+  - middleware
+  - orm-models
+  - repositories
+  - routes
+  - services
+parentPath: []

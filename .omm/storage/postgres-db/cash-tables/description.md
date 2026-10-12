@@ -1,0 +1,1 @@
+deposits (one per bank-statement line, fingerprint for dedupe, user_account_reference as given, confirmed_by, tx_id), withdrawals (lean header linking to its fee and payout transactions), bank_accounts (customer payout accounts with pending_verification / verified / rejected).

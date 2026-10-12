@@ -1,0 +1,9 @@
+created: 2026-10-12T07:16:11.999Z
+updated: 2026-10-12T07:16:11.999Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: xrpl-service
+children: []
+parentPath:
+  - worker

@@ -1,0 +1,1 @@
+`/app/profile/*` — Clerk `<UserProfile>` with its navbar hidden, driven by PROFILE_SECTIONS paths: Account, Contact (components/profile/contact-page.tsx), Verification (status + start/continue application), Security.

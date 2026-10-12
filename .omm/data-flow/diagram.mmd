@@ -1,0 +1,30 @@
+graph LR
+    bank-statement["Bank statement CSV\nadmin statement-csv / process-deposits"]
+    sender-fiat-account[("Sender fiat account\naccounts type USER")]
+    fx-rates[("FX rates\nexchange_rates + ExchangeRate-API")]
+    quote-pricing["Quote pricing\nservices/quote_service.py"]
+    platform-fiat-accounts[("Platform bank accounts\nREMITX_FIAT per currency")]
+    revenue-accounts[("Fee revenue\nREMITX_REVENUE per currency")]
+    token-pass-through["UCTUSD pass-through\ntreasury → sender → beneficiary → treasury"]
+    token-burn["Burn to issuer\ntoken_burn leg"]
+    beneficiary-fiat-account[("Beneficiary fiat account\npayout currency")]
+    withdrawal-payout["Withdrawal\nservices/withdrawal_service.py"]
+    kyc-evidence["KYC evidence\nkyc_applications + object storage"]
+
+    bank-statement -->|"matched reference → confirmed deposit"| sender-fiat-account
+    fx-rates -->|"pair rates, margin"| quote-pricing
+    sender-fiat-account -->|"amount + limits check"| quote-pricing
+    quote-pricing -->|"fee + margin leg"| revenue-accounts
+    quote-pricing -->|"net remittance leg"| platform-fiat-accounts
+    quote-pricing -->|"token legs"| token-pass-through
+    token-pass-through -->|"same amount back out of treasury"| token-burn
+    platform-fiat-accounts -->|"beneficiary_payout leg (after burn)"| beneficiary-fiat-account
+    beneficiary-fiat-account -->|"to verified bank account, minus cash-out fee"| withdrawal-payout
+    sender-fiat-account -->|"to verified bank account, minus cash-out fee"| withdrawal-payout
+    withdrawal-payout -->|"cash-out fee"| revenue-accounts
+    kyc-evidence -->|"tier x risk allowance gates"| quote-pricing
+
+    classDef store fill:#a6e3a1,stroke:#a6e3a1,color:#1e1e2e
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class sender-fiat-account,fx-rates,platform-fiat-accounts,revenue-accounts,beneficiary-fiat-account store
+    class bank-statement entry

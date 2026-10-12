@@ -1,0 +1,12 @@
+graph LR
+    public-routes["Public\nroutes/health.py"]
+    customer-routes["Customer routers\nroutes/*.py"]
+    admin-routes["Admin routers\nroutes/admin/"]
+    router-factories["Router factories\nroutes/routers.py"]
+
+    router-factories -->|"create_public_router"| public-routes
+    router-factories -->|"create_customer_router: bearer + user + RLS"| customer-routes
+    router-factories -->|"create_admin_router(permission): + RequirePermission"| admin-routes
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class public-routes,customer-routes,admin-routes entry

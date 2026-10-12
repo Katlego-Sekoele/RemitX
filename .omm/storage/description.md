@@ -1,0 +1,1 @@
+Where RemitX keeps state: Postgres is the single source of truth for every domain record; an S3-compatible bucket holds only KYC document bytes; Redis is a disposable task broker; chain signing keys live encrypted in environment variables with their decryption keys held separately. Alembic owns the schema and seeds reference data.

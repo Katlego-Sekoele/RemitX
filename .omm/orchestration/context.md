@@ -1,0 +1,1 @@
+Brief requirement: RLUSD (here UCTUSD) settlement runs asynchronously through a message queue with duplicate-message protection, and token transfer may not start before ZAR cash-in is confirmed (only confirmed balances are spendable at confirm time). The cloud worker is a free Render web service that sleeps, hence the HTTP wake ping on every enqueue.

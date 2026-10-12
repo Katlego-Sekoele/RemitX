@@ -1,0 +1,1 @@
+`remitx_worker.tasks.settle_remittance(quote_id)`. Entry task; checks a `token_burn` leg for the quote is still `pending`, then enqueues `burn_treasury_tokens`. Returns "skipped" for invalid ids or groups already settling — the safe target for reclaim and admin retry.

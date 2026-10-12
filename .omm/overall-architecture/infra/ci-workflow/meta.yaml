@@ -1,0 +1,9 @@
+created: 2026-10-12T07:17:10.566Z
+updated: 2026-10-12T07:17:10.566Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: ci-workflow
+children: []
+parentPath:
+  - infra

@@ -1,0 +1,1 @@
+withdrawal_service.request_withdrawal: requires a verified bank account in the same currency and sufficient balance; deducts `CASH_OUT_FEE_RATE` to REMITX_REVENUE and settles the net payout to the platform fiat account synchronously (`_settle_withdrawal`). Status lives on the linked transactions; KYC standing is deliberately not checked (it only pays out a balance already held).

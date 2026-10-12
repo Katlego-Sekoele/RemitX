@@ -1,0 +1,1 @@
+api/remitx_api/routes/routers.py. Three factories that attach auth dependencies and OpenAPI security/error declarations at router level so no handler can forget them. Admin routers bind `is_admin_route=True` so Postgres RLS treats the caller as a reviewer; customer routers bind `is_admin_route=False`.

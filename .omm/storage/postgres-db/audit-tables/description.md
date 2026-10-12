@@ -1,0 +1,1 @@
+audit_log (actor, `AuditAction`, `AuditSubject`, subject id, request_id, before/after JSON with ids/enums/counts only — never PII; written via audit_service in the action's transaction). integration_messages (PENDING/PROCESSED rows for the throwaway end-to-end queue test).

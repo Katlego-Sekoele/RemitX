@@ -1,0 +1,9 @@
+created: 2026-10-12T07:18:05.905Z
+updated: 2026-10-12T07:18:05.906Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: clerk-verify
+children: []
+parentPath:
+  - router-dependencies

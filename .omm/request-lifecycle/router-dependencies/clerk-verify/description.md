@@ -1,0 +1,1 @@
+api/remitx_api/auth/clerk.py `verify_request`: adapts the Starlette request into an `httpx.Request` for the Clerk SDK's `authenticate_request`, returns `ClerkClaims` or raises 401. `fetch_user_email` / `fetch_user_first_name` / `fetch_user_image_url` call Clerk's backend API on demand.

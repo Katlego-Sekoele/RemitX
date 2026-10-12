@@ -1,0 +1,1 @@
+routes/home.tsx with components/landing/ (hero, how-it-works, trust note, CTA, footer) and Aceternity effects (lazy-loaded globe, spotlight cards). Auth-aware actions switch between sign-in and "Open dashboard".

@@ -1,0 +1,1 @@
+The ciphertext and its key are both environment variables on the same Render service — satisfying "key outside the database" but not separation from the host. The XRPL encryption key is also loaded through `Config` (readable by API code), unlike the EVM key.

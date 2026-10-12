@@ -1,0 +1,9 @@
+created: 2026-10-12T07:14:58.395Z
+updated: 2026-10-12T07:14:58.395Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: middleware
+children: []
+parentPath:
+  - api

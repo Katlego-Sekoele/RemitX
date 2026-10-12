@@ -1,0 +1,1 @@
+Compliance framing: FICA §21C ongoing due diligence (`review_due`, risk-based `next_review_at`), FICA §23 record retention (rejected applications and submitted documents are never overwritten or deleted), POPIA (every document access audited).

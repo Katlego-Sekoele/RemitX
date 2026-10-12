@@ -1,0 +1,9 @@
+created: 2026-10-12T07:23:45.964Z
+updated: 2026-10-12T07:23:45.964Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: identity-rbac
+children: []
+parentPath:
+  - postgres-db

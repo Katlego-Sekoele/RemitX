@@ -1,0 +1,1 @@
+Celery broker and result backend (`REDIS_URL`). Render Key Value (free, in-memory, provisioned by infra/shared) in the cloud; `redis:7-alpine` in compose. Treated as disposable: Postgres holds every pending row, and the worker re-enqueues them on boot and on a beat schedule.

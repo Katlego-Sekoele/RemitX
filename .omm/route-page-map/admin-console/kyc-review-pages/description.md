@@ -1,0 +1,1 @@
+`/admin/kyc/applications` (`kyc:application:read`) review queue; `/admin/kyc/applications/:applicationId` application review with risk signals/history, decision panel (claim, approve with tier, reject, request more info with reason codes) and risk-rating override; `/admin/kyc/documents` (`kyc:document:read`) document list with audited signed-URL viewing.

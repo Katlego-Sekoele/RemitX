@@ -1,0 +1,1 @@
+Admin "Stuck settlements" page (frontend/app/routes/admin/stuck-settlements.tsx, permission `transaction:read_any`) backed by routes/admin/operations.py → settlement_recovery_controller → settlement_recovery_service. Lists non-terminal leg groups with their classification and lets staff retry the enqueue when the group is fully pending.

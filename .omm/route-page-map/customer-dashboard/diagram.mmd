@@ -1,0 +1,17 @@
+graph TD
+    overview["Overview\nroutes/app/index.tsx"]
+    accounts-pages["Accounts & history\naccounts.tsx, account-history.tsx"]
+    send-flow["Send\nroutes/app/send.tsx"]
+    transfers-pages["Transfers & detail\ntransfers.tsx, transfer.tsx"]
+    beneficiaries-page["Beneficiaries\nroutes/app/beneficiaries.tsx"]
+    cash-out-pages["Withdraw & bank accounts\nwithdraw.tsx, bank-accounts.tsx"]
+    profile-pages["Profile (Clerk UserProfile)\nroutes/app/profile.tsx"]
+    verification-wizard["KYC verification wizard\nroutes/app/verification/"]
+
+    overview -->|"in-flight transfer card"| transfers-pages
+    accounts-pages -->|"fund via deposit reference"| send-flow
+    send-flow -->|"pick or add recipient"| beneficiaries-page
+    send-flow -->|"confirmed → transfer page"| transfers-pages
+    send-flow -->|"blocked until verified"| verification-wizard
+    profile-pages -->|"Verification section"| verification-wizard
+    accounts-pages -->|"withdraw balance"| cash-out-pages

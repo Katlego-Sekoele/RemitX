@@ -1,0 +1,1 @@
+Single Postgres database per environment (SQLite fallback at api/remitx.db when `DATABASE_URL` is unset; in-memory SQLite for tests; a `-m postgres` test lane for row locks). FORCE RLS on kyc_applications, quotes, remittances, transactions. Tables grouped by domain below.

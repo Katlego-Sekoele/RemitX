@@ -1,0 +1,17 @@
+graph TD
+    landing["Landing\nroutes/home.tsx"]
+    auth-pages["Sign in / Sign up\nroutes/sign-in.tsx, sign-up.tsx"]
+    protected-gate["Protected layout\nroutes/protected.tsx"]
+    customer-dashboard["Customer dashboard /app\nroutes/app/"]
+    admin-console["Admin console /admin\nroutes/admin/"]
+    integration-test-page["Integration test\nroutes/integration-test.tsx"]
+
+    landing -->|"Get started / Sign in"| auth-pages
+    landing -->|"Open dashboard (signed in)"| protected-gate
+    auth-pages -->|"Clerk session established"| protected-gate
+    protected-gate -->|"app/layout.tsx"| customer-dashboard
+    protected-gate -->|"admin/layout.tsx, permission-filtered nav"| admin-console
+    protected-gate -->|"queue smoke test"| integration-test-page
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class landing entry

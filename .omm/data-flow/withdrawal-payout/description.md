@@ -1,0 +1,1 @@
+Customer withdraws from any of their fiat accounts to a verified bank account in the same currency: fee leg to REMITX_REVENUE and net leg to the platform fiat account (standing for the external bank payout), settled synchronously.

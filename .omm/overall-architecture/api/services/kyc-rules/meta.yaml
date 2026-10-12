@@ -1,0 +1,10 @@
+created: 2026-10-12T07:15:42.953Z
+updated: 2026-10-12T07:15:42.953Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: kyc-rules
+children: []
+parentPath:
+  - api
+  - services

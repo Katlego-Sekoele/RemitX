@@ -1,0 +1,1 @@
+Postgres `transactions` rows sharing `quote_id` (seven per remittance) plus `accounts.account_balance`. Leg status pending → processing → confirmed | failed is the settlement state machine; the remittance's displayed status and timeline are derived from these legs (services/transfer_timeline.py).

@@ -1,0 +1,1 @@
+Neon serverless Postgres (per-environment database; pooler-aware engine settings in extensions.py; migrations applied from GitHub Actions via `MIGRATIONS_DATABASE_URL`) and Neon Object Storage (S3-compatible) for KYC documents. Outside Terraform; URLs supplied as secrets.

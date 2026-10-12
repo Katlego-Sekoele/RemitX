@@ -1,0 +1,1 @@
+`queue_service.wake_worker()`: if `WORKER_WAKE_URL` is set, submits one background GET (single-thread executor, collapsed while in flight, 5 s timeout, proxies ignored) so Render's router spins up the sleeping worker. 502s are expected and only logged; local compose leaves the URL unset.

@@ -1,0 +1,1 @@
+routes/integration-test.tsx — throwaway page for the manual end-to-end queue test: posts an integration message and watches it go PENDING → PROCESSED via the worker's `process_integration_message` task.

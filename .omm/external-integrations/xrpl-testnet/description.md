@@ -1,0 +1,1 @@
+xrpl-py `JsonRpcClient(XRPL_TESTNET_URL)` + `submit_and_wait`. Uses `UCTUSD_ISSUER`, `UCTUSD_CURRENCY_CODE_HEX`, `PLATFORM_WALLET_SEED_ENCRYPTED`, `XRPL_ENCRYPTION_KEY`. Wallet created by platform_wallet/scripts/create_xprl_platform_wallet.py. Being decommissioned (#276).

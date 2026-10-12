@@ -1,0 +1,9 @@
+created: 2026-10-12T07:21:51.810Z
+updated: 2026-10-12T07:21:51.810Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: overview
+children: []
+parentPath:
+  - customer-dashboard

@@ -1,0 +1,1 @@
+Dependencies attached by the router factory in routes/routers.py, run before any handler on that router. Customer routers: bearer scheme → `get_current_user` → bind RLS context (customer). Admin routers additionally run `RequirePermission(baseline)` and bind RLS as admin; individual routes may add a stricter `RequirePermission`.

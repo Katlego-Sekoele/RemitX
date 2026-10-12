@@ -1,0 +1,4 @@
+- Routes are explicit in app/routes.ts, not file-system based; new pages must be registered there (or in the app/admin registries) and `npm run typecheck` run to regenerate `./+types/*`.
+- Admin nav items carry the `permission` the API needs; items are hidden from callers lacking it, but each page still guards itself (a sidebar is not a gate — the API enforces).
+- admin.routes.ts uses type-only imports because react-router loads it through vite-node without the `~` alias.
+- Clerk-driven pages (sign-in, sign-up, profile) use splat routes for Clerk's sub-paths.

@@ -1,0 +1,15 @@
+graph LR
+    pricing["Pricing & limits\nquote_service, exchange_rate_*, send_limits"]
+    money-movement["Money movement\nremittance, deposit, withdrawal, bank_account"]
+    kyc-rules["KYC rules\nkyc_onboarding, kyc_risk_rules, identity_validators"]
+    documents["Document handling\nobject_storage, upload_stream, file_signatures"]
+    queue-producer["Celery producer\nqueue_service.py"]
+    audit["Audit\naudit_service.py"]
+    settlement-recovery["Settlement recovery\nsettlement_recovery_service.py"]
+
+    money-movement -->|"re-check limits at confirm"| pricing
+    pricing -->|"standing from KYC tier x risk"| kyc-rules
+    money-movement -->|"enqueue settle_remittance after commit"| queue-producer
+    settlement-recovery -->|"re-enqueue fully pending groups"| queue-producer
+    money-movement -->|"cashin.confirmed etc."| audit
+    documents -->|"document access entries"| audit

@@ -1,0 +1,1 @@
+api/alembic/ (env.py, 64 revisions in versions/). Applied by the compose `migrate` one-shot locally and by the Deploy workflow before Render deploys. Seeds RBAC, KYC catalogue, countries and platform accounts; creates RLS policies. CI runs `alembic upgrade head` + `alembic check` to catch ORM drift.

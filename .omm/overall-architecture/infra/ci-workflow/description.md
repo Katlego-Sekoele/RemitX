@@ -1,0 +1,1 @@
+.github/workflows/ci.yml. Jobs: `api` (ruff, pytest, apply migrations and `alembic check` drift), `frontend` (lint + typecheck incl. stale-openapi detection via generate), `seeder` (ruff + a real seed run against a throwaway Postgres; also runs tools/loadtest script tests). A backend change that breaks the seeder fails here.

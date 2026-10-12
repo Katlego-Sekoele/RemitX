@@ -1,0 +1,15 @@
+created: 2026-10-12T07:17:44.883Z
+updated: 2026-10-12T07:17:45.339Z
+update_count: 6
+last_field: note
+git_commit: dc4296b
+git_branch: main
+children:
+  - async-handoff
+  - error-mapping
+  - middleware-stack
+  - persistence
+  - route-handler
+  - router-dependencies
+  - spa-client
+  - use-case

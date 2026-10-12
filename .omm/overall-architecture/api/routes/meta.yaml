@@ -1,0 +1,13 @@
+created: 2026-10-12T07:14:58.488Z
+updated: 2026-10-12T07:14:58.583Z
+update_count: 2
+last_field: diagram
+kind: nested-class
+title: routes
+children:
+  - admin-routes
+  - customer-routes
+  - public-routes
+  - router-factories
+parentPath:
+  - api

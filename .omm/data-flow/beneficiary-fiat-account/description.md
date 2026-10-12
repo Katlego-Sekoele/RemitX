@@ -1,0 +1,1 @@
+The beneficiary is a registered platform user; the sender nominates one of their fiat accounts in the payout currency. The `beneficiary_payout` leg from the platform bank account in that currency credits it when the group confirms.

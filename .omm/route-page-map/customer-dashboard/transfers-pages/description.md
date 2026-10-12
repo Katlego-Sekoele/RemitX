@@ -1,0 +1,1 @@
+`/app/transfers` table of the user's remittances with derived status badges; `/app/transfers/:remittanceId` shows the settlement timeline (pending → processing → confirmed/failed) and the on-chain burn hash link.

@@ -1,0 +1,1 @@
+`/admin/iam/my-roles` (no permission needed — your own roles), `/admin/access` (`role:read`; grant/revoke user roles, toxic combinations refused), `/admin/audit` (`audit:read`; filterable audit log with request ids).

@@ -1,0 +1,1 @@
+Nothing schedules `approved → review_due` today; `effective_status` reports an approval past `next_review_at` as `review_due` on read. A stokvel state machine (stokvel → cycle → round paid/finalised, invitations, continuation) is specified in CONTEXT.md and docs/stokvel_integration.md but not yet implemented in the backend.

@@ -1,0 +1,9 @@
+created: 2026-10-12T07:17:26.448Z
+updated: 2026-10-12T07:17:26.448Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: seeder
+children: []
+parentPath:
+  - dev-tools

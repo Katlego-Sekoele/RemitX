@@ -1,0 +1,1 @@
+Contract trusts the Treasury Wallet to name the contributing member; a compromised operator key could misattribute contributions (though not release early). Backend integration (contribute/finalise tasks, allowance management, nonce serialisation) is not built yet.

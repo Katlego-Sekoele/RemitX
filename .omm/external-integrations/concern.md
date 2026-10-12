@@ -1,0 +1,3 @@
+- FX outages beyond `MAX_RATE_STALENESS_HOURS` stop all quoting by design.
+- Free-tier Render cold starts add latency to the first settlement after idle.
+- XRPL → EVM switch-over is in flight; both RPC configs exist and the XRPL vars are decommissioned, not removed (D11).

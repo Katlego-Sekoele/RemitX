@@ -1,0 +1,1 @@
+Outer → inner: CORSMiddleware → RequestIdMiddleware (new uuid hex per request in a ContextVar; echoed as `X-Request-Id`) → MaxBodySizeMiddleware (refuses by Content-Length or running byte count; limit = KYC max + 2 MB slack) → `db_session_middleware` (opens the request session, always closes it) → router. Files: api/remitx_api/app.py, middleware.py, request_context.py.

@@ -1,0 +1,9 @@
+created: 2026-10-12T07:23:46.461Z
+updated: 2026-10-12T07:23:46.462Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: audit-tables
+children: []
+parentPath:
+  - postgres-db

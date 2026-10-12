@@ -1,0 +1,1 @@
+/admin/* under routes/admin/layout.tsx (admin shell, sidebar and header in components/admin/). Pages and nav groups come from ADMIN_ROUTE_INDEX; each item declares the permission its API needs and is hidden from callers without it (lib/admin-nav-discovery.ts, hooks/use-permissions.ts). Forbidden responses render components/admin/forbidden-page.tsx.

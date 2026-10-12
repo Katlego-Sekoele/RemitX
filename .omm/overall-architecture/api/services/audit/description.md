@@ -1,0 +1,1 @@
+audit_service.py `record_audit` stages and flushes an `audit_log` row (actor, action, subject, request_id, before/after) without committing, so the entry lands in the caller's transaction with the action it describes. before/after carry ids, enums and counts — never PII.

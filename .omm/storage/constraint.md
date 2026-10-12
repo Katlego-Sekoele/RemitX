@@ -1,0 +1,4 @@
+- KYC documents never in Postgres; the bucket is private, reads are presigned for minutes and audited.
+- Private keys encrypted at rest with the key held outside the database; never returned by the API, logged or committed (gitleaks custom XRPL-seed and DB-URL rules, `.env` commit block).
+- Redis contents are never authoritative.
+- Alembic is the only schema author outside tests; migration naming standard in api/alembic/README.md.

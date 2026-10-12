@@ -1,0 +1,10 @@
+created: 2026-10-12T07:14:58.758Z
+updated: 2026-10-12T07:14:58.758Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: customer-routes
+children: []
+parentPath:
+  - api
+  - routes

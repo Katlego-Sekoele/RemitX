@@ -1,0 +1,15 @@
+graph TD
+    admin-overview["Overview\nroutes/admin/index.tsx"]
+    iam-pages["IAM: My roles, Access, Audit log\niam/my-roles.tsx, access.tsx, audit.tsx"]
+    kyc-review-pages["KYC: Applications, Review, Documents\nroutes/admin/kyc/"]
+    deposit-pages["Deposits: Statement CSV, Process deposits\nstatement-csv.tsx, process-deposits.tsx"]
+    withdrawal-pages["Withdrawals: Bank accounts\nroutes/admin/bank-accounts.tsx"]
+    operations-pages["Operations: Stuck settlements\nroutes/admin/stuck-settlements.tsx"]
+    treasury-pages["Treasury: Platform accounts\nroutes/admin/platform-accounts.tsx"]
+
+    admin-overview -->|"pending applications"| kyc-review-pages
+    admin-overview -->|"unmatched deposits"| deposit-pages
+    admin-overview -->|"accounts awaiting verification"| withdrawal-pages
+    admin-overview -->|"stuck settlement count"| operations-pages
+    admin-overview -->|"treasury coverage"| treasury-pages
+    iam-pages -->|"grants permissions that reveal"| kyc-review-pages

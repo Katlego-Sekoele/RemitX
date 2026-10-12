@@ -1,0 +1,1 @@
+The `token_burn` leg: treasury token account → token issuer account (`UCTUSD_ISSUER_LABEL`), mirrored by the only real on-chain action (XRPL Payment to issuer today; ERC-20 burn after #278). Its hash is stored on the leg (`xrpl_tx_hash`) and shown in the UI (components/transfers/xrpl-hash.tsx). No leg confirms until it does.

@@ -1,0 +1,4 @@
+- Balances change only when transactions confirm; pending legs never move money, so tokens are not touched before cash-in is confirmed.
+- The beneficiary never holds a resting UCTUSD balance; their token account is a momentary pass-through.
+- Fees are pinned to ZAR and converted; send limits are measured in ZAR at the quote's locked value (`sender_amount_zar`), on a SAST day/month.
+- Platform accounts (one bank account per fiat currency, revenue accounts, treasury, issuer) are seeded by migrations (platform_account_seed.py).

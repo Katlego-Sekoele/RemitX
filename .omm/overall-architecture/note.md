@@ -1,0 +1,1 @@
+Local dev runs the whole stack with `docker compose -f docker-compose.dev.yml up --build` (postgres, redis, minio + bucket setup, one-shot alembic `migrate`, api, worker, frontend). `make` lists shortcuts. The seeder and load test under tools/ are never deployed.

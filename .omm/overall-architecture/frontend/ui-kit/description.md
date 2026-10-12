@@ -1,0 +1,1 @@
+Presentation primitives: components/ui/ (shadcn/ui, installed via `npx shadcn add`), components/aceternity/ (globe, spotlight, 3D card, grid background, fade-in), components/reui/ (phone input, timeline). Per CLAUDE.md, pages compose these; Tailwind is for layout only and colors/typography come from app.css tokens.

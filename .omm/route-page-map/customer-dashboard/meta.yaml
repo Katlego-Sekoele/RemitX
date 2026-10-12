@@ -1,0 +1,16 @@
+created: 2026-10-12T07:21:51.629Z
+updated: 2026-10-12T07:21:51.722Z
+update_count: 2
+last_field: diagram
+kind: nested-class
+title: customer-dashboard
+children:
+  - accounts-pages
+  - beneficiaries-page
+  - cash-out-pages
+  - overview
+  - profile-pages
+  - send-flow
+  - transfers-pages
+  - verification-wizard
+parentPath: []

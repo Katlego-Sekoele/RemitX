@@ -1,0 +1,13 @@
+graph LR
+    get-current-user["get_current_user\nauth/dependencies.py"]
+    clerk-verify["Clerk verification\nauth/clerk.py"]
+    require-permission["RequirePermission\nauth/permissions.py"]
+    rls-binding["RLS context binding\ndb/rls.py"]
+
+    get-current-user -->|"verify_request → ClerkClaims"| clerk-verify
+    get-current-user -->|"User row"| require-permission
+    get-current-user -->|"user.id"| rls-binding
+    require-permission -->|"admin routes only, then is_admin_route=True"| rls-binding
+
+    classDef external fill:#585b70,stroke:#585b70,color:#cdd6f4
+    class clerk-verify external

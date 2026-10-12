@@ -1,0 +1,16 @@
+graph LR
+    ci-workflow["CI workflow\n.github/workflows/ci.yml"]
+    deploy-workflow["Deploy workflow\n.github/workflows/deploy.yml"]
+    tf-shared["Shared stack\ninfra/shared/"]
+    tf-envs["Environment stacks\ninfra/envs/qa, infra/envs/prod"]
+    render-scripts["Render scripts\n.github/scripts/"]
+    legacy-azure["Legacy Azure (destroy-only)\ninfra/legacy-azure/"]
+
+    deploy-workflow -->|"terraform apply remitx-shared"| tf-shared
+    deploy-workflow -->|"terraform apply remitx-qa / remitx-prod"| tf-envs
+    tf-envs -->|"reads Key Value outputs via HCP remote state"| tf-shared
+    deploy-workflow -->|"sync env vars, trigger deploys after migrate"| render-scripts
+    ci-workflow -.->|"gates PRs before"| deploy-workflow
+
+    classDef concern fill:#f38ba8,stroke:#f38ba8,color:#1e1e2e
+    class legacy-azure concern

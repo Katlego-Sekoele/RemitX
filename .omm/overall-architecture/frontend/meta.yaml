@@ -1,0 +1,15 @@
+created: 2026-10-12T07:16:44.300Z
+updated: 2026-10-12T07:17:10.299Z
+update_count: 3
+last_field: description
+kind: nested-class
+title: frontend
+children:
+  - api-client
+  - clerk-integration
+  - domain-lib
+  - feature-components
+  - root-shell
+  - route-modules
+  - ui-kit
+parentPath: []

@@ -1,0 +1,10 @@
+created: 2026-10-12T07:15:43.038Z
+updated: 2026-10-12T07:15:43.038Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: documents
+children: []
+parentPath:
+  - api
+  - services

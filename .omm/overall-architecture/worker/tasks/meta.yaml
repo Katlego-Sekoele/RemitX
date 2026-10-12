@@ -1,0 +1,9 @@
+created: 2026-10-12T07:16:11.747Z
+updated: 2026-10-12T07:16:11.748Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: tasks
+children: []
+parentPath:
+  - worker

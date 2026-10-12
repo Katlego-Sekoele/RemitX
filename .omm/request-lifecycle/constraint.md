@@ -1,0 +1,4 @@
+- Middleware order matters: CORS must stay outside the body guard (a 413 without CORS headers looks like a network error), and the guard outside routing (oversized bodies cost nothing even on unknown paths).
+- Both custom middlewares are pure ASGI, never `BaseHTTPMiddleware`, which would buffer the KYC upload body and defeat the size limit.
+- Handlers contain no logic or permission checks; auth is attached by router factories.
+- Audit rows are flushed inside the action's transaction, never committed separately.

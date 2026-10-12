@@ -1,0 +1,1 @@
+Three UCTUSD ledger legs (type remittance): RemitX treasury token account → sender's token account → beneficiary's token account → back to the treasury. Records the cross-border value transfer in the stand-in stablecoin while neither party holds a resting token balance.

@@ -1,0 +1,1 @@
+HCP Terraform (app.terraform.io) workspaces `remitx-shared`, `remitx-qa`, `remitx-prod` hold state and run plans; environment roots read shared outputs (Key Value connection) via remote state. Driven by the Deploy workflow with `TF_API_TOKEN`.

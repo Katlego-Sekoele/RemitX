@@ -1,0 +1,1 @@
+Page structure of the React Router v7 SPA as declared in frontend/app/routes.ts: a public landing and Clerk auth pages, then a protected layout that hosts the customer dashboard (/app/*) and the admin console (/admin/*). Both dashboards build their routes and sidebars from one registry each (routes/app/app.routes.ts, routes/admin/admin.routes.ts).

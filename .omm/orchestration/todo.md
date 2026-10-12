@@ -1,0 +1,2 @@
+- Replace `xrpl_service.burn_tokens` with the EVM UCTUSD `burn` from the Treasury Wallet (#278).
+- Add stokvel tasks: contribution to StokvelVault, scheduled `finalise` for due rounds, and payout remittance (docs/stokvel_integration.md §4).

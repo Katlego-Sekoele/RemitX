@@ -1,0 +1,1 @@
+`bank_accounts.status`: `pending_verification` (customer adds it) → `verified` | `rejected` by staff on the admin bank-accounts queue (bank_account_service.verify_bank_account / reject_bank_account; router baseline `cashout:read`, approve needs `CASHOUT_APPROVE`, reject needs `CASHOUT_FAIL`). Only verified accounts are withdrawable.

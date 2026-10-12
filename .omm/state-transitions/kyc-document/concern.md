@@ -1,0 +1,1 @@
+`KycDocumentStatus` docstring in models/orm/kyc_lifecycle.py still describes the older signed-upload-URL + completion-call flow; the controller now receives bytes directly. Worth updating to avoid misleading readers.

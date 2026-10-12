@@ -1,0 +1,1 @@
+quotes (frozen price, status, expires_at, sender_amount_zar), remittances (one per confirmed quote, pointing at its settlement leg), beneficiaries (sender ↔ beneficiary user links), exchange_rates (fetched pair rates with validity).

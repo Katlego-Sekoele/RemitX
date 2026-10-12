@@ -1,0 +1,1 @@
+`/admin/statement-csv` (`cashin:read`) builds a simulated bank statement CSV (account reference combobox, amounts, currencies); `/admin/process-deposits` (`cashin:read`, processing needs cashin confirm) uploads it, shows matched/skipped lines and lets staff approve pending unmatched deposits against a named account.

@@ -1,0 +1,15 @@
+graph LR
+    kyc-application["KYC application\nmodels/orm/kyc_lifecycle.py"]
+    kyc-document["KYC document\nkyc_document_controller.py"]
+    deposit-cash-in["Deposit / cash-in\nservices/deposit_service.py"]
+    quote["Quote\nmodels/orm/quote.py"]
+    settlement-legs["Remittance legs\nmodels/orm/transaction.py"]
+    bank-account["Bank account\nmodels/orm/bank_account.py"]
+    withdrawal["Withdrawal\nservices/withdrawal_service.py"]
+
+    kyc-document -->|"stored docs attached before submit"| kyc-application
+    kyc-application -->|"approved / review_due grants tier + limits"| quote
+    deposit-cash-in -->|"confirmed deposit funds balance"| quote
+    quote -->|"ACTIVE → USED creates 7 pending legs"| settlement-legs
+    bank-account -->|"verified required"| withdrawal
+    settlement-legs -->|"failed legs return limit usage"| quote

@@ -1,0 +1,1 @@
+.github/scripts/render-sync-env.sh pushes environment variables to Render services via API (works around the Terraform provider ignoring `env_vars`); render-deploy.sh triggers and waits on a service deploy.

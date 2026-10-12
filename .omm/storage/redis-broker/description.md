@@ -1,0 +1,1 @@
+Celery broker + result backend at `REDIS_URL` (QA DB /0, Production DB /1 on one free Render Key Value). In-memory on the free tier; may restart empty. Nothing in it is authoritative — reclaim rebuilds the queue from Postgres.

@@ -1,0 +1,9 @@
+created: 2026-10-12T07:16:44.496Z
+updated: 2026-10-12T07:16:44.497Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: root-shell
+children: []
+parentPath:
+  - frontend

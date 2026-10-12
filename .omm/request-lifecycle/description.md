@@ -1,0 +1,1 @@
+How one HTTP request travels from the SPA through the FastAPI app and back: middleware (CORS, request id, body cap, per-request session) → router-level auth/permission/RLS dependencies → thin handler → controller/service use case → repositories over row-level-secured Postgres, with domain refusals mapped to HTTP in one place and any async work enqueued only after the commit.

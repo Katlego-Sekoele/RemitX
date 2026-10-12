@@ -1,0 +1,15 @@
+graph LR
+    identity-rbac["Identity & RBAC\nusers, roles, permissions, user_roles, role_permissions, toxic_combinations"]
+    kyc-tables["KYC records\nkyc_applications, *_history, kyc_decisions, kyc_documents, kyc_assessment_audit*"]
+    kyc-catalogue["KYC & geo catalogue\nkyc_tiers, risk ratings/signals, reason codes, onboarding steps, identity schemes, countries"]
+    ledger-tables["Ledger\naccounts, transactions"]
+    remittance-tables["Remittance\nquotes, remittances, beneficiaries, exchange_rates"]
+    cash-tables["Cash in / out\ndeposits, withdrawals, bank_accounts"]
+    audit-tables["Audit & messaging\naudit_log, integration_messages"]
+
+    identity-rbac -->|"user owns"| kyc-tables
+    kyc-catalogue -->|"rules and vocab for"| kyc-tables
+    identity-rbac -->|"user owns"| ledger-tables
+    remittance-tables -->|"quote_id groups legs in"| ledger-tables
+    cash-tables -->|"tx_id points at"| ledger-tables
+    audit-tables -->|"actor_user_id"| identity-rbac

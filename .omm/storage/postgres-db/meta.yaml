@@ -1,0 +1,15 @@
+created: 2026-10-12T07:23:45.789Z
+updated: 2026-10-12T07:23:45.883Z
+update_count: 2
+last_field: diagram
+kind: nested-class
+title: postgres-db
+children:
+  - audit-tables
+  - cash-tables
+  - identity-rbac
+  - kyc-catalogue
+  - kyc-tables
+  - ledger-tables
+  - remittance-tables
+parentPath: []

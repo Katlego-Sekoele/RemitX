@@ -1,0 +1,1 @@
+`exchange_rates` table populated lazily by exchange_rate_service.get_active_rate from ExchangeRate-API; reused while valid, fallback to last stored rate within `MAX_RATE_STALENESS_HOURS`, otherwise `RateUnavailableError`. quote_service derives a token rate (fiat ↔ UCTUSD) and a direct fiat rate.

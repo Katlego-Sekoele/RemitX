@@ -1,0 +1,1 @@
+Local-only QA tooling under tools/, never deployed (a seeder test enforces no Terraform/workflow references it). The seeder fills local or QA environments with realistic data by driving the API's own controllers, services and worker tasks; the load test runs Locust against a throwaway Docker copy of the stack seeded by the seeder, with Clerk, FX and XRPL faked out.

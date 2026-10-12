@@ -1,0 +1,1 @@
+api/remitx_worker/db.py. Worker-side engine and `session_scope()` context manager (commit on exit, rollback on error), independent of the API's request-scoped session; no RLS identity is bound, so worker queries see all rows. `dispose()` releases the pool parent's connections after boot reclaim.

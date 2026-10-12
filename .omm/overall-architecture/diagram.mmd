@@ -1,0 +1,42 @@
+graph LR
+    frontend["Frontend SPA\nfrontend/"]
+    api["API\napi/remitx_api/"]
+    worker["Settlement Worker\napi/remitx_worker/"]
+    postgres[("Postgres\nNeon / compose postgres")]
+    redis[("Redis broker\nRender Key Value / compose redis")]
+    object-storage[("Object Storage\nNeon / MinIO")]
+    clerk["Clerk\nauth provider"]
+    exchange-rate-api["ExchangeRate-API\nlive FX"]
+    xrpl-testnet["XRPL Testnet\nuctusd burn (decommissioning)"]
+    xrpl-evm-testnet["XRPL EVM Testnet\nUCTUSD + StokvelVault"]
+    stokvel-vault["StokvelVault contract\ncontracts/"]
+    platform-wallet["Wallet setup scripts\nplatform_wallet/"]
+    infra["Infra & CI/CD\ninfra/ .github/"]
+    dev-tools["Seeder & Load test\ntools/"]
+
+    frontend -->|"generated Hey API client, Bearer JWT"| api
+    frontend -->|"sign-in / session"| clerk
+    frontend -->|"render KYC docs via signed URL"| object-storage
+    api -->|"verify JWT, provision User"| clerk
+    api -->|"SQLAlchemy + RLS"| postgres
+    api -->|"send_task by name"| redis
+    api -->|"wake ping WORKER_WAKE_URL"| worker
+    api -->|"put object, presign GET"| object-storage
+    api -->|"fetch pair rate on demand"| exchange-rate-api
+    worker -->|"consume tasks, beat schedule"| redis
+    worker -->|"guarded status updates, balances"| postgres
+    worker -->|"burn Payment"| xrpl-testnet
+    worker -->|"web3 helpers (planned burn/contribute)"| xrpl-evm-testnet
+    stokvel-vault -->|"deployed to"| xrpl-evm-testnet
+    platform-wallet -->|"creates encrypted treasury keys for"| worker
+    infra -->|"provisions & deploys"| api
+    infra -->|"provisions & deploys"| worker
+    infra -->|"publishes static build"| frontend
+    dev-tools -->|"drives controllers/services/tasks"| api
+
+    classDef external fill:#585b70,stroke:#585b70,color:#cdd6f4
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    classDef store fill:#a6e3a1,stroke:#a6e3a1,color:#1e1e2e
+    class clerk,exchange-rate-api,xrpl-testnet,xrpl-evm-testnet external
+    class frontend,api entry
+    class postgres,redis,object-storage store

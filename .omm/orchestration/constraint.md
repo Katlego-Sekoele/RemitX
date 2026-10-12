@@ -1,0 +1,4 @@
+- Tasks are addressed by name string; the API never imports `remitx_worker`.
+- `task_acks_late=True`: every task must tolerate redelivery. Guards are `UPDATE ... WHERE quote_id = ? AND status IN (...)` under READ COMMITTED; a duplicate matches zero rows and returns "skipped".
+- Account balances change only in `confirm_treasury_burn`, in the same commit that confirms all legs — no partial crediting.
+- Reclaim never re-enqueues a group in `processing` (a chain burn may be in flight); those are logged for manual investigation.

@@ -1,0 +1,5 @@
+- The full brief (docs/project-brief.md, docs/ftc_project_brief.md) sets graded requirements: Testnet only, encrypted keys held outside the DB, KYC documents in object storage only, queue-based settlement with duplicate protection, and no token movement before cash-in is confirmed.
+- One root `.env` configures API, worker, frontend and both compose files (`api/remitx_api/config.py` walks up to it).
+- Cloud: `main` → QA stack, `stable` → Production, both on Render (API + worker web services, static site, Key Value), Neon Postgres + Object Storage, Clerk auth.
+- Domain vocabulary (Remittance, Quote, Burn, Treasury Wallet, Stokvel, Round...) is defined in CONTEXT.md; the stokvel contract/backend interface lives in docs/stokvel_integration.md.
+- The platform is mid-migration from the XRP Ledger Testnet to the XRPL EVM Testnet (decision D1): `xrpl_service` still performs the burn; `evm_service` holds the replacement web3 helpers.

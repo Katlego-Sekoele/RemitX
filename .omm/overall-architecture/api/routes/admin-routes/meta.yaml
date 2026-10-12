@@ -1,0 +1,10 @@
+created: 2026-10-12T07:14:58.847Z
+updated: 2026-10-12T07:14:58.847Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: admin-routes
+children: []
+parentPath:
+  - api
+  - routes

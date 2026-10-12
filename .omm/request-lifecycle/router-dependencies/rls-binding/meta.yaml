@@ -1,0 +1,9 @@
+created: 2026-10-12T07:18:06.066Z
+updated: 2026-10-12T07:18:06.066Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: rls-binding
+children: []
+parentPath:
+  - router-dependencies

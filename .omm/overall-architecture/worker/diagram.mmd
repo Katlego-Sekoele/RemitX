@@ -1,0 +1,21 @@
+graph LR
+    entrypoint["Cloud entrypoint\n__main__.py, http.py"]
+    celery-app["Celery app & beat\ncelery_app.py"]
+    tasks["Tasks\ntasks.py"]
+    reclaim["Reclaim\nreclaim.py"]
+    worker-db["Worker DB sessions\ndb.py"]
+    xrpl-service["XRPL burn\nxrpl_service.py"]
+    evm-service["EVM treasury helpers\nevm_service.py"]
+
+    entrypoint -->|"health thread + worker_main -B"| celery-app
+    celery-app -->|"autodiscover, acks_late"| tasks
+    celery-app -->|"worker_ready + beat schedule"| reclaim
+    tasks -->|"guarded UPDATE ... WHERE status"| worker-db
+    reclaim -->|"find pending rows"| worker-db
+    tasks -->|"burn_tokens(amount)"| xrpl-service
+    tasks -.->|"planned burn (#278)"| evm-service
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    classDef concern fill:#f38ba8,stroke:#f38ba8,color:#1e1e2e
+    class entrypoint entry
+    class xrpl-service concern

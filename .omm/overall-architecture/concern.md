@@ -1,0 +1,3 @@
+- Free-tier Render: the worker spins down and must be woken by an HTTP ping from the API; Render Key Value is in-memory and may restart empty, so Postgres-driven reclaim is load-bearing for settlement.
+- Two chains in play during the EVM migration: the XRPL burn path is marked decommissioned but still live, and EVM helpers are not yet wired to any task.
+- Every Treasury Wallet sender (burn, stokvel contribute, finalise) must be serialised to avoid nonce collisions on the EVM side — not enforced yet.

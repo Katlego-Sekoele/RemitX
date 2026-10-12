@@ -1,0 +1,12 @@
+created: 2026-10-12T07:23:45.526Z
+updated: 2026-10-12T07:23:45.705Z
+update_count: 3
+last_field: constraint
+git_commit: dc4296b
+git_branch: main
+children:
+  - alembic-migrations
+  - encrypted-secrets
+  - kyc-bucket
+  - postgres-db
+  - redis-broker

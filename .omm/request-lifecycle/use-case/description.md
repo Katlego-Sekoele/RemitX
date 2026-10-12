@@ -1,0 +1,1 @@
+Controller method (api/remitx_api/controllers/) orchestrating domain services (services/) — e.g. remittance confirm, KYC transition, deposit processing. Owns the transaction boundary (`@db_transaction` or explicit commit), writes audit entries in the same transaction, and raises `DomainError` subclasses for refusals.

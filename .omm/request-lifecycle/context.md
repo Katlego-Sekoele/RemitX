@@ -1,0 +1,1 @@
+Routes run as sync `def` handlers in anyio worker threads, so the DB session is held in a ContextVar per request (db/request_db_session.py). Authentication is Clerk; authorisation is RemitX RBAC by `PermissionCode`; data isolation is enforced a second time by Postgres RLS on kyc_applications, quotes, remittances and transactions.

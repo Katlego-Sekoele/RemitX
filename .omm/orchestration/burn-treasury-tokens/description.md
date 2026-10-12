@@ -1,0 +1,1 @@
+`remitx_worker.tasks.burn_treasury_tokens(quote_id)`. One guarded UPDATE claims every pending leg of the quote → `processing` (stamping `processed_at`); zero rows = duplicate, skip. Reads the burn leg amount, calls the chain burn outside the DB session, then enqueues `confirm_treasury_burn(quote_id, tx_hash)` or `(quote_id, None, error)`. Performs no ledger outcome writes itself.

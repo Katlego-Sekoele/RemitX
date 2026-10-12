@@ -1,0 +1,1 @@
+settlement_recovery_service.py (+ settlement_recovery_queries.py shared with the worker). Classifies non-terminal remittance leg groups for the admin "stuck settlements" page and re-enqueues `settle_remittance` only when every leg is still `pending`; groups in `processing` may have a burn in flight and need investigation instead.

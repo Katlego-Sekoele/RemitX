@@ -1,0 +1,20 @@
+graph LR
+    root-shell["Root & shells\napp/root.tsx, components/app-shell.tsx"]
+    route-modules["Route modules\napp/routes/"]
+    feature-components["Feature components\napp/components/*/"]
+    ui-kit["UI kit\ncomponents/ui, aceternity, reui"]
+    api-client["Generated API client\napp/client, lib/api.ts, lib/query-client.ts"]
+    clerk-integration["Clerk integration\ncomponents/clerk-*.tsx, auth-*.tsx"]
+    domain-lib["Domain helpers & hooks\napp/lib, app/hooks"]
+
+    root-shell -->|"QueryClientProvider, ThemeProvider, Outlet"| route-modules
+    root-shell -->|"ClerkProvider tree"| clerk-integration
+    route-modules -->|"compose pages"| feature-components
+    feature-components -->|"shadcn variants, effects"| ui-kit
+    route-modules -->|"useQuery / useMutation"| api-client
+    feature-components -->|"useQuery / useMutation"| api-client
+    clerk-integration -->|"session token for requests"| api-client
+    feature-components -->|"money, transfers, permissions, KYC helpers"| domain-lib
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class root-shell entry

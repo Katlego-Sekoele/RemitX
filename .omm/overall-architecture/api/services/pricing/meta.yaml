@@ -1,0 +1,10 @@
+created: 2026-10-12T07:15:42.786Z
+updated: 2026-10-12T07:15:42.786Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: pricing
+children: []
+parentPath:
+  - api
+  - services

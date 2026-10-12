@@ -1,0 +1,1 @@
+api/remitx_api/auth/dependencies.py. Sync dependency: verifies the Clerk session, then `UserRepository.ensure_provisioned(clerk_user_id, resolve_email, resolve_first_name)` returns or inserts the local User. Email/first-name resolvers are callables so returning users cost no Clerk API call. Handlers receive a `User`, never a token or claims dict.

@@ -1,0 +1,25 @@
+graph LR
+    middleware["ASGI middleware\napp.py, middleware.py"]
+    routes["Routes\nroutes/"]
+    auth["Auth & RBAC\nauth/"]
+    controllers["Controllers\ncontrollers/"]
+    services["Domain services\nservices/"]
+    repositories["Repositories\nrepositories/"]
+    orm-models["ORM models & schemas\nmodels/"]
+    db-layer["DB session, RLS, transactions\nextensions.py, db/"]
+    errors["Domain errors\nerrors/"]
+
+    middleware -->|"CORS, request id, body cap, per-request session"| routes
+    routes -->|"router-level dependencies"| auth
+    routes -->|"call use case"| controllers
+    controllers -->|"apply domain rules"| services
+    controllers -->|"load / persist"| repositories
+    services -->|"load / persist"| repositories
+    repositories -->|"query mapped entities"| orm-models
+    repositories -->|"use request session"| db-layer
+    auth -->|"bind RLS identity"| db-layer
+    controllers -->|"raise DomainError"| errors
+    errors -->|"mapped to HTTP by exception handler"| middleware
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class middleware entry

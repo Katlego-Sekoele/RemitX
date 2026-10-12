@@ -1,0 +1,1 @@
+Nonce race: `submit_transaction` reads the pending nonce at build time, so concurrent senders from the Treasury Wallet can collide. All Treasury-sending tasks (burn, contribute, finalise) must be serialised via one lock or a single-concurrency queue. Nothing scrubs logs — never log tx dicts, accounts or keys.

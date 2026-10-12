@@ -1,0 +1,1 @@
+Applicant-declared data (identity, address, contact, financial profile, PEP declarations) in kyc_applications and catalogue-linked tables; document bytes in object storage keyed by kyc_documents rows. Submission scores risk; approval grants a tier. The resulting standing (tier daily/monthly ZAR limits × risk scaling) caps how much a sender may quote and confirm.

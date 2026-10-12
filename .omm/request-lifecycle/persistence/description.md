@@ -1,0 +1,1 @@
+Repositories (api/remitx_api/repositories/) over the request session. State transitions are guarded UPDATEs (e.g. quote ACTIVE→USED via `QuoteRepository.mark_used`, deposit pending→confirmed) so concurrent requests cannot both win; `UserRepository.lock` serialises a sender's confirms for limit checks. RLS policies filter what each caller can see.

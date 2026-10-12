@@ -1,0 +1,1 @@
+api/remitx_api/auth/permissions.py. `resolve_effective_permissions` unions permissions across the user's roles (user_roles → role_permissions); `get_effective_permissions` exposes that as a FastAPI dependency; `RequirePermission(code)` composes on `get_current_user` and raises 403 when the code is absent. Nothing gates on role names or User flags.

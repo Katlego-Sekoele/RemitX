@@ -1,0 +1,9 @@
+created: 2026-10-12T07:18:05.815Z
+updated: 2026-10-12T07:18:05.815Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: get-current-user
+children: []
+parentPath:
+  - router-dependencies

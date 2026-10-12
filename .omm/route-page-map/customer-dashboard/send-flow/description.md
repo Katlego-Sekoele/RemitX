@@ -1,0 +1,1 @@
+`/app/send` — three-step flow (components/send/): amount step (source account, preview rates), recipient step (beneficiary + payout account), review step showing quote lines (fee, margin, rate, receiver amount, expiry) → confirm remittance. Progress UI then hands off to the transfer page.

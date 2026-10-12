@@ -1,0 +1,24 @@
+graph LR
+    remitx["RemitX API + worker + SPA\napi/, frontend/"]
+    clerk["Clerk\nauth/clerk.py, Clerk React SDK"]
+    exchange-rate-api["ExchangeRate-API v6\nservices/exchange_rate_provider.py"]
+    xrpl-testnet["XRPL Testnet JSON-RPC\nremitx_worker/xrpl_service.py"]
+    xrpl-evm-testnet["XRPL EVM Testnet RPC\nremitx_worker/evm_service.py"]
+    neon["Neon\nPostgres + Object Storage"]
+    render["Render\nweb services, static site, Key Value"]
+    hcp-terraform["HCP Terraform\ninfra/ state + remote runs"]
+    trustmebank["TrustMeBank (planned)\nmock bank"]
+
+    remitx -->|"JWT verify, user lookup"| clerk
+    remitx -->|"pair rate on cache miss"| exchange-rate-api
+    remitx -->|"burn Payment (worker)"| xrpl-testnet
+    remitx -.->|"UCTUSD burn, StokvelVault calls (planned)"| xrpl-evm-testnet
+    remitx -->|"SQL over pooler; S3 API"| neon
+    remitx -->|"hosted on; Redis broker"| render
+    hcp-terraform -->|"provisions"| render
+    remitx -.->|"deposits / withdrawals (#202, #203)"| trustmebank
+
+    classDef external fill:#585b70,stroke:#585b70,color:#cdd6f4
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class clerk,exchange-rate-api,xrpl-testnet,xrpl-evm-testnet,neon,render,hcp-terraform,trustmebank external
+    class remitx entry

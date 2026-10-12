@@ -1,0 +1,15 @@
+created: 2026-10-12T07:16:11.387Z
+updated: 2026-10-12T07:16:11.486Z
+update_count: 2
+last_field: diagram
+kind: nested-class
+title: worker
+children:
+  - celery-app
+  - entrypoint
+  - evm-service
+  - reclaim
+  - tasks
+  - worker-db
+  - xrpl-service
+parentPath: []

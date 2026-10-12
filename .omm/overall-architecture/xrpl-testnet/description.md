@@ -1,0 +1,1 @@
+XRP Ledger Testnet (`XRPL_TESTNET_URL`). Hosts the issued `uctusd` currency; the worker's api/remitx_worker/xrpl_service.py burns a remittance's tokens by sending a Payment from the treasury wallet back to the issuer and waits for `tesSUCCESS`. Marked decommissioned (#276, decision D1) but still the live burn path until #278 lands.

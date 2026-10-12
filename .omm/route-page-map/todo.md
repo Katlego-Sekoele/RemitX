@@ -1,0 +1,1 @@
+Stokvel pages (create/invite, cycle setup with payout order and beneficiaries, contribute, round status) and admin stokvel oversight/pause are specified in docs/stokvel_integration.md but not routed yet.

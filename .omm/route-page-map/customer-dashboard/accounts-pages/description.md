@@ -1,0 +1,1 @@
+`/app/accounts` lists the user's fiat accounts (account cards, open-account form, add-money panel showing the deposit reference to quote on a bank transfer); `/app/accounts/:accountId` shows the account's ledger history.

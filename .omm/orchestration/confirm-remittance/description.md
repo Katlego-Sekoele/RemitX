@@ -1,0 +1,1 @@
+`remittance_service.confirm_remittance(sender_user_id, quote_id)` via POST on the remittances router. Locks the sender, flips the quote ACTIVE→USED, re-checks KYC standing/limits and available balance, inserts seven `pending` legs + the Remittance row, commits, then `queue_service.enqueue_settle_remittance(quote_id)`. Enqueue failure is logged; legs stay pending for reclaim.

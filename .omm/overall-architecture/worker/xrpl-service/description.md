@@ -1,0 +1,1 @@
+api/remitx_worker/xrpl_service.py — the live burn today. Decrypts `PLATFORM_WALLET_SEED_ENCRYPTED` with `XRPL_ENCRYPTION_KEY` (Fernet), builds an issued-currency `Payment` from treasury to `UCTUSD_ISSUER`, `submit_and_wait`s on `XRPL_TESTNET_URL`, raises unless `tesSUCCESS`, returns the hash. Marked DECOMMISSIONED (#276) pending the EVM burn (#278).

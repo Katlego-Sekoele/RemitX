@@ -1,0 +1,1 @@
+REMITX_FIAT accounts, one per fiat currency, standing for RemitX's real bank accounts. Receive deposits (as the external side) and the net remittance leg in the sender currency; pay out the beneficiary_payout leg in the receiver currency and receive the net withdrawal payout. Admin Platform Accounts page shows them with treasury coverage.

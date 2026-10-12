@@ -1,0 +1,3 @@
+- Testnets only — no mainnet accounts, real funds or production chain credentials.
+- Swappable seams for tests: `use_rate_provider`, `use_object_storage`; the load test fakes Clerk (`CLERK_JWT_KEY`), FX and the chain burn.
+- Chain signing secrets are read only by the worker; the EVM key bypasses `Config` entirely.

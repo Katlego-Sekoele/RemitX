@@ -1,0 +1,1 @@
+The inverted credit/debit naming (credit = source) is easy to misread when writing new ledger code or reports; confirm_treasury_burn adds to the debit account and subtracts from the credit account accordingly.

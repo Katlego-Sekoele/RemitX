@@ -1,0 +1,5 @@
+graph LR
+    seeder["QA seeder\ntools/seeder/"]
+    loadtest["Load test\ntools/loadtest/"]
+
+    loadtest -->|"seeds throwaway stack via loadtest target"| seeder

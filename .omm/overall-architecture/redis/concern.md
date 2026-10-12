@@ -1,0 +1,1 @@
+Free Render Key Value can restart empty, losing queued tasks. Recovery relies on api/remitx_worker/reclaim.py (boot + beat) and the admin stuck-settlements page; groups already in `processing` are never auto-retried.

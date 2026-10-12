@@ -1,0 +1,1 @@
+ExchangeRate-API v6 pair endpoint, wrapped by `ExchangeRateApiProvider` in api/remitx_api/services/exchange_rate_provider.py behind a swappable `RateProvider` interface. Called lazily by exchange_rate_service.get_active_rate when no stored rate is still valid; falls back to the last stored rate up to `MAX_RATE_STALENESS_HOURS`, then refuses to quote.

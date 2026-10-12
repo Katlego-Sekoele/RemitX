@@ -1,0 +1,9 @@
+created: 2026-10-12T07:22:14.315Z
+updated: 2026-10-12T07:22:14.315Z
+update_count: 1
+last_field: description
+kind: nested-class
+title: iam-pages
+children: []
+parentPath:
+  - admin-console

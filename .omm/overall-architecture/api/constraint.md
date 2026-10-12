@@ -1,0 +1,4 @@
+- Every ORM model inherits `Base` from extensions.py and is imported in models/orm/__init__.py, plus has an Alembic migration (`alembic check` must show no drift).
+- `remitx_api/__init__.py` eagerly imports `create_app`; importing any submodule pulls the whole route tree.
+- `Repository.save/delete` commit; multi-entity use cases use `db.session` / `@db_transaction` directly.
+- Every route needs `summary=`, `responses=error_responses(...)`, one dotted tag; handler name becomes the client operation id (enforced by tests/test_openapi.py).

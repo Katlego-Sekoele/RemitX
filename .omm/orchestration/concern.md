@@ -1,0 +1,3 @@
+- A worker crash after the chain burn succeeds but before `confirm_treasury_burn` is enqueued leaves legs stuck in `processing` with tokens already burned; only logging + manual recovery covers this.
+- A failed burn marks all legs `failed` with no automatic retry; the sender's quote is consumed and limits are given back by the ledger read.
+- Single shared queue for all tasks; once EVM senders arrive they need serialisation for nonces.

@@ -1,0 +1,9 @@
+created: 2026-10-12T07:16:12.082Z
+updated: 2026-10-12T07:16:12.169Z
+update_count: 2
+last_field: concern
+kind: nested-class
+title: evm-service
+children: []
+parentPath:
+  - worker

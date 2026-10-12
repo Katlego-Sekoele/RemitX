@@ -1,0 +1,3 @@
+- Move the treasury burn from `xrpl_service` to `evm_service` (#278) and remove the XRPL path (#225 / #276).
+- Build the stokvel backend: tables, worker tasks (contribute, scheduled finalise), REST routes, per docs/stokvel_integration.md §3–§5.
+- Wire TrustMeBank mock bank for deposits/withdrawals (#202, #203).

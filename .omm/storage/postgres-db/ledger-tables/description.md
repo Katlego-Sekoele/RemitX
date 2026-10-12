@@ -1,0 +1,1 @@
+accounts (type USER / REMITX_FIAT / REMITX_XRPL_WALLET / REMITX_REVENUE / EXTERNAL, currency, human reference, account_balance) and transactions (the only table with a ledger status; type, amount, credit_account_id = source, debit_account_id = destination, quote_id grouping, processed_at / confirmed_at, xrpl_tx_hash). Platform accounts seeded by platform_account_seed.py.

@@ -1,0 +1,1 @@
+`price_remittance` → `RemittancePricing`: sender amount, fixed + percentage fee (ZAR-pinned, converted), margin on the rate, receiver amount, token amount, ZAR value for limits. `create_quote` persists it as an ACTIVE Quote for a specific beneficiary payout account; `confirm_remittance` turns it into seven pending legs.

@@ -1,0 +1,22 @@
+graph LR
+    spa-client["SPA call\nfrontend/app/client + lib/api.ts"]
+    middleware-stack["ASGI middleware\napp.py, middleware.py"]
+    router-dependencies["Router dependencies\nroutes/routers.py, auth/"]
+    route-handler["Route handler\nroutes/"]
+    use-case["Controller use case\ncontrollers/, services/"]
+    persistence["Repositories + RLS Postgres\nrepositories/, db/"]
+    error-mapping["DomainError handler\napp.py, errors/"]
+    async-handoff["Post-commit enqueue\nservices/queue_service.py"]
+
+    spa-client -->|"HTTPS + Bearer Clerk JWT"| middleware-stack
+    middleware-stack -->|"CORS, X-Request-Id, 413 guard, open session"| router-dependencies
+    router-dependencies -->|"User, permission check, SET LOCAL identity"| route-handler
+    route-handler -->|"validated Schema"| use-case
+    use-case -->|"queries + guarded writes, db_transaction"| persistence
+    use-case -->|"raise refusal"| error-mapping
+    use-case -->|"after commit only"| async-handoff
+    error-mapping -->|"{detail} JSON with status"| spa-client
+    route-handler -->|"response Schema JSON"| spa-client
+
+    classDef entry fill:#89b4fa,stroke:#89b4fa,color:#1e1e2e
+    class spa-client entry

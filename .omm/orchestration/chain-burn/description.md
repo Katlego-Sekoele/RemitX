@@ -1,0 +1,1 @@
+Today: `xrpl_service.burn_tokens(amount)` — XRPL Testnet Payment of issued `uctusd` from the treasury back to the issuer, `submit_and_wait`, require `tesSUCCESS`. Planned (#278): ERC-20 `burn(uint256)` from the EVM Treasury Wallet via `evm_service`. The load test swaps this for a calibrated delay (tools/loadtest/fake_xrpl_worker.py).

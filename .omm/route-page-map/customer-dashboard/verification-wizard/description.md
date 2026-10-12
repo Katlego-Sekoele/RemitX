@@ -1,0 +1,1 @@
+`/app/profile/verification/new` and `/:applicationId` (application view), then steps under steps-layout.tsx: identity → id-document → address → contact → financial → declarations → review/submit. Step order and required fields come from the API's onboarding catalogue (hooks/use-onboarding.ts); documents upload via components/kyc/kyc-document-upload.tsx.

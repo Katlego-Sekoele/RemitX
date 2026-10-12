@@ -1,0 +1,1 @@
+XRPL EVM Testnet (`EVM_RPC_URL`, explorer `EVM_EXPLORER_URL`). Hosts the UCTUSD ERC-20 (RLUSD stand-in), the custodial Treasury Wallet address, and the deployed StokvelVault (0x2f24…8Fe1). Reached from api/remitx_worker/evm_service.py via web3.py using legacy gasPrice transactions.

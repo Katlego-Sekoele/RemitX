@@ -1,0 +1,5 @@
+- Dependency direction is one-way: `remitx_worker` may import `remitx_api`; the API never imports the worker and talks to it only by Celery task name over Redis.
+- Alembic owns the Postgres schema everywhere; `create_all` is test-only.
+- The OpenAPI spec (`frontend/openapi.json`) is the frontend contract; the client is generated, never hand-written.
+- Private keys (XRPL seed, EVM treasury key) are Fernet-encrypted in env, with the decryption key in a separate setting, and decrypted only inside the worker.
+- KYC document bytes never enter Postgres or stream back through the API; reads are minutes-long presigned URLs, each audited.

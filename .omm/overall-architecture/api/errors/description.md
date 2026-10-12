@@ -1,0 +1,1 @@
+api/remitx_api/errors/: `DomainError` base (status_code + detail) and per-area refusals (accounts, beneficiaries, deposits, kyc, kyc_documents, remittances, roles, settlement_recovery, storage, users). Raised from controllers/services and converted to HTTP once by the handler in app.py, so routes stay HTTP-only and every error body has the `{"detail": ...}` shape.

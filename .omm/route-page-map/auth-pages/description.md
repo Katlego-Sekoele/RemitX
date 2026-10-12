@@ -1,0 +1,1 @@
+`sign-in/*` and `sign-up/*` splat routes rendering Clerk's SignIn/SignUp in a split layout (components/auth-split-layout.tsx); the splat lets Clerk handle email verification, MFA and SSO callback sub-paths.

@@ -1,0 +1,1 @@
+`https://v6.exchangerate-api.com/v6/{api_key}/pair/{base}/{quote}` (key `EXCHANGE_RATE_API_KEY`) via httpx in `ExchangeRateApiProvider`; failures raise `RateFetchError`. Results persisted to `exchange_rates`. The seeder replays historical rates for its simulated timeline (tools/seeder/remitx_seeder/rates.py).

@@ -1,0 +1,4 @@
+- Every transition is a guarded write (`UPDATE ... WHERE status = <expected>`) or goes through a table of legal moves (`LEGAL_TRANSITIONS`, read only by `KycController.transition`); an illegal move raises rather than no-ops.
+- KYC status is stored only on `kyc_applications.status`; a user's standing is derived on read (`KycApplicationRepository.get_standing`, `effective_status`).
+- Remittance status has no column of its own: it is derived from its legs.
+- Withdrawal status lives on its linked transactions, not on the withdrawals row.

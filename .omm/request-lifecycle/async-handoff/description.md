@@ -1,0 +1,1 @@
+services/queue_service.py. Use cases that need background work (remittance settlement, integration message test) commit their rows first, then `send_task` by name to Redis and fire `wake_worker()`. A publish failure after commit is logged, not rolled back — the worker's reclaim re-enqueues from Postgres. See the orchestration perspective.

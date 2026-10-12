@@ -1,0 +1,31 @@
+created: 2026-10-12T07:22:14.049Z
+updated: 2026-10-12T07:22:22.074Z
+update_count: 3
+last_field: diagram
+kind: nested-class
+title: admin-console
+children:
+  - admin-overview
+  - deposit-pages
+  - iam-pages
+  - kyc-review-pages
+  - operations-pages
+  - treasury-pages
+  - withdrawal-pages
+parentPath: []
+prev_diagram: >
+  graph TD
+      admin-overview["Overview\nroutes/admin/index.tsx"]
+      iam-pages["IAM: My roles, Access, Audit log\niam/my-roles.tsx, access.tsx, audit.tsx"]
+      kyc-review-pages["KYC: Applications, Review, Documents\nroutes/admin/kyc/"]
+      deposit-pages["Deposits: Statement CSV, Process deposits\nstatement-csv.tsx, process-deposits.tsx"]
+      withdrawal-pages["Withdrawals: Bank accounts\nroutes/admin/bank-accounts.tsx"]
+      operations-pages["Operations: Stuck settlements\nroutes/admin/stuck-settlements.tsx"]
+      treasury-pages["Treasury: Platform accounts\nroutes/admin/platform-accounts.tsx"]
+
+      admin-overview -->|"queue cards link to work"| kyc-review-pages
+      admin-overview -->|"queue cards link to work"| deposit-pages
+      admin-overview -->|"queue cards link to work"| withdrawal-pages
+      admin-overview -->|"stuck settlement count"| operations-pages
+      admin-overview -->|"treasury coverage"| treasury-pages
+      deposit-pages -->|"build CSV then upload"| deposit-pages
