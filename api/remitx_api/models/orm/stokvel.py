@@ -1,12 +1,13 @@
 """
-A stokvel: a group that contributes a fixed fiat amount each round and pays
+A stokvel: a group that contributes a fixed UCTUSD amount each round and pays
 the pool out to one member per round (see CONTEXT.md).
 
 `id`, packed left-aligned into `bytes32`, is the stokvel's on-chain id (the
 MVP choice; see "Contract IDs" in docs/stokvel_integration.md).
 The contract holds only the UCTUSD side; name, Organiser and Stokvel currency
-live here. `contribution_amount` is fiat and fixed for the stokvel's life, as
-the contract's amount is (MVP: a new amount means a new stokvel).
+live here. `contribution_amount` is that fixed UCTUSD amount for the
+stokvel's life (the value sent to `createStokvel`; MVP: a new amount means a
+new stokvel). Members are debited fiat = amount × live rate at contribution.
 """
 
 import uuid
@@ -43,6 +44,7 @@ class Stokvel(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     # Stokvel currency: every contribution is paid from an account in it
     currency: Mapped[str] = mapped_column(Text, nullable=False)
+    # Fixed UCTUSD amount (createStokvel); fiat debit = this × live rate
     contribution_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

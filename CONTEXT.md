@@ -39,7 +39,7 @@ The fiat currency a **Stokvel** is denominated in, set by the **Organiser**. Eve
 _Avoid_: Contribution currency
 
 **Contribution**:
-A **Member**'s fixed fiat payment into a **Round**, the same amount for every round and cycle of the **Stokvel**, paid from their fiat account in the **Stokvel currency**, converted by the platform into **UCTUSD** and held by the stokvel contract. Counts toward the member's own sending limits; a **Stokvel** has none.
+A **Member**'s payment into a **Round** of a fixed **UCTUSD** amount (the same for every round and cycle of the **Stokvel**), paid from their fiat account in the **Stokvel currency** at the live rate when they contribute, and held by the stokvel contract. Counts toward the member's own sending limits; a **Stokvel** has none.
 _Avoid_: Deposit (that is a ZAR cash-in), payment
 
 **Payout order**:

@@ -19,7 +19,7 @@ Table stokvels {
   organiser_user_id uuid [not null, ref: > users.id]
   name text [not null]
   currency text [not null, note: 'Stokvel currency (fiat)']
-  contribution_amount "numeric(20,8)" [not null, note: 'fiat, fixed for life']
+  contribution_amount "numeric(20,8)" [not null, note: 'UCTUSD, fixed for life']
   created_at timestamptz [not null]
 }
 

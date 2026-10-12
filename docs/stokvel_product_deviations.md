@@ -26,7 +26,7 @@
 
 ## Other suggestions and decisions to be made
 
-- **Contribution amount: decided (2026-10-09), fixed fiat.** Each member pays the same fiat amount every round, from their account in the Stokvel currency, for the stokvel's whole life. The platform's Treasury carries any exchange-rate difference against the contract's fixed UCTUSD amount.
+- **Contribution amount: decided (2026-10-11), fixed token.** The stokvel's contribution is a fixed UCTUSD amount for its whole life (set in `createStokvel`; a new amount means a new stokvel). Each member is debited fiat = token amount × live rate at contribution from their account in the Stokvel currency. Refunds (if ever added) return the original fiat amount entered.
 - **Fees:** Should fee and margin costs come out of the pool, or from members (D6)? **Product decision needed:** are the fee and margin taken from the pool converted back to fiat, and if so how? A suggestion would be to convert the fee and margin to fiat at the time of finalisation, and then deduct it from the pool before distributing the payout. This would ensure that beneficiaries receive their payouts in fiat after fees are accounted for.
 - **Deadlines and penalties:** Should the contribution deadline be informational only? With no penalties on the platform (D7)? Product to confirm.
 - **Limits:** a stokvel has no sending limits, but each contribution counts toward the member's own limits (D8). Product to confirm.
