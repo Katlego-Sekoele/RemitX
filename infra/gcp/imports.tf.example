@@ -1,0 +1,5 @@
+# Clerk (per environment workspace; use that env's CLERK_API_KEY):
+#   terraform import 'clerk_application_settings.this[0]' application_settings
+#
+# Enable in environments/*.tfvars:
+#   manage_clerk_domains = true

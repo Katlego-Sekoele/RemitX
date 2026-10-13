@@ -86,7 +86,10 @@ ruff check --fix alembic/ && ruff format alembic/
    `NotImplementedError` rather than leaving `pass`, which silently lies.
 4. **Keep the ORM and the migration in step.** After applying, `alembic check`
    must report "No new upgrade operations detected". Anything else means the
-   model and the schema have drifted. CI enforces this on every PR.
+   model and the schema have drifted. CI enforces this on every PR. Pull
+   requests also rebase onto the base branch, require a single `alembic heads`
+   revision, then run `upgrade head` on Postgres so parallel migrations on
+   `main` are caught before merge.
 5. **Every migration must be safe against the app version already running.**
    Migrations are applied *before* the new image rolls out, and Container Apps
    does a rolling update, so the old code keeps serving traffic against the new

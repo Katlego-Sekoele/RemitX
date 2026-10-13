@@ -1,10 +1,15 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main, stable]
   workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   api:
@@ -31,6 +36,18 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so PR jobs can rebase onto the base branch.
+          fetch-depth: 0
+
+      - name: Rebase onto base branch (linear history)
+        if: github.event_name == 'pull_request'
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.email "ci@localhost"
+          git config user.name "ci"
+          git fetch origin "${{ github.base_ref }}"
+          git rebase "origin/${{ github.base_ref }}"
 
       - uses: actions/setup-python@v5
         with:
@@ -46,6 +63,16 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
         run: pytest
+
+      - name: Single Alembic head
+        run: |
+          set -euo pipefail
+          count="$(alembic heads | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+          if [ "$count" != "1" ]; then
+            echo "::error::Expected exactly one Alembic head, found ${count}:"
+            alembic heads
+            exit 1
+          fi
 
       - name: Migrations apply, and the ORM still matches them
         env:
@@ -124,3 +151,30 @@ jobs:
           ruff check .
           ruff format --check .
           pytest
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax (deploy scripts + neon-storage)
+        run: |
+          bash -n scripts/neon-storage/ensure.sh
+          bash -n scripts/github-tf-env-lib.sh
+          bash -n scripts/github-tf-env.sh
+          bash -n scripts/github-tf-env-check.sh
+          bash -n scripts/github-tf-secrets-from-env.sh
+          bash -n .github/scripts/gcp-deploy-cloud-run.sh
+          bash -n .github/scripts/gcp-deploy-firebase.sh
+          bash -n .github/scripts/gcp-preflight-rollout.sh
+
+      - name: Deploy Makefiles
+        run: make -C deploy help && make -C infra help
+
+      - name: Cloud Run env file writer
+        run: |
+          JSON="$(mktemp)"
+          OUT="$(mktemp)"
+          printf '%s' '{"KEY":"a=b"}' >"$JSON"
+          python3 .github/scripts/gcp-write-cloud-run-env.py "$JSON" "$OUT"
+          grep -q 'KEY="a=b"' "$OUT"

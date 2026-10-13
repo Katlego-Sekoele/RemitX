@@ -14,9 +14,9 @@ Hard constraints from the brief:
 - RLUSD settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting).
 - RLUSD transfer may not start until the simulated ZAR cash-in is confirmed.
 
-Cloud deployment uses **Render** (API + worker web services, static frontend, Key Value), **Neon** (Postgres, and Object Storage for KYC documents), and **Clerk** (auth). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/superpowers/specs/2026-09-12-render-migration-design.md](docs/superpowers/specs/2026-09-12-render-migration-design.md).
+Cloud deployment uses **GCP** (Cloud Run API + worker, Firebase Hosting), **Upstash** (Redis), **Neon** (Postgres and Object Storage for KYC documents), and **Clerk** (auth). Legacy Render Terraform lives under `infra/legacy-render/`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [infra/README.md](infra/README.md).
 
-**Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud worker is a free Render web service woken via `WORKER_WAKE_URL`.
+**Cloud environments:** `main` branch → QA stack; `stable` → Production. Async settlement is **Celery + Redis** — local Docker worker; cloud worker is **Cloud Run** (optional `WORKER_WAKE_URL` when scaled to zero).
 
 ## Layout
 
@@ -24,15 +24,15 @@ Monorepo with two apps sharing one env file:
 
 - [api/](api/) — FastAPI JSON REST API (`remitx_api` package)
 - [frontend/](frontend/) — React Router v7 (SPA) + Tailwind v4 + shadcn/ui
-- [infra/](infra/) — Terraform (Render). Azure destroy roots: [infra/legacy-azure/](infra/legacy-azure/)
+- [infra/](infra/) — Terraform (GCP + Neon data). Legacy: [infra/legacy-render/](infra/legacy-render/), [infra/legacy-azure/](infra/legacy-azure/)
 - [api/alembic/](api/alembic/) — database migrations (naming standard in its README)
 - [frontend/openapi.json](frontend/openapi.json) — the API contract, exported from FastAPI; the frontend client is generated from it
 - [scripts/hooks/](scripts/hooks/) — pre-commit hook implementations
 - [tools/seeder/](tools/seeder/) — local-only QA test-data seeder (NiceGUI). Never deployed; drives the backend's own controllers, services and worker tasks. See its [README](tools/seeder/README.md) and [ADR 0001](docs/adr/0001-qa-seeder-drives-the-service-layer.md)
 - [tools/loadtest/](tools/loadtest/) — Locust load test on a throwaway Docker stack, seeded by the seeder; never calls Clerk, the rate API or the XRPL. Profiles can sweep API/worker compute after one seed; each run emits a commit-able `report.canvas.tsx`. See its [README](tools/loadtest/README.md)
 - [Makefile](Makefile) — shortcuts for the commands below; `make` lists them
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Render + Neon + Clerk setup
-- [.github/workflows/](.github/workflows/) — CI and Render deploy on `main` / `stable`
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — GCP + Neon + Clerk setup
+- [.github/workflows/](.github/workflows/) — CI and deploy on `main` / `stable`
 
 ## Environment configuration
 

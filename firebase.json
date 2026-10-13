@@ -1,0 +1,16 @@
+{
+  "hosting": [
+    {
+      "target": "remitx-qa-web",
+      "public": "frontend/build/client",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "remitx-prod-web",
+      "public": "frontend/build/client",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    }
+  ]
+}
