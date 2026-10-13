@@ -353,9 +353,9 @@ class KycStory:
             self.ctx.count("kyc.rating_overridden")
             application = KycApplicationRepository().get_by_id(person.application_id)
 
-        if (
-            person.force_tier_two
-            and application.effective_risk_rating not in ("low", "medium")
+        if person.force_tier_two and application.effective_risk_rating not in (
+            "low",
+            "medium",
         ):
             controller.override_risk_rating(
                 person.application_id,
