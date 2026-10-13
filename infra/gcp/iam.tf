@@ -41,6 +41,7 @@ locals {
     "roles/artifactregistry.admin",
     "roles/firebase.admin",
     "roles/monitoring.notificationChannelEditor",
+    "roles/secretmanager.admin",
   ]
 }
 

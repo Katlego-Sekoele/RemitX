@@ -72,6 +72,8 @@ On `infra/gcp` apply (per workspace):
 - API enablement (Run, Artifact Registry, Firebase, Monitoring, …)
 - **Artifact Registry** Docker repo (`artifact_registry_repository_id`, default `remitx`)
 - Cloud Run services (image/env updated again by deploy jobs)
+- Secret Manager versions for runtime credentials; Cloud Run receives them as
+  secret-backed environment variables, never as plaintext service configuration
 - Firebase project + Hosting site (+ custom domain resource when set in tfvars)
 - Upstash Redis database per environment
 - GCP billing budget + email channels (**prod workspace only**): **$10** planning target, emails every **$2** of project spend through **$100** by default (`monthly_budget_amount`, `budget_alert_step_usd`, `budget_alert_coverage_usd`; requires `BUDGET_ALERT_EMAILS` + `TF_VAR_billing_account_id`)

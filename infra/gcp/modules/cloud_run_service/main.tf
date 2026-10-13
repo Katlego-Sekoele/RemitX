@@ -21,6 +21,19 @@ resource "google_cloud_run_v2_service" "this" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.secret_env
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
+
       ports {
         container_port = 4200
       }
