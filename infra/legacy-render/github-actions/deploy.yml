@@ -1,0 +1,325 @@
+# Archived Render deployment workflow.
+#
+# This file is intentionally outside .github/workflows, so GitHub does not
+# execute it. To restore Render deployments, copy it to
+# .github/workflows/deploy.yml. It targets the preserved Terraform under
+# infra/legacy-render/ and reuses the active .github/workflows/ci.yml.
+
+name: Deploy (Render)
+
+on:
+  pull_request:
+    branches: [main, stable]
+    paths: ["infra/legacy-render/**"]
+  push:
+    branches: [main, stable]
+    paths:
+      - "infra/legacy-render/**"
+      - "api/**"
+      - "frontend/**"
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/scripts/render-*.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: deploy-render-${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.resolve.outputs.infra }}
+      api: ${{ steps.resolve.outputs.api }}
+      frontend: ${{ steps.resolve.outputs.frontend }}
+      deploy_env: ${{ steps.resolve.outputs.deploy_env }}
+      rollout: ${{ steps.resolve.outputs.rollout }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            infra:
+              - "infra/legacy-render/**"
+            api:
+              - "api/**"
+            frontend:
+              - "frontend/**"
+
+      - name: Resolve deploy scope and environment
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          FILTER_INFRA: ${{ steps.filter.outputs.infra }}
+          FILTER_API: ${{ steps.filter.outputs.api }}
+          FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            infra="$FILTER_INFRA"
+            api="$FILTER_API"
+            frontend="$FILTER_FRONTEND"
+          else
+            infra=true
+            api=true
+            frontend=true
+          fi
+
+          if [ "$EVENT" = "pull_request" ]; then
+            rollout=false
+            branch="$BASE_REF"
+          else
+            rollout=true
+            branch="$REF_NAME"
+          fi
+
+          case "$branch" in
+            stable) deploy_env=prod ;;
+            main)   deploy_env=qa ;;
+            *)
+              echo "::error::No deploy environment is mapped for branch '$branch'"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "infra=$infra"
+            echo "api=$api"
+            echo "frontend=$frontend"
+            echo "rollout=$rollout"
+            echo "deploy_env=$deploy_env"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "$branch -> $deploy_env (rollout=$rollout, infra=$infra, api=$api, frontend=$frontend)"
+
+  ci:
+    needs: changes
+    uses: ./.github/workflows/ci.yml
+
+  terraform:
+    needs: [changes, ci]
+    if: needs.changes.outputs.rollout == 'true' || needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    env:
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_VAR_hcp_organization: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_tfe_token: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_render_api_key: ${{ secrets.RENDER_API_KEY }}
+      TF_VAR_render_owner_id: ${{ secrets.RENDER_OWNER_ID }}
+      TF_VAR_database_url: ${{ secrets.TF_VAR_database_url }}
+      TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
+      TF_VAR_clerk_publishable_key: ${{ vars.TF_VAR_clerk_publishable_key }}
+      TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
+      TF_VAR_platform_wallet_seed_encrypted: ${{ secrets.TF_VAR_platform_wallet_seed_encrypted }}
+      TF_VAR_exchange_rate_api_key: ${{ secrets.TF_VAR_exchange_rate_api_key }}
+      TF_VAR_platform_wallet_address: ${{ vars.TF_VAR_platform_wallet_address }}
+      TF_VAR_xrpl_testnet_url: ${{ vars.TF_VAR_xrpl_testnet_url }}
+      TF_VAR_uctusd_issuer: ${{ vars.TF_VAR_uctusd_issuer }}
+      TF_VAR_uctusd_currency_code_hex: ${{ vars.TF_VAR_uctusd_currency_code_hex }}
+      TF_VAR_uctusd_currency_code: ${{ vars.TF_VAR_uctusd_currency_code }}
+      TF_VAR_uctusd_trust_limit: ${{ vars.TF_VAR_uctusd_trust_limit }}
+      TF_VAR_uctusd_distributor_address: ${{ vars.TF_VAR_uctusd_distributor_address }}
+      TF_VAR_rate_fixing_interval_hours: ${{ vars.TF_VAR_rate_fixing_interval_hours }}
+      TF_VAR_max_rate_staleness_hours: ${{ vars.TF_VAR_max_rate_staleness_hours }}
+      TF_VAR_quote_ttl_minutes: ${{ vars.TF_VAR_quote_ttl_minutes }}
+      TF_VAR_fixed_fee_zar: ${{ vars.TF_VAR_fixed_fee_zar }}
+      TF_VAR_percentage_fee_rate: ${{ vars.TF_VAR_percentage_fee_rate }}
+      TF_VAR_fx_margin_rate: ${{ vars.TF_VAR_fx_margin_rate }}
+      TF_VAR_cash_out_fee_rate: ${{ vars.TF_VAR_cash_out_fee_rate }}
+      TF_VAR_min_cash_out_fee: ${{ vars.TF_VAR_min_cash_out_fee }}
+      TF_VAR_daily_limit_zar_unverified: ${{ vars.TF_VAR_daily_limit_zar_unverified }}
+      TF_VAR_monthly_limit_zar_unverified: ${{ vars.TF_VAR_monthly_limit_zar_unverified }}
+      TF_VAR_daily_limit_zar: ${{ vars.TF_VAR_daily_limit_zar }}
+      TF_VAR_monthly_limit_zar: ${{ vars.TF_VAR_monthly_limit_zar }}
+      TF_VAR_object_storage_access_key_id: ${{ secrets.TF_VAR_object_storage_access_key_id }}
+      TF_VAR_object_storage_secret_access_key: ${{ secrets.TF_VAR_object_storage_secret_access_key }}
+      TF_VAR_evm_encryption_key: ${{ secrets.TF_VAR_evm_encryption_key }}
+      TF_VAR_evm_treasury_key_encrypted: ${{ secrets.TF_VAR_evm_treasury_key_encrypted }}
+      TF_VAR_evm_treasury_address: ${{ vars.TF_VAR_evm_treasury_address }}
+      TF_VAR_evm_rpc_url: ${{ vars.TF_VAR_evm_rpc_url }}
+      TF_VAR_evm_chain_id: ${{ vars.TF_VAR_evm_chain_id }}
+      TF_VAR_evm_explorer_url: ${{ vars.TF_VAR_evm_explorer_url }}
+      TF_VAR_uctusd_contract_address: ${{ vars.TF_VAR_uctusd_contract_address }}
+      TF_VAR_uctusd_evm_decimals: ${{ vars.TF_VAR_uctusd_evm_decimals }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Require HCP organization and Terraform inputs
+        env:
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+        run: |
+          missing=()
+          [ -n "${TF_CLOUD_ORGANIZATION}" ]       || missing+=("TF_CLOUD_ORGANIZATION (variable)")
+          [ -n "${TF_TOKEN_app_terraform_io}" ]   || missing+=("TF_API_TOKEN")
+          [ -n "${TF_VAR_render_api_key}" ]       || missing+=("RENDER_API_KEY")
+          [ -n "${TF_VAR_render_owner_id}" ]      || missing+=("RENDER_OWNER_ID")
+          [ -n "${TF_VAR_database_url}" ]         || missing+=("TF_VAR_database_url")
+          [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key")
+          [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key")
+          [ -n "${TF_VAR_xrpl_encryption_key}" ]  || missing+=("TF_VAR_xrpl_encryption_key")
+          [ -n "${TF_VAR_platform_wallet_seed_encrypted}" ] || missing+=("TF_VAR_platform_wallet_seed_encrypted")
+          [ -n "${TF_VAR_exchange_rate_api_key}" ] || missing+=("TF_VAR_exchange_rate_api_key")
+          [ -n "${TF_VAR_platform_wallet_address}" ] || missing+=("TF_VAR_platform_wallet_address (variable)")
+          [ -n "${TF_VAR_xrpl_testnet_url}" ] || missing+=("TF_VAR_xrpl_testnet_url (variable)")
+          [ -n "${TF_VAR_uctusd_issuer}" ] || missing+=("TF_VAR_uctusd_issuer (variable)")
+          [ -n "${TF_VAR_uctusd_currency_code_hex}" ] || missing+=("TF_VAR_uctusd_currency_code_hex (variable)")
+          [ -n "${TF_VAR_uctusd_currency_code}" ] || missing+=("TF_VAR_uctusd_currency_code (variable)")
+          [ -n "${TF_VAR_uctusd_trust_limit}" ] || missing+=("TF_VAR_uctusd_trust_limit (variable)")
+          [ -n "${TF_VAR_uctusd_distributor_address}" ] || missing+=("TF_VAR_uctusd_distributor_address (variable)")
+          [ -n "${TF_VAR_rate_fixing_interval_hours}" ] || missing+=("TF_VAR_rate_fixing_interval_hours (variable)")
+          [ -n "${TF_VAR_max_rate_staleness_hours}" ] || missing+=("TF_VAR_max_rate_staleness_hours (variable)")
+          [ -n "${TF_VAR_quote_ttl_minutes}" ] || missing+=("TF_VAR_quote_ttl_minutes (variable)")
+          [ -n "${TF_VAR_fixed_fee_zar}" ] || missing+=("TF_VAR_fixed_fee_zar (variable)")
+          [ -n "${TF_VAR_percentage_fee_rate}" ] || missing+=("TF_VAR_percentage_fee_rate (variable)")
+          [ -n "${TF_VAR_fx_margin_rate}" ] || missing+=("TF_VAR_fx_margin_rate (variable)")
+          [ -n "${TF_VAR_cash_out_fee_rate}" ] || missing+=("TF_VAR_cash_out_fee_rate (variable)")
+          [ -n "${TF_VAR_min_cash_out_fee}" ] || missing+=("TF_VAR_min_cash_out_fee (variable)")
+          [ -n "${TF_VAR_daily_limit_zar_unverified}" ] || missing+=("TF_VAR_daily_limit_zar_unverified (variable)")
+          [ -n "${TF_VAR_monthly_limit_zar_unverified}" ] || missing+=("TF_VAR_monthly_limit_zar_unverified (variable)")
+          [ -n "${TF_VAR_daily_limit_zar}" ] || missing+=("TF_VAR_daily_limit_zar (variable)")
+          [ -n "${TF_VAR_monthly_limit_zar}" ] || missing+=("TF_VAR_monthly_limit_zar (variable)")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Set these on the '${DEPLOY_ENV}' GitHub environment: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Terraform shared
+        working-directory: infra/legacy-render/shared
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
+
+      - name: Terraform environment
+        working-directory: infra/legacy-render/envs/${{ needs.changes.outputs.deploy_env }}
+        env:
+          ROLLOUT: ${{ needs.changes.outputs.rollout }}
+        run: |
+          terraform init -input=false
+          if [ "$ROLLOUT" = "true" ]; then
+            terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
+          else
+            terraform plan -input=false -var-file=non-secret.tfvars
+          fi
+
+      - name: Sync web service env vars
+        if: needs.changes.outputs.rollout == 'true'
+        working-directory: infra/legacy-render/envs/${{ needs.changes.outputs.deploy_env }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+        run: |
+          api_env="$(terraform output -json api_env_vars)"
+          worker_env="$(terraform output -json worker_env_vars)"
+          RENDER_SYNC_ENV_JSON="$api_env" \
+            SERVICE_NAME="remitx-${DEPLOY_ENV}-api" \
+            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
+          RENDER_SYNC_ENV_JSON="$worker_env" \
+            SERVICE_NAME="remitx-${DEPLOY_ENV}-worker" \
+            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
+
+  migrate:
+    needs: [changes, ci, terraform]
+    if: |
+      !cancelled() &&
+      needs.changes.outputs.rollout == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.terraform.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -e .
+
+      - name: Apply Alembic migrations
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
+          DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+          PLATFORM_WALLET_ADDRESS: ${{ vars.TF_VAR_platform_wallet_address }}
+          XRPL_TESTNET_URL: ${{ vars.TF_VAR_xrpl_testnet_url }}
+          UCTUSD_ISSUER: ${{ vars.TF_VAR_uctusd_issuer }}
+          UCTUSD_CURRENCY_CODE_HEX: ${{ vars.TF_VAR_uctusd_currency_code_hex }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Set MIGRATIONS_DATABASE_URL on the '${DEPLOY_ENV}' GitHub environment."
+            exit 1
+          fi
+          echo "before: $(alembic current 2>&1 | tail -1)"
+          alembic upgrade head
+          echo "after:  $(alembic current 2>&1 | tail -1)"
+
+  deploy-api:
+    needs: [changes, ci, terraform, migrate]
+    if: |
+      !cancelled() &&
+      needs.changes.outputs.rollout == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.terraform.result == 'success' &&
+      needs.migrate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-api
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/render-deploy.sh
+
+  deploy-worker:
+    needs: [changes, ci, terraform, migrate]
+    if: |
+      !cancelled() &&
+      needs.changes.outputs.rollout == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.terraform.result == 'success' &&
+      needs.migrate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-worker
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/render-deploy.sh
+
+  deploy-frontend:
+    needs: [changes, ci, terraform, migrate]
+    if: |
+      !cancelled() &&
+      needs.changes.outputs.rollout == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.terraform.result == 'success' &&
+      needs.migrate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ needs.changes.outputs.deploy_env }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-web
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/render-deploy.sh

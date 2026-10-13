@@ -1,48 +1,51 @@
-# RemitX cloud deployment (Render + Neon + Clerk)
+# RemitX cloud deployment (GCP + Neon + Clerk)
 
-This guide covers the **Render + Neon + Clerk** stack for QA (`main` branch)
-and Production (`stable` branch). Local development uses Docker Compose with
+This guide covers the **GCP + Upstash + Neon + Clerk** stack for QA (`main`
+branch) and Production (`stable`). Local development uses Docker Compose with
 Postgres + Redis + Celery — no cloud required day-to-day.
 
-**Design spec:** [docs/superpowers/specs/2026-09-12-render-migration-design.md](superpowers/specs/2026-09-12-render-migration-design.md)
+**Infrastructure:** [infra/README.md](../infra/README.md). Legacy Render:
+[infra/legacy-render/](../infra/legacy-render/).
 
 ## Stack overview
 
 | Component | QA | Production |
 |-----------|-----|------------|
-| Frontend | Render static site | Render static site → `remitx.tech` |
-| API | Free web service (Docker) | Free web service (`*.onrender.com`) |
-| Worker | Free web service (HTTP + Celery) | Free web service (HTTP + Celery) |
-| Database | Neon branch `qa` | Neon branch `main` / `production` |
-| KYC documents | Neon Object Storage bucket `remitx-qa-kyc-documents` | Neon Object Storage bucket `remitx-prod-kyc-documents` |
-| Queue | Shared Key Value `/0` | Shared Key Value `/1` |
+| Frontend | Firebase Hosting | Firebase Hosting → `remitx.tech` |
+| API | Cloud Run (`africa-south1`) | Cloud Run |
+| Worker | Cloud Run (HTTP + Celery) | Cloud Run |
+| Database | Neon branch `qa` | Neon branch `main` |
+| KYC documents | Neon Object Storage `remitx-qa-kyc-documents` | `remitx-prod-kyc-documents` |
+| Queue | Upstash Redis (per env) | Upstash Redis |
 | Auth | Clerk QA app | Clerk Production app |
-| Secrets | Render env vars via Terraform | same |
-| Region | Frankfurt | Frankfurt |
+| Secrets | GitHub Environment → Terraform / `gcloud run deploy` | same |
+| GCP region | `africa-south1` (Johannesburg) | same |
 
-Hobby limits that shape this stack: no free background worker (the worker is a
-web service), one free Key Value per workspace, two included custom domains
-(Production `remitx.tech`, QA `qa.remitx.tech`). Neon is kept because free Render Postgres expires
-in 30 days.
+Neon Postgres and object storage stay in **EU** (`eu-central-1` endpoints) per
+Neon branch; only GCP compute and Artifact Registry use South Africa.
 
 ## Prerequisites
 
-1. Render Hobby workspace + API key + owner id.
-2. HCP Terraform org (name in `TF_CLOUD_ORGANIZATION`) with workspaces
-   `remitx-shared`, `remitx-qa`, `remitx-prod`.
-3. GitHub repository with Actions enabled.
-4. Neon project with `qa` and `main` (or `production`) branches, and one
-   private Object Storage bucket per environment.
-5. Three Clerk applications: Development (local), QA, Production.
+**Manual (one-time):** GCP project + billing, HCP Terraform org/workspaces, Neon
++ Upstash + Clerk accounts, GitHub environments `qa` and `prod`, DNS, and
+**issuing** deploy credentials (JSON key or WIF) for the Terraform-managed
+`remitx-github-deploy` SA. **Automated:** deploy SA + IAM, Artifact Registry,
+Cloud Run, Firebase, Upstash DB, and most GCP config via Terraform +
+`deploy.yml`.
 
-See [infra/README.md](../infra/README.md) for the secret list and first apply.
+Full checklists, job order, and every GitHub secret/variable name:
+[infra/README.md](../infra/README.md) (sections *Manual vs automated* and
+*GitHub environments catalog*).
+
+**Existing Neon Postgres:** one-time import into TFC workspace `remitx-data` —
+[infra/data/README.md](../infra/data/README.md) (Deploy does not run import).
 
 ## Branch model
 
 | Git branch | Role | Deploys to |
 |------------|------|-----------|
-| `main` | QA / integration | `infra/envs/qa/` |
-| `stable` | Production | `infra/envs/prod/` |
+| `main` | QA / integration | `infra/gcp/` (workspace `remitx-gcp-qa`) |
+| `stable` | Production | `infra/gcp/` (workspace `remitx-gcp-prod`) |
 
 Feature branches target `main`. Releasing is a PR from `main` into `stable`.
 
@@ -51,7 +54,7 @@ Feature branches target `main`. Releasing is a PR from `main` into `stable`.
 | Workflow | Trigger | Action |
 |----------|---------|--------|
 | `ci.yml` | PR, push | pytest, ruff, Alembic check, frontend lint/typecheck |
-| `deploy.yml` | PR `infra/**`; push `main`/`stable` on `infra/**`, `api/**`, `frontend/**`, or the pipeline itself; manual `workflow_dispatch` | Terraform → Alembic migrate → Render deploy |
+| `deploy.yml` | PR `infra/**`; push `main`/`stable` on `infra/**`, `api/**`, `frontend/**`, or the pipeline itself; manual `workflow_dispatch` | Neon storage verify → Terraform → Alembic migrate → Cloud Run + Firebase |
 
 ### `deploy.yml` job order
 
@@ -65,35 +68,18 @@ changes
                         └── deploy-frontend
 ```
 
-**Terraform runs on every rollout**, not only when `infra/**` changed. It is
-declarative, so a run that changes nothing plans empty. Gating it on `infra/**`
-made the stack impossible to create: the single push that introduced the Render
-services had a red `ci`, so `terraform` was skipped, and every push afterwards
-skipped it again on the paths filter while the deploy jobs kept looking for
-services that had never been applied. Running it always also keeps the Render
-env vars in step with the environment's secrets. Free web services cannot
-be updated through the provider (`maintenance mode can only be configured
-for non-free tier services`); `env_vars` are ignored on the resource and
-synced after apply by `.github/scripts/render-sync-env.sh`.
+**Terraform runs on every rollout** (`infra/data` then `infra/gcp`), not only
+when `infra/**` changed. PRs plan only; pushes and manual runs apply.
 
 Every deploy job requires `terraform` to have **succeeded**. Rolling code onto
 infrastructure that failed to converge is how a green run leaves a broken
 environment.
 
 **Migrate and all three deploys run on every rollout**, not only when
-`api/**` or `frontend/**` changed. Alembic is a no-op at head. Render
-auto-deploy is off and Terraform sets `skip_deploy_after_service_update`,
-so an infra-only change (CORS, env vars) never reaches a running service
-unless these jobs trigger a deploy.
-
-Auto-deploy is **off** on every Render service. Deploy jobs call
-`.github/scripts/render-deploy.sh`, which resolves the service by exact name,
-`POST`s a deploy, and then **waits for that deploy to reach `live`** — a
-`build_failed` on Render fails the job rather than passing silently. It checks
-the HTTP status of every Render API call, so a rejected key reports itself
-instead of looking like a missing service. Knobs: `RENDER_DEPLOY_WAIT=false` to
-trigger and exit, `RENDER_DEPLOY_TIMEOUT_SECONDS` (default 1800),
-`RENDER_DEPLOY_POLL_SECONDS`, `RENDER_DEPLOY_MAX_POLL_ERRORS`.
+`api/**` or `frontend/**` changed. Alembic is a no-op at head. Cloud Run images
+and env are updated by `.github/scripts/gcp-deploy-cloud-run.sh` (reads
+Terraform outputs). The SPA is built with `VITE_*` from Terraform and deployed
+via `.github/scripts/gcp-deploy-firebase.sh`.
 
 A failed migrate blocks every rollout.
 
@@ -255,23 +241,16 @@ secrets. Details: [infra/legacy-azure/README.md](../infra/legacy-azure/README.md
 
 ## Troubleshooting
 
-- **API or worker ~1 minute delay:** free instance spinning up after idle.
-- **Terraform `maintenance mode can only be configured for non-free tier
-  services`:** provider bug on free web services. Env and custom-domain
-  updates are ignored on `render_web_service`; env vars sync via
-  `render-sync-env.sh` after apply. Change custom domains in the dashboard.
-- **Celery not consuming:** confirm the worker web service is up (wake URL
-  reachable) and `REDIS_URL` uses the shared Key Value with the right `/0` or
-  `/1`.
-- **Worker restart loop, "Ran out of memory (used over 512MB)", wake URL
-  502s:** the pool is too wide for the instance. The worker banner prints its
-  own `concurrency: N (prefork)`; each process imports `remitx_api` and costs
-  roughly 100 MB, so N=8 needs ~925 MB against a 512 MB cap. A worker killed
-  this way dies between `mingle: all alone` and `celery@... ready` — the
-  absence of a `ready` line is the tell, and it means no task was ever
-  consumed and the boot-time `PENDING` reclaim never ran. `CELERY_CONCURRENCY`
-  sets N (Terraform pins it to 2); lower it to 1 for more headroom.
-- **750 instance-hours exhausted:** all free web services suspend until next
-  month. Spun-down time does not count.
-- **Custom domain verify failed:** DNS may still be propagating; retry in the
-  Render dashboard.
+- **API or worker cold start:** Cloud Run scales to zero; first request (or
+  `WORKER_WAKE_URL` ping) can take several seconds.
+- **Celery not consuming:** check worker Cloud Run logs, `REDIS_URL` (Upstash),
+  and that `WORKER_WAKE_URL` points at the worker `/health` URL.
+- **Worker OOM:** lower `CELERY_CONCURRENCY` (Terraform sets `2`) or raise
+  Cloud Run memory for the worker service.
+- **KYC uploads 503:** Neon object storage verify failed or
+  `OBJECT_STORAGE_*` secrets unset; see `scripts/neon-storage/README.md`.
+- **Wrong database after deploy:** `remitx-data` overrides must not be fed from
+  per-environment GitHub secrets on every rollout — use TFC workspace vars for
+  `remitx-data` only.
+- **Custom domain verify failed:** check Firebase Hosting / Cloud Run domain
+  mapping and DNS records in Cloud DNS or your registrar.

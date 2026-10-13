@@ -1,0 +1,12 @@
+# Copy to imports.tf for one-time import, then remove import blocks after apply.
+#
+# terraform import 'module.neon.neon_project.this' '<project_id>'
+# terraform import 'module.neon.neon_branch.qa' '<project_id>/<qa_branch_id>'
+# terraform import 'module.neon.neon_branch.prod' '<project_id>/<prod_branch_id>'
+# terraform import 'module.neon.neon_endpoint.qa' '<project_id>/<qa_endpoint_id>'
+# terraform import 'module.neon.neon_endpoint.prod' '<project_id>/<prod_endpoint_id>'
+
+# import {
+#   to = module.neon.neon_project.this
+#   id = "REPLACE_NEON_PROJECT_ID"
+# }

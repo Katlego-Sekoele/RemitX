@@ -88,6 +88,22 @@ loadtest-canvas: ## Rebuild summary + canvas + HTML (RESULTS=tools/loadtest/resu
 	  PYTHONPATH=tools/seeder python3 tools/loadtest/to_canvas.py "$(RESULTS)"; \
 	fi
 
+##@ Infra (Terraform / GCP / Neon)
+
+.PHONY: infra
+infra: ## List Terraform helpers (make -C infra <target>, ENV=qa|prod for GCP)
+	@$(MAKE) -C infra help
+
+.PHONY: github-env
+github-env: ## Print exports — eval "$(make github-env ENV=qa)" from repo root
+	@$(MAKE) -C infra --no-print-directory github-env ENV=$(or $(ENV),qa)
+
+##@ Deploy (Cloud Run / Firebase)
+
+.PHONY: deploy
+deploy: ## List rollout helpers (make -C deploy <target>, DEPLOY_ENV=qa|prod)
+	@$(MAKE) -C deploy help
+
 ##@ Git hooks
 
 .PHONY: hooks

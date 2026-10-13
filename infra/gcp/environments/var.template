@@ -1,0 +1,28 @@
+# Per-environment overrides: copy to qa.tfvars / prod.tfvars (committed).
+# Shared product config: common.tfvars (loaded automatically by make / CI).
+# Secrets: GitHub Environment secrets as TF_VAR_* (see infra/README.md).
+
+environment = "qa" # or prod
+git_branch  = "main"
+repo_url    = "https://github.com/Katlego-Sekoele/RemitX"
+
+gcp_project_id = "REPLACE_WITH_GCP_PROJECT_ID"
+gcp_region     = "africa-south1"
+
+api_custom_domain       = "api.qa.example.com"
+frontend_custom_domain  = "qa.example.com"
+
+# Prod only: billing_account_id, budget_alert_emails (secret), monthly_budget_amount, budget_alert_step_usd, budget_alert_coverage_usd
+
+# Same GCP project for QA + prod: on prod.tfvars only:
+# github_deploy_service_account_email = "remitx-github-deploy@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+
+upstash_primary_region          = "eu-west-1"
+artifact_registry_repository_id = "remitx"
+
+object_storage_endpoint_url = ""
+object_storage_bucket       = "remitx-qa-kyc-documents"
+object_storage_region       = "eu-central-1"
+
+api_container_image    = "gcr.io/cloudrun/hello"
+worker_container_image = "gcr.io/cloudrun/hello"
