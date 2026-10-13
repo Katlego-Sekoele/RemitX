@@ -52,6 +52,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | Proposals, 3, 5, 8, 9, 13, 14 | R2-04 (#226): `stokvels`, `stokvel_members` and `stokvel_invitations` built with row-level security (section 3). Product: fixed fiat contribution for the stokvel's life; cancellation, refunds and disputes not in v1 (P4); members and invitees see a stokvel's invitations; former members keep their history. Dropped `max_members` and `stokvels.status`; `current_cycle_id` moves to R2-05, `account_id` to R3-01; invitations can be revoked. New tickets: #297 (revoke route), #298 (rate difference), #299 (invitations screen) | #300 |
 | 2026-10-11 | Decisions, 3, 8, 11 | Product: contribution amount is **fixed token** (UCTUSD), not fixed fiat. `stokvels.contribution_amount` is that UCTUSD amount; member fiat debit = amount × live rate at contribution. D13. Closes #298 (rate-difference booking was only needed under fixed fiat) | #300 |
 | 2026-10-12 | 3, 14 | `stokvels.deactivated_at` (null while in service). Membership `account_id` must be the member's fiat account in the stokvel currency | #300 |
+| 2026-10-13 | 3, 14 | Made stokvel RLS helper and validation functions Neon-compatible: hardened `SECURITY DEFINER` functions replace unsupported custom-GUC function settings while preserving recursive-policy avoidance; PostgreSQL regression coverage added | |
 
 ---
 

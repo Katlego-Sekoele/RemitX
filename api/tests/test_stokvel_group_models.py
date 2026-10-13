@@ -151,6 +151,38 @@ def test_one_active_membership_but_a_former_member_can_rejoin(app_context):
 
 
 @pytest.mark.postgres
+def test_rls_helpers_are_neon_compatible_and_security_definer(postgres_app):
+    """Neon rejects custom GUCs in a function SET clause.
+
+    SECURITY DEFINER also prevents policy recursion; pinning search_path and
+    revoking PUBLIC execution make that elevation safe.
+    """
+    token = db.open_session()
+    try:
+        functions = db.session.execute(
+            text(
+                """
+                SELECT proname, prosecdef, proconfig
+                  FROM pg_proc
+                 WHERE proname IN (
+                   'stokvel_is_member',
+                   'stokvel_is_organiser',
+                   'stokvel_has_pending_invitation',
+                   'stokvel_member_account_is_fiat'
+                 )
+                """
+            )
+        ).all()
+
+        assert len(functions) == 4
+        for name, security_definer, settings in functions:
+            assert security_definer, name
+            assert settings == ["search_path=pg_catalog, public, pg_temp"], name
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
 def test_row_security_scopes_each_customer(postgres_app):
     token = db.open_session()
     try:

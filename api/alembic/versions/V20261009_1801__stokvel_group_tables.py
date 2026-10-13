@@ -15,10 +15,10 @@ is asking, ``app.is_admin_route`` is how:
 
 A policy that queries its own table, or two policies that query each other,
 fail with "infinite recursion detected in policy". So the lookups live in
-functions, which Postgres never inlines because of their ``SET`` clause.
-Inside one, ``app.current_user_id`` is empty, the worker path, so its query
-sees every row instead of calling the function again. Each policy is a
-``CASE`` so that check runs before any function is called.
+``SECURITY DEFINER`` functions, which Postgres does not inline and whose
+BYPASSRLS owner can perform the lookup without re-entering the policy. Their
+search path is fixed and PUBLIC cannot execute them directly. Each policy is a
+``CASE`` so its worker/admin check runs before any function is called.
 
 Revision ID: b2e338d2fc43
 Revises: a8c3e1f42b90
@@ -36,6 +36,7 @@ branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
 _ME = "current_setting('app.current_user_id', true)"
+_APP_ROLE = "remitx_app"
 
 # Membership counts former members too: they keep their history.
 _FUNCTIONS = {
@@ -139,7 +140,8 @@ def upgrade() -> None:
             name="stokvel_invitations_status_valid",
         ),
         sa.CheckConstraint(
-            "status NOT IN ('accepted','declined') OR status_changed_by_user_id = invitee_user_id",
+            "status NOT IN ('accepted','declined') "
+            "OR status_changed_by_user_id = invitee_user_id",
             name="stokvel_invitations_invitee_answers",
         ),
         sa.CheckConstraint(
@@ -239,11 +241,13 @@ def upgrade() -> None:
         op.execute(
             f"""
             CREATE FUNCTION {name}(p_stokvel_id uuid, p_user_id text)
-              RETURNS boolean LANGUAGE sql STABLE
-              SET app.current_user_id = ''
+              RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
               AS $$ SELECT EXISTS ({sql}) $$
             """
         )
+        op.execute(f"REVOKE ALL ON FUNCTION {name}(uuid, text) FROM PUBLIC")
+        op.execute(f"GRANT EXECUTE ON FUNCTION {name}(uuid, text) TO {_APP_ROLE}")
     for table, (using, check) in _POLICIES.items():
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
@@ -258,8 +262,8 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE FUNCTION stokvel_member_account_is_fiat()
-          RETURNS trigger LANGUAGE plpgsql
-          SET app.current_user_id = ''
+          RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+          SET search_path = pg_catalog, public, pg_temp
           AS $$
         DECLARE
           found_type text;
@@ -279,7 +283,7 @@ def upgrade() -> None:
              OR found_currency IS DISTINCT FROM group_currency
           THEN
             RAISE EXCEPTION
-              'stokvel_members.account_id must be the member''s USER account in the stokvel currency'
+              'invalid membership account type, owner, or stokvel currency'
               USING ERRCODE = '23514';
           END IF;
           RETURN NEW;
@@ -287,6 +291,7 @@ def upgrade() -> None:
         $$
         """
     )
+    op.execute("REVOKE ALL ON FUNCTION stokvel_member_account_is_fiat() FROM PUBLIC")
     op.execute(
         """
         CREATE TRIGGER stokvel_member_account_is_fiat
