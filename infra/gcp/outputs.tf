@@ -24,13 +24,19 @@ output "redis_url" {
 }
 
 output "api_env_vars" {
-  value     = local.api_env
-  sensitive = true
+  value = local.api_env
 }
 
 output "worker_env_vars" {
-  value     = local.worker_env
-  sensitive = true
+  value = local.worker_env
+}
+
+output "api_secret_env_vars" {
+  value = local.api_secret_env
+}
+
+output "worker_secret_env_vars" {
+  value = local.worker_secret_env
 }
 
 output "vite_env" {
