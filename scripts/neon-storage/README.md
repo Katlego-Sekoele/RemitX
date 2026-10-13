@@ -18,7 +18,9 @@ bucket and a named API credential exist on a branch.
 - **verify** — bucket must exist; does not create credentials.
 - **bootstrap** — create bucket if missing; create credential if the named one is absent (prints secrets once to stdout; pipe to CI secret update).
 
-Requires `curl`, `jq`, and optionally [Neon CLI](https://neon.com/docs/reference/cli-overview) (`neon` on `PATH` for bucket/credential commands). Without CLI, bucket create uses the REST API.
+Requires `curl`, `jq`, and [Neon CLI](https://neon.com/docs/reference/cli-overview)
+8.3 or newer (`npm install --global neon@latest`). The Deploy workflow installs
+it on Node.js 22 before verification.
 
 ## CI
 

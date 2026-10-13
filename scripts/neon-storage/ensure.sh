@@ -15,7 +15,12 @@ die() {
   exit 1
 }
 
-if ! neon --version | grep -q "8.3"; then
+command -v neon >/dev/null 2>&1 || die "neon CLI version 8.3 or higher is required"
+NEON_CLI_VERSION="$(neon --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)"
+IFS=. read -r NEON_CLI_MAJOR NEON_CLI_MINOR _ <<< "$NEON_CLI_VERSION"
+if [[ -z "$NEON_CLI_VERSION" ]] \
+  || (( NEON_CLI_MAJOR < 8 )) \
+  || (( NEON_CLI_MAJOR == 8 && NEON_CLI_MINOR < 3 )); then
   die "neon CLI version 8.3 or higher is required"
 fi
 
