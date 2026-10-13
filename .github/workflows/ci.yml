@@ -175,6 +175,12 @@ jobs:
         run: |
           JSON="$(mktemp)"
           OUT="$(mktemp)"
-          printf '%s' '{"KEY":"a=b"}' >"$JSON"
+          printf '%s' '{"KEY":"a=b","MULTILINE":"first\nsecond","EMPTY":null}' >"$JSON"
           python3 .github/scripts/gcp-write-cloud-run-env.py "$JSON" "$OUT"
-          grep -q 'KEY="a=b"' "$OUT"
+          python3 -c '
+          import json, sys
+          assert json.load(open(sys.argv[1])) == {
+              "KEY": "a=b",
+              "MULTILINE": "first\nsecond",
+          }
+          ' "$OUT"
