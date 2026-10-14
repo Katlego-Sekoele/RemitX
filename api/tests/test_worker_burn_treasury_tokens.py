@@ -2,12 +2,14 @@
 (Transaction_Flow_Context.md §2 Phase C).
 
 Same conventions as test_worker_settle_remittance.py: task functions called
-directly against a scratch SQLite file, no broker involved. The one real
-external call (`xrpl_service.burn_tokens`) is monkeypatched, and so is the
-`confirm_treasury_burn` enqueue — `burn_treasury_tokens` hands off to it
-rather than doing DB work itself, so its own tests only assert on what it
-claims and what it would enqueue; `confirm_treasury_burn`'s own tests call
-it directly, the same way a worker consuming that follow-up message would.
+directly against a scratch SQLite file, no broker involved. The chain calls
+(`evm_service.burn_tokens` and `evm_service.wait_for_receipt`) are faked, and
+`evm_service.get_web3` raises, so nothing can reach a real RPC. The
+`confirm_treasury_burn` enqueue is captured too: `burn_treasury_tokens`
+hands off to it rather than confirming itself, so its own tests assert on
+what it claims, the burn hash it stores, and what it would enqueue;
+`confirm_treasury_burn`'s own tests call it directly, the same way a worker
+consuming that follow-up message would.
 
 `confirm_treasury_burn` is where *every* leg of a remittance — not just the
 burn and payout — finally confirms and credits, or (on a failed burn) fails
@@ -15,6 +17,7 @@ together. Nothing anywhere in this pipeline credits a balance before this
 task runs, so a failed burn needs no reversal.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -46,9 +49,23 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.models.orm.user import User
-from remitx_worker import db as worker_db, tasks, xrpl_service
+from remitx_worker import db as worker_db, evm_service, tasks
 from remitx_worker.tasks import burn_treasury_tokens, confirm_treasury_burn
 from sqlalchemy.orm import sessionmaker
+from web3.exceptions import TimeExhausted
+
+BURN_HASH = "0x" + "be" * 32
+
+
+@pytest.fixture(autouse=True)
+def _no_rpc(monkeypatch):
+    """Every chain call in these tests is faked; anything unfaked that asks
+    for a client fails loudly instead of reaching the testnet RPC."""
+
+    def no_rpc():
+        raise AssertionError("a test tried to reach the EVM RPC")
+
+    monkeypatch.setattr(evm_service, "get_web3", no_rpc)
 
 
 @pytest.fixture
@@ -74,6 +91,55 @@ def enqueued_confirm(monkeypatch):
         lambda quote_id, tx_hash, error=None: calls.append((quote_id, tx_hash, error)),
     )
     return calls
+
+
+class FakeChain:
+    """`evm_service.burn_tokens` and `wait_for_receipt`, without a chain.
+
+    `burn_tokens` behaves like the real one: it hands the hash to
+    `on_signed` before "sending", and sends nothing if that raises. Set
+    `fail_before_signing` or `fail_after_signing` to an exception to make a
+    burn fail at that point, and `receipt` to an exception (or a callable
+    that raises) to make every wait fail."""
+
+    def __init__(self):
+        self.burns = []
+        self.sent = []
+        self.waits = []
+        self.fail_before_signing = None
+        self.fail_after_signing = None
+        self.before_on_signed = None
+        self.receipt = None
+
+    def burn_tokens(self, amount, *, on_signed=None, w3=None):
+        self.burns.append(amount)
+        if self.fail_before_signing is not None:
+            raise self.fail_before_signing
+        if self.before_on_signed is not None:
+            self.before_on_signed()
+        if on_signed is not None:
+            on_signed(BURN_HASH)
+        if self.fail_after_signing is not None:
+            raise self.fail_after_signing
+        self.sent.append(BURN_HASH)
+        return BURN_HASH
+
+    def wait_for_receipt(self, tx_hash, timeout=120, w3=None):
+        self.waits.append(tx_hash)
+        receipt = self.receipt
+        if callable(receipt) and not isinstance(receipt, BaseException):
+            receipt = receipt(tx_hash)
+        if isinstance(receipt, BaseException):
+            raise receipt
+        return {"transactionHash": tx_hash, "status": 1, "blockNumber": 1}
+
+
+@pytest.fixture
+def chain(monkeypatch):
+    fake = FakeChain()
+    monkeypatch.setattr(evm_service, "burn_tokens", fake.burn_tokens)
+    monkeypatch.setattr(evm_service, "wait_for_receipt", fake.wait_for_receipt)
+    return fake
 
 
 def _user(session) -> uuid.UUID:
@@ -314,24 +380,52 @@ def _claim_burn_leg(session_factory, burn_tx_id) -> None:
         session.commit()
 
 
-# --- burn_treasury_tokens: claim + submit, hands off the rest ---
+def _set_burn_leg(session_factory, quote_id, burn_tx_id, *, tx_hash) -> None:
+    """Leave a group as a crashed delivery would: every leg claimed, and the
+    burn leg's hash stored or not."""
+    with session_factory() as session:
+        session.execute(
+            Transaction.__table__.update()
+            .where(Transaction.quote_id == quote_id)
+            .values(status=STATUS_PROCESSING, processed_at=datetime.now(UTC))
+        )
+        if tx_hash is not None:
+            session.execute(
+                Transaction.__table__.update()
+                .where(Transaction.tx_id == burn_tx_id)
+                .values(evm_tx_hash=tx_hash, xrpl_tx_hash=tx_hash)
+            )
+        session.commit()
 
 
-def test_burn_claims_the_whole_group_and_enqueues_confirm(
-    session_factory, pending_remittance, enqueued_confirm, monkeypatch
+# --- burn_treasury_tokens: claim, burn, wait, hand off the rest ---
+
+
+def test_burn_claims_the_group_stores_the_hash_first_and_enqueues_confirm(
+    session_factory, pending_remittance, enqueued_confirm, chain
 ):
-    monkeypatch.setattr(xrpl_service, "burn_tokens", lambda amount: "ABCDEF0123")
+    seen_at_wait = []
+
+    def receipt(tx_hash):
+        seen_at_wait.append(_leg_row(session_factory, pending_remittance["burn_tx_id"]))
+
+    chain.receipt = receipt
 
     result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
 
     assert result == "burned"
-    assert enqueued_confirm == [
-        (str(pending_remittance["quote_id"]), "ABCDEF0123", None)
-    ]
+    assert enqueued_confirm == [(str(pending_remittance["quote_id"]), BURN_HASH, None)]
+    assert chain.waits == [BURN_HASH]
+
+    # By the time the receipt is awaited the hash is already committed, in
+    # both columns while the #239 rename dual-writes.
+    (at_wait,) = seen_at_wait
+    assert at_wait.status == STATUS_PROCESSING
+    assert at_wait.evm_tx_hash == BURN_HASH
+    assert at_wait.xrpl_tx_hash == BURN_HASH
 
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.status == STATUS_PROCESSING
-    assert burn_leg.evm_tx_hash is None
     assert burn_leg.processed_at is not None
     # Every leg in the group is claimed together, not just the burn leg —
     # confirming and crediting is still confirm_treasury_burn's job, not
@@ -342,33 +436,99 @@ def test_burn_claims_the_whole_group_and_enqueues_confirm(
     assert _balance(session_factory, pending_remittance["fee_revenue"]) == Decimal("0")
 
 
-def test_burn_twice_does_not_double_submit(
-    session_factory, pending_remittance, enqueued_confirm, monkeypatch
+def test_burn_burns_exactly_the_burn_leg_amount_not_the_treasury_balance(
+    session_factory, pending_remittance, enqueued_confirm, chain
 ):
-    """The graded requirement: a redelivered burn message must not submit
-    the XRPL payment twice."""
-    calls = []
-    monkeypatch.setattr(
-        xrpl_service, "burn_tokens", lambda amount: calls.append(amount) or "HASH1"
-    )
+    burn_tokens_amount = _leg_row(session_factory, pending_remittance["burn_tx_id"])
 
+    burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    # The Treasury holds 1000 (float for other remittances); only this
+    # remittance's tokens are burned.
+    assert chain.burns == [Decimal("52.432432")]
+    assert chain.burns == [burn_tokens_amount.amount]
+    assert _balance(session_factory, pending_remittance["treasury"]) == Decimal("1000")
+
+
+def test_burn_twice_does_not_double_submit(
+    session_factory, pending_remittance, enqueued_confirm, chain
+):
+    """The graded requirement: a redelivered burn message must not send a
+    second burn, and the remittance is credited once."""
     first = burn_treasury_tokens(str(pending_remittance["quote_id"]))
     assert first == "burned"
 
+    # Redelivered before confirm ran: waits on the same hash, sends nothing.
     second = burn_treasury_tokens(str(pending_remittance["quote_id"]))
 
-    assert second == "skipped"
-    assert len(calls) == 1
-    assert len(enqueued_confirm) == 1
+    assert second == "burned"
+    assert len(chain.burns) == 1
+    assert chain.sent == [BURN_HASH]
+    assert chain.waits == [BURN_HASH, BURN_HASH]
+    assert [hash_ for _, hash_, _ in enqueued_confirm] == [BURN_HASH, BURN_HASH]
+
+    # Both confirms are delivered; only the first credits.
+    quote_id = str(pending_remittance["quote_id"])
+    assert confirm_treasury_burn(quote_id, BURN_HASH) == "settled"
+    assert confirm_treasury_burn(quote_id, BURN_HASH) == "skipped"
+    assert _balance(session_factory, pending_remittance["fee_revenue"]) == Decimal("30")
+
+    # And once confirmed, a further redelivery does nothing at all.
+    assert burn_treasury_tokens(quote_id) == "skipped"
+    assert len(chain.waits) == 2
 
 
-def test_burn_failure_enqueues_confirm_with_no_hash(
-    session_factory, pending_remittance, enqueued_confirm, monkeypatch
+def test_a_retry_with_a_stored_hash_waits_on_it_and_sends_nothing(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
 ):
-    def _fail(amount):
-        raise RuntimeError("burn Payment failed: tecPATH_DRY")
+    """A worker crashed after the hash was stored: the retry waits on that
+    burn instead of sending another."""
+    _set_burn_leg(
+        session_factory,
+        pending_remittance["quote_id"],
+        pending_remittance["burn_tx_id"],
+        tx_hash=BURN_HASH,
+    )
 
-    monkeypatch.setattr(xrpl_service, "burn_tokens", _fail)
+    with caplog.at_level(logging.INFO, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "burned"
+    assert chain.burns == []
+    assert chain.waits == [BURN_HASH]
+    assert enqueued_confirm == [(str(pending_remittance["quote_id"]), BURN_HASH, None)]
+    assert "event=settlement.burn_resumed" in caplog.text
+
+
+def test_a_claimed_group_with_no_hash_is_left_alone(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
+):
+    """Claimed but never signed (or being signed by another delivery right
+    now): nothing is sent, nothing is failed."""
+    _set_burn_leg(
+        session_factory,
+        pending_remittance["quote_id"],
+        pending_remittance["burn_tx_id"],
+        tx_hash=None,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "skipped"
+    assert chain.burns == []
+    assert chain.waits == []
+    assert enqueued_confirm == []
+    assert "event=settlement.burn_unsigned" in caplog.text
+    assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
+        STATUS_PROCESSING
+    }
+
+
+def test_burn_failure_before_signing_enqueues_confirm_with_no_hash(
+    session_factory, pending_remittance, enqueued_confirm, chain
+):
+    chain.fail_before_signing = RuntimeError("execution reverted: gas estimate")
 
     result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
 
@@ -377,11 +537,130 @@ def test_burn_failure_enqueues_confirm_with_no_hash(
         (
             str(pending_remittance["quote_id"]),
             None,
-            "burn Payment failed: tecPATH_DRY",
+            "execution reverted: gas estimate",
         )
     ]
+    assert chain.waits == []
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.status == STATUS_PROCESSING
+    assert burn_leg.evm_tx_hash is None
+
+
+def test_a_reverted_burn_fails_the_group_and_keeps_the_hash(
+    session_factory, pending_remittance, enqueued_confirm, chain
+):
+    chain.receipt = evm_service.TransactionReverted(
+        f"EVM transaction {BURN_HASH} reverted"
+    )
+
+    result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "burn_failed"
+    assert enqueued_confirm == [
+        (
+            str(pending_remittance["quote_id"]),
+            None,
+            f"EVM transaction {BURN_HASH} reverted",
+        )
+    ]
+    # Kept for investigation; readers only show a confirmed burn's hash.
+    burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
+    assert burn_leg.evm_tx_hash == BURN_HASH
+
+    assert confirm_treasury_burn(*enqueued_confirm[0]) == "failed"
+    assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
+        STATUS_FAILED
+    }
+    assert _balance(session_factory, pending_remittance["treasury"]) == Decimal("1000")
+
+
+def test_a_receipt_timeout_retries_and_never_fails_the_group(
+    session_factory, pending_remittance, enqueued_confirm, chain
+):
+    """Called directly (no worker), Celery's retry re-raises the error; in a
+    worker it schedules the retry. Either way the group stays processing with
+    its hash, and nothing is failed or confirmed."""
+    chain.receipt = TimeExhausted("not mined in 120s")
+
+    with pytest.raises(TimeExhausted):
+        burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert enqueued_confirm == []
+    assert len(chain.burns) == 1
+    burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
+    assert burn_leg.status == STATUS_PROCESSING
+    assert burn_leg.evm_tx_hash == BURN_HASH
+
+
+def test_receipt_retries_wait_on_the_same_hash_then_leave_it_for_a_person(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
+):
+    """Run eagerly, so every retry runs in turn: the wait is retried on the
+    one stored hash, never a new burn, and after the last retry the group is
+    left processing with a greppable log line."""
+    chain.receipt = TimeExhausted("not mined in 120s")
+
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens.apply(
+            args=[str(pending_remittance["quote_id"])]
+        ).get()
+
+    assert result == "awaiting_receipt"
+    assert len(chain.burns) == 1
+    assert chain.waits == [BURN_HASH] * (tasks.BURN_RECEIPT_MAX_RETRIES + 1)
+    assert enqueued_confirm == []
+    assert "event=settlement.burn_unconfirmed" in caplog.text
+    assert caplog.text.count("event=settlement.burn_receipt_retry") == (
+        tasks.BURN_RECEIPT_MAX_RETRIES
+    )
+    assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
+        STATUS_PROCESSING
+    }
+
+
+def test_a_send_that_raises_after_the_hash_is_stored_is_waited_on_not_failed(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
+):
+    """The send may have reached the chain even though it raised."""
+    chain.fail_after_signing = ConnectionError("RPC dropped the connection")
+
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "burned"
+    assert chain.waits == [BURN_HASH]
+    assert enqueued_confirm == [(str(pending_remittance["quote_id"]), BURN_HASH, None)]
+    assert "event=settlement.burn_send_uncertain" in caplog.text
+
+
+def test_nothing_is_sent_if_the_hash_cannot_be_stored(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
+):
+    """The guard in `record`: if the burn leg gained a hash between the claim
+    and the signing, the signed burn is not sent and the group is not failed."""
+
+    def another_hash_lands():
+        with session_factory() as session:
+            session.execute(
+                Transaction.__table__.update()
+                .where(Transaction.tx_id == pending_remittance["burn_tx_id"])
+                .values(evm_tx_hash="0x" + "0f" * 32)
+            )
+            session.commit()
+
+    chain.before_on_signed = another_hash_lands
+
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "skipped"
+    assert chain.sent == []
+    assert chain.waits == []
+    assert enqueued_confirm == []
+    assert "event=settlement.burn_not_recorded" in caplog.text
+    assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
+        STATUS_PROCESSING
+    }
 
 
 def test_burn_unknown_quote_is_skipped(session_factory, enqueued_confirm):
@@ -413,6 +692,8 @@ def test_confirm_success_settles_and_credits_every_leg(
 
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.evm_tx_hash == "ABCDEF0123"
+    # The deprecated column is dual-written until the #239 rename finishes.
+    assert burn_leg.xrpl_tx_hash == "ABCDEF0123"
     assert burn_leg.confirmed_at is not None
 
     # Sender's ZAR account was this remittance's source for both fiat legs

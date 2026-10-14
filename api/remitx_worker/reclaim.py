@@ -7,7 +7,7 @@ remittance settlement groups back onto the queue.
 ``process_integration_message`` and ``settle_remittance`` are idempotent at
 their entry guards, so a message that is already on Redis is safe to send
 again. Only remittance groups whose seven legs are still fully ``pending``
-are re-enqueued — groups in ``processing`` may have an XRPL burn in flight
+are re-enqueued — groups in ``processing`` may have an EVM burn in flight
 and are never blindly retried here.
 """
 

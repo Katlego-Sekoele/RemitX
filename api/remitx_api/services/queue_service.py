@@ -142,9 +142,9 @@ def enqueue_settle_remittance(quote_id: str) -> None:
 
 
 def enqueue_burn_treasury_tokens(quote_id: str) -> None:
-    """Enqueued by `settle_remittance` once its own bookkeeping legs
-    confirm — submits the quote's `burn` leg's XRPL `Payment` and hands the
-    result to `confirm_treasury_burn`.
+    """Enqueued by `settle_remittance` — burns the quote's UCTUSD on the
+    XRPL EVM chain, waits for the receipt, and hands the result to
+    `confirm_treasury_burn`.
     """
     producer.send_task(
         BURN_TREASURY_TOKENS,
@@ -157,11 +157,11 @@ def enqueue_burn_treasury_tokens(quote_id: str) -> None:
 def enqueue_confirm_treasury_burn(
     quote_id: str, tx_hash: str | None, error: str | None = None
 ) -> None:
-    """Enqueued by `burn_treasury_tokens` once the XRPL call has resolved
-    (success or failure).
+    """Enqueued by `burn_treasury_tokens` once the burn has resolved: a
+    confirmed receipt, or a failure (nothing sent, or a revert).
 
     `tx_hash` is `None` for a failed burn, in which case `error` carries the
-    XRPL exception's message so `confirm_treasury_burn` can log it.
+    exception's message so `confirm_treasury_burn` can log it.
     """
     producer.send_task(
         CONFIRM_TREASURY_BURN,

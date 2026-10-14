@@ -373,17 +373,23 @@ def burn_tokens(
     return submit_transaction(tx, w3=w3, on_signed=on_signed)
 
 
+class TransactionReverted(RuntimeError):
+    """A mined transaction failed (receipt status 0): nothing it did happened."""
+
+
 def wait_for_receipt(tx_hash: str, timeout: float = 120, w3: Web3 | None = None):
     """Wait for `tx_hash` to be mined and return its receipt.
 
-    Raises `RuntimeError` if the transaction reverted (status 0). If it is not
+    Raises `TransactionReverted` (a `RuntimeError`) if the transaction
+    reverted (status 0). Any other error means only that no answer came, so
+    the caller may wait on the same hash again. If it is not
     mined within `timeout` seconds, web3's `TimeExhausted` propagates and the
     caller may wait on the same hash again.
     """
     w3 = w3 or get_web3()
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
     if receipt["status"] == 0:
-        raise RuntimeError(f"EVM transaction {tx_hash} reverted")
+        raise TransactionReverted(f"EVM transaction {tx_hash} reverted")
     return receipt
 
 
