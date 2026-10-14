@@ -111,7 +111,7 @@ def _started(**columns) -> dict:
     return {
         "status": StokvelCycleStatus.ACTIVE.value,
         "started_at": datetime.now(UTC),
-        "round_count": 2,
+        "total_rounds": 2,
         **columns,
     }
 
@@ -129,7 +129,7 @@ def test_a_cycle_with_three_members_and_three_rounds(app_context):
     # Starting the cycle fixes its rounds and locks every member's payout
     cycle.status = StokvelCycleStatus.ACTIVE.value
     cycle.started_at = datetime.now(UTC)
-    cycle.round_count = 3
+    cycle.total_rounds = 3
     cycle.current_round = 0
     for row in db.session.scalars(select(StokvelCycleMember)):
         row.locked = True
@@ -213,7 +213,7 @@ def test_one_open_cycle_per_stokvel(app_context):
     first.status = StokvelCycleStatus.CLOSED.value
     first.started_at = datetime.now(UTC)
     first.closed_at = datetime.now(UTC)
-    first.round_count = 2
+    first.total_rounds = 2
     second = _cycle(db.session.get(Stokvel, stokvel.id), 2)
     assert StokvelCycleRepository().open_cycle(stokvel.id).id == second.id
 
@@ -233,8 +233,8 @@ def test_cycle_numbers_are_unique_per_stokvel(app_context):
     "columns",
     [
         pytest.param({"status": StokvelCycleStatus.ACTIVE.value}, id="not started"),
-        pytest.param(_started(round_count=None), id="no round count"),
-        pytest.param(_started(round_count=1), id="one round"),
+        pytest.param(_started(total_rounds=None), id="no total rounds"),
+        pytest.param(_started(total_rounds=1), id="one round"),
         pytest.param(_started(current_round=2), id="round out of range"),
         pytest.param(
             _started(status=StokvelCycleStatus.CLOSED.value), id="closed, no time"

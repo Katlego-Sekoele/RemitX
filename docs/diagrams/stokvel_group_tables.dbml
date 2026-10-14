@@ -61,7 +61,7 @@ Table stokvel_cycles {
   stokvel_id uuid [not null, ref: > stokvels.id]
   cycle_number int [not null, note: 'from 1']
   status text [not null, note: 'forming | active | closed']
-  round_count int [note: 'set at start, >= 2']
+  total_rounds int [note: 'set at start, >= 2']
   current_round int [note: '0-based']
   started_at timestamptz [note: 'null while forming']
   closed_at timestamptz [note: 'set when closed']

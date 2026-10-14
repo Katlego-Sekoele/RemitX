@@ -65,20 +65,22 @@ class StokvelCycleMember(Base):
             name="uq_stokvel_cycle_members_cycle_id_position",
         ),
     )
-
+    # The cycle this member is part of
     cycle_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("stokvel_cycles.id"), primary_key=True
     )
-    # The on-chain memberId
+    # The on-chain memberId. Points to a StokvelMember in stokvel_members.
     member_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("stokvel_members.id"), primary_key=True, index=True
     )
+    # Which round pays this member in this cycle
     payout_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payout_beneficiary_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("beneficiaries.beneficiary_id"), nullable=True
     )
     payout_currency: Mapped[str | None] = mapped_column(Text, nullable=True)
     continued: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Set when the cycle starts to lock the payout order and beneficiary.
     locked: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )

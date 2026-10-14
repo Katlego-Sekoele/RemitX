@@ -8,7 +8,7 @@ beneficiaries locked; registered on-chain with `startCycle`), and `closed`
 after its last round is released. A stokvel has at most one cycle that is not
 closed, as the contract allows only one open cycle.
 
-`round_count` is the number of members in the cycle (one round each), set when
+`total_rounds` is the number of members in the cycle (one round each), set when
 it starts. `current_round` is 0-based like the contract's `uint8 round`: round
 i pays the member at `payout_position` i.
 """
@@ -57,16 +57,16 @@ class StokvelCycle(Base):
         ),
         # A started cycle has a fixed number of rounds, one per member
         CheckConstraint(
-            "status = 'forming' OR round_count IS NOT NULL",
-            name="stokvel_cycles_started_has_round_count",
+            "status = 'forming' OR total_rounds IS NOT NULL",
+            name="stokvel_cycles_started_has_total_rounds",
         ),
         CheckConstraint(
-            "round_count IS NULL OR round_count >= 2",
-            name="stokvel_cycles_round_count_min",
+            "total_rounds IS NULL OR total_rounds >= 2",
+            name="stokvel_cycles_total_rounds_min",
         ),
         CheckConstraint(
             "current_round IS NULL "
-            "OR (current_round >= 0 AND current_round < round_count)",
+            "OR (current_round >= 0 AND current_round < total_rounds)",
             name="stokvel_cycles_current_round_in_range",
         ),
         UniqueConstraint(
@@ -86,7 +86,7 @@ class StokvelCycle(Base):
     stokvel_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("stokvels.id"), nullable=False, index=True
     )
-    # The number of the cycle in the stokvel.
+    # The number of the cycle in the stokvel. Starts at 1.
     cycle_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         Text,
@@ -94,12 +94,15 @@ class StokvelCycle(Base):
         default=StokvelCycleStatus.FORMING.value,
         server_default=StokvelCycleStatus.FORMING.value,
     )
-    # Set when the cycle starts; null while forming
-    round_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The total number of rounds in the cycle. Set when the cycle starts.
+    total_rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Starts at 0 when the cycle starts
     current_round: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Cycle start date
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Cycle end date
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

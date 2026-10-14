@@ -156,7 +156,7 @@
 <text xml:space="preserve" text-anchor="start" x="3737.84" y="-1564.8" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
 <polygon fill="#e7e2dd" stroke="none" points="3404.34,-1496.7 3404.34,-1550.95 3780.34,-1550.95 3780.34,-1496.7 3404.34,-1496.7"/>
 <polygon fill="none" stroke="#29235c" points="3404.34,-1496.7 3404.34,-1550.95 3780.34,-1550.95 3780.34,-1496.7 3404.34,-1496.7"/>
-<text xml:space="preserve" text-anchor="start" x="3415.34" y="-1509.55" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">round_count &#160;&#160;&#160;</text>
+<text xml:space="preserve" text-anchor="start" x="3415.34" y="-1509.55" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">total_rounds &#160;&#160;&#160;</text>
 <text xml:space="preserve" text-anchor="start" x="3735.59" y="-1510.55" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">int</text>
 <polygon fill="#e7e2dd" stroke="none" points="3404.34,-1442.45 3404.34,-1496.7 3780.34,-1496.7 3780.34,-1442.45 3404.34,-1442.45"/>
 <polygon fill="none" stroke="#29235c" points="3404.34,-1442.45 3404.34,-1496.7 3780.34,-1496.7 3780.34,-1442.45 3404.34,-1442.45"/>

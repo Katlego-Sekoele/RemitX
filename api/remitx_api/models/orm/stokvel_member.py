@@ -35,9 +35,11 @@ class StokvelMember(Base):
     stokvel_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("stokvels.id"), nullable=False, index=True
     )
+    # The user who is a member of the stokvel
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False, index=True
     )
+    # The fiat account that pays contributions for this member.
     account_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("accounts.account_id"), nullable=False
     )

@@ -38,11 +38,16 @@ class StokvelRound(Base):
     cycle_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("stokvel_cycles.id"), primary_key=True
     )
+    # The round number within the cycle.
     round: Mapped[int] = mapped_column(Integer, primary_key=True)
     start_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Date and time when the round can be automatically released to the member. 
+    # Payout not released before this time, even if all contributions are received.
+    # Payout will not be released if not all contributions are received by this time, even if the deadline has passed.
+    # Payouts are released after this time if all contributions are received.
     payout_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+       DateTime(timezone=True), nullable=False
     )

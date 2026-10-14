@@ -100,7 +100,7 @@ def upgrade() -> None:
         sa.Column("stokvel_id", sa.Uuid(), nullable=False),
         sa.Column("cycle_number", sa.Integer(), nullable=False),
         sa.Column("status", sa.Text(), server_default="forming", nullable=False),
-        sa.Column("round_count", sa.Integer(), nullable=True),
+        sa.Column("total_rounds", sa.Integer(), nullable=True),
         sa.Column("current_round", sa.Integer(), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
@@ -118,16 +118,16 @@ def upgrade() -> None:
             name="stokvel_cycles_closed_at_matches_status",
         ),
         sa.CheckConstraint(
-            "status = 'forming' OR round_count IS NOT NULL",
-            name="stokvel_cycles_started_has_round_count",
+            "status = 'forming' OR total_rounds IS NOT NULL",
+            name="stokvel_cycles_started_has_total_rounds",
         ),
         sa.CheckConstraint(
-            "round_count IS NULL OR round_count >= 2",
-            name="stokvel_cycles_round_count_min",
+            "total_rounds IS NULL OR total_rounds >= 2",
+            name="stokvel_cycles_total_rounds_min",
         ),
         sa.CheckConstraint(
             "current_round IS NULL "
-            "OR (current_round >= 0 AND current_round < round_count)",
+            "OR (current_round >= 0 AND current_round < total_rounds)",
             name="stokvel_cycles_current_round_in_range",
         ),
         sa.ForeignKeyConstraint(
