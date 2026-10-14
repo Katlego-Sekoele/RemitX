@@ -681,6 +681,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list and detail pages on mocked data; sidebar entry "Stokvels" in `app.routes.ts` | #251 |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite, a real exclusive advisory lock on Postgres (`postgres` lane) | #278 |
+| `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
 
 ## 14. Functions created
 
