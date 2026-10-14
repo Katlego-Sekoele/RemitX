@@ -36,4 +36,10 @@ decision D9 in `docs/stokvel_integration.md`.
 - `quotes.sender_user_id` becomes nullable, with `quotes.stokvel_id` naming a
   stokvel sender and a CHECK that exactly one is set. Row-level security on
   `quotes` matches on `sender_user_id`, so a customer does not see a stokvel's
-  quote through it; the member screen (R2-14) has to provide that view.
+  quote through it; the member screen (R2-14) has to provide that view. The
+  proposed fix (pending approval; task on #236) extends the ledger policies
+  with `stokvel_is_member` and leaves `sender_user_id` NULL, so a payout never
+  counts toward a member's limits.
+- The transfer reads outer-join the sender user, so a stokvel's payout still
+  lists for its recipient and in the admin totals, with no counterparty user
+  or name.

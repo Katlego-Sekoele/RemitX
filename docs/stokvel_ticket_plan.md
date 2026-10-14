@@ -1,6 +1,9 @@
 # Stokvel ticket plan
 
-Draft for the team. The tickets were created on GitHub on 2026-10-07 (see "GitHub issues" at the bottom). If the plan and an issue disagree, tell the plan's owner and update both. Sources: [ftc_project_brief.md](ftc_project_brief.md) (graded), [stokvel_integration.md](stokvel_integration.md) (shared contract), and the open issues #197–#209 on Katlego-Sekoele/RemitX (bodies read).
+> [!NOTE]
+> **Historical record, not maintained.** This plan was written once, to create the initial stokvel tickets on GitHub on 2026-10-07 (see "GitHub issues" at the bottom). It is not updated as work progresses, so statuses, owners, file paths and dates here are as of that day. For the current state, see the GitHub issues and [stokvel_integration.md](stokvel_integration.md). This file will most likely be deleted towards the end of the project.
+
+Sources used when it was written: [ftc_project_brief.md](ftc_project_brief.md) (graded), [stokvel_integration.md](stokvel_integration.md) (shared contract), and the open issues #197–#209 on Katlego-Sekoele/RemitX (bodies read).
 
 ## How the tickets are written
 
@@ -250,10 +253,10 @@ _Rebalanced 2026-10-07: R2-12 and R2-13 (contract-facing worker tasks) moved to 
 #### R2-03. Remove XRPL imports and update docs
 **Owner:** Claire (moved from Katlego; supports: Sian) · **Milestone:** EVM wallet setup and switch over · **Size:** S · **Type:** core · **Depends on:** R2-02 · **Refs:** #204
 - [ ] No `import xrpl` left under `api/`.
-- [ ] Update CLAUDE.md ("XRPL Testnet only"; the key-storage constraint should say the encrypted key sits in `.env`), DEPLOYMENT.md, CONTEXT.md, `Transaction_Flow_Context.md`.
+- [ ] Update CLAUDE.md ("XRPL Testnet only"; the key-storage constraint should say the encrypted key sits in `.env`), DEPLOYMENT.md, CONTEXT.md. Do **not** update `Transaction_Flow_Context.md`: it is the original project's record and stays unchanged.
 - [ ] Replace hard-coded RLUSD or `uctusd` strings in the frontend with the OpenAPI enums.
 **Files:**
-- Change: `api/remitx_worker/tasks.py`, `api/remitx_worker/reclaim.py`, `api/remitx_api/services/queue_service.py`, `api/remitx_api/services/settlement_recovery_service.py`, `api/remitx_api/services/remittance_service.py`, `api/remitx_api/controllers/remittance_controller.py`, `CLAUDE.md`, `CONTEXT.md`, `docs/DEPLOYMENT.md`, `docs/Transaction_Flow_Context.md`, `frontend/app/components/landing/trust-note.tsx`, `frontend/app/components/landing/landing-footer.tsx`, `frontend/app/components/auth-split-layout.tsx`, `frontend/app/lib/site.ts`
+- Change: `api/remitx_worker/tasks.py`, `api/remitx_worker/reclaim.py`, `api/remitx_api/services/queue_service.py`, `api/remitx_api/services/settlement_recovery_service.py`, `api/remitx_api/services/remittance_service.py`, `api/remitx_api/controllers/remittance_controller.py`, `CLAUDE.md`, `CONTEXT.md`, `docs/DEPLOYMENT.md`, `frontend/app/components/landing/trust-note.tsx`, `frontend/app/components/landing/landing-footer.tsx`, `frontend/app/components/auth-split-layout.tsx`, `frontend/app/lib/site.ts`
 - Delete: `api/remitx_worker/xrpl_service.py`, `platform_wallet/scripts/create_xprl_platform_wallet.py`
 - Run `grep -ri xrpl api/` to find the rest.
 **Done when:** `grep -ri xrpl api/` finds only the decommissioned settings.

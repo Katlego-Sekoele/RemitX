@@ -194,13 +194,15 @@ Rules:
 
 ## Stokvel integration tracking
 
+**Do not edit [docs/Transaction_Flow_Context.md](docs/Transaction_Flow_Context.md).** It records the original RemitX project from before the Stokvel work and is kept unchanged for reference. It can be read for context (fees, ledger model), but Stokvel changes, including the EVM switch-over, go in the stokvel docs below.
+
 [docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. **Update it before opening a PR** that touches stokvel work: add the changelog row, record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues for SianC7/RemitX_Stokvel (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for Katlego-Sekoele/RemitX (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

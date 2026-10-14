@@ -351,7 +351,8 @@ class AccountController:
         remittance_ids = self._remittances.get_ids_by_quote_ids(quote_ids, user_id)
         burn_hashes = self._transactions.get_burn_hashes(quote_ids, user_id)
         users = self._users.get_many(
-            {q.sender_user_id for q in quotes.values()}
+            # A stokvel's payout has no sender user.
+            {q.sender_user_id for q in quotes.values() if q.sender_user_id}
             | {q.beneficiary_user_id for q in quotes.values()}
         )
 

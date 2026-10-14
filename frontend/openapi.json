@@ -5043,10 +5043,17 @@
             "title": "Counterparty Name"
           },
           "counterparty_user_id": {
-            "description": "The other person. For a sent transfer, the `linked_user_id` of the beneficiary it went to.",
-            "format": "uuid",
-            "title": "Counterparty User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The other person. For a sent transfer, the `linked_user_id` of the beneficiary it went to. Null for a payout received from a stokvel, which has no sender user.",
+            "title": "Counterparty User Id"
           },
           "created_at": {
             "title": "Created At",

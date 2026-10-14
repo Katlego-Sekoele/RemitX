@@ -70,7 +70,7 @@ A **Member**'s choice, once a **Cycle** ends, to stay in the **Stokvel** for the
 _Avoid_: Renewal, opt-in
 
 **Payout**:
-The cross-border remittance a member receives from a finalised **Pool**, net of the FSE remittance fee and margin, which are deducted from the pool rather than charged to members.
+The cross-border remittance a member receives from a finalised **Pool**, net of the FSE remittance fee and margin, which are deducted from the pool rather than charged to members. (Current plan: whether fees are instead taken when members pay in is still an open product question.)
 _Avoid_: Disbursement
 
 ### Tokens

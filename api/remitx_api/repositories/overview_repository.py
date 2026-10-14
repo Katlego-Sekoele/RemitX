@@ -34,7 +34,8 @@ class TransferFact:
     created_at: datetime
     status: str
     confirmed_at: datetime | None
-    sender_user_id: uuid.UUID
+    # None when a stokvel sent it (`Quote.stokvel_id`).
+    sender_user_id: uuid.UUID | None
     beneficiary_user_id: uuid.UUID
     sender_amount: Decimal
     sender_currency: str
@@ -174,7 +175,8 @@ class OverviewRepository:
             )
             .join(Quote, Quote.quote_id == Remittance.quote_id)
             .join(settlement, settlement.tx_id == Remittance.tx_id)
-            .join(sender, sender.id == Quote.sender_user_id)
+            # Outer: a stokvel's payout has no sender user, and still counts.
+            .outerjoin(sender, sender.id == Quote.sender_user_id)
             .join(recipient, recipient.id == Quote.beneficiary_user_id)
         )
 

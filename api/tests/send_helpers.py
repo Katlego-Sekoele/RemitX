@@ -16,6 +16,7 @@ from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.remittance import Remittance
+from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_PENDING,
@@ -41,6 +42,10 @@ def record_transfer(
     """A transfer from `sender` to `recipient`, confirmed at `at` (now by
     default), whose settlement leg is at `status`. Flushed, not committed.
 
+    `sender` may be a `Stokvel`: the quote then names it in `stokvel_id`,
+    with no sender user, and its `STOKVEL` account sends the tokens (a
+    round's payout, D6).
+
     `sender_amount_zar` is the rand value the quote locked: the amount itself
     for a ZAR send unless given, and required for any other currency. None
     records a quote from before that column existed."""
@@ -61,8 +66,10 @@ def record_transfer(
     )
     db.session.add(rate)
     db.session.flush()
+    from_stokvel = isinstance(sender, Stokvel)
     quote = Quote(
-        sender_user_id=sender.id,
+        sender_user_id=None if from_stokvel else sender.id,
+        stokvel_id=sender.id if from_stokvel else None,
         beneficiary_user_id=recipient.id,
         sender_amount=sender_amount,
         sender_currency=sender_currency,
@@ -86,9 +93,14 @@ def record_transfer(
     db.session.add(quote)
     db.session.flush()
     accounts = AccountRepository()
-    source = accounts.get_or_create_user_account(
-        sender.id, sender.base_reference, CURRENCY_TOKEN
-    )
+    if from_stokvel:
+        source = accounts.get_stokvel_account(
+            sender.id
+        ) or accounts.create_stokvel_account(sender)
+    else:
+        source = accounts.get_or_create_user_account(
+            sender.id, sender.base_reference, CURRENCY_TOKEN
+        )
     destination = accounts.get_or_create_user_account(
         recipient.id, recipient.base_reference, CURRENCY_TOKEN
     )

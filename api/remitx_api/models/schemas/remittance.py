@@ -53,9 +53,10 @@ class TransferRead(Schema):
     remittance_id: uuid.UUID
     quote_id: uuid.UUID
     direction: Literal["sent", "received"]
-    counterparty_user_id: uuid.UUID = Field(
+    counterparty_user_id: uuid.UUID | None = Field(
         description="The other person. For a sent transfer, the "
-        "`linked_user_id` of the beneficiary it went to."
+        "`linked_user_id` of the beneficiary it went to. Null for a payout "
+        "received from a stokvel, which has no sender user."
     )
     counterparty_name: str | None = Field(
         description="The other person's verified name: the recipient of a "

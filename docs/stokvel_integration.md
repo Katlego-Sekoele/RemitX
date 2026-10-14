@@ -51,9 +51,13 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-09 | 2 | Deploy script (Claire's #285 review): records the address before the post-deploy checks; blank settings fall back to defaults; `FORCE_REDEPLOY` documented | |
 | 2026-10-09 | Proposals, 3, 5, 8, 9, 13, 14 | R2-04 (#226): `stokvels`, `stokvel_members` and `stokvel_invitations` built with row-level security (section 3). Product: fixed fiat contribution for the stokvel's life; cancellation, refunds and disputes not in v1 (P4); members and invitees see a stokvel's invitations; former members keep their history. Dropped `max_members` and `stokvels.status`; `current_cycle_id` moves to R2-05, `account_id` to R3-01; invitations can be revoked. New tickets: #297 (revoke route), #298 (rate difference), #299 (invitations screen) | #300 |
 | 2026-10-11 | Decisions, 3, 8, 11 | Product: contribution amount is **fixed token** (UCTUSD), not fixed fiat. `stokvels.contribution_amount` is that UCTUSD amount; member fiat debit = amount × live rate at contribution. D13. Closes #298 (rate-difference booking was only needed under fixed fiat) | #300 |
+| 2026-10-11 | 3, 8, 9, 13, 14, EVM switch-over | R3-01 (#238) and R3-02 (#239) built. Each stokvel gets a `STOKVEL` ledger account; new transaction types `stokvel_contribution` and `stokvel_pool_release` (no `stokvel_refund`: refunds are not in v1); a quote's sender can be a stokvel; `xrpl_tx_hash` becomes `evm_tx_hash` (not `onchain_tx_hash` as first planned) and the treasury becomes `REMITX_EVM_WALLET`. Details in section 3, "Ledger changes"; ADR 0004. Two follow-ups added to section 8 | #301 |
 | 2026-10-12 | 3, 14 | `stokvels.deactivated_at` (null while in service). Membership `account_id` must be the member's fiat account in the stokvel currency | #300 |
 | 2026-10-13 | 3, 14 | Made stokvel RLS helper and validation functions Neon-compatible: hardened `SECURITY DEFINER` functions replace unsupported custom-GUC function settings while preserving recursive-policy avoidance; PostgreSQL regression coverage added | |
-| 2026-10-11 | 3, 8, 9, 13, 14, EVM switch-over | R3-01 (#238) and R3-02 (#239): `STOKVEL` account type with a non-negative balance, `stokvels.account_id`, transaction types `stokvel_contribution` and `stokvel_pool_release` (`stokvel_refund` dropped with #208); `quotes.stokvel_id` with exactly one sender; `xrpl_tx_hash` renamed **`evm_tx_hash`** (was planned as `onchain_tx_hash`), also for `stokvel_contributions`; treasury type `REMITX_EVM_WALLET`, label "RemitX Treasury Wallet". ADR 0004. Two follow-ups added to section 8 | |
+| 2026-10-13 | 3, 8, 13 | Fix: a payout from a stokvel no longer goes missing from the recipient's transfers, transfer page and dashboard, or from the admin totals (the reads used to drop any quote without a sender user). Section 8: proposal for how members see their stokvel's payouts (pending roles 2 and 3), and two new questions: what former members see, and what sender name the recipient sees | #301 |
+| 2026-10-14 | Decisions, 8, 11 | Fee timing is now an open product question: from the pool at payout, or on top of each contribution (product question 4 in `docs/stokvel-product-questions.md`). D6 and section 11 call "from the pool" the current plan, not a decision. Blocks R3-05 (#242) | #301 |
+| 2026-10-14 | 11 | `Transaction_Flow_Context.md` is frozen as the original RemitX project's record, so it is no longer on the EVM switch-over list. Notice added to it and to CLAUDE.md | #301 |
+| 2026-10-14 | Decisions, 9, EVM switch-over | D11 now covers code too: XRPL files, scripts and the `xrpl-py` package are kept and marked as no longer used, the same as the XRPL settings already were. Only change what EVM needs, so we can switch back to XRPL easily. D1 and the switch-over rows for `xrpl_service.py`, the wallet script and `pyproject.toml` now say "keep" instead of "replace" | #301 |
 
 ---
 
@@ -61,17 +65,17 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 
 | # | Decision | Source |
 |---|---|---|
-| D1 | The whole system moves from XRPL to the XRPL **EVM** Testnet. No XRPL Testnet code remains. Lecturer approval received (Marc, 2026-10-07). | Design session, lecturer approval |
+| D1 | The whole system moves from XRPL to the XRPL **EVM** Testnet. The running system no longer uses the XRPL Testnet, but the XRPL code is kept, not deleted (D11). Lecturer approval received (Marc, 2026-10-07). | Design session, lecturer approval |
 | D2 | One custodial EVM **Treasury Wallet** (the existing term is kept). The database ledger, not separate addresses, tells contribution, pool release and burn movements apart. Whether to add a separate settlement wallet stays open (#207, section 8). | Design session, CONTEXT.md |
 | D3 | Users create stokvels and invite other users. The Organiser sets attributes and payout order. The Administrator only has oversight and the global pause. | CONTEXT.md |
 | D4 | One contract deployment holds many stokvels (`mapping(stokvelId => Stokvel)`), each with nested cycles and a per-round pool. History is events plus minimal storage (paid, finalised, entitled member). | Design session |
 | D5 | Finalise is automatic. Round N releases once every member has contributed to round N+1 **and round N's payout time has passed** (D12). The last round of a cycle releases once every member has contributed to it and its payout time has passed. | CONTEXT.md, team 2026-10-07 |
-| D6 | The Stokvel is the remittance **sender**. The pool is paid to the scheduled member's Payout beneficiary through the existing remittance flow. Fee and margin are deducted from the pool. | CONTEXT.md |
+| D6 | The Stokvel is the remittance **sender**. The pool is paid to the scheduled member's Payout beneficiary through the existing remittance flow. Fee and margin are deducted from the pool (**current plan; when fees are taken is open**, see section 8). | CONTEXT.md |
 | D7 | Contributions are paid from the member's fiat account in the Stokvel currency and refunded as the original fiat amount. The deadline is informational only; there are no penalties on the platform. | CONTEXT.md |
 | D8 | A Stokvel has no sending limits. Each contribution counts toward the member's own limits. Joining needs the required KYC standing. | CONTEXT.md |
 | D9 | The Stokvel gets a ledger `accounts` row of a new type `STOKVEL` (token currency) and is the sender of its payout remittance. | Team, 2026-10-06 |
 | D10 | The "hold the payout until the recipient pays the next round" idea is already covered by D5. The CONTEXT.md rule stays. A per-member early release (release as soon as the recipient alone has paid the next round) is not adopted. | Team, 2026-10-06 |
-| D11 | The XRPL variables in `.env` (`XRPL_*`, `PLATFORM_WALLET_*`, `UCTUSD_ISSUER*`) are decommissioned, not removed. | Team, 2026-10-06 |
+| D11 | **We switch XRPL off, but we don't delete it.** Only change what the EVM chain needs in order to work, such as the settings it reads, the worker's burn, names and tests. If an XRPL file, script, setting (`XRPL_*`, `PLATFORM_WALLET_*`, `UCTUSD_ISSUER*`) or the `xrpl-py` package can stay without stopping EVM from working, leave it where it is and add a comment saying it is no longer used. The running system never calls it. This way we can go back to XRPL later without starting from scratch. | Team, 2026-10-06 (settings); extended to code, 2026-10-14 |
 | D12 | Each round has a **payout time**, set by the Organiser. It is a hard gate: `finalise` reverts before it (brief §7.1). If the payout time passes while a member has not paid, the round stays blocked, not lost, and releases once the last member pays. The contribution **deadline** stays informational (D7). A contract cannot run itself on a date, so a scheduled backend task calls `finalise` for rounds that are due (section 4); the final `contribute` call still triggers the release when the time has already passed. | Team, 2026-10-07 |
 | D13 | Contribution amount is a fixed **UCTUSD** (token) amount for the stokvel's life, set in `createStokvel` and stored as `stokvels.contribution_amount`. Member fiat debit = token amount × live rate at contribution. A new amount means a new stokvel (MVP). | Product, 2026-10-11 |
 
@@ -307,12 +311,35 @@ The policies look rows up through the functions `stokvel_is_member`, `stokvel_is
 
 | Change | Detail |
 |---|---|
-| New account type | **Built (R3-01).** `STOKVEL` (currency: the token), one per stokvel, linked from `stokvels.account_id`. `accounts_type_valid` allows it; `accounts_owner_matches_type` and `accounts_reference_matches_type` needed no change (no user, no reference is already allowed for any type but `USER`). `accounts_stokvel_balance_nonneg`: its balance never goes negative. Created by `AccountRepository.create_stokvel_account` (label `Stokvel <id>`), and not a platform account (left out of `list_platform_accounts`). ADR 0004. |
-| New transaction types | **Built (R3-01).** `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account) and `stokvel_pool_release` (contract → Treasury Wallet → stokvel account), in `transactions_type_valid`. `stokvel_refund` is not added: refunds are not in v1 (#208). |
+| New account type | **Built (R3-01).** One `STOKVEL` account per stokvel, in the token, linked from `stokvels.account_id`. See "Stokvel account" below. |
+| New transaction types | **Built (R3-01).** `stokvel_contribution` (member fiat account → platform bank, then token legs into the stokvel account) and `stokvel_pool_release` (contract → Treasury Wallet → stokvel account). No `stokvel_refund`: refunds are not in v1 (#208). |
 | Payout legs | Reuse the existing `remittance`, `fee`, `token_burn` and `beneficiary_payout` legs grouped by `quote_id`, with the stokvel account as sender, so the proven settlement worker and its idempotency are reused. A separate `STOKVEL_REMITTANCE` type was suggested; see section 8. |
-| Quote sender | **Built (R3-02).** `quotes.sender_user_id` is nullable and `quotes.stokvel_id` names a stokvel sender; CHECK `quotes_one_sender` requires exactly one. Stokvel quotes skip `require_can_send` (D8; R3-05). RLS on `quotes` matches `sender_user_id`, so customers do not see a stokvel's quote through it (section 8). |
-| EVM names | **Built (R3-02).** `transactions.xrpl_tx_hash` → `evm_tx_hash`, in two steps (rule 5 in `api/alembic/README.md`): `evm_tx_hash` is added and backfilled, the worker writes both and code reads `evm_tx_hash`; a later migration drops `xrpl_tx_hash` (section 8). API fields: `evm_tx_hash`, `burn_evm_tx_hash`. Account type `REMITX_XRPL_WALLET` → `REMITX_EVM_WALLET`; seeded label "RemitX XRPL Treasury Wallet" → "RemitX Treasury Wallet" (`remittance_service.py` now imports the seed's label, so the two cannot drift). |
+| Quote sender | **Built (R3-02).** A quote is sent by a user or by a stokvel, never both. See "Stokvel as quote sender" below. |
+| EVM names | **Built (R3-02).** `xrpl_tx_hash` becomes `evm_tx_hash`, and the treasury account becomes `REMITX_EVM_WALLET`. See "EVM names" below. |
 | Limits | Contributions count toward the member's limits: extend `RemittanceRepository.sent_zar` (or add a parallel sum) so contributions are included. |
+
+#### Stokvel account (R3-01)
+
+- Created by `AccountRepository.create_stokvel_account`, with the label `Stokvel <id>`.
+- Its balance can never go below zero (CHECK `accounts_stokvel_balance_nonneg`).
+- `accounts_type_valid` now allows `STOKVEL`. The owner and reference CHECKs needed no change: only `USER` accounts must have a user and a reference.
+- It is not a platform account, so `list_platform_accounts` leaves it out.
+- Why a stokvel has its own account: ADR 0004.
+
+#### Stokvel as quote sender (R3-02)
+
+- `quotes.sender_user_id` is now nullable, and the new `quotes.stokvel_id` names a stokvel sender. CHECK `quotes_one_sender` requires exactly one of the two.
+- Stokvel quotes are to skip `require_can_send` (D8). That is built in R3-05.
+- **Members:** row-level security on `quotes` matches on `sender_user_id`, so customers cannot see a stokvel's quote. How members will see their stokvel's payouts is proposed in section 8.
+- **Recipient:** still sees the payout. The transfer reads (`RemittanceRepository._records`, `OverviewRepository._facts`) outer-join the sender user, so the payout shows in the recipient's transfer list, transfer page and dashboard, and in the admin totals. For such a payout, `TransferRead.counterparty_user_id` and `counterparty_name` are null.
+
+#### EVM names (R3-02)
+
+- `transactions.xrpl_tx_hash` becomes `evm_tx_hash` in two steps (rule 5 in `api/alembic/README.md`):
+  1. **Now:** `evm_tx_hash` is added and backfilled. The worker writes both columns; code reads only `evm_tx_hash`.
+  2. **Later:** a migration drops `xrpl_tx_hash` (open question in section 8).
+- API fields are now `evm_tx_hash` and `burn_evm_tx_hash`.
+- Treasury account type `REMITX_XRPL_WALLET` becomes `REMITX_EVM_WALLET`, and its seeded label "RemitX XRPL Treasury Wallet" becomes "RemitX Treasury Wallet". `remittance_service.py` imports the label from the seed, so the two cannot drift apart.
 
 ### Status values and transitions
 
@@ -460,9 +487,11 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Admin (deployer) key for pause and unpause on the server: R3-07 (#244) must sign `pause()` with the **admin** key, not the Treasury key, and #277 does not cover storing it. Store it the same way as the Treasury key, or keep pause as a manual step run by the key holder? | Open | Roles 1, 3 | |
 | New `STOKVEL_REMITTANCE` type, or reuse the existing remittance legs with the stokvel account as sender (this doc's recommendation)? | Open | Roles 2, 3 | |
 | Cancellation (P4): who may cancel, and does it reverse the brief's "refunds out of scope"? (#208) | **Resolved (product, 2026-10-09):** not in v1, nor refunds or disputes | Product | |
-| Drop `transactions.xrpl_tx_hash`: once the R3-02 release is live everywhere, a migration copies any hash written only to it into `evm_tx_hash`, then drops the column and stops the worker writing it | Open: follow-up to R3-02 | Role 3 | |
-| A stokvel's payout quote has no `sender_user_id`, so RLS on `quotes`, `remittances` and their `transactions` hides it from members on customer routes (account history shows no counterparty). Policy change, or a server-side read for the member screen? | Open: for R2-14 (#236) and R3-05 (#242) | Roles 2, 3 | 0004 |
-| Do fee and margin come out of the pool or from members? CONTEXT.md says the pool (D6) | Confirm | Product | |
+| When can `transactions.xrpl_tx_hash` be dropped? Once the R3-02 release is live everywhere, a migration copies any hash written only to the old column into `evm_tx_hash`, drops the column, and the worker stops writing it | Open: follow-up to R3-02 | Role 3 | |
+| How do members see their stokvel's payouts? A stokvel's payout quote has no `sender_user_id`, so row-level security on `quotes`, `remittances` and `transactions` hides it from them | **Direction proposed (2026-10-13), pending roles 2 and 3 approval:** see "Member visibility of stokvel payouts" below. Task on R2-14 (#236) | Roles 2, 3 | 0004 |
+| What do former members see? `stokvel_is_member` counts former members, so under that proposal someone who left would still see later rounds' payouts. Intended, or only rounds from while they were a member? | Open: for #236 (product question 5 in `docs/stokvel-product-questions.md`) | Product, Roles 2, 3 | |
+| What sender name does a payout's recipient see? The recipient is usually not a member, so row-level security hides the stokvel and they see no sender name. Options: the stokvel's name (needs a narrow lookup that skips row-level security, such as a `SECURITY DEFINER` function), a fixed label such as "Stokvel payout", or nothing | Open: for R3-05 (#242) (product question 6) | Product, Roles 2, 3, 4 | |
+| When are the fee and margin taken? **A:** the payout's single remittance fee is split equally across the members and paid on top of each contribution, so the beneficiary gets the full pool. **B:** taken from the pool at payout, so members pay exactly the contribution and the beneficiary gets the pool minus fees. D6 and CONTEXT.md plan B, but nothing is built yet | Open: product question 4 in `docs/stokvel-product-questions.md`; blocks R3-05 (#242) | Product | |
 | Are the fee and margin taken from the pool converted back to fiat, and if so how? Suggestion: convert them to fiat at finalisation and deduct them from the pool before the payout, so beneficiaries receive their payout in fiat after fees | Open, product decision | Product | |
 | Contribution deadline informational only, with no penalties on the platform (D7)? | Confirm | Product | |
 | Stokvel has no sending limits, but each contribution counts toward the member's own limits (D8)? | Confirm | Product | |
@@ -482,6 +511,26 @@ Resolved: finalisation is automatic (D5); a manual admin finalise is kept as a f
 
 Resolved (2026-10-08): the Treasury approves the stokvel contract once per contract address (`approve(vault, max)`), and the worker checks the allowance before each `contribute` (section 1, "Treasury allowance"). Backend confirmed sections 1 and 6.
 
+### Member visibility of stokvel payouts (proposed)
+
+_Status: proposed 2026-10-13, pending roles 2 and 3 approval. Task on R2-14 (#236). ADR 0004._
+
+**Problem:** a stokvel's payout quote has no `sender_user_id`, so row-level security hides the quote, the remittance and their transactions from the stokvel's members. Their account history shows no counterparty.
+
+**Proposal:**
+- Keep `sender_user_id` NULL on a stokvel's quote.
+- In the `quotes`, `remittances` and `transactions` policies, add `OR (stokvel_id IS NOT NULL AND stokvel_is_member(stokvel_id))` to the party check.
+- On `transactions`, also let members see legs on the stokvel's `STOKVEL` account. Pool release and contribution legs have no quote, so the clause above does not reach them.
+- Members then see payouts in the stokvel's history (`GET /stokvels/{id}`).
+
+**Rejected:**
+- Setting `sender_user_id` to the scheduled member. The pool would count against that member's limits (against D8), and "sender" would mean two things.
+- A server-side read that skips row-level security. The access check would then live only in application code.
+
+**Notes:**
+- If #293 pays the pool into the member's own account, that member becomes `beneficiary_user_id` and sees the payout without this change. The other members still need it.
+- The recipient already sees the payout (section 3, "Stokvel as quote sender").
+
 ---
 
 ## 9. Implementation progress
@@ -490,7 +539,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 
 | Step | Status | Issues | Notes |
 |---|---|---|---|
-| Replace the XRPL layer with EVM | In progress | #276 (was #204) | See "EVM switch-over" below. PR #211 (open) adds the worker-only key loader in `evm_service.py` and the `web3` dependency; sending transactions, the burn and the XRPL removal remain |
+| Replace the XRPL layer with EVM | In progress | #276 (was #204) | See "EVM switch-over" below. PR #211 (open) adds the worker-only key loader in `evm_service.py` and the `web3` dependency; sending transactions and the burn are still to do. XRPL code stays in place (D11) |
 | Treasury Wallet as EVM address, encrypted key | In progress | #277 (was #205) | PR #211 (open, not merged): wallet creation script, worker-only key loader, log redaction, extended gitleaks rule and leak tests. Still open: operator role at deployment (#218), UCTUSD funding, and recording the address in section 2 |
 | Burn UCTUSD on EVM | Not started | #278 (was #206) | Needs burn-method answer |
 | Contract: stokvels and cycles, interface (DEC-1) | Done | #197, #212, #215 | Merged in PR #282 (2026-10-08); #279–#281 closed as superseded. Matches section 1 and D12 |
@@ -503,7 +552,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
 | Members create stokvels and invite others | Not started | #229 (was #209) | |
-| DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Group tables with RLS (#226) in review; ledger account, transaction types, stokvel quote sender and EVM names (#238, #239) in review, built on #226; cycle and contribution tables next |
+| DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Done: group tables with row-level security (#226, PR #300). In review: ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301). Next: cycle and contribution tables (#227, #228) |
 | Worker tasks | Not started | | Section 4 |
 | API routes | Not started | | Section 5 |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
@@ -533,16 +582,16 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 
 | Area | Change |
 |---|---|
-| `api/remitx_worker/xrpl_service.py` | Replace with an `evm_service.py` using web3.py: load and decrypt the Treasury key, send transactions, wait for receipts, call the burn. The XRPL `Payment` to the issuer goes away |
-| `platform_wallet/scripts/create_xprl_platform_wallet.py` | Rewrite: generate an EVM key, Fernet-encrypt it into `.env`, no faucet wallet or trust line |
-| `api/pyproject.toml` | Swap `xrpl-py` for `web3` |
+| `api/remitx_worker/xrpl_service.py` | Keep it, with a comment saying it is no longer used (D11). The worker stops calling it and calls the new `evm_service.py` (web3.py) instead, which loads and decrypts the Treasury key, sends transactions, waits for them to confirm, and does the burn |
+| `platform_wallet/scripts/create_xprl_platform_wallet.py` | Keep it, with a comment saying it is no longer used (D11). The EVM wallet is made by `create_evm_platform_wallet.py`, which generates an EVM key and saves it encrypted in `.env`. It needs no faucet wallet or trust line |
+| `api/pyproject.toml` | Add `web3` and keep `xrpl-py` (D11). An old database migration still imports `xrpl-py`, so removing it would break `alembic upgrade head` |
 | `config.py`, `.env.example`, `.env.minimal.example` | New `EVM_*` variables (section 2). Keep `XRPL_*`, `PLATFORM_WALLET_*` and `UCTUSD_ISSUER*` in place, marked decommissioned and unused by EVM code; do not remove them |
 | Migration | Done in R3-01 and R3-02 (#238, #239): `xrpl_tx_hash` → `evm_tx_hash` (old column dropped later), the `REMITX_XRPL_WALLET` type and CHECK, the seeded wallet label, `STOKVEL` and the new transaction types |
 | `services/transfer_timeline.py`, `controllers/remittance_controller.py`, settlement-recovery code | Replace "Settling on XRPL Testnet / RLUSD" text (the `xrpl_tx_hash` field is now `evm_tx_hash`, #239) |
 | `remitx_worker/tasks.py` | Burn and confirm tasks keep their shape; call `evm_service` |
 | Tests | Worker burn tests mock `xrpl_service`: repoint at `evm_service` |
 | `tools/seeder`, `tools/loadtest/fake_xrpl_worker.py` | Update for EVM |
-| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [Transaction_Flow_Context.md](Transaction_Flow_Context.md), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md`; add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, #285), the `STOKVEL` ledger account (done: `docs/adr/0004-stokvel-ledger-account.md`, #238), and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
+| Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md` (not [Transaction_Flow_Context.md](Transaction_Flow_Context.md), which stays unchanged as the original project's record); add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, #285), the `STOKVEL` ledger account (done: `docs/adr/0004-stokvel-ledger-account.md`, #238), and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
 
 ## 10. Features added
 
@@ -563,7 +612,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 
 - **Contribution:** the member's fiat account is debited for `contribution_amount × live rate` (counts toward their limits), and the worker sends exactly `contribution_amount` UCTUSD from the Treasury Wallet to the contract with `contribute`. The contribution is `confirmed` only after the on-chain event.
 - **Finalisation:** when every member has paid round N+1 (or everyone has paid the last round) **and the round's payout time has passed**, the contract releases round N's pool to the Treasury Wallet. The database credits the stokvel's `STOKVEL` ledger account.
-- **Payout:** the stokvel is the sender. A quote and remittance are created from the stokvel account to the scheduled member's Payout beneficiary, using FSE's fee and margin, deducted from the pool. The existing settlement chain burns the UCTUSD and credits the beneficiary's payout-currency account. The burn hash, beneficiary credit and remittance reference are stored together.
+- **Payout:** the stokvel is the sender. A quote and remittance are created from the stokvel account to the scheduled member's Payout beneficiary, using FSE's fee and margin, deducted from the pool (current plan; when fees are taken is still open, section 8). The existing settlement chain burns the UCTUSD and credits the beneficiary's payout-currency account. The burn hash, beneficiary credit and remittance reference are stored together.
 - **No bridge:** nothing moves on the XRP Ledger; the remittance step produces the quotation, record and reference, and the burn stands for the simulated cash-out.
 
 ## 12. User flow
@@ -605,6 +654,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/alembic/versions/V20261011_1004__rename_xrpl_wallet_to_evm_wallet.py` | Treasury type `REMITX_EVM_WALLET` and label "RemitX Treasury Wallet" | #239 |
 | `api/tests/test_stokvel_ledger.py` | Stokvel account, transaction types and stokvel quote sender | #238, #239 |
 | `api/tests/test_evm_names_migration.py` | Backfill and treasury rename on Postgres (`postgres` lane) | #239 |
+| `api/tests/test_stokvel_payout_reads.py` | A stokvel's payout still lists for its recipient (transfers, dashboard) and in the admin operations totals | #239 |
 | `docs/adr/0004-stokvel-ledger-account.md` | ADR for D9 (a stokvel has its own ledger account) | #238 |
 
 ## 14. Functions created
