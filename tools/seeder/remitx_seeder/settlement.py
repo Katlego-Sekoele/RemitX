@@ -7,10 +7,13 @@ becomes a timeline event a few seconds later, and each hand-off after it
 the worker's own task functions, so the pending -> processing -> confirmed or
 failed transitions and every balance update are real worker code.
 
-The one simulated call is `xrpl_service.burn_tokens`. It returns a synthetic
-hash (recognisable: it starts `5EED`) or raises the kind of error a failed
-Payment raises, at the scenario's failure rate. Nothing reaches the XRPL, and
-no treasury tokens are spent.
+The simulated calls are the chain's: `evm_service.burn_tokens` and
+`evm_service.wait_for_receipt`. The burn hands the worker a synthetic hash
+(recognisable: it starts `5EED`) through `on_signed`, as the real one does
+before sending, and the receipt confirms it at once. At the scenario's
+failure rate the burn instead fails before anything is signed, so the group
+fails with no hash. `evm_service.get_web3` raises, so nothing reaches an
+EVM RPC, and no treasury tokens are spent.
 """
 
 from __future__ import annotations
@@ -31,6 +34,10 @@ FAILURE_RESULTS = ("tecPATH_DRY", "tecUNFUNDED_PAYMENT", "tefPAST_SEQ")
 def synthetic_hash(ctx: RunContext) -> str:
     tail = "".join(ctx.rng.choice("0123456789ABCDEF") for _ in range(60))
     return SYNTHETIC_HASH_PREFIX + tail
+
+
+def _no_rpc():
+    raise RuntimeError("the seeder simulates the chain; nothing may reach an EVM RPC")
 
 
 class _ExpectedFailureFilter(logging.Filter):
@@ -59,7 +66,7 @@ class SimulatedSettlement:
 
     def install(self, stack: ExitStack) -> None:
         from remitx_api.services import queue_service
-        from remitx_worker import xrpl_service
+        from remitx_worker import evm_service
 
         stack.enter_context(
             mock.patch.object(
@@ -77,8 +84,12 @@ class SimulatedSettlement:
             )
         )
         stack.enter_context(
-            mock.patch.object(xrpl_service, "burn_tokens", self._simulated_burn)
+            mock.patch.object(evm_service, "burn_tokens", self._simulated_burn)
         )
+        stack.enter_context(
+            mock.patch.object(evm_service, "wait_for_receipt", self._simulated_receipt)
+        )
+        stack.enter_context(mock.patch.object(evm_service, "get_web3", _no_rpc))
         worker_log = logging.getLogger("remitx_worker.tasks")
         expected = _ExpectedFailureFilter(self)
         worker_log.addFilter(expected)
@@ -121,13 +132,21 @@ class SimulatedSettlement:
 
     # --- the simulated chain ---------------------------------------------
 
-    def _simulated_burn(self, amount: Decimal) -> str:
+    def _simulated_burn(self, amount: Decimal, *, on_signed=None, w3=None) -> str:
+        """Stand-in for `evm_service.burn_tokens`. A forced failure raises
+        before `on_signed`, like a burn that fails before it is signed."""
         if self._fail_next:
             self._fail_next = False
             raise RuntimeError(
                 f"burn Payment failed: {self.ctx.rng.choice(FAILURE_RESULTS)}"
             )
         tx_hash = synthetic_hash(self.ctx)
+        if on_signed is not None:
+            on_signed(tx_hash)
         self.ctx.simulated_burn_total += Decimal(amount)
         self.ctx.synthetic_hashes.append(tx_hash)
         return tx_hash
+
+    def _simulated_receipt(self, tx_hash: str, timeout: float = 120, w3=None):
+        """Stand-in for `evm_service.wait_for_receipt`: mined at once."""
+        return {"transactionHash": tx_hash, "status": 1, "blockNumber": 0}

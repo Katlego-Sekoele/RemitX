@@ -107,6 +107,7 @@ def check_remittances(session) -> list[Finding]:
     from remitx_api.models.orm.remittance import Remittance
     from remitx_api.models.orm.transaction import (
         STATUS_CONFIRMED,
+        STATUS_PENDING,
         TYPE_BENEFICIARY_PAYOUT,
         TYPE_FEE,
         TYPE_REMITTANCE,
@@ -143,12 +144,14 @@ def check_remittances(session) -> list[Finding]:
         if len(burn) != 1:
             shape.append(f"{label}: {len(burn)} burn legs")
             continue
-        confirmed = statuses == {STATUS_CONFIRMED}
-        if confirmed != bool(burn[0].evm_tx_hash):
-            status_problems.append(
-                f"{label}: burn hash {'missing' if confirmed else 'present'} "
-                f"on a {burn[0].status} group"
-            )
+        # The worker stores the burn's hash before sending it, so a hash
+        # proves nothing about outcome: a processing or failed group may
+        # have one. A confirmed group must; a pending one cannot.
+        has_hash = bool(burn[0].evm_tx_hash)
+        if statuses == {STATUS_CONFIRMED} and not has_hash:
+            status_problems.append(f"{label}: burn hash missing on a confirmed group")
+        elif statuses == {STATUS_PENDING} and has_hash:
+            status_problems.append(f"{label}: burn hash present on a pending group")
         fee_margin = quote.sender_transaction_fee + quote.exchange_rate_margin
         expected = {
             (TYPE_FEE, quote.sender_currency): [fee_margin],

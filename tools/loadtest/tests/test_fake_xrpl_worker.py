@@ -1,4 +1,4 @@
-"""The simulated burn stands in for the real one without reaching the XRPL."""
+"""The simulated burn stands in for the real EVM one without reaching a chain."""
 
 import importlib
 import math
@@ -19,7 +19,8 @@ def load(monkeypatch, **env):
     import fake_xrpl_worker
 
     worker = importlib.reload(fake_xrpl_worker)
-    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    worker.slept = []
+    monkeypatch.setattr(worker.time, "sleep", worker.slept.append)
     return worker
 
 
@@ -27,6 +28,26 @@ def test_a_simulated_hash_can_never_be_a_real_or_seeded_one(monkeypatch):
     worker = load(monkeypatch)
 
     assert re.fullmatch(r"10AD[0-9A-F]{60}", worker.simulated_burn(Decimal("10")))
+
+
+def test_the_burn_hands_its_hash_over_before_returning_and_does_not_wait(
+    monkeypatch,
+):
+    """Like the real submit: the worker stores the hash before the send, and
+    the time is spent waiting for the receipt, not in the burn."""
+    worker = load(monkeypatch)
+    seen = []
+
+    tx_hash = worker.simulated_burn(Decimal("10"), on_signed=seen.append)
+
+    assert seen == [tx_hash]
+    assert worker.slept == []
+
+    receipt = worker.simulated_wait_for_receipt(tx_hash)
+
+    assert receipt["status"] == 1
+    assert receipt["transactionHash"] == tx_hash
+    assert len(worker.slept) == 1
 
 
 def test_the_delay_runs_through_the_given_median_and_95th_percentile(monkeypatch):
@@ -44,11 +65,14 @@ def test_a_knob_passed_through_empty_falls_back_to_its_default(monkeypatch):
     assert worker.FAILURE_RATE == 0
 
 
-def test_a_failed_burn_raises_like_a_rejected_payment(monkeypatch):
+def test_a_failed_burn_raises_before_its_hash_is_handed_over(monkeypatch):
     worker = load(monkeypatch, LOADTEST_BURN_FAILURE_RATE="1")
+    seen = []
 
-    with pytest.raises(RuntimeError, match="burn Payment failed"):
-        worker.simulated_burn(Decimal("10"))
+    with pytest.raises(RuntimeError, match="before signing"):
+        worker.simulated_burn(Decimal("10"), on_signed=seen.append)
+
+    assert seen == []
 
 
 def test_a_95th_percentile_below_the_median_is_refused(monkeypatch):
@@ -56,18 +80,23 @@ def test_a_95th_percentile_below_the_median_is_refused(monkeypatch):
         load(monkeypatch, LOADTEST_BURN_P50_S="5", LOADTEST_BURN_P95_S="4")
 
 
-def test_main_swaps_the_burn_then_runs_the_real_worker(monkeypatch):
+def test_main_swaps_the_chain_calls_then_runs_the_real_worker(monkeypatch):
     """Guards the seam: a rename in remitx_worker breaks this, not a load test
     run on the eve of a report."""
     import remitx_worker.__main__ as real_worker
-    from remitx_worker import xrpl_service
+    from remitx_worker import evm_service
 
     worker = load(monkeypatch)
     started = []
     monkeypatch.setattr(real_worker, "main", lambda: started.append(True))
-    monkeypatch.setattr(xrpl_service, "burn_tokens", xrpl_service.burn_tokens)
+    # Restored after the test: main() replaces them for the process.
+    for name in ("burn_tokens", "wait_for_receipt", "get_web3"):
+        monkeypatch.setattr(evm_service, name, getattr(evm_service, name))
 
     worker.main()
 
-    assert xrpl_service.burn_tokens is worker.simulated_burn
+    assert evm_service.burn_tokens is worker.simulated_burn
+    assert evm_service.wait_for_receipt is worker.simulated_wait_for_receipt
+    with pytest.raises(RuntimeError, match="nothing may reach an RPC"):
+        evm_service.get_web3()
     assert started == [True]
