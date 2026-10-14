@@ -62,6 +62,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-14 | Decisions, 5, 12 | D3: the members agree the payout order off the platform; the Organiser only enters it. The platform does not assign the order (no automatic ordering, e.g. by acceptance time). CONTEXT.md "Payout order" updated to match | |
 | 2026-10-14 | 14 | Renamed the cycle repository reads to `get_open_cycle`, `get_cycle_rounds`, `get_cycle_members` | |
 | 2026-10-14 | Decisions, 9, EVM switch-over | D11 now covers code too: XRPL files, scripts and the `xrpl-py` package are kept and marked as no longer used, the same as the XRPL settings already were. Only change what EVM needs, so we can switch back to XRPL easily. D1 and the switch-over rows for `xrpl_service.py`, the wallet script and `pyproject.toml` now say "keep" instead of "replace" | #301 |
+| 2026-10-14 | 3, 9, 13, 14 | #278: settlement burns UCTUSD on the XRPL EVM chain with `burn(uint256)` from the Treasury (`evm_service.burn_tokens`), exactly the `token_burn` leg's amount. The burn hash is now stored before the send, so only a `confirmed` leg's hash proves a burn (section 3); a retry waits on the stored hash and never sends a second burn. Every Treasury send goes through `submit_transaction`, which holds `treasury_send_lock`. The burn method is still to be confirmed by a test burn (section 8) | |
 | 2026-10-15 | 3, 13, 14 | R2-05 (#227) hardening. The cycle tables' row-level security is now one policy per operation (`SELECT` with the read rule; `INSERT` and `UPDATE` with the write rule) and has no `DELETE` policy: a Postgres probe showed the single `FOR ALL` policy let any member delete cycles, rounds and other members' cycle rows. New trigger `stokvel_cycle_member_same_stokvel` refuses a cycle member from a different stokvel. The group tables (#226) have the same delete gap; a separate ticket is proposed | |
 
 ---
@@ -372,7 +373,7 @@ _The brief's wording of the remittance statuses (`created → burning → burnt 
 |---|---|
 | Contribution transaction hash | `stokvel_contributions.evm_tx_hash` |
 | Pool release hash | `stokvel_payouts.release_tx_hash` |
-| Burn hash | `transactions.evm_tx_hash` (on the `token_burn` leg) and `stokvel_payouts.burn_tx_hash` |
+| Burn hash | `transactions.evm_tx_hash` (on the `token_burn` leg) and `stokvel_payouts.burn_tx_hash`. The worker writes it after signing and before sending (#278), so a hash on a `processing` or `failed` leg is not proof of a burn: only a `confirmed` leg's hash is, and readers show it only then. `xrpl_tx_hash` is still written alongside while the rename is in its expand phase (#239) |
 | Remittance reference | `stokvel_payouts.remittance_id` (→ `remittances`) |
 | Block number | `stokvel_contributions.block_number` |
 
@@ -382,7 +383,7 @@ _The brief's wording of the remittance statuses (`created → burning → burnt 
 |---|---|
 | Submit contribution | UNIQUE (`cycle_id`, `round`, `member_id`); guarded `pending → processing` claim in the worker; contract `AlreadyPaid` |
 | Release pool | UNIQUE (`cycle_id`, `round`) on `stokvel_payouts`; guarded `pending → processing` claim; contract `AlreadyFinalised` |
-| Credit remittance | Existing guarded group-confirm on `quote_id` (`confirm_treasury_burn`); a retry must not repeat the release, burn or credit |
+| Credit remittance | Existing guarded group-confirm on `quote_id` (`confirm_treasury_burn`); a retry must not repeat the release, burn or credit. The burn: only the delivery that claims the group `pending → processing` sends it, and a later delivery waits on the stored burn hash instead of sending another (#278) |
 | Refund | Guarded status transition on the contribution; contract refund-once flag |
 
 ---
@@ -553,9 +554,9 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 
 | Step | Status | Issues | Notes |
 |---|---|---|---|
-| Replace the XRPL layer with EVM | In progress | #276 (was #204) | See "EVM switch-over" below. PR #211 (open) adds the worker-only key loader in `evm_service.py` and the `web3` dependency; sending transactions and the burn are still to do. XRPL code stays in place (D11) |
+| Replace the XRPL layer with EVM | In progress | #276 (was #204) | See "EVM switch-over" below. Merged: the worker-only key loader and the `web3` dependency (PR #211), and the send and receipt helpers (PR #290). In progress: the burn (#278). XRPL code stays in place (D11) |
 | Treasury Wallet as EVM address, encrypted key | In progress | #277 (was #205) | PR #211 (open, not merged): wallet creation script, worker-only key loader, log redaction, extended gitleaks rule and leak tests. Still open: operator role at deployment (#218), UCTUSD funding, and recording the address in section 2 |
-| Burn UCTUSD on EVM | Not started | #278 (was #206) | Needs burn-method answer |
+| Burn UCTUSD on EVM | In progress | #278 (was #206) | Settlement calls `burn(uint256)` from the Treasury through `evm_service.burn_tokens`; the hash is stored before the send; a retry waits on the stored hash; Treasury sends are serialised by `treasury_send_lock`. Seeder and load-test fakes updated. Still to do: a 1-base-unit test burn to confirm the method (section 8, needs Sian's OK) |
 | Contract: stokvels and cycles, interface (DEC-1) | Done | #197, #212, #215 | Merged in PR #282 (2026-10-08); #279–#281 closed as superseded. Matches section 1 and D12 |
 | Contract: contributions and finalisation | Done | #198, #212 | Merged in PR #282: payout-time gate (D12), external `finalise` |
 | Contract: pause and resume | Done | #217 (was #199) | Merged in PR #282 (contract only; backend route is R3-07 #244, admin control R4-07 #256) |
@@ -679,6 +680,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvels.test.ts` | Helper and mock-shape tests | #251 |
 | `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list and detail pages on mocked data; sidebar entry "Stokvels" in `app.routes.ts` | #251 |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
+| `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite, a real exclusive advisory lock on Postgres (`postgres` lane) | #278 |
 
 ## 14. Functions created
 
@@ -695,3 +697,8 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `stokvel_cycle_member_same_stokvel` (SQL trigger function) | `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | `BEFORE INSERT OR UPDATE OF cycle_id, member_id` on `stokvel_cycle_members`: refuses a member row from a different stokvel than the cycle (SQLSTATE 23514) | #227 |
 | `StokvelCycleRepository.get_open_cycle`, `.get_cycle_rounds`, `.get_cycle_members` | `api/remitx_api/repositories/stokvel_cycle_repository.py` | A stokvel's open cycle; a cycle's rounds in order and members in payout order | #227 |
 | `AccountRepository.create_stokvel_account`, `AccountRepository.get_stokvel_account` | `api/remitx_api/repositories/account_repository.py` | Create a stokvel's `STOKVEL` account and link it; find it by stokvel | #238 |
+| `burn_tokens(amount, *, on_signed=None, w3=None)` | `api/remitx_worker/evm_service.py` | Burn exactly `amount` UCTUSD from the Treasury with `burn(uint256)`; returns the tx hash without waiting | #278 |
+| `submit_transaction(tx, w3=None, *, on_signed=None)` | `api/remitx_worker/evm_service.py` | Changed: `on_signed(tx_hash)` runs after signing and before the send, so the caller can store the hash first; the send holds `treasury_send_lock` from the nonce read until the nonce has moved on. Every Treasury send must go through it | #278 |
+| `TransactionReverted` | `api/remitx_worker/evm_service.py` | Raised by `wait_for_receipt` when a mined transaction reverted (a `RuntimeError`) | #278 |
+| `treasury_send_lock` | `api/remitx_worker/db.py` | Postgres advisory lock that lets one Treasury transaction be built and sent at a time; a no-op on SQLite | #278 |
+| `_burn_hash_values`, `_BURN_HASH_COLUMN` | `api/remitx_worker/tasks.py` | The only place the worker names the burn hash columns: writes `evm_tx_hash` and `xrpl_tx_hash`, reads `evm_tx_hash`. Update here when #239 drops `xrpl_tx_hash` | #278 |
