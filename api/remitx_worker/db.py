@@ -11,9 +11,15 @@ from contextlib import contextmanager
 from celery.signals import worker_process_init
 from remitx_api.config import Config
 from remitx_api.extensions import build_engine
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 _session_factory = None
+
+# The Postgres advisory lock every send from the EVM Treasury Wallet holds
+# (`treasury_send_lock`). Any constant works as long as every sender uses the
+# same one; these eight bytes spell "REMITXTR".
+TREASURY_SEND_LOCK_KEY = 0x52454D4954585452
 
 
 @worker_process_init.connect
@@ -77,3 +83,45 @@ def session_scope():
         raise
     finally:
         session.close()
+
+
+@contextmanager
+def treasury_send_lock():
+    """Hold the lock that lets one Treasury transaction be built and sent at a time.
+
+    Every send from the EVM Treasury Wallet reads the wallet's pending nonce,
+    so two sends at once can take the same nonce and one replaces or is
+    rejected in favour of the other. `evm_service.submit_transaction` holds
+    this from the nonce read until the send has been accepted, which
+    serialises the burn, the contribution tasks and `finalise` across every
+    worker process.
+
+    A session-level `pg_advisory_lock` on a connection of its own, so the
+    caller can still commit its own sessions while holding it. Waits for as
+    long as another sender holds it. On SQLite (tests) there is nothing to
+    lock and it does nothing.
+    """
+    bind = getattr(get_session_factory(), "kw", {}).get("bind")
+    if bind is None or bind.dialect.name != "postgresql":
+        yield
+        return
+    with bind.connect() as connection:
+        connection.execute(
+            text("SELECT pg_advisory_lock(:key)"), {"key": TREASURY_SEND_LOCK_KEY}
+        )
+        connection.commit()
+        try:
+            yield
+        finally:
+            try:
+                connection.execute(
+                    text("SELECT pg_advisory_unlock(:key)"),
+                    {"key": TREASURY_SEND_LOCK_KEY},
+                )
+                connection.commit()
+            except Exception:
+                # A session-level lock outlives a pooled connection's return
+                # to the pool. Close this one instead, which ends the
+                # session, so the lock cannot be left held.
+                connection.invalidate()
+                raise

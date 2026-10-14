@@ -4,7 +4,9 @@ No network: a real `Web3` sits on a fake provider that answers the JSON-RPC
 calls these helpers make, so web3's own encoding and formatting still run.
 """
 
+import logging
 import uuid
+from contextlib import contextmanager
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -15,6 +17,8 @@ from eth_account import Account
 from eth_account._utils.legacy_transactions import Transaction
 from remitx_worker import evm_service
 from remitx_worker.evm_service import (
+    ERC20_ABI,
+    burn_tokens,
     from_base_units,
     get_native_balance,
     get_token_balance,
@@ -32,6 +36,7 @@ from web3.providers.base import BaseProvider
 
 CHAIN_ID = 1449000
 TX_HASH = "0x" + "ab" * 32
+UCTUSD = "0x7055071c7b79a859d9514e62833bff041ce71074"
 
 
 class FakeProvider(BaseProvider):
@@ -68,6 +73,27 @@ def _evm_settings(monkeypatch):
         "UCTUSD_EVM_DECIMALS",
     ):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def send_lock(monkeypatch):
+    """Stand-in for the Treasury send lock (tested in its own file): records
+    how many RPC calls had been made on entry and on exit."""
+    held = []
+
+    @contextmanager
+    def lock():
+        entry = {"held": True}
+        held.append(entry)
+        try:
+            yield
+        finally:
+            entry["held"] = False
+
+    monkeypatch.setattr(evm_service, "treasury_send_lock", lock)
+    # Never sleep in a test: a nonce that does not advance gives up at once.
+    monkeypatch.setattr(evm_service, "_NONCE_ADVANCE_POLL", 0)
+    return held
 
 
 # --- get_web3 ----------------------------------------------------------------
@@ -269,36 +295,54 @@ def test_wait_for_receipt_raises_on_a_revert():
 # --- submit_transaction ---------------------------------------------------------
 
 
-def test_submit_transaction_signs_as_the_treasury_and_does_not_wait(monkeypatch):
-    treasury = configure_fake_treasury(monkeypatch)
-    recipient = Account.create().address
+def _sending_web3(nonce=7, on_send=None, **answers):
+    """A fake RPC for one send: the nonce advances once the transaction has
+    been sent, and the send answers with the real hash of the signed bytes."""
     sent = []
 
     def send_raw(params):
+        if on_send is not None:
+            on_send()
         sent.append(params[0])
-        return TX_HASH
+        return Web3.to_hex(Web3.keccak(hexstr=params[0]))
 
-    w3, provider = _fake_web3(
-        eth_getTransactionCount=hex(7),
-        eth_gasPrice=hex(785_000_000),
-        eth_estimateGas=hex(52_000),
-        eth_sendRawTransaction=send_raw,
-    )
+    def transaction_count(params):
+        return hex(nonce + len(sent))
+
+    answers = {
+        "eth_getTransactionCount": transaction_count,
+        "eth_gasPrice": hex(785_000_000),
+        "eth_estimateGas": hex(52_000),
+        "eth_sendRawTransaction": send_raw,
+        **answers,
+    }
+    w3, provider = _fake_web3(**answers)
+    return w3, provider, sent
+
+
+def test_submit_transaction_signs_as_the_treasury_and_does_not_wait(monkeypatch):
+    treasury = configure_fake_treasury(monkeypatch)
+    recipient = Account.create().address
+    w3, provider, sent = _sending_web3()
 
     tx_hash = submit_transaction({"to": recipient, "data": "0x1234"}, w3=w3)
 
-    assert tx_hash == TX_HASH
-    # Pending nonce, and nothing after the send: no receipt polling.
+    (raw,) = sent
+    assert tx_hash == Web3.to_hex(Web3.keccak(hexstr=raw))
+    # Pending nonce before the send, and again after it until it has moved
+    # on; no receipt polling.
     nonce_calls = [
         list(params)
         for method, params in provider.calls
         if method == "eth_getTransactionCount"
     ]
-    assert nonce_calls == [[treasury.address, "pending"]]
-    assert provider.methods()[-1] == "eth_sendRawTransaction"
+    assert nonce_calls == [[treasury.address, "pending"]] * 2
+    assert provider.methods()[-2:] == [
+        "eth_sendRawTransaction",
+        "eth_getTransactionCount",
+    ]
     assert "eth_getTransactionReceipt" not in provider.methods()
 
-    (raw,) = sent
     assert Account.recover_transaction(raw) == treasury.address
     fields = _decode_legacy(raw)
     assert fields["nonce"] == 7
@@ -311,6 +355,104 @@ def test_submit_transaction_signs_as_the_treasury_and_does_not_wait(monkeypatch)
     calls = repr(provider.calls)
     for secret in treasury.secrets:
         assert secret not in calls
+
+
+def test_submit_transaction_hands_over_the_hash_before_sending(monkeypatch):
+    configure_fake_treasury(monkeypatch)
+    seen = []
+    w3, provider, sent = _sending_web3()
+
+    def on_signed(tx_hash):
+        seen.append((tx_hash, list(provider.methods())))
+
+    tx_hash = submit_transaction(
+        {"to": Account.create().address}, w3=w3, on_signed=on_signed
+    )
+
+    ((signed_hash, methods_before),) = seen
+    assert signed_hash == tx_hash
+    assert "eth_sendRawTransaction" not in methods_before
+    assert sent  # and it was sent afterwards
+
+
+def test_submit_transaction_sends_nothing_if_on_signed_raises(monkeypatch):
+    configure_fake_treasury(monkeypatch)
+    w3, provider, sent = _sending_web3()
+
+    def on_signed(tx_hash):
+        raise RuntimeError("could not store the hash")
+
+    with pytest.raises(RuntimeError, match="could not store the hash"):
+        submit_transaction({"to": Account.create().address}, w3=w3, on_signed=on_signed)
+
+    assert sent == []
+    assert "eth_sendRawTransaction" not in provider.methods()
+
+
+def test_submit_transaction_holds_the_send_lock_around_every_rpc_call(
+    monkeypatch, send_lock
+):
+    configure_fake_treasury(monkeypatch)
+    held_during = []
+
+    def check(params=None):
+        held_during.append(bool(send_lock) and send_lock[-1]["held"])
+
+    w3, provider, _ = _sending_web3(on_send=check)
+    nonce_answer = provider.answers["eth_getTransactionCount"]
+
+    def nonce(params):
+        check()
+        return nonce_answer(params)
+
+    provider.answers["eth_getTransactionCount"] = nonce
+
+    submit_transaction({"to": Account.create().address}, w3=w3)
+
+    # The nonce read, the send and the nonce-advanced check: all under one
+    # hold of the lock, released afterwards.
+    assert held_during == [True, True, True]
+    assert len(send_lock) == 1
+    assert send_lock[0]["held"] is False
+
+
+def test_submit_transaction_releases_the_lock_when_the_send_fails(
+    monkeypatch, send_lock
+):
+    configure_fake_treasury(monkeypatch)
+
+    def refuse(params):
+        raise ConnectionError("RPC unreachable")
+
+    w3, _, _ = _sending_web3(eth_sendRawTransaction=refuse)
+
+    with pytest.raises(ConnectionError):
+        submit_transaction({"to": Account.create().address}, w3=w3)
+
+    assert send_lock[0]["held"] is False
+
+
+def test_submit_transaction_refuses_a_hash_it_did_not_sign(monkeypatch):
+    configure_fake_treasury(monkeypatch)
+    w3, _, _ = _sending_web3(eth_sendRawTransaction=TX_HASH)
+
+    with pytest.raises(RuntimeError, match="but reported"):
+        submit_transaction({"to": Account.create().address}, w3=w3)
+
+
+def test_submit_transaction_logs_when_the_nonce_does_not_advance(monkeypatch, caplog):
+    treasury = configure_fake_treasury(monkeypatch)
+    monkeypatch.setattr(evm_service, "_NONCE_ADVANCE_TIMEOUT", 0)
+    w3, _, sent = _sending_web3(eth_getTransactionCount=hex(7))
+
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.evm_service"):
+        tx_hash = submit_transaction({"to": Account.create().address}, w3=w3)
+
+    # Still reports the hash: the transaction was accepted.
+    assert tx_hash == Web3.to_hex(Web3.keccak(hexstr=sent[0]))
+    assert "event=evm.nonce_not_advanced" in caplog.text
+    for secret in treasury.secrets:
+        assert secret not in caplog.text
 
 
 def _decode_legacy(raw):
@@ -394,3 +536,65 @@ def test_send_transaction_lets_a_timeout_propagate(monkeypatch):
         send_transaction(
             {"to": Account.create().address}, timeout=1, w3=_receipt_web3(wait)
         )
+
+
+# --- burn ------------------------------------------------------------------------
+
+
+def test_the_abi_has_burn_and_total_supply():
+    token = Web3().eth.contract(address=Web3.to_checksum_address(UCTUSD), abi=ERC20_ABI)
+
+    # Selectors as found in the deployed UCTUSD bytecode.
+    assert token.encode_abi("burn", args=[1]).startswith("0x42966c68")
+    assert token.encode_abi("totalSupply") == "0x18160ddd"
+
+
+def test_burn_tokens_burns_exactly_the_amount_from_the_treasury(monkeypatch):
+    treasury = configure_fake_treasury(monkeypatch)
+    seen = []
+    w3, provider, sent = _sending_web3()
+
+    tx_hash = burn_tokens(Decimal("5.12345678"), on_signed=seen.append, w3=w3)
+
+    (raw,) = sent
+    assert seen == [tx_hash]
+    assert Account.recover_transaction(raw) == treasury.address
+    fields = _decode_legacy(raw)
+    assert fields["to"].lower() == UCTUSD
+    # burn(uint256), then exactly 5.12345678 at 18 decimals: nothing rounded,
+    # and nothing to do with what the Treasury holds.
+    assert fields["data"] == bytes.fromhex("42966c68") + encode(
+        ["uint256"], [5_123_456_780_000_000_000]
+    )
+    assert "eth_getTransactionReceipt" not in provider.methods()
+
+
+@pytest.mark.parametrize(
+    ("amount", "error"),
+    [
+        (Decimal("0"), ValueError),
+        (Decimal("-1"), ValueError),
+        (Decimal("0.0000000000000000001"), ValueError),  # finer than a base unit
+        (Decimal("NaN"), ValueError),
+        (1.5, TypeError),
+        (1, TypeError),
+    ],
+)
+def test_burn_tokens_rejects_bad_amounts_before_any_rpc_call(
+    monkeypatch, amount, error
+):
+    configure_fake_treasury(monkeypatch)
+    w3, provider, _ = _sending_web3()
+
+    with pytest.raises(error):
+        burn_tokens(amount, w3=w3)
+
+    assert provider.calls == []
+
+
+def test_wait_for_receipt_lets_a_timeout_propagate():
+    def wait(tx_hash, timeout):
+        raise TimeExhausted(f"{tx_hash} not mined in {timeout}s")
+
+    with pytest.raises(TimeExhausted):
+        wait_for_receipt(TX_HASH, timeout=1, w3=_receipt_web3(wait))
