@@ -39,11 +39,14 @@ from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
     StokvelInvitationStatus,
 )
 from remitx_api.models.orm.stokvel_member import StokvelMember
+from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.transaction import Transaction
 from remitx_api.models.orm.user import User
@@ -88,9 +91,13 @@ __all__ = [
     "Role",
     "RolePermission",
     "Stokvel",
+    "StokvelCycle",
+    "StokvelCycleMember",
+    "StokvelCycleStatus",
     "StokvelInvitation",
     "StokvelInvitationStatus",
     "StokvelMember",
+    "StokvelRound",
     "ToxicCombination",
     "Transaction",
     "User",

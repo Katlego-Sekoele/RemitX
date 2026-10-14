@@ -13,6 +13,8 @@ is in service.
 `account_id` is its `STOKVEL` ledger account (D9), which holds a released
 pool until the payout sends it on. Nullable because the account is created
 with `AccountRepository.create_stokvel_account`, after the stokvel row.
+`current_cycle_id` is its latest cycle (forming, active or closed), kept for
+cheap reads; null until the first cycle is created.
 """
 
 import uuid
@@ -53,6 +55,17 @@ class Stokvel(Base):
     contribution_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     account_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("accounts.account_id"), nullable=True, unique=True
+    )
+    # stokvel_cycles also references stokvels, so this key is added after both
+    # tables exist
+    current_cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey(
+            "stokvel_cycles.id",
+            use_alter=True,
+            name="stokvels_current_cycle_id_fkey",
+        ),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
