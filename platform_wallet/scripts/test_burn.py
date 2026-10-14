@@ -7,7 +7,7 @@ result goes on #278 and in docs/stokvel_integration.md section 8.
 
 Without --send this is a dry run: every check below runs and the burn is
 simulated with `eth_call`, but nothing is signed or sent. A real burn needs
---send, and Sian's written OK first.
+--send.
 
 Refuses to run unless:
 - the RPC is chain 1449000 (XRPL EVM Testnet);
@@ -210,7 +210,6 @@ def main() -> None:
 
     if not args.send:
         print("\nDry run: nothing was signed or sent.")
-        print("After Sian's written OK, re-run with --send to burn for real.")
         return
 
     tx = burn.build_transaction(
