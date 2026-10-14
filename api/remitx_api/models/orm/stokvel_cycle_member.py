@@ -7,8 +7,8 @@ between cycles but are fixed within one, and a past cycle must still show
 where its money went.
 
 - `payout_position`: 0-based, the round that pays this member (the index in
-  the contract's `startCycle` member list). Null until the Organiser sets the
-  order.
+  the contract's `startCycle` member list). The members agree the order off
+  the platform (D3); this is null until the Organiser enters it.
 - `payout_beneficiary_id` and `payout_currency`: the beneficiary the stokvel
   pays this member's pool to directly (#293), and the currency of theirs it is
   paid in. Set together; null until the member chooses.

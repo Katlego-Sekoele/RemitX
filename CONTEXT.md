@@ -43,7 +43,7 @@ A **Member**'s payment into a **Round** of a fixed **UCTUSD** amount (the same f
 _Avoid_: Deposit (that is a ZAR cash-in), payment
 
 **Payout order**:
-The sequence in which **Members** receive their **Payout** across the rounds of a **Cycle**, set by the **Organiser** before each cycle and fixed once it starts.
+The sequence in which **Members** receive their **Payout** across the rounds of a **Cycle**. The members agree it among themselves off the platform; the **Organiser** enters it before each cycle, and it is fixed once the cycle starts. The platform never chooses the order.
 _Avoid_: Rotation, queue
 
 **Payout beneficiary**:

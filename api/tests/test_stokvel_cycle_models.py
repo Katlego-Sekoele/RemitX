@@ -137,12 +137,12 @@ def test_a_cycle_with_three_members_and_three_rounds(app_context):
 
     repo = StokvelCycleRepository()
     assert db.session.get(Stokvel, stokvel.id).current_cycle_id == cycle.id
-    assert repo.open_cycle(stokvel.id).id == cycle.id
-    assert [row.member_id for row in repo.members(cycle.id)] == [
+    assert repo.get_open_cycle(stokvel.id).id == cycle.id
+    assert [row.member_id for row in repo.get_cycle_members(cycle.id)] == [
         member.id for member in members
     ]
-    assert [row.round for row in repo.rounds(cycle.id)] == [0, 1, 2]
-    assert all(row.locked for row in repo.members(cycle.id))
+    assert [row.round for row in repo.get_cycle_rounds(cycle.id)] == [0, 1, 2]
+    assert all(row.locked for row in repo.get_cycle_members(cycle.id))
 
 
 def test_members_without_a_payout_position_are_listed_last(app_context):
@@ -152,10 +152,8 @@ def test_members_without_a_payout_position_are_listed_last(app_context):
     _in_cycle(cycle, organiser)
     _in_cycle(cycle, later, payout_position=0)
 
-    assert [row.member_id for row in StokvelCycleRepository().members(cycle.id)] == [
-        later.id,
-        organiser.id,
-    ]
+    rows = StokvelCycleRepository().get_cycle_members(cycle.id)
+    assert [row.member_id for row in rows] == [later.id, organiser.id]
 
 
 def test_two_members_cannot_share_a_payout_position(app_context):
@@ -215,7 +213,7 @@ def test_one_open_cycle_per_stokvel(app_context):
     first.closed_at = datetime.now(UTC)
     first.total_rounds = 2
     second = _cycle(db.session.get(Stokvel, stokvel.id), 2)
-    assert StokvelCycleRepository().open_cycle(stokvel.id).id == second.id
+    assert StokvelCycleRepository().get_open_cycle(stokvel.id).id == second.id
 
 
 def test_cycle_numbers_are_unique_per_stokvel(app_context):

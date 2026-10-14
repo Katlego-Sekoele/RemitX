@@ -17,8 +17,9 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(StokvelCycle)
 
-    def open_cycle(self, stokvel_id: uuid.UUID) -> StokvelCycle | None:
-        """The stokvel's cycle that is not closed yet, if any (at most one)."""
+    def get_open_cycle(self, stokvel_id: uuid.UUID) -> StokvelCycle | None:
+        """Get the cycle for a given stokvel_id that is not closed. (forming or active).
+        Returns None if no such cycle exists."""
         return db.session.scalars(
             select(StokvelCycle).where(
                 StokvelCycle.stokvel_id == stokvel_id,
@@ -26,17 +27,17 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
             )
         ).one_or_none()
 
-    def rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
-        """The cycle's rounds, first to last."""
+    def get_cycle_rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
+        """Get the information about the rounds in a cycle, for a given cycle_id."""
         return db.session.scalars(
             select(StokvelRound)
             .where(StokvelRound.cycle_id == cycle_id)
             .order_by(StokvelRound.round)
         ).all()
 
-    def members(self, cycle_id: uuid.UUID) -> list[StokvelCycleMember]:
-        """The cycle's members in payout order; any without a position yet
-        come last."""
+    def get_cycle_members(self, cycle_id: uuid.UUID) -> list[StokvelCycleMember]:
+        """Get members of a cycle, ordered by their payout position,
+        for a given cycle_id."""
         return db.session.scalars(
             select(StokvelCycleMember)
             .where(StokvelCycleMember.cycle_id == cycle_id)
