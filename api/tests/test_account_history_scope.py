@@ -14,8 +14,8 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -117,7 +117,7 @@ def _confirmed_send(
     )
     treasury = Account(
         user_id=None,
-        type=TYPE_XRPL_WALLET,
+        type=TYPE_EVM_WALLET,
         account_currency=CURRENCY_TOKEN,
         label="history-scope treasury",
     )
@@ -139,7 +139,7 @@ def _confirmed_send(
         currency=CURRENCY_TOKEN,
         status=STATUS_CONFIRMED,
         quote_id=quote.quote_id,
-        xrpl_tx_hash=burn_hash,
+        evm_tx_hash=burn_hash,
     )
     deposit = Transaction(
         type=TYPE_DEPOSIT,

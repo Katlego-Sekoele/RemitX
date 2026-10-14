@@ -144,7 +144,7 @@ def check_remittances(session) -> list[Finding]:
             shape.append(f"{label}: {len(burn)} burn legs")
             continue
         confirmed = statuses == {STATUS_CONFIRMED}
-        if confirmed != bool(burn[0].xrpl_tx_hash):
+        if confirmed != bool(burn[0].evm_tx_hash):
             status_problems.append(
                 f"{label}: burn hash {'missing' if confirmed else 'present'} "
                 f"on a {burn[0].status} group"
@@ -390,13 +390,14 @@ def synthetic_hash_summary(session) -> Finding:
 
     total = session.scalar(
         select(func.count()).where(
-            Transaction.type == TYPE_TOKEN_BURN, Transaction.xrpl_tx_hash.is_not(None)
+            Transaction.type == TYPE_TOKEN_BURN,
+            Transaction.evm_tx_hash.is_not(None),
         )
     )
     synthetic = session.scalar(
         select(func.count()).where(
             Transaction.type == TYPE_TOKEN_BURN,
-            Transaction.xrpl_tx_hash.like(f"{SYNTHETIC_HASH_PREFIX}%"),
+            Transaction.evm_tx_hash.like(f"{SYNTHETIC_HASH_PREFIX}%"),
         )
     )
     return Finding(

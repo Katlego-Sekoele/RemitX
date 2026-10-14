@@ -170,9 +170,9 @@ def test_settlement_used_only_synthetic_hashes_and_topped_up_the_treasury(run):
         row[0]
         for row in query(
             run,
-            select(Transaction.xrpl_tx_hash).where(
+            select(Transaction.evm_tx_hash).where(
                 Transaction.type == TYPE_TOKEN_BURN,
-                Transaction.xrpl_tx_hash.is_not(None),
+                Transaction.evm_tx_hash.is_not(None),
             ),
         )
     ]
@@ -305,7 +305,7 @@ def test_the_live_tail_signs_in_calls_the_api_and_respects_its_budget(run):
             return httpx.Response(200, json={"remittance_id": "r1"})
         if request.url.path == "/remittances/r1":
             return httpx.Response(
-                200, json={"status": "confirmed", "xrpl_tx_hash": "ABC123"}
+                200, json={"status": "confirmed", "evm_tx_hash": "ABC123"}
             )
         return httpx.Response(404)
 

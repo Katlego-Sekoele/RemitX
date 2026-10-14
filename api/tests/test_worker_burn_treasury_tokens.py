@@ -25,11 +25,11 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
     TYPE_USER,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -182,7 +182,7 @@ def pending_remittance(session_factory):
             session, type_=TYPE_PLATFORM_FIAT, currency=CURRENCY_ZWL
         )
         treasury = _account(
-            session, type_=TYPE_XRPL_WALLET, currency=CURRENCY_TOKEN, balance="1000"
+            session, type_=TYPE_EVM_WALLET, currency=CURRENCY_TOKEN, balance="1000"
         )
         issuer = _account(session, type_=TYPE_EXTERNAL, currency=CURRENCY_TOKEN)
         quote_id = _quote(
@@ -331,7 +331,7 @@ def test_burn_claims_the_whole_group_and_enqueues_confirm(
 
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
     assert burn_leg.status == STATUS_PROCESSING
-    assert burn_leg.xrpl_tx_hash is None
+    assert burn_leg.evm_tx_hash is None
     assert burn_leg.processed_at is not None
     # Every leg in the group is claimed together, not just the burn leg —
     # confirming and crediting is still confirm_treasury_burn's job, not
@@ -412,7 +412,7 @@ def test_confirm_success_settles_and_credits_every_leg(
     }
 
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
-    assert burn_leg.xrpl_tx_hash == "ABCDEF0123"
+    assert burn_leg.evm_tx_hash == "ABCDEF0123"
     assert burn_leg.confirmed_at is not None
 
     # Sender's ZAR account was this remittance's source for both fiat legs
@@ -472,7 +472,7 @@ def test_confirm_failure_fails_every_leg_with_no_balance_changes(
         STATUS_FAILED
     }
     burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
-    assert burn_leg.xrpl_tx_hash is None
+    assert burn_leg.evm_tx_hash is None
 
     for account_id, expected in [
         (pending_remittance["fee_revenue"], "0"),

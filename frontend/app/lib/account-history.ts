@@ -16,7 +16,7 @@ export type HistoryRow = {
   status: AccountTransactionRead["status"]
   created_at: string
   remittance_id: string | null
-  xrpl_tx_hash: string | null
+  evm_tx_hash: string | null
 }
 
 export const HISTORY_PAGE_SIZE = 50
@@ -68,7 +68,7 @@ function single(leg: AccountTransactionRead): HistoryRow {
     status: leg.status,
     created_at: leg.created_at,
     remittance_id: leg.remittance_id,
-    xrpl_tx_hash: leg.xrpl_tx_hash,
+    evm_tx_hash: leg.evm_tx_hash,
   }
 }
 

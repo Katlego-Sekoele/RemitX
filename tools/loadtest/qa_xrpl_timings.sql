@@ -13,7 +13,7 @@ WITH s AS (
   JOIN remittances r ON r.quote_id = t.quote_id
   WHERE t.type = 'token_burn'
     AND t.status = 'confirmed'
-    AND t.xrpl_tx_hash NOT LIKE '5EED%'
+    AND t.evm_tx_hash NOT LIKE '5EED%'
 ),
 q AS (
   SELECT

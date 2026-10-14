@@ -10,6 +10,9 @@ stokvel's life (the value sent to `createStokvel`; MVP: a new amount means a
 new stokvel). Members are debited fiat = amount × live rate at contribution.
 `deactivated_at` is when the stokvel was decommissioned, and null while it
 is in service.
+`account_id` is its `STOKVEL` ledger account (D9), which holds a released
+pool until the payout sends it on. Nullable because the account is created
+with `AccountRepository.create_stokvel_account`, after the stokvel row.
 """
 
 import uuid
@@ -48,6 +51,9 @@ class Stokvel(Base):
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     # Fixed UCTUSD amount (createStokvel); fiat debit = this × live rate
     contribution_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("accounts.account_id"), nullable=True, unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

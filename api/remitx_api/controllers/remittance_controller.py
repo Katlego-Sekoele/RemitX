@@ -50,7 +50,8 @@ class TransferView:
     remittance_id: uuid.UUID
     quote_id: uuid.UUID
     direction: str
-    counterparty_user_id: uuid.UUID
+    # None for a payout received from a stokvel, which has no sender user.
+    counterparty_user_id: uuid.UUID | None
     counterparty_name: str | None
     # The settlement leg's: pending, processing, confirmed or failed.
     status: str
@@ -58,7 +59,7 @@ class TransferView:
     processed_at: datetime | None
     settled_at: datetime | None
     # The burn leg's, once the group has confirmed.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     sender_amount: Decimal | None
     sender_currency: str
     sender_transaction_fee: Decimal | None
@@ -75,7 +76,9 @@ class TransferView:
     timeline: list[TimelineStage]
 
 
-def _full_name(user: User) -> str | None:
+def _full_name(user: User | None) -> str | None:
+    if user is None:
+        return None
     return " ".join(part for part in (user.first_name, user.last_name) if part) or None
 
 
@@ -86,6 +89,7 @@ def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferVi
     confirmed = leg.status == STATUS_CONFIRMED
     burn = record.burn_leg
     settled_at = leg.confirmed_at if confirmed else None
+    counterparty = record.recipient if sent else record.sender
     timeline, timeline_step = transfer_timeline(
         leg.status,
         record.remittance.created_at,
@@ -96,13 +100,13 @@ def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferVi
         remittance_id=record.remittance.remittance_id,
         quote_id=quote.quote_id,
         direction=DIRECTION_SENT if sent else DIRECTION_RECEIVED,
-        counterparty_user_id=(record.recipient if sent else record.sender).id,
-        counterparty_name=_full_name(record.recipient if sent else record.sender),
+        counterparty_user_id=counterparty.id if counterparty else None,
+        counterparty_name=_full_name(counterparty),
         status=leg.status,
         created_at=record.remittance.created_at,
         processed_at=leg.processed_at,
         settled_at=settled_at,
-        xrpl_tx_hash=burn.xrpl_tx_hash if confirmed and burn is not None else None,
+        evm_tx_hash=burn.evm_tx_hash if confirmed and burn is not None else None,
         sender_amount=quote.sender_amount if sent else None,
         sender_currency=quote.sender_currency,
         sender_transaction_fee=quote.sender_transaction_fee if sent else None,

@@ -9,10 +9,12 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
     PAYOUT_CURRENCIES,
+    TYPE_STOKVEL,
     TYPE_USER,
     Account,
     create_account_reference,
 )
+from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
     STATUS_PROCESSING,
@@ -31,11 +33,38 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
     def list_platform_accounts(self) -> list[Account]:
-        """Every account that isn't a customer's: RemitX's own, and the
-        external counterparties it settles against."""
+        """Every account that isn't a customer's or a stokvel's: RemitX's
+        own, and the external counterparties it settles against."""
         return db.session.scalars(
-            select(Account).where(Account.type != TYPE_USER)
+            select(Account).where(Account.type.not_in((TYPE_USER, TYPE_STOKVEL)))
         ).all()
+
+    def create_stokvel_account(self, stokvel: Stokvel) -> Account:
+        """Create `stokvel`'s `STOKVEL` account, in the token, and link it
+        from `stokvel.account_id`. Flushes only: the caller commits it with
+        whatever else makes up the stokvel.
+
+        The label comes from the stokvel's id, not its name, so it can never
+        collide with a platform account's label (those are lookup keys).
+        """
+        account = Account(
+            type=TYPE_STOKVEL,
+            account_currency=CURRENCY_TOKEN,
+            label=f"Stokvel {stokvel.id}",
+        )
+        db.session.add(account)
+        db.session.flush()
+        stokvel.account_id = account.account_id
+        db.session.flush()
+        return account
+
+    def get_stokvel_account(self, stokvel_id: uuid.UUID) -> Account | None:
+        """The `STOKVEL` account of a stokvel, or None if it has none yet."""
+        return db.session.scalars(
+            select(Account)
+            .join(Stokvel, Stokvel.account_id == Account.account_id)
+            .where(Stokvel.id == stokvel_id)
+        ).first()
 
     def get_platform_account(self, type_: str, currency: str) -> Account | None:
         """A platform account by `type` and currency — e.g. the

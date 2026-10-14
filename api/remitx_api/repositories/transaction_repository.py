@@ -106,13 +106,13 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         if not quote_ids:
             return {}
         rows = db.session.execute(
-            select(Transaction.quote_id, Transaction.xrpl_tx_hash)
+            select(Transaction.quote_id, Transaction.evm_tx_hash)
             .join(Quote, Quote.quote_id == Transaction.quote_id)
             .where(
                 Transaction.quote_id.in_(quote_ids),
                 Transaction.type == TYPE_TOKEN_BURN,
                 Transaction.status == STATUS_CONFIRMED,
-                Transaction.xrpl_tx_hash.is_not(None),
+                Transaction.evm_tx_hash.is_not(None),
                 or_(
                     Quote.sender_user_id == user_id,
                     Quote.beneficiary_user_id == user_id,

@@ -32,6 +32,10 @@ TYPE_WITHDRAWAL = "withdrawal"
 TYPE_TOKEN_BURN = "token_burn"
 # The beneficiary's fiat payout from the platform's fiat account.
 TYPE_BENEFICIARY_PAYOUT = "beneficiary_payout"
+# A member's contribution into a stokvel round, and a round's pool released
+# into the stokvel's `STOKVEL` account (docs/stokvel_integration.md §3).
+TYPE_STOKVEL_CONTRIBUTION = "stokvel_contribution"
+TYPE_STOKVEL_POOL_RELEASE = "stokvel_pool_release"
 
 TRANSACTION_TYPES = (
     TYPE_DEPOSIT,
@@ -41,6 +45,8 @@ TRANSACTION_TYPES = (
     TYPE_WITHDRAWAL,
     TYPE_TOKEN_BURN,
     TYPE_BENEFICIARY_PAYOUT,
+    TYPE_STOKVEL_CONTRIBUTION,
+    TYPE_STOKVEL_POOL_RELEASE,
 )
 
 
@@ -65,7 +71,8 @@ class Transaction(Base):
         # Type must be in TRANSACTION_TYPES
         CheckConstraint(
             "type IN ('deposit','treasury_funding','remittance','fee','withdrawal',"
-            "'token_burn','beneficiary_payout')",
+            "'token_burn','beneficiary_payout','stokvel_contribution',"
+            "'stokvel_pool_release')",
             name="transactions_type_valid",
         ),
         # Status must be in STATUSES
@@ -103,8 +110,15 @@ class Transaction(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Set only on a `burn` leg once its Payment(treasury -> issuer) validates
-    # on the XRPL testnet
+    # Set only on a `burn` leg once its burn (treasury -> issuer) is
+    # confirmed on chain
+    evm_tx_hash: Mapped[str | None] = mapped_column(
+        Text, nullable=True, unique=True, index=True
+    )
+    # Deprecated: the old name of `evm_tx_hash`, still written alongside
+    # it so a worker running the previous release keeps working while the
+    # rename rolls out. Read `evm_tx_hash`. A later migration copies any
+    # hash written only here across and drops this column.
     xrpl_tx_hash: Mapped[str | None] = mapped_column(
         Text, nullable=True, unique=True, index=True
     )

@@ -134,6 +134,17 @@
             "title": "Direction",
             "type": "string"
           },
+          "evm_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evm Tx Hash"
+          },
           "remittance_id": {
             "anyOf": [
               {
@@ -157,17 +168,6 @@
           "type": {
             "title": "Type",
             "type": "string"
-          },
-          "xrpl_tx_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Xrpl Tx Hash"
           }
         },
         "required": [
@@ -182,7 +182,7 @@
           "description",
           "counterparty_name",
           "remittance_id",
-          "xrpl_tx_hash"
+          "evm_tx_hash"
         ],
         "title": "AccountTransactionRead",
         "type": "object"
@@ -4164,7 +4164,7 @@
             "enum": [
               "REMITX_FIAT",
               "REMITX_REVENUE",
-              "REMITX_XRPL_WALLET",
+              "REMITX_EVM_WALLET",
               "EXTERNAL"
             ],
             "title": "Type",
@@ -4924,7 +4924,7 @@
       },
       "StuckSettlementRead": {
         "properties": {
-          "burn_xrpl_tx_hash": {
+          "burn_evm_tx_hash": {
             "anyOf": [
               {
                 "type": "string"
@@ -4933,7 +4933,7 @@
                 "type": "null"
               }
             ],
-            "title": "Burn Xrpl Tx Hash"
+            "title": "Burn Evm Tx Hash"
           },
           "created_at": {
             "title": "Created At",
@@ -4988,7 +4988,7 @@
           "pending_leg_count",
           "processing_leg_count",
           "failed_leg_count",
-          "burn_xrpl_tx_hash",
+          "burn_evm_tx_hash",
           "processed_at",
           "recovery_kind"
         ],
@@ -5028,7 +5028,7 @@
         "type": "string"
       },
       "TransferRead": {
-        "description": "One transfer, sent or received, as the caller sees it.\n\n`status` is the settlement leg's: `pending` (queued), `processing`\n(settling on the XRPL Testnet), `confirmed` or `failed`. `xrpl_tx_hash`\nis the burn transaction's hash, set once the transfer has confirmed.",
+        "description": "One transfer, sent or received, as the caller sees it.\n\n`status` is the settlement leg's: `pending` (queued), `processing`\n(settling on the XRPL Testnet), `confirmed` or `failed`. `evm_tx_hash`\nis the burn transaction's hash, set once the transfer has confirmed.",
         "properties": {
           "counterparty_name": {
             "anyOf": [
@@ -5043,10 +5043,17 @@
             "title": "Counterparty Name"
           },
           "counterparty_user_id": {
-            "description": "The other person. For a sent transfer, the `linked_user_id` of the beneficiary it went to.",
-            "format": "uuid",
-            "title": "Counterparty User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The other person. For a sent transfer, the `linked_user_id` of the beneficiary it went to. Null for a payout received from a stokvel, which has no sender user.",
+            "title": "Counterparty User Id"
           },
           "created_at": {
             "title": "Created At",
@@ -5059,6 +5066,17 @@
             ],
             "title": "Direction",
             "type": "string"
+          },
+          "evm_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evm Tx Hash"
           },
           "exchange_rate_margin": {
             "anyOf": [
@@ -5180,17 +5198,6 @@
           "token_name": {
             "title": "Token Name",
             "type": "string"
-          },
-          "xrpl_tx_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Xrpl Tx Hash"
           }
         },
         "required": [
@@ -5203,7 +5210,7 @@
           "created_at",
           "processed_at",
           "settled_at",
-          "xrpl_tx_hash",
+          "evm_tx_hash",
           "sender_amount",
           "sender_currency",
           "sender_transaction_fee",

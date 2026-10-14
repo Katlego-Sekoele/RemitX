@@ -29,6 +29,7 @@ from remitx_api.models.orm.account import (
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
 )
+from remitx_api.models.orm.platform_account_seed import TREASURY_WALLET_LABEL
 from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
@@ -52,7 +53,8 @@ from remitx_api.services.send_limits import require_can_send
 
 logger = logging.getLogger(__name__)
 
-REMITX_TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
+# The seeded label itself, so the lookup and the seed cannot drift apart.
+REMITX_TREASURY_WALLET_LABEL = TREASURY_WALLET_LABEL
 # Sourced from Config rather than hardcoded.
 TOKEN_ISSUER_LABEL = Config().UCTUSD_ISSUER_LABEL
 
@@ -254,7 +256,7 @@ def confirm_remittance(sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> Remitt
     # on-chain burn (remitx_worker.tasks.burn_treasury_tokens) that returns
     # the beneficiary pass-through's tokens to the issuer, destroying them.
     # The payout leg below may not confirm until this one has, with an
-    # xrpl_tx_hash recorded.
+    # evm_tx_hash recorded.
     transactions.add(
         Transaction(
             type=TYPE_TOKEN_BURN,

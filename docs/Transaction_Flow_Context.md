@@ -1,5 +1,7 @@
 # RemitX — Transaction Model
 
+> **Do not update this document.** It is the record of the original RemitX project (the XRPL remittance platform), written before the Stokvel feature work began. Keep it as it is for reference. Record Stokvel decisions, flows and changes in [stokvel_integration.md](stokvel_integration.md) and [CONTEXT.md](../CONTEXT.md) instead.
+
 Cross-border remittance prototype. Sender in South Africa pays ZAR, beneficiary in Zimbabwe receives ZWL, settled with `uctusd` tokens on the XRP Ledger Testnet.
 
 ---

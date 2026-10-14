@@ -1,11 +1,16 @@
 """
 Every party that can hold a balance — a real user, RemitX itself, or an
-external counterparty — is one row here. `user_id` is the customer a `USER`
-row belongs to, and NULL on every other row: RemitX's own platform accounts
-(bank accounts, XRPL treasury wallet, fee revenue, ...) and `EXTERNAL`
-counterparties belong to no user. The platform accounts are inserted by
-migration — see `platform_account_seed.py` — and are visible to staff holding
-`platform_account:read`.
+external counterparty, or a stokvel — is one row here. `user_id` is the
+customer a `USER` row belongs to, and NULL on every other row: RemitX's own
+platform accounts (bank accounts, EVM treasury wallet, fee revenue, ...),
+`EXTERNAL` counterparties and `STOKVEL` accounts belong to no user. The
+platform accounts are inserted by migration — see `platform_account_seed.py` —
+and are visible to staff holding `platform_account:read`.
+
+A `STOKVEL` row is one stokvel's pool in the token, between the contract
+releasing it and the payout remittance sending it on (D9 in
+docs/stokvel_integration.md). It is linked from `stokvels.account_id`, has no
+reference, and is not a platform account.
 
 One row per (user_id, account_currency) for a `USER` row — a user with both
 ZAR and token activity has two rows as they then have a Zar account and a
@@ -38,16 +43,18 @@ from remitx_api.extensions import Base
 
 TYPE_USER = "USER"
 TYPE_PLATFORM_FIAT = "REMITX_FIAT"
-TYPE_XRPL_WALLET = "REMITX_XRPL_WALLET"
+TYPE_EVM_WALLET = "REMITX_EVM_WALLET"
 TYPE_PLATFORM_REVENUE = "REMITX_REVENUE"
 TYPE_EXTERNAL = "EXTERNAL"
+TYPE_STOKVEL = "STOKVEL"
 
 ACCOUNT_TYPES = (
     TYPE_USER,
     TYPE_PLATFORM_FIAT,
-    TYPE_XRPL_WALLET,
+    TYPE_EVM_WALLET,
     TYPE_PLATFORM_REVENUE,
     TYPE_EXTERNAL,
+    TYPE_STOKVEL,
 )
 
 CURRENCY_ZAR = "ZAR"
@@ -99,8 +106,8 @@ class Account(Base):
     __table_args__ = (
         # Constraints to check type is valid
         CheckConstraint(
-            "type IN ('USER','REMITX_FIAT','REMITX_XRPL_WALLET',"
-            "'REMITX_REVENUE','EXTERNAL')",
+            "type IN ('USER','REMITX_FIAT','REMITX_EVM_WALLET',"
+            "'REMITX_REVENUE','EXTERNAL','STOKVEL')",
             name="accounts_type_valid",
         ),
         # Only a customer's account belongs to a user
@@ -119,6 +126,11 @@ class Account(Base):
         CheckConstraint(
             "type <> 'USER' OR account_balance >= 0",
             name="accounts_user_balance_nonneg",
+        ),
+        # A stokvel pays out only what its members put in
+        CheckConstraint(
+            "type <> 'STOKVEL' OR account_balance >= 0",
+            name="accounts_stokvel_balance_nonneg",
         ),
         # Index to ensure uniqueness of (user_id, account_currency) for USER accounts
         Index(
@@ -139,7 +151,8 @@ class Account(Base):
     )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     # Permanent EFT reference, e.g. "sian1-zar" — USER rows only. NULL for
-    # platform/external rows ( which areidentified by `label` instead).
+    # platform, external and stokvel rows (which are identified by `label`
+    # instead).
     # Bank-statement reconciliation matches on this — see
     # AccountRepository.get_user_account_by_reference.
     reference: Mapped[str | None] = mapped_column(

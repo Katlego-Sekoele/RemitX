@@ -337,7 +337,7 @@ def test_a_late_success_after_a_recorded_failure_credits_nothing(ledger):
     assert _all_balances() == before
     assert {leg.status for leg in _legs(quote.quote_id)} == {STATUS_FAILED}
     burn = next(leg for leg in _legs(quote.quote_id) if leg.type == TYPE_TOKEN_BURN)
-    assert burn.xrpl_tx_hash is None
+    assert burn.evm_tx_hash is None
 
 
 def test_funds_stay_held_while_the_burn_is_in_flight(ledger):

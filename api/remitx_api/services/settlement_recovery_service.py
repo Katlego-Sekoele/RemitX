@@ -48,7 +48,7 @@ class StuckSettlement:
     pending_leg_count: int
     processing_leg_count: int
     failed_leg_count: int
-    burn_xrpl_tx_hash: str | None
+    burn_evm_tx_hash: str | None
     processed_at: datetime | None
     recovery_kind: SettlementRecoveryKind
 
@@ -96,7 +96,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
             if leg.status in counts:
                 counts[leg.status] += 1
             if leg.type == TYPE_TOKEN_BURN:
-                burn_hash = leg.xrpl_tx_hash
+                burn_hash = leg.evm_tx_hash
                 processed_at = leg.processed_at
         results.append(
             StuckSettlement(
@@ -107,7 +107,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
                 pending_leg_count=counts[STATUS_PENDING],
                 processing_leg_count=counts[STATUS_PROCESSING],
                 failed_leg_count=counts[STATUS_FAILED],
-                burn_xrpl_tx_hash=burn_hash,
+                burn_evm_tx_hash=burn_hash,
                 processed_at=(
                     _as_utc(processed_at) if processed_at is not None else None
                 ),

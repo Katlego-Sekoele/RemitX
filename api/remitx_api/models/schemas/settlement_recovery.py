@@ -12,7 +12,7 @@ class StuckSettlementRead(Schema):
     pending_leg_count: int
     processing_leg_count: int
     failed_leg_count: int
-    burn_xrpl_tx_hash: str | None
+    burn_evm_tx_hash: str | None
     processed_at: UtcDateTime | None
     recovery_kind: SettlementRecoveryKind
 

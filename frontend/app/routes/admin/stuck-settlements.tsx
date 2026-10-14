@@ -318,11 +318,7 @@ function StuckSettlementRow({
         </Tooltip>
       </TableCell>
       <TableCell>
-        {row.burn_xrpl_tx_hash ? (
-          <XrplHash hash={row.burn_xrpl_tx_hash} />
-        ) : (
-          "—"
-        )}
+        {row.burn_evm_tx_hash ? <XrplHash hash={row.burn_evm_tx_hash} /> : "—"}
       </TableCell>
       {canRetry ? (
         <TableCell className="text-right">
