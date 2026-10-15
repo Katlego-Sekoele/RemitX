@@ -32,6 +32,7 @@ test("flattened app routes are either in the registry or nested with overrides",
   const nestedWithoutRegistry = new Set([
     "routes/app/account-history.tsx",
     "routes/app/transfer.tsx",
+    "routes/app/stokvel.tsx",
   ])
 
   for (const route of getFlattenedAppRoutes(MANUAL_APP_ROUTES)) {
