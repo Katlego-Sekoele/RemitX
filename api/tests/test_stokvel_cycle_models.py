@@ -20,7 +20,7 @@ from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from tests.kyc_helpers import make_user
 
@@ -105,6 +105,32 @@ def _rejected(write) -> None:
     with pytest.raises(IntegrityError):
         write()
     db.session.rollback()
+
+
+_SET_CONTINUED = (
+    "UPDATE stokvel_cycle_members SET continued = true"
+    " WHERE cycle_id = :cycle AND member_id = :member"
+)
+_TOUCH_CYCLE = "UPDATE stokvel_cycles SET cycle_number = cycle_number WHERE id = :cycle"
+_TOUCH_ROUNDS = "UPDATE stokvel_rounds SET deadline = deadline WHERE cycle_id = :cycle"
+
+
+def _as(user, sql, **params) -> int:
+    """Run `sql` as `user` on a customer route; the number of rows it hit."""
+    with bound_row_security_context(user.id, is_admin_route=False):
+        return db.session.execute(text(sql), params).rowcount
+
+
+def _counts(cycle_id) -> tuple[int, int, int]:
+    """(cycles, rounds, cycle members) of the cycle, as a worker sees them."""
+    return tuple(
+        db.session.scalar(select(func.count()).select_from(model).where(column))
+        for model, column in (
+            (StokvelCycle, StokvelCycle.id == cycle_id),
+            (StokvelRound, StokvelRound.cycle_id == cycle_id),
+            (StokvelCycleMember, StokvelCycleMember.cycle_id == cycle_id),
+        )
+    )
 
 
 def _started(**columns) -> dict:
@@ -353,37 +379,112 @@ def test_row_security_scopes_each_customer(postgres_app):
             assert visible(user) == seen, who
         assert visible(outsider, admin=True) == (2, 2, 3)
 
-        def update(user, sql, **params):
-            with bound_row_security_context(user.id, is_admin_route=False):
-                db.session.execute(text(sql), params)
+        # UPDATE only reaches rows the write rule allows; the rest match nothing
+        # (rows updated by whom)
+        updates = {
+            "own row by member": (member, _SET_CONTINUED, member_row_id, 1),
+            "member's row by Organiser": (organiser, _SET_CONTINUED, member_row_id, 1),
+            "cycle by Organiser": (organiser, _TOUCH_CYCLE, None, 1),
+            "rounds by Organiser": (organiser, _TOUCH_ROUNDS, None, 2),
+            "Organiser's row by member": (member, _SET_CONTINUED, organiser_row_id, 0),
+            "cycle by member": (member, _TOUCH_CYCLE, None, 0),
+            "rounds by member": (member, _TOUCH_ROUNDS, None, 0),
+        }
+        for what, (user, sql, row_id, count) in updates.items():
+            assert _as(user, sql, cycle=cycle_id, member=row_id) == count, what
+        db.session.commit()
+    finally:
+        db.close_session(token)
 
-        set_continued = (
-            "UPDATE stokvel_cycle_members SET continued = true"
-            " WHERE cycle_id = :cycle AND member_id = :member"
-        )
-        # A member changes their own row; the Organiser changes anyone's
-        update(member, set_continued, cycle=cycle_id, member=member_row_id)
-        update(organiser, set_continued, cycle=cycle_id, member=member_row_id)
+
+@pytest.mark.postgres
+def test_row_security_inserts_by_the_write_rule(postgres_app):
+    token = db.open_session()
+    try:
+        organiser, member, third = (make_user() for _ in range(3))
+        stokvel, organiser_row = _stokvel(organiser)
+        member_row = _member(stokvel, member)
+        third_row = _member(stokvel, third)
+        db.session.commit()
+        stokvel_id = stokvel.id
+        rows = {
+            "organiser": organiser_row.id,
+            "member": member_row.id,
+            "third": third_row.id,
+        }
+
+        # The Organiser creates the cycle, its rounds and their own row
+        with bound_row_security_context(organiser.id, is_admin_route=False):
+            cycle = _cycle(db.session.get(Stokvel, stokvel_id))
+            cycle_id = cycle.id
+            _round(cycle, 0)
+            _in_cycle(cycle, db.session.get(StokvelMember, rows["organiser"]))
+        db.session.commit()
+        # A member adds their own row
+        with bound_row_security_context(member.id, is_admin_route=False):
+            _in_cycle(
+                db.session.get(StokvelCycle, cycle_id),
+                db.session.get(StokvelMember, rows["member"]),
+            )
         db.session.commit()
 
         refused = {
-            "another member's row": (
-                set_continued,
-                {"cycle": cycle_id, "member": organiser_row_id},
-            ),
-            "the cycle": (
-                "UPDATE stokvel_cycles SET cycle_number = cycle_number"
-                " WHERE id = :cycle",
-                {"cycle": cycle_id},
-            ),
-            "a round": (
-                "UPDATE stokvel_rounds SET deadline = deadline WHERE cycle_id = :cycle",
-                {"cycle": cycle_id},
+            "a cycle": lambda: _cycle(db.session.get(Stokvel, stokvel_id), 2),
+            "a round": lambda: _round(db.session.get(StokvelCycle, cycle_id), 1),
+            "another member's row": lambda: _in_cycle(
+                db.session.get(StokvelCycle, cycle_id),
+                db.session.get(StokvelMember, rows["third"]),
             ),
         }
-        for sql, params in refused.values():
-            with pytest.raises(ProgrammingError, match="row-level security"):
-                update(member, sql, **params)
+        for what, insert in refused.items():
+            with bound_row_security_context(member.id, is_admin_route=False):
+                with pytest.raises(ProgrammingError, match="row-level security"):
+                    insert()
+                    pytest.fail(f"member inserted {what}")
             db.session.rollback()
+
+        assert _counts(cycle_id) == (1, 1, 2)
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
+def test_customers_cannot_delete_cycle_rows(postgres_app):
+    token = db.open_session()
+    try:
+        organiser, member = make_user(), make_user()
+        stokvel, organiser_row = _stokvel(organiser)
+        member_row = _member(stokvel, member)
+        cycle = _cycle(stokvel)
+        _in_cycle(cycle, organiser_row, payout_position=0)
+        _in_cycle(cycle, member_row, payout_position=1)
+        _round(cycle, 0)
+        _round(cycle, 1)
+        db.session.commit()
+        cycle_id = cycle.id
+
+        # Children first, so a missing policy shows as a deleted row, not as a
+        # foreign key error from the cycle
+        deletes = [
+            (
+                "DELETE FROM stokvel_cycle_members WHERE cycle_id = :cycle"
+                " AND member_id = :member",
+                member_row.id,
+            ),
+            (
+                "DELETE FROM stokvel_cycle_members WHERE cycle_id = :cycle"
+                " AND member_id = :member",
+                organiser_row.id,
+            ),
+            ("DELETE FROM stokvel_rounds WHERE cycle_id = :cycle", None),
+            ("DELETE FROM stokvel_cycles WHERE id = :cycle", None),
+        ]
+        for who, user in {"member": member, "Organiser": organiser}.items():
+            for sql, row_id in deletes:
+                deleted = _as(user, sql, cycle=cycle_id, member=row_id)
+                assert deleted == 0, f"{who}: {sql}"
+            db.session.commit()
+
+        assert _counts(cycle_id) == (1, 2, 2)
     finally:
         db.close_session(token)
