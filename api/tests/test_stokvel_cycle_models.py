@@ -1,6 +1,7 @@
 """Stokvel cycle tables (R2-05): constraints on SQLite, row-level security on
 Postgres (the `postgres` lane, TEST_DATABASE_URL)."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -536,5 +537,37 @@ def test_a_cycle_member_belongs_to_the_cycles_stokvel(postgres_app):
             row.member_id
             for row in StokvelCycleRepository().get_cycle_members(a_cycle_id)
         ] == [a_member_id]
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
+def test_a_cycle_member_needs_an_existing_cycle_and_member(postgres_app):
+    token = db.open_session()
+    try:
+        stokvel, organiser = _stokvel(make_user())
+        cycle = _cycle(stokvel)
+        db.session.commit()
+        missing = uuid.uuid4()
+        # The trigger stops a one-sided miss (one stokvel id is null); with
+        # both missing it passes, and the foreign key stops it
+        cases = {
+            "no such cycle": (missing, organiser.id),
+            "no such member": (cycle.id, missing),
+            "neither exists": (missing, uuid.uuid4()),
+        }
+        for what, (cycle_id, member_id) in cases.items():
+            with pytest.raises(
+                IntegrityError, match="different stokvel|foreign key constraint"
+            ):
+                db.session.execute(
+                    text(
+                        "INSERT INTO stokvel_cycle_members (cycle_id, member_id)"
+                        " VALUES (:cycle, :member)"
+                    ),
+                    {"cycle": cycle_id, "member": member_id},
+                )
+                pytest.fail(f"{what}: accepted")
+            db.session.rollback()
     finally:
         db.close_session(token)
