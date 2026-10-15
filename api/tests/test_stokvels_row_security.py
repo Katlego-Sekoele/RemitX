@@ -161,8 +161,13 @@ def test_list_stokvels_under_row_security(postgres_app):
 
 @pytest.mark.postgres
 def test_a_member_row_with_another_users_account_is_refused(postgres_app):
-    """Row-level security lets a customer insert their own member row, so the
-    trigger is what stops it naming someone else's account."""
+    """The membership trigger refuses a member row naming someone else's
+    account, even on a customer route.
+
+    The refusal is told apart from row-level security by its SQLSTATE: the
+    trigger raises 23514 (check violation), a policy 42501. No control insert
+    is made: one would have to commit a membership nobody was invited to.
+    """
     token = db.open_session()
     try:
         organiser, joiner = _customer(), _customer()
@@ -170,26 +175,22 @@ def test_a_member_row_with_another_users_account_is_refused(postgres_app):
         db.session.commit()
         stokvel_id, joiner_id = stokvel.id, joiner.id
         organiser_account_id = _zar_account(organiser).account_id
-        joiner_account_id = _zar_account(joiner).account_id
 
-        def join_with(account_id):
+        with pytest.raises(IntegrityError, match="stokvel currency") as refused:
             with bound_row_security_context(joiner_id, is_admin_route=False):
                 db.session.add(
                     StokvelMember(
                         stokvel_id=stokvel_id,
                         user_id=joiner_id,
-                        account_id=account_id,
+                        account_id=organiser_account_id,
                     )
                 )
                 db.session.flush()
-
-        with pytest.raises(IntegrityError, match="stokvel currency"):
-            join_with(organiser_account_id)
         db.session.rollback()
 
-        # The same insert with the joiner's own account passes, so the
-        # refusal above was the trigger, not row-level security.
-        join_with(joiner_account_id)
-        db.session.commit()
+        assert refused.value.orig.pgcode == "23514"
+        assert db.session.scalars(
+            select(StokvelMember.user_id).where(StokvelMember.stokvel_id == stokvel_id)
+        ).all() == [organiser.id]
     finally:
         db.close_session(token)
