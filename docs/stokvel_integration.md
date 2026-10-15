@@ -61,6 +61,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-14 | Decisions, 5, 12 | D3: the members agree the payout order off the platform; the Organiser only enters it. The platform does not assign the order (no automatic ordering, e.g. by acceptance time). CONTEXT.md "Payout order" updated to match | |
 | 2026-10-14 | 14 | Renamed the cycle repository reads to `get_open_cycle`, `get_cycle_rounds`, `get_cycle_members` | |
 | 2026-10-14 | Decisions, 9, EVM switch-over | D11 now covers code too: XRPL files, scripts and the `xrpl-py` package are kept and marked as no longer used, the same as the XRPL settings already were. Only change what EVM needs, so we can switch back to XRPL easily. D1 and the switch-over rows for `xrpl_service.py`, the wallet script and `pyproject.toml` now say "keep" instead of "replace" | #301 |
+| 2026-10-15 | 3, 13, 14 | R2-05 (#227) hardening. The cycle tables' row-level security is now one policy per operation (`SELECT` with the read rule; `INSERT` and `UPDATE` with the write rule) and has no `DELETE` policy: a Postgres probe showed the single `FOR ALL` policy let any member delete cycles, rounds and other members' cycle rows. New trigger `stokvel_cycle_member_same_stokvel` refuses a cycle member from a different stokvel. The group tables (#226) have the same delete gap; a separate ticket is proposed | |
 
 ---
 
@@ -284,7 +285,7 @@ ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/sto
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number` (from 1; unique per stokvel), `status` (`forming`, `active`, `closed`), `total_rounds` (set at start, at least 2), `current_round` (0-based), `started_at` (null while forming), `closed_at` (set only when closed). At most one cycle per stokvel is not closed, as the contract allows one open cycle | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_rounds` | PK (`cycle_id`, `round`); `round` is 0-based, the contract's `uint8 round`. `start_time`, `deadline` (informational), `payout_time` (hard gate, D12); CHECK start ≤ deadline ≤ payout. The cross-round order rule is checked when the cycle starts | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row | `V20261009_1801__stokvel_group_tables` |
-| `stokvel_cycle_members` | PK (`cycle_id`, `member_id`); `member_id` → `stokvel_members.id` (the on-chain `memberId`). `payout_position` (0-based: the round that pays them; unique per cycle; null until the order is set), `payout_beneficiary_id` (→ `beneficiaries`) and `payout_currency` (set together; the stokvel pays this beneficiary directly, #293), `continued` (null until chosen, R2-15), `locked` (set when the cycle starts; needs a position and a beneficiary) | `V20261014_1200__stokvel_cycle_tables` |
+| `stokvel_cycle_members` | PK (`cycle_id`, `member_id`); `member_id` → `stokvel_members.id` (the on-chain `memberId`). `payout_position` (0-based: the round that pays them; unique per cycle; null until the order is set), `payout_beneficiary_id` (→ `beneficiaries`) and `payout_currency` (set together; the stokvel pays this beneficiary directly, #293), `continued` (null until chosen, R2-15), `locked` (set when the cycle starts; needs a position and a beneficiary). Trigger `stokvel_cycle_member_same_stokvel`: the member row must belong to the cycle's stokvel (neither foreign key can check this) | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `invited_by_user_id`, `status` (`pending`, `accepted`, `declined`, `revoked`, `lapsed`), `created_at`, `status_changed_at`, `status_changed_by_user_id`. Status changes once, so these two columns are its history; inviting again is a new row. One pending invitation per user per stokvel; only the invitee accepts or declines | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_contributions` | `id`, `cycle_id`, `round`, `member_id`, `amount_fiat`, `amount_token`, `tx_id` (ledger), `evm_tx_hash`, `block_number`, `status`; UNIQUE (`cycle_id`, `round`, `member_id`) | |
 | `stokvel_payouts` | `id`, `cycle_id`, `round`, `member_id`, `release_status`, `quote_id`, `remittance_id`, `release_tx_hash`, `burn_tx_hash`; UNIQUE (`cycle_id`, `round`) | |
@@ -308,9 +309,13 @@ As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `
 | `stokvels` | Stokvels they organise, are a member of, or hold a pending invitation to | As Organiser |
 | `stokvel_members` | Their own rows and their fellow members' | Their own rows |
 | `stokvel_invitations` | Their own, plus every invitation of a stokvel they are a member of or hold a pending invitation to | As invitee or Organiser |
-| `stokvel_cycles` | Cycles of a stokvel they are a member of | As Organiser |
-| `stokvel_rounds` | Rounds of a stokvel they are a member of | As Organiser |
-| `stokvel_cycle_members` | Every row of a stokvel they are a member of | As Organiser, or their own row (beneficiary, continuation). Which columns each may change is checked by the controller |
+| `stokvel_cycles` | Cycles of a stokvel they are a member of | As Organiser (insert and update only) |
+| `stokvel_rounds` | Rounds of a stokvel they are a member of | As Organiser (insert and update only) |
+| `stokvel_cycle_members` | Every row of a stokvel they are a member of | As Organiser, or their own row (beneficiary, continuation); insert and update only. Which columns each may change is checked by the controller |
+
+The group tables have one `FOR ALL` policy each. The cycle tables have one policy per operation instead: `FOR SELECT` with the read rule, and `FOR INSERT` and `FOR UPDATE` with the write rule. An `UPDATE` of a row the write rule does not allow matches no rows, rather than raising an error.
+
+**Customers cannot delete cycle rows.** The cycle tables have no `DELETE` policy, so no one connected as `remitx_app` can delete from them, the Organiser included. Because the app always connects as `remitx_app`, that covers workers and admin routes too. A future task that needs deletes must add a `DELETE` policy for exactly who may delete, with a Postgres test. The reason: a single `FOR ALL` policy checks `DELETE` against its read rule only, so any member could delete what they can see. The group tables still work that way; a separate ticket is proposed to fix them.
 
 The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation` (R2-04), and `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser` and `stokvel_member_is_user` (R2-05), because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Tests: `api/tests/test_stokvel_group_models.py` and `api/tests/test_stokvel_cycle_models.py` (`postgres` lane).
 
@@ -658,8 +663,8 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/tests/test_stokvel_group_models.py` | Constraints (SQLite) and RLS (`postgres` lane) | #226 |
 | `api/remitx_api/models/orm/stokvel_cycle.py`, `stokvel_round.py`, `stokvel_cycle_member.py` | Cycle tables (section 3) | #227 |
 | `api/remitx_api/repositories/stokvel_cycle_repository.py` | Reads for cycles, rounds and cycle members | #227 |
-| `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | Cycle tables, `stokvels.current_cycle_id`, RLS policies and lookup functions | #227 |
-| `api/tests/test_stokvel_cycle_models.py` | Constraints (SQLite) and RLS (`postgres` lane) | #227 |
+| `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | Cycle tables, `stokvels.current_cycle_id`, RLS policies (one per operation, no delete), lookup functions and the same-stokvel trigger | #227 |
+| `api/tests/test_stokvel_cycle_models.py` | Constraints (SQLite); RLS, no deletes and the same-stokvel trigger (`postgres` lane) | #227 |
 | `api/alembic/versions/V20261011_1000__stokvel_ledger_account_and_types.py` | `STOKVEL` account type and balance CHECK, stokvel transaction types, `stokvels.account_id` | #238 |
 | `api/alembic/versions/V20261011_1001__quote_sender_stokvel.py` | Nullable `quotes.sender_user_id`, `quotes.stokvel_id`, `quotes_one_sender` | #239 |
 | `api/alembic/versions/V20261011_1002__add_transactions_evm_tx_hash.py`, `V20261011_1003__backfill_transactions_evm_tx_hash.py` | `evm_tx_hash` added beside `xrpl_tx_hash`, then backfilled | #239 |
@@ -681,5 +686,6 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `stokvel_is_member`, `stokvel_is_organiser`, `stokvel_has_pending_invitation` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | RLS lookups (section 3) | #226 |
 | `stokvel_member_account_is_fiat` (SQL) | `api/alembic/versions/V20261009_1801__stokvel_group_tables.py` | Member's fiat account in the stokvel currency | #226 |
 | `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser`, `stokvel_member_is_user` (SQL) | `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | RLS lookups for the cycle tables (section 3) | #227 |
+| `stokvel_cycle_member_same_stokvel` (SQL trigger function) | `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | `BEFORE INSERT OR UPDATE OF cycle_id, member_id` on `stokvel_cycle_members`: refuses a member row from a different stokvel than the cycle (SQLSTATE 23514) | #227 |
 | `StokvelCycleRepository.get_open_cycle`, `.get_cycle_rounds`, `.get_cycle_members` | `api/remitx_api/repositories/stokvel_cycle_repository.py` | A stokvel's open cycle; a cycle's rounds in order and members in payout order | #227 |
 | `AccountRepository.create_stokvel_account`, `AccountRepository.get_stokvel_account` | `api/remitx_api/repositories/account_repository.py` | Create a stokvel's `STOKVEL` account and link it; find it by stokvel | #238 |
