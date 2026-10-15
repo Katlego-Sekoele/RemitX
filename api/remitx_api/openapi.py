@@ -51,6 +51,7 @@ class Tag:
     ACCOUNTS = "accounts"
     BANK_ACCOUNTS = "bank_accounts"
     WITHDRAWALS = "withdrawals"
+    STOKVELS = "stokvels"
     KYC_ONBOARDING = "kyc.onboarding"
     KYC_DOCUMENTS = "kyc.documents"
     ADMIN_ROLES = "admin.roles"
@@ -99,6 +100,13 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.WITHDRAWALS,
         "description": "Requesting a withdrawal from a fiat account to a bank account.",
+    },
+    {
+        "name": Tag.STOKVELS,
+        "description": (
+            "Savings groups the caller organises or belongs to, and their "
+            "invitations to join one."
+        ),
     },
     {
         "name": Tag.KYC_ONBOARDING,

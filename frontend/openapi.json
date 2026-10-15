@@ -4922,6 +4922,183 @@
         "title": "SkippedStatementLineReason",
         "type": "string"
       },
+      "StokvelCreateRequest": {
+        "additionalProperties": false,
+        "description": "A new stokvel. The caller becomes its Organiser and first Member.",
+        "properties": {
+          "contribution_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,21}0*$)\\d{0,12}\\.\\d{0,8}0*$)",
+                "type": "string"
+              }
+            ],
+            "description": "Fixed UCTUSD (token) amount each member contributes per round, for the stokvel's life (D13). Members pay it from their account in the Stokvel currency at the live rate when they contribute.",
+            "title": "Contribution Amount"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency",
+            "description": "The Stokvel currency. The caller must already hold a fiat account in it: contributions are paid from that account."
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "currency",
+          "contribution_amount"
+        ],
+        "title": "StokvelCreateRequest",
+        "type": "object"
+      },
+      "StokvelInvitationRead": {
+        "description": "An invitation to join a stokvel that the caller has not answered.",
+        "properties": {
+          "contribution_amount": {
+            "description": "Fixed UCTUSD (token) amount each member contributes per round, for the stokvel's life (D13). Members pay it from their account in the Stokvel currency at the live rate when they contribute.",
+            "title": "Contribution Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          },
+          "invitation_id": {
+            "format": "uuid",
+            "title": "Invitation Id",
+            "type": "string"
+          },
+          "invited_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By Name"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          },
+          "stokvel_name": {
+            "title": "Stokvel Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation_id",
+          "stokvel_id",
+          "stokvel_name",
+          "currency",
+          "contribution_amount",
+          "invited_by_name",
+          "created_at"
+        ],
+        "title": "StokvelInvitationRead",
+        "type": "object"
+      },
+      "StokvelListRead": {
+        "description": "The caller's stokvels and pending invitations, each newest first.",
+        "properties": {
+          "invitations": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelInvitationRead"
+            },
+            "title": "Invitations",
+            "type": "array"
+          },
+          "stokvels": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelRead"
+            },
+            "title": "Stokvels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stokvels",
+          "invitations"
+        ],
+        "title": "StokvelListRead",
+        "type": "object"
+      },
+      "StokvelRead": {
+        "description": "A stokvel the caller is a current member of.",
+        "properties": {
+          "contribution_amount": {
+            "description": "Fixed UCTUSD (token) amount each member contributes per round, for the stokvel's life (D13). Members pay it from their account in the Stokvel currency at the live rate when they contribute.",
+            "title": "Contribution Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "is_organiser": {
+            "title": "Is Organiser",
+            "type": "boolean"
+          },
+          "max_members": {
+            "title": "Max Members",
+            "type": "integer"
+          },
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "name",
+          "currency",
+          "contribution_amount",
+          "is_organiser",
+          "member_count",
+          "max_members",
+          "created_at",
+          "deactivated_at"
+        ],
+        "title": "StokvelRead",
+        "type": "object"
+      },
       "StuckSettlementRead": {
         "properties": {
           "burn_evm_tx_hash": {
@@ -11014,6 +11191,118 @@
         ]
       }
     },
+    "/stokvels": {
+      "get": {
+        "description": "The stokvels the caller is a current member of, and the invitations\nto join one that they have not answered yet, each newest first. A\nstokvel the caller has left is not listed.",
+        "operationId": "list_stokvels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelListRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List my stokvels and invitations",
+        "tags": [
+          "stokvels"
+        ]
+      },
+      "post": {
+        "description": "Create a stokvel with the caller as its Organiser and first Member.\nThe caller's contributions are paid from their own fiat account in the\nStokvel currency.\n\nRefusals: 403 if the caller is not KYC-verified; 400 if they hold no\naccount in `currency` (they open one with `POST /accounts` first); 422\nfor an invalid name, currency or amount.",
+        "operationId": "create_stokvel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Create a stokvel",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
     "/withdrawals": {
       "get": {
         "description": "List every withdrawal this user has ever made, newest first.",
@@ -11171,6 +11460,10 @@
     {
       "description": "Requesting a withdrawal from a fiat account to a bank account.",
       "name": "withdrawals"
+    },
+    {
+      "description": "Savings groups the caller organises or belongs to, and their invitations to join one.",
+      "name": "stokvels"
     },
     {
       "description": "The applicant's resumable KYC application.",

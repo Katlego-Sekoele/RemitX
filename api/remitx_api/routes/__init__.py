@@ -27,6 +27,7 @@ from remitx_api.routes.kyc_documents import router as kyc_documents_router
 from remitx_api.routes.me import router as me_router
 from remitx_api.routes.quotes import router as quotes_router
 from remitx_api.routes.remittances import router as remittances_router
+from remitx_api.routes.stokvels import router as stokvels_router
 from remitx_api.routes.withdrawals import router as withdrawals_router
 
 
@@ -46,6 +47,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(dashboard_router)
     app.include_router(bank_accounts_router)
     app.include_router(withdrawals_router)
+    app.include_router(stokvels_router)
 
     # Admin — mounted under /admin with a permission declared on the router.
     app.include_router(admin_audit_router)
