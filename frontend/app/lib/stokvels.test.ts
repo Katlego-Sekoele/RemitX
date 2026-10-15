@@ -100,3 +100,74 @@ test("demo ids are the mock's, real ids are UUIDs", () => {
   assert.equal(isDemoStokvel("stk_8c21"), true)
   assert.equal(isDemoStokvel("4f1c2b7e-0d1a-4c55-9a8e-2b7a1f0c9d33"), false)
 })
+
+test("payoutStage follows release then remittance status", async () => {
+  const { payoutStage } = await import("./stokvels")
+  const none = { release_status: null, remittance_status: null }
+  assert.equal(payoutStage(none, false), "collecting")
+  assert.equal(payoutStage(none, true), "released")
+  assert.equal(
+    payoutStage({ release_status: "released", remittance_status: null }, true),
+    "released"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "processing" },
+      true
+    ),
+    "sending"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "confirmed" },
+      true
+    ),
+    "delivered"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "failed" },
+      true
+    ),
+    "failed"
+  )
+})
+
+test("contributeMock pays once, confirms, and refuses the doc §6 cases", async () => {
+  const { contributeMock, resetStokvelMockScenario, stokvelMockScenario } =
+    await import("./stokvels.mock")
+  const { outstandingMembers } = await import("./stokvels")
+  resetStokvelMockScenario()
+  stokvelMockScenario.confirm_delay_ms = 1
+
+  stokvelMockScenario.paused = true
+  await expect(contributeMock("stk_8c21")).rejects.toMatchObject({
+    status: 503,
+    body: { code: "stokvel_paused" },
+  })
+  stokvelMockScenario.paused = false
+
+  await expect(contributeMock("stk_77e0")).rejects.toMatchObject({
+    body: { code: "cycle_not_open" },
+  })
+
+  stokvelMockScenario.available_balance = "10.00"
+  await expect(contributeMock("stk_8c21")).rejects.toThrow(/available balance/)
+  stokvelMockScenario.available_balance = "1240.00"
+
+  const before = await getStokvelMock("stk_8c21")
+  assert.equal(outstandingMembers(before).length, 1)
+  const paid = await contributeMock("stk_8c21")
+  assert.equal(paid.status, "confirmed")
+  assert.match(paid.evm_tx_hash ?? "", /^0x[0-9a-z]{64}$/)
+  const after = await getStokvelMock("stk_8c21")
+  assert.equal(outstandingMembers(after).length, 0)
+  assert.equal(after.my_contribution_status, "confirmed")
+  assert.equal(stokvelMockScenario.available_balance, "740.00")
+
+  await expect(contributeMock("stk_8c21")).rejects.toMatchObject({
+    status: 409,
+    body: { code: "contribution_already_paid" },
+  })
+  resetStokvelMockScenario()
+})

@@ -21,6 +21,7 @@ import {
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   demoStokvelsMock,
+  contributeMock,
   getStokvelContractStatusMock,
   getStokvelMock,
 } from "~/lib/stokvels.mock"
@@ -104,6 +105,10 @@ export type StokvelRoundRead = {
   remittance_id: string | null
   release_tx_hash: string | null
   burn_tx_hash: string | null
+  /** The pool in the Stokvel currency once released; null before. */
+  pool_fiat_amount: string | null
+  /** The payout remittance's reference once it exists. */
+  remittance_reference: string | null
 }
 
 /** R4-09: assumed until #236 (or #244 for the contract). */
@@ -253,6 +258,14 @@ export const stokvelQueries = {
       queryKey: ["admin", "stokvel-contract"],
       queryFn: () => getStokvelContractStatusMock(),
     }),
+}
+
+/** Mutations in the shape `useMutation` spreads, like the client's. */
+export const stokvelMutations = {
+  /** `POST /stokvels/{id}/contributions` (#233): pays the current round. */
+  contribute: (stokvelId: string) => ({
+    mutationFn: () => contributeMock(stokvelId),
+  }),
 }
 
 export async function invalidateStokvels(queryClient: QueryClient) {
@@ -405,6 +418,40 @@ export function currentRecipientId(
 ): string | null {
   if (!cycle || cycle.status !== CycleStatus.active) return null
   return cycle.payout_order[cycle.current_round] ?? null
+}
+
+/** Where a round's payout is, in the words members see (product docx §2):
+ * collecting → released → sending → delivered, or failed (retrying). */
+export type PayoutStage =
+  "collecting" | "released" | "sending" | "delivered" | "failed"
+
+export function payoutStage(
+  round: Pick<StokvelRoundRead, "release_status" | "remittance_status">,
+  everyonePaid: boolean
+): PayoutStage {
+  if (round.remittance_status === RemittanceStatus.confirmed) return "delivered"
+  if (round.remittance_status === RemittanceStatus.failed) return "failed"
+  if (round.remittance_status) return "sending"
+  if (round.release_status === ReleaseStatus.released) return "released"
+  if (round.release_status === ReleaseStatus.processing) return "released"
+  return everyonePaid ? "released" : "collecting"
+}
+
+export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
+  collecting: "Waiting",
+  released: "Released",
+  sending: "Sending",
+  delivered: "Delivered",
+  failed: "Didn't go through, we're retrying",
+}
+
+/** Members who have not paid `round` of the current cycle. */
+export function outstandingMembers(
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "members">,
+  round: number = detail.cycle?.current_round ?? 0
+): StokvelMemberRead[] {
+  const paid = paidMemberIds(detail, round)
+  return detail.members.filter((member) => !paid.has(member.member_id))
 }
 
 export const PHASE_LABELS: Record<CycleStatus, string> = {
