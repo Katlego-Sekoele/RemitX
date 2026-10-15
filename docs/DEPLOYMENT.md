@@ -12,7 +12,7 @@ Postgres + Redis + Celery — no cloud required day-to-day.
 | Component | QA | Production |
 |-----------|-----|------------|
 | Frontend | Firebase Hosting | Firebase Hosting → `remitx.tech` |
-| API | Cloud Run (`africa-south1`) | Cloud Run |
+| API | Firebase Hosting → Cloud Run (`qa-api.remitx.tech`) | Firebase Hosting → Cloud Run (`api.remitx.tech`) |
 | Worker | Cloud Run (HTTP + Celery) | Cloud Run |
 | Database | Neon branch `qa` | Neon branch `main` |
 | KYC documents | Neon Object Storage `remitx-qa-kyc-documents` | `remitx-prod-kyc-documents` |
@@ -182,7 +182,9 @@ eventually live.
 ## Worker wake
 
 Free web services spin down after 15 minutes idle. After enqueue the API
-`GET`s `WORKER_WAKE_URL` (the worker `/health`) if that variable is set.
+`GET`s `WORKER_WAKE_URL` (the worker `/health`) if that variable is set. The
+worker accepts that ping only from inside the VPC, so a cold Cloud NAT path
+can take half a minute before the request arrives.
 Unset the variable to disable the ping (local Compose, or a future always-on
 worker).
 

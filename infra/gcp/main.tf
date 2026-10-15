@@ -17,10 +17,18 @@ module "api" {
   secret_env            = local.api_secret_env
   allow_unauthenticated = true
   min_instance_count    = 0
+  custom_domain         = var.api_custom_domain
+  # Firebase Hosting calls the default run.app URL, so ingress stays public.
+  # All API egress goes through the VPC so the worker wake counts as internal.
+  ingress        = "INGRESS_TRAFFIC_ALL"
+  vpc_network    = google_compute_network.this.name
+  vpc_subnetwork = google_compute_subnetwork.this.name
+  vpc_egress     = "ALL_TRAFFIC"
 
   depends_on = [
     google_project_service.this,
     google_secret_manager_secret_iam_member.api,
+    module.firebase,
   ]
 }
 
@@ -35,6 +43,10 @@ module "worker" {
   secret_env            = local.worker_secret_env
   allow_unauthenticated = true
   min_instance_count    = 0
+  ingress               = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  vpc_network           = google_compute_network.this.name
+  vpc_subnetwork        = google_compute_subnetwork.this.name
+  vpc_egress            = "PRIVATE_RANGES_ONLY"
 
   depends_on = [
     google_project_service.this,

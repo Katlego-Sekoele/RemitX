@@ -24,13 +24,11 @@ SETTLE_REMITTANCE = "remitx_worker.tasks.settle_remittance"
 BURN_TREASURY_TOKENS = "remitx_worker.tasks.burn_treasury_tokens"
 CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 
-# Short on purpose, and not a deadline for the worker to finish booting. The
-# ping exists to make Render's router start a spun-down instance, and that
-# happens when the request arrives, not when it answers - a cold instance
-# usually replies 502 long before it is ready. Nothing reads the response, so
-# a longer wait would buy nothing and would only lengthen the join at
-# interpreter exit.
-WAKE_TIMEOUT_SECONDS = 5
+# A cold Cloud NAT path can take 30s or more before the first packet leaves a
+# new API instance, and the worker does not start until this request arrives.
+# Nothing reads the response. The ping stays off the request path; the extra
+# wait only holds the background thread, including at interpreter shutdown.
+WAKE_TIMEOUT_SECONDS = 60
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +52,8 @@ def _http_get(url: str, timeout: float) -> None:
     silently (logged only here).
     """
     with httpx.Client(trust_env=False, timeout=timeout) as client:
-        # Do not raise on 502/503: Render's edge has already accepted the
-        # request and started the spin-up; that is all the wake needs.
+        # Do not raise on 502/503: the edge has already accepted the request
+        # and started the spin-up; that is all the wake needs.
         client.get(url)
 
 

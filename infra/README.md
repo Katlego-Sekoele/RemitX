@@ -71,10 +71,11 @@ On `infra/gcp` apply (per workspace):
 
 - API enablement (Run, Artifact Registry, Firebase, Monitoring, …)
 - **Artifact Registry** Docker repo (`artifact_registry_repository_id`, default `remitx`)
-- Cloud Run services (image/env updated again by deploy jobs)
+- VPC, subnet, and Cloud NAT per environment. API egress is all-traffic (so it can reach the worker). Worker egress is private-ranges-only
+- Cloud Run services (image/env updated again by deploy jobs). API ingress is public. Worker ingress is internal
 - Secret Manager versions for runtime credentials; Cloud Run receives them as
   secret-backed environment variables, never as plaintext service configuration
-- Firebase project + Hosting site (+ custom domain resource when set in tfvars)
+- Firebase project + web Hosting site, and an API Hosting site that rewrites every path to the API Cloud Run service (custom domains when set in tfvars; DNS records in output `api_custom_domain_dns`)
 - Upstash Redis database per environment
 - GCP billing budget + email channels (**prod workspace only**): **$10** planning target, emails every **$2** of project spend through **$100** by default (`monthly_budget_amount`, `budget_alert_step_usd`, `budget_alert_coverage_usd`; requires `BUDGET_ALERT_EMAILS` + `TF_VAR_billing_account_id`)
 - Service accounts for API and worker; **GitHub deploy** SA `remitx-github-deploy` (created on first apply in a GCP project) plus Run / Artifact Registry / Firebase Hosting IAM on every workspace
@@ -118,7 +119,8 @@ for role in \
   roles/run.admin \
   roles/artifactregistry.admin \
   roles/firebase.admin \
-  roles/monitoring.notificationChannelEditor
+  roles/monitoring.notificationChannelEditor \
+  roles/compute.networkAdmin
 do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
     --member="serviceAccount:${SA}" \

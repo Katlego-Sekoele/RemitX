@@ -42,6 +42,7 @@ locals {
     "roles/firebase.admin",
     "roles/monitoring.notificationChannelEditor",
     "roles/secretmanager.admin",
+    "roles/compute.networkAdmin",
   ]
 }
 

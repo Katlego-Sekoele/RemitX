@@ -18,18 +18,25 @@ case "$SERVICE_ROLE" in
     IMAGE="${IMAGE:-$(terraform output -raw api_container_image)}"
     ENV_JSON="$(terraform output -json api_env_vars)"
     SECRET_ENV_JSON="$(terraform output -json api_secret_env_vars)"
+    INGRESS="all"
+    VPC_EGRESS="all-traffic"
     ;;
   worker)
     SERVICE_NAME="remitx-${DEPLOY_ENV}-worker"
     IMAGE="${IMAGE:-$(terraform output -raw worker_container_image)}"
     ENV_JSON="$(terraform output -json worker_env_vars)"
     SECRET_ENV_JSON="$(terraform output -json worker_secret_env_vars)"
+    INGRESS="internal"
+    VPC_EGRESS="private-ranges-only"
     ;;
   *)
     echo "unknown SERVICE_ROLE=$SERVICE_ROLE" >&2
     exit 1
     ;;
 esac
+
+NETWORK="$(terraform output -raw cloud_run_network)"
+SUBNET="$(terraform output -raw cloud_run_subnetwork)"
 
 ENV_JSON_FILE="$(mktemp)"
 ENV_FILE="$(mktemp)"
@@ -45,6 +52,10 @@ gcloud run deploy "$SERVICE_NAME" \
   --env-vars-file "$ENV_FILE" \
   --set-secrets "$SET_SECRETS" \
   --port 4200 \
+  --ingress "$INGRESS" \
+  --network "$NETWORK" \
+  --subnet "$SUBNET" \
+  --vpc-egress "$VPC_EGRESS" \
   --allow-unauthenticated
 
 rm -f "$ENV_JSON_FILE" "$ENV_FILE"

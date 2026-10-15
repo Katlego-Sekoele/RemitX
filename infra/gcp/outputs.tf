@@ -2,6 +2,15 @@ output "api_url" {
   value = local.api_public
 }
 
+output "api_hosting_url" {
+  value = module.api.hosting_url
+}
+
+output "api_custom_domain_dns" {
+  description = "DNS records to add so the API custom domain is served by Firebase Hosting."
+  value       = module.api.custom_domain_dns
+}
+
 output "worker_url" {
   value = module.worker.service_url
 }
@@ -57,6 +66,14 @@ output "worker_container_image" {
 
 output "artifact_registry_repository" {
   value = google_artifact_registry_repository.remitx.name
+}
+
+output "cloud_run_network" {
+  value = google_compute_network.this.name
+}
+
+output "cloud_run_subnetwork" {
+  value = google_compute_subnetwork.this.name
 }
 
 output "github_deploy_service_account_email" {

@@ -8,3 +8,11 @@ variable "env" {
 variable "secret_env" { type = map(string) }
 variable "allow_unauthenticated" { type = bool }
 variable "min_instance_count" { type = number }
+variable "ingress" { type = string }
+variable "vpc_network" { type = string }
+variable "vpc_subnetwork" { type = string }
+variable "vpc_egress" { type = string }
+variable "custom_domain" {
+  type    = string
+  default = ""
+}

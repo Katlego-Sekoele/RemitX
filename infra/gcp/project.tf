@@ -8,6 +8,7 @@ locals {
     "secretmanager.googleapis.com",
     "cloudbilling.googleapis.com",
     "iam.googleapis.com",
+    "compute.googleapis.com",
   ]
 }
 
