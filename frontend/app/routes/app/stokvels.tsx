@@ -38,6 +38,7 @@ import { formatMoney } from "~/lib/money"
 import {
   PHASE_LABELS,
   roundLabel,
+  stokvelNewPath,
   stokvelPath,
   stokvelQueries,
   type StokvelInvitationRead,
@@ -56,8 +57,8 @@ export function meta(): Route.MetaDescriptors {
 
 /**
  * The member's stokvels and pending invitations (R4-02 scaffold, #251).
- * Reads mocked data until the API lands; the create form is R4-03 (#252),
- * invitation actions are R4-04 (#253).
+ * Reads mocked data until the API lands; the create wizard is at
+ * app/stokvels/new (#252), invitation actions are R4-04 (#253).
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
@@ -72,8 +73,9 @@ export default function StokvelsPage() {
               Save together, pay out in turn.
             </PageHeaderDescription>
           </PageHeader>
-          {/* The create wizard arrives in #252. */}
-          <Button disabled>New stokvel</Button>
+          <Button nativeButton={false} render={<Link to={stokvelNewPath()} />}>
+            New stokvel
+          </Button>
         </div>
 
         {list.isPending ? (
@@ -108,7 +110,12 @@ export default function StokvelsPage() {
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button disabled>Start a stokvel</Button>
+              <Button
+                nativeButton={false}
+                render={<Link to={stokvelNewPath()} />}
+              >
+                Start a stokvel
+              </Button>
             </EmptyContent>
           </Empty>
         ) : (

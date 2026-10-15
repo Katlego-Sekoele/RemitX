@@ -39,6 +39,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-08 | 1, 6 | Treasury allowance agreed with the backend: one-off `approve(vault, max)` per contract address, checked before each `contribute` and re-approved if low. Section 6 maps the token's `ERC20InsufficientAllowance` to a backend 500. Backend confirmed sections 1 and 6, and the fixed contribution amount in `createStokvel` | |
 | 2026-10-09 | 1 | MVP decision: the contribution amount is fixed per stokvel for all cycles; a new amount means a new stokvel | |
 | 2026-10-15 | 9, 13 | Frontend scaffold (R4-02 #251): `app/stokvels`, `app/stokvels/:stokvelId` and `admin/stokvel-contract` routes, sidebar entries, and mocked responses shaped like §3 and §5 behind `lib/stokvels.ts`. The R4-01 screen list (13 screens) is on #250 | #251 |
+| 2026-10-15 | 5, 13 | Create wizard (R4-03 #252) at `app/stokvels/new` on mocks: name, Stokvel currency, contribution in fiat, members, cadence and first payout day; the per-round schedule is generated and checked like the contract's `_validateSchedule`. Section 5 records the `POST /stokvels` body the frontend assumes | #252 |
 | 2026-10-09 | 2, 8, 9, 10, 13, 14 | Contract work brought up to date: section 2 lists the deploy script's settings and `DEPLOYER_PRIVATE_KEY` (local only); section 8 resolves the contract side of the contribution amount and the Treasury allowance, defers per-cycle amounts, and adds the admin-key question for pause (#244); section 9 marks the contract, tests and pause done (PR #282 merged), deployment in progress (#284) and README/ABI/ADR in review (#285); sections 10, 13 and 14 list the contract features, files and scripts | |
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
 | 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
@@ -453,6 +454,8 @@ The admin finalise route removed from an earlier draft is back as a fallback onl
 
 _TBD per endpoint: request and response shape, errors._
 
+_Frontend assumption for `POST /stokvels` (R4-03 #252, to confirm with R2-07 #229):_ the body is `{ name, goal | null, currency, contribution_fiat_amount, rounds: [{ round, start_time, deadline, payout_time }] }`. The Organiser enters the contribution in the Stokvel currency; the API fixes the UCTUSD `contribution_amount` at the live rate (D13) and returns the stokvel. The rounds are the planned schedule, one per expected member, which `POST /stokvels/{id}/cycles` later trims to the members who are ready. If the API would rather take the schedule only at cycle start, the wizard moves that step to the setup page (R4-06 #255).
+
 ---
 
 ## 6. Error mapping
@@ -679,6 +682,9 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvels.test.ts` | Helper and mock-shape tests | #251 |
 | `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list and detail pages on mocked data; sidebar entry "Stokvels" in `app.routes.ts` | #251 |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
+| `frontend/app/lib/stokvel-create.ts`, `stokvel-create.test.ts` | Create wizard state (URL search params), validation, schedule generation mirroring `_validateSchedule`, and the `POST /stokvels` body | #252 |
+| `frontend/app/routes/app/stokvel-new.tsx` | The wizard page at `app/stokvels/new` (KYC-approved users only) | #252 |
+| `frontend/app/components/stokvels/create-progress.tsx`, `create-name-step.tsx`, `create-amount-step.tsx`, `create-review-step.tsx` | Wizard steps; the amount step prices a round's pool with `POST /quotes/preview-quote` for the live fee preview | #252 |
 
 ## 14. Functions created
 
