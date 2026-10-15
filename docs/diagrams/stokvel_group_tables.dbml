@@ -1,10 +1,11 @@
-// Stokvel group tables (R2-04, #226). Render (needs graphviz's `dot`):
+// Stokvel group and cycle tables (R2-04 #226, R2-05 #227). Render (needs graphviz's `dot`):
 //   npx @softwaretechnik/dbml-renderer@1.0.30 -i stokvel_group_tables.dbml -f dot \
 //     | grep -v 'style=invis' \
 //     | sed 's/rankdir=LR;/rankdir=LR; nodesep=0.6; ranksep=1.4;/; s/"transparent"/"white"/' \
 //     | dot -Tsvg -o stokvel_group_tables.svg
 // (!) in the diagram means NOT NULL.
-// users and accounts are stubs: only the columns these tables reference.
+// users, accounts and beneficiaries are stubs: only the columns these tables
+// reference. Rounds and payout positions are 0-based, like the contract.
 
 Table users {
   id uuid [pk]
@@ -14,12 +15,18 @@ Table accounts {
   account_id uuid [pk]
 }
 
+Table beneficiaries {
+  beneficiary_id uuid [pk]
+}
+
 Table stokvels {
   id uuid [pk, note: 'on-chain id (bytes32)']
   organiser_user_id uuid [not null, ref: > users.id]
   name text [not null]
   currency text [not null, note: 'Stokvel currency (fiat)']
   contribution_amount "numeric(20,8)" [not null, note: 'UCTUSD, fixed for life']
+  account_id uuid [unique, ref: - accounts.account_id, note: 'its STOKVEL account']
+  current_cycle_id uuid [ref: - stokvel_cycles.id, note: 'latest cycle; null until the first']
   created_at timestamptz [not null]
   deactivated_at timestamptz [note: 'null while in service']
 }
@@ -47,4 +54,39 @@ Table stokvel_invitations {
   status_changed_by_user_id uuid [ref: > users.id]
 
   Note: 'unique (stokvel_id, invitee_user_id) where status = pending'
+}
+
+Table stokvel_cycles {
+  id uuid [pk]
+  stokvel_id uuid [not null, ref: > stokvels.id]
+  cycle_number int [not null, note: 'from 1']
+  status text [not null, note: 'forming | active | closed']
+  total_rounds int [note: 'set at start, >= 2']
+  current_round int [note: '0-based']
+  started_at timestamptz [note: 'null while forming']
+  closed_at timestamptz [note: 'set when closed']
+
+  Note: 'unique (stokvel_id, cycle_number); unique (stokvel_id) where status <> closed'
+}
+
+Table stokvel_rounds {
+  cycle_id uuid [pk, ref: > stokvel_cycles.id]
+  round int [pk, note: 'contract uint8 round']
+  start_time timestamptz [not null]
+  deadline timestamptz [not null, note: 'informational']
+  payout_time timestamptz [not null, note: 'hard gate (D12)']
+
+  Note: 'start_time <= deadline <= payout_time'
+}
+
+Table stokvel_cycle_members {
+  cycle_id uuid [pk, ref: > stokvel_cycles.id]
+  member_id uuid [pk, ref: > stokvel_members.id, note: 'on-chain memberId']
+  payout_position int [note: 'the round that pays them']
+  payout_beneficiary_id uuid [ref: > beneficiaries.beneficiary_id]
+  payout_currency text [note: 'set with the beneficiary']
+  continued boolean [note: 'null until chosen']
+  locked boolean [not null, note: 'set when the cycle starts']
+
+  Note: 'unique (cycle_id, payout_position)'
 }
