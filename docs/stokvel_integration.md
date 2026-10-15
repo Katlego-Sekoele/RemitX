@@ -38,6 +38,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-08 | 1, 2, 6, 9, 13, 14 | Section 1 confirmed against the contract as built (DEC-1 #212, R1-01 #215): constructor and deployment arguments, final signatures, `cycle` added to `ContributionMade` and `RoundFinalised`, error `CycleClosed` renamed `CycleNotOpen` (name clash with the event), input-validation errors, view signatures, member IDs are per-stokvel row UUIDs. Cancel and refund marked planned (#220). Section 2: deployer and Treasury Wallet addresses. Section 6: error rename. Sections 9, 13, 14: contract progress, files and functions | |
 | 2026-10-08 | 1, 6 | Treasury allowance agreed with the backend: one-off `approve(vault, max)` per contract address, checked before each `contribute` and re-approved if low. Section 6 maps the token's `ERC20InsufficientAllowance` to a backend 500. Backend confirmed sections 1 and 6, and the fixed contribution amount in `createStokvel` | |
 | 2026-10-09 | 1 | MVP decision: the contribution amount is fixed per stokvel for all cycles; a new amount means a new stokvel | |
+| 2026-10-15 | 9, 13 | Frontend scaffold (R4-02 #251): `app/stokvels`, `app/stokvels/:stokvelId` and `admin/stokvel-contract` routes, sidebar entries, and mocked responses shaped like §3 and §5 behind `lib/stokvels.ts`. The R4-01 screen list (13 screens) is on #250 | #251 |
 | 2026-10-09 | 2, 8, 9, 10, 13, 14 | Contract work brought up to date: section 2 lists the deploy script's settings and `DEPLOYER_PRIVATE_KEY` (local only); section 8 resolves the contract side of the contribution amount and the Treasury allowance, defers per-cycle amounts, and adds the admin-key question for pause (#244); section 9 marks the contract, tests and pause done (PR #282 merged), deployment in progress (#284) and README/ABI/ADR in review (#285); sections 10, 13 and 14 list the contract features, files and scripts | |
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
 | 2026-10-09 | 9, 13 | Contract tests: randomised invariant tests added (fix branch); 73 tests once the open PRs merge | |
@@ -569,7 +570,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Worker tasks | Not started | | Section 4 |
 | API routes | Not started | | Section 5 |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
-| Frontend screens | Not started | | Member, Organiser, invitations, admin pause |
+| Frontend screens | In progress | #251 | Routes, nav and mocks (#251); screen list on #250; member, Organiser, invitation and admin screens next (#252–#261) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
 
@@ -673,6 +674,11 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/tests/test_evm_names_migration.py` | Backfill and treasury rename on Postgres (`postgres` lane) | #239 |
 | `api/tests/test_stokvel_payout_reads.py` | A stokvel's payout still lists for its recipient (transfers, dashboard) and in the admin operations totals | #239 |
 | `docs/adr/0004-stokvel-ledger-account.md` | ADR for D9 (a stokvel has its own ledger account) | #238 |
+| `frontend/app/lib/stokvels.ts` | Stokvel types (sections 3 and 5), status values, query options and helpers; the one file R4-09 changes to call the real client | #251 |
+| `frontend/app/lib/stokvels.mock.ts` | Mocked `GET /stokvels`, `GET /stokvels/{id}` and contract status; deleted by R4-09 | #251 |
+| `frontend/app/lib/stokvels.test.ts` | Helper and mock-shape tests | #251 |
+| `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list and detail pages on mocked data; sidebar entry "Stokvels" in `app.routes.ts` | #251 |
+| `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
 
 ## 14. Functions created
 

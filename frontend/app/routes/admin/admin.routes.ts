@@ -173,6 +173,23 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     ],
   },
   {
+    label: "Stokvels",
+    order: 23,
+    icon: "UsersFourIcon",
+    // No `permission` until R3-07 (#244) adds the stokvel-contract code on
+    // the API; `lib/permissions.ts` mirrors it then and the page gates itself.
+    childItems: [
+      {
+        route: {
+          path: "admin/stokvel-contract",
+          module: "routes/admin/stokvel-contract.tsx",
+        },
+        label: "Contract",
+        childItems: [],
+      },
+    ],
+  },
+  {
     label: "Treasury",
     order: 25,
     icon: "VaultIcon",
