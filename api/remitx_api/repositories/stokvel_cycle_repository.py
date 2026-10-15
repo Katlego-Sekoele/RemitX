@@ -29,20 +29,24 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
 
     def get_cycle_rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
         """Get the information about the rounds in a cycle, for a given cycle_id."""
-        return db.session.scalars(
-            select(StokvelRound)
-            .where(StokvelRound.cycle_id == cycle_id)
-            .order_by(StokvelRound.round)
-        ).all()
+        return list(
+            db.session.scalars(
+                select(StokvelRound)
+                .where(StokvelRound.cycle_id == cycle_id)
+                .order_by(StokvelRound.round)
+            ).all()
+        )
 
     def get_cycle_members(self, cycle_id: uuid.UUID) -> list[StokvelCycleMember]:
         """Get members of a cycle, ordered by their payout position,
         for a given cycle_id."""
-        return db.session.scalars(
-            select(StokvelCycleMember)
-            .where(StokvelCycleMember.cycle_id == cycle_id)
-            .order_by(
-                StokvelCycleMember.payout_position.is_(None),
-                StokvelCycleMember.payout_position,
-            )
-        ).all()
+        return list(
+            db.session.scalars(
+                select(StokvelCycleMember)
+                .where(StokvelCycleMember.cycle_id == cycle_id)
+                .order_by(
+                    StokvelCycleMember.payout_position.is_(None),
+                    StokvelCycleMember.payout_position,
+                )
+            ).all()
+        )

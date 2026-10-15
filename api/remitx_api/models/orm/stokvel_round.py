@@ -44,10 +44,9 @@ class StokvelRound(Base):
         DateTime(timezone=True), nullable=False
     )
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Date and time when the round can be automatically released to the member.
-    # Payout not released before this time, even if all contributions are received.
-    # Payout will not be released if not all contributions are received by this time, even if the deadline has passed.
-    # Payouts are released after this time if all contributions are received.
+    # Hard gate (D12): the round is never released before this time. After it,
+    # the round is released once the next round is fully paid (D5; the last
+    # round once it is fully paid itself). A late payment still unblocks it.
     payout_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
