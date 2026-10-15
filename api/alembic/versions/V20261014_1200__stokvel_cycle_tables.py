@@ -28,6 +28,11 @@ The cycle lookups are ``SECURITY DEFINER`` functions for the same reason as
 before: a policy that queries another table under row level security can
 recurse.
 
+The trigger ``stokvel_cycle_member_same_stokvel`` refuses a cycle member whose
+``stokvel_members`` row belongs to a different stokvel from the cycle. Neither
+foreign key can see that, and the write rule only checks the member row is
+yours. Like ``stokvel_member_account_is_fiat``, it raises SQLSTATE 23514.
+
 Revision ID: 7180f1053b49
 Revises: 879fc80b8041
 Create Date: 2026-10-14 12:00:00.000000+00:00
@@ -274,8 +279,48 @@ def upgrade() -> None:
             """
         )
 
+    op.execute(
+        """
+        CREATE FUNCTION stokvel_cycle_member_same_stokvel()
+          RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+          SET search_path = pg_catalog, public, pg_temp
+          AS $$
+        DECLARE
+          cycle_stokvel uuid;
+          member_stokvel uuid;
+        BEGIN
+          SELECT stokvel_cycles.stokvel_id INTO cycle_stokvel
+            FROM stokvel_cycles
+           WHERE stokvel_cycles.id = NEW.cycle_id;
+          SELECT stokvel_members.stokvel_id INTO member_stokvel
+            FROM stokvel_members
+           WHERE stokvel_members.id = NEW.member_id;
+          IF cycle_stokvel IS DISTINCT FROM member_stokvel THEN
+            RAISE EXCEPTION 'cycle member belongs to a different stokvel'
+              USING ERRCODE = '23514';
+          END IF;
+          RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute("REVOKE ALL ON FUNCTION stokvel_cycle_member_same_stokvel() FROM PUBLIC")
+    op.execute(
+        """
+        CREATE TRIGGER stokvel_cycle_member_same_stokvel
+          BEFORE INSERT OR UPDATE OF cycle_id, member_id
+          ON stokvel_cycle_members
+          FOR EACH ROW EXECUTE FUNCTION stokvel_cycle_member_same_stokvel()
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute(
+        "DROP TRIGGER IF EXISTS stokvel_cycle_member_same_stokvel"
+        " ON stokvel_cycle_members"
+    )
+    op.execute("DROP FUNCTION IF EXISTS stokvel_cycle_member_same_stokvel()")
     for table in _POLICIES:
         for operation in _OPERATIONS:
             op.execute(f"DROP POLICY IF EXISTS {table}_{operation} ON {table}")

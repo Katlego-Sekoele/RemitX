@@ -306,13 +306,14 @@ def test_rls_helpers_are_security_definer(postgres_app):
                  WHERE proname IN (
                    'stokvel_cycle_is_member',
                    'stokvel_cycle_is_organiser',
-                   'stokvel_member_is_user'
+                   'stokvel_member_is_user',
+                   'stokvel_cycle_member_same_stokvel'
                  )
                 """
             )
         ).all()
 
-        assert len(functions) == 3
+        assert len(functions) == 4
         for name, security_definer, settings in functions:
             assert security_definer, name
             assert settings == ["search_path=pg_catalog, public, pg_temp"], name
@@ -486,5 +487,54 @@ def test_customers_cannot_delete_cycle_rows(postgres_app):
             db.session.commit()
 
         assert _counts(cycle_id) == (1, 2, 2)
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
+def test_a_cycle_member_belongs_to_the_cycles_stokvel(postgres_app):
+    token = db.open_session()
+    try:
+        b_user = make_user()
+        a, a_organiser = _stokvel(make_user())
+        _, b_organiser = _stokvel(b_user)
+        a_cycle = _cycle(a)
+        _in_cycle(a_cycle, a_organiser)
+        db.session.commit()
+        params = {
+            "cycle": a_cycle.id,
+            "member": a_organiser.id,
+            "other": b_organiser.id,
+        }
+        insert = (
+            "INSERT INTO stokvel_cycle_members (cycle_id, member_id)"
+            " VALUES (:cycle, :other)"
+        )
+        update = (
+            "UPDATE stokvel_cycle_members SET member_id = :other"
+            " WHERE cycle_id = :cycle AND member_id = :member"
+        )
+
+        # The write rule lets B's member write their own row, so on a customer
+        # route only the trigger stops it; a worker is stopped the same way
+        refused = {
+            "B's member adds themselves": (b_user, insert),
+            "a worker inserts": (None, insert),
+            "a worker updates": (None, update),
+        }
+        for what, (user, sql) in refused.items():
+            with pytest.raises(IntegrityError, match="different stokvel"):
+                if user is None:
+                    db.session.execute(text(sql), params)
+                else:
+                    _as(user, sql, **params)
+                pytest.fail(f"{what}: accepted")
+            db.session.rollback()
+        a_cycle_id, a_member_id = params["cycle"], params["member"]
+
+        assert [
+            row.member_id
+            for row in StokvelCycleRepository().get_cycle_members(a_cycle_id)
+        ] == [a_member_id]
     finally:
         db.close_session(token)
