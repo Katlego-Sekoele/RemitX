@@ -5,6 +5,7 @@ calls these helpers make, so web3's own encoding and formatting still run.
 """
 
 import logging
+import re
 import uuid
 from contextlib import contextmanager
 from decimal import Decimal
@@ -18,6 +19,7 @@ from eth_account._utils.legacy_transactions import Transaction
 from remitx_worker import evm_service
 from remitx_worker.evm_service import (
     ERC20_ABI,
+    TransactionRejected,
     burn_tokens,
     from_base_units,
     get_native_balance,
@@ -26,12 +28,13 @@ from remitx_worker.evm_service import (
     send_transaction,
     submit_transaction,
     to_base_units,
+    transaction_status,
     uuid_to_bytes32,
     wait_for_receipt,
 )
 from tests.evm_helpers import configure_fake_treasury
 from web3 import Web3
-from web3.exceptions import TimeExhausted
+from web3.exceptions import TimeExhausted, Web3RPCError
 from web3.providers.base import BaseProvider
 
 CHAIN_ID = 1449000
@@ -39,8 +42,17 @@ TX_HASH = "0x" + "ab" * 32
 UCTUSD = "0x7055071c7b79a859d9514e62833bff041ce71074"
 
 
+class RpcError:
+    """An answer that is a JSON-RPC error response, not a result."""
+
+    def __init__(self, message, code=-32000):
+        self.message = message
+        self.code = code
+
+
 class FakeProvider(BaseProvider):
-    """Answers JSON-RPC from a dict of method -> result (or callable(params))."""
+    """Answers JSON-RPC from a dict of method -> result (or callable(params)).
+    An `RpcError` answer is sent back as a JSON-RPC error response."""
 
     def __init__(self, answers):
         super().__init__()
@@ -53,6 +65,12 @@ class FakeProvider(BaseProvider):
             raise AssertionError(f"unexpected RPC call {method}")
         answer = self.answers[method]
         result = answer(params) if callable(answer) else answer
+        if isinstance(result, RpcError):
+            return {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": result.code, "message": result.message},
+            }
         return {"jsonrpc": "2.0", "id": 1, "result": result}
 
     def methods(self):
@@ -430,6 +448,123 @@ def test_submit_transaction_releases_the_lock_when_the_send_fails(
         submit_transaction({"to": Account.create().address}, w3=w3)
 
     assert send_lock[0]["held"] is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "insufficient funds for gas * price + value",
+        "nonce too low",
+        "replacement transaction underpriced",
+    ],
+)
+def test_a_send_the_rpc_refuses_raises_transaction_rejected(
+    monkeypatch, send_lock, message
+):
+    """An error answer means the node refused the transaction, so it can
+    never be mined. The hash was handed over first, the lock is released,
+    and the nonce is not waited on."""
+    configure_fake_treasury(monkeypatch)
+    seen = []
+    w3, provider, _ = _sending_web3(eth_sendRawTransaction=RpcError(message))
+
+    with pytest.raises(TransactionRejected, match=re.escape(message)) as rejected:
+        submit_transaction(
+            {"to": Account.create().address}, w3=w3, on_signed=seen.append
+        )
+
+    assert rejected.value.tx_hash == seen[0]
+    assert provider.methods()[-1] == "eth_sendRawTransaction"
+    assert send_lock[0]["held"] is False
+
+
+@pytest.mark.parametrize(
+    "message", ["upstream request timeout", "internal error", "rate limit exceeded"]
+)
+def test_an_error_answer_not_known_to_be_a_refusal_is_left_uncertain(
+    monkeypatch, send_lock, message
+):
+    """A gateway can answer its own timeout as a JSON-RPC error after the node
+    has taken the transaction. Only a known refusal may be called one, so the
+    caller waits on the hash instead of failing a burn that may land."""
+    configure_fake_treasury(monkeypatch)
+    w3, _, _ = _sending_web3(eth_sendRawTransaction=RpcError(message, code=-32603))
+
+    with pytest.raises(Web3RPCError) as caught:
+        submit_transaction({"to": Account.create().address}, w3=w3)
+
+    assert not isinstance(caught.value, TransactionRejected)
+    assert send_lock[0]["held"] is False
+
+
+@pytest.mark.parametrize(
+    "message", ["already known", "known transaction: 0xab", "tx already in mempool"]
+)
+def test_a_send_the_node_already_holds_counts_as_sent(monkeypatch, message):
+    configure_fake_treasury(monkeypatch)
+    seen = []
+    nonce = {"value": 7}
+
+    def already_known(params):
+        nonce["value"] = 8  # the node holds it, so the pending nonce moved on
+        return RpcError(message)
+
+    w3, _, _ = _sending_web3(
+        eth_sendRawTransaction=already_known,
+        eth_getTransactionCount=lambda params: hex(nonce["value"]),
+    )
+
+    tx_hash = submit_transaction(
+        {"to": Account.create().address}, w3=w3, on_signed=seen.append
+    )
+
+    assert tx_hash == seen[0]
+
+
+def test_a_send_that_gets_no_answer_is_not_called_a_refusal(monkeypatch):
+    """A dropped connection may still have delivered the transaction, so it
+    must not look like a refusal (which would let the caller fail it)."""
+    configure_fake_treasury(monkeypatch)
+
+    def drop(params):
+        raise ConnectionError("RPC dropped the connection")
+
+    w3, _, _ = _sending_web3(eth_sendRawTransaction=drop)
+
+    with pytest.raises(ConnectionError) as caught:
+        submit_transaction({"to": Account.create().address}, w3=w3)
+
+    assert not isinstance(caught.value, TransactionRejected)
+
+
+def test_transaction_status_is_pending_when_the_rpc_knows_the_hash():
+    w3, _ = _fake_web3(
+        eth_getTransactionByHash={
+            "hash": TX_HASH,
+            "blockHash": None,
+            "blockNumber": None,
+            "from": "0x" + "11" * 20,
+            "to": UCTUSD,
+            "nonce": "0x7",
+            "gas": hex(52_000),
+            "gasPrice": hex(785_000_000),
+            "input": "0x",
+            "value": "0x0",
+            "v": "0x1b",
+            "r": "0x1",
+            "s": "0x1",
+            "transactionIndex": None,
+            "type": "0x0",
+        }
+    )
+
+    assert transaction_status(TX_HASH, w3=w3) == evm_service.TX_PENDING
+
+
+def test_transaction_status_is_unknown_when_the_rpc_has_no_record():
+    w3, _ = _fake_web3(eth_getTransactionByHash=None)
+
+    assert transaction_status(TX_HASH, w3=w3) == evm_service.TX_UNKNOWN
 
 
 def test_submit_transaction_refuses_a_hash_it_did_not_sign(monkeypatch):

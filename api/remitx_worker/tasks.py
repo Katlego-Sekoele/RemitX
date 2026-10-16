@@ -188,7 +188,11 @@ def burn_treasury_tokens(self, quote_id: str) -> str:
     stored. If the receipt does not come, the task retries the wait
     (`BURN_RECEIPT_MAX_RETRIES` times, `BURN_RECEIPT_RETRY_SECONDS` apart),
     then leaves the group `processing` for a person, logged as
-    `event=settlement.burn_unconfirmed`.
+    `event=settlement.burn_unconfirmed` with what the RPC knows of the hash.
+
+    A send the RPC refuses outright (`evm_service.TransactionRejected`, for
+    example too little XRP for gas) can never be mined, so it fails the group
+    at once, logged as `event=settlement.burn_rejected`.
     """
     try:
         target_id = uuid.UUID(quote_id)
@@ -264,6 +268,18 @@ def burn_treasury_tokens(self, quote_id: str) -> str:
             exc,
         )
         return "skipped"
+    except evm_service.TransactionRejected as exc:
+        # The RPC answered the send with an error (for example, too little
+        # XRP for gas): the burn is in no mempool and can never be mined, so
+        # the group can fail now instead of waiting out the receipt retries.
+        logger.error(
+            "event=settlement.burn_rejected quote_id=%s tx_hash=%s: the RPC "
+            "refused the signed burn; nothing was sent",
+            quote_id,
+            exc.tx_hash,
+        )
+        queue_service.enqueue_confirm_treasury_burn(quote_id, None, str(exc))
+        return "burn_failed"
     except Exception as exc:
         if not recorded:
             # Failed before signing finished: nothing reached the chain.
@@ -334,16 +350,7 @@ def _await_burn(task, quote_id: str, tx_hash: str) -> str:
         # No answer (a timeout, or the RPC unreachable): the burn may still
         # be mined. Never fail it from here; wait on the same hash again.
         if task.request.retries >= task.max_retries:
-            logger.error(
-                "event=settlement.burn_unconfirmed quote_id=%s tx_hash=%s "
-                "retries=%s: no receipt, so the group is left processing for "
-                "a person. Look the hash up on the explorer: if no such "
-                "transaction exists it was never broadcast and nothing was "
-                "burned",
-                quote_id,
-                tx_hash,
-                task.request.retries,
-            )
+            _log_burn_unconfirmed(quote_id, tx_hash, task.request.retries)
             return "awaiting_receipt"
         logger.warning(
             "event=settlement.burn_receipt_retry quote_id=%s tx_hash=%s retry=%s (%s)",
@@ -356,6 +363,40 @@ def _await_burn(task, quote_id: str, tx_hash: str) -> str:
 
     queue_service.enqueue_confirm_treasury_burn(quote_id, tx_hash)
     return "burned"
+
+
+def _log_burn_unconfirmed(quote_id: str, tx_hash: str, retries: int) -> None:
+    """Leave the group `processing` for a person, saying what the RPC knows.
+
+    Never fails or resends on what it finds: the raw transaction and nonce
+    are not stored, so "no record of it" cannot prove the burn will never be
+    mined, and a second burn would burn twice.
+    """
+    try:
+        status = evm_service.transaction_status(tx_hash)
+    except Exception as exc:
+        status = f"unavailable ({type(exc).__name__})"
+    if status == evm_service.TX_UNKNOWN:
+        detail = (
+            "the RPC has no record of the burn: it was most likely never "
+            "broadcast, or was dropped. Before failing the group, check that "
+            "the explorer has no such transaction and that the Treasury's "
+            "nonce has moved past it"
+        )
+    elif status == evm_service.TX_PENDING:
+        detail = "the RPC holds the burn but has not mined it; it may still land"
+    else:
+        detail = "look the hash up on the explorer"
+    logger.error(
+        "event=settlement.burn_unconfirmed quote_id=%s tx_hash=%s retries=%s "
+        "rpc_status=%s: no receipt, so the group is left processing for a "
+        "person; %s",
+        quote_id,
+        tx_hash,
+        retries,
+        status,
+        detail,
+    )
 
 
 @celery.task(name="remitx_worker.tasks.confirm_treasury_burn")

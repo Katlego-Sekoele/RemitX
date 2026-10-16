@@ -100,7 +100,8 @@ class FakeChain:
     `on_signed` before "sending", and sends nothing if that raises. Set
     `fail_before_signing` or `fail_after_signing` to an exception to make a
     burn fail at that point, and `receipt` to an exception (or a callable
-    that raises) to make every wait fail."""
+    that raises) to make every wait fail. `status` is what
+    `transaction_status` reports for the hash (or an exception it raises)."""
 
     def __init__(self):
         self.burns = []
@@ -110,6 +111,12 @@ class FakeChain:
         self.fail_after_signing = None
         self.before_on_signed = None
         self.receipt = None
+        self.status = evm_service.TX_PENDING
+
+    def transaction_status(self, tx_hash, w3=None):
+        if isinstance(self.status, BaseException):
+            raise self.status
+        return self.status
 
     def burn_tokens(self, amount, *, on_signed=None, w3=None):
         self.burns.append(amount)
@@ -139,6 +146,7 @@ def chain(monkeypatch):
     fake = FakeChain()
     monkeypatch.setattr(evm_service, "burn_tokens", fake.burn_tokens)
     monkeypatch.setattr(evm_service, "wait_for_receipt", fake.wait_for_receipt)
+    monkeypatch.setattr(evm_service, "transaction_status", fake.transaction_status)
     return fake
 
 
@@ -616,6 +624,66 @@ def test_receipt_retries_wait_on_the_same_hash_then_leave_it_for_a_person(
     assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
         STATUS_PROCESSING
     }
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (evm_service.TX_UNKNOWN, "rpc_status=unknown"),
+        (evm_service.TX_PENDING, "rpc_status=pending"),
+        (ConnectionError("RPC down"), "rpc_status=unavailable (ConnectionError)"),
+    ],
+)
+def test_an_unconfirmed_burn_says_what_the_rpc_knows_and_never_resends(
+    session_factory,
+    pending_remittance,
+    enqueued_confirm,
+    chain,
+    caplog,
+    status,
+    expected,
+):
+    """After the last retry the log line says whether the RPC holds the burn,
+    so a person need not start from the explorer. Whatever it finds, the
+    group stays processing: nothing is failed or sent again."""
+    chain.receipt = TimeExhausted("not mined in 120s")
+    chain.status = status
+
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens.apply(
+            args=[str(pending_remittance["quote_id"])]
+        ).get()
+
+    assert result == "awaiting_receipt"
+    assert "event=settlement.burn_unconfirmed" in caplog.text
+    assert expected in caplog.text
+    assert len(chain.burns) == 1
+    assert enqueued_confirm == []
+    assert _leg_statuses(session_factory, pending_remittance["quote_id"]) == {
+        STATUS_PROCESSING
+    }
+
+
+def test_a_send_the_rpc_refuses_fails_the_group_at_once(
+    session_factory, pending_remittance, enqueued_confirm, chain, caplog
+):
+    """A refused send can never be mined, so there is nothing to wait for:
+    the group fails straight away, keeping the stored hash."""
+    chain.fail_after_signing = evm_service.TransactionRejected(
+        BURN_HASH, RuntimeError("insufficient funds for gas * price + value")
+    )
+
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.tasks"):
+        result = burn_treasury_tokens(str(pending_remittance["quote_id"]))
+
+    assert result == "burn_failed"
+    assert chain.waits == []
+    ((quote_id, tx_hash, error),) = enqueued_confirm
+    assert (quote_id, tx_hash) == (str(pending_remittance["quote_id"]), None)
+    assert "insufficient funds" in error
+    assert "event=settlement.burn_rejected" in caplog.text
+    burn_leg = _leg_row(session_factory, pending_remittance["burn_tx_id"])
+    assert burn_leg.evm_tx_hash == BURN_HASH
 
 
 def test_a_send_that_raises_after_the_hash_is_stored_is_waited_on_not_failed(
