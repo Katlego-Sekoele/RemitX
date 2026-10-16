@@ -15,6 +15,7 @@ import {
   sdk,
   type SentStokvelInvitationRead,
   type StokvelContributionRead,
+  type StokvelInvitationCreateRequest,
   type StokvelInvitationRead,
   type StokvelListRead,
   type StokvelRead,
@@ -22,9 +23,12 @@ import {
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   demoStokvelsMock,
+  acceptInvitationMock,
   contributeMock,
+  declineInvitationMock,
   getStokvelContractStatusMock,
   getStokvelMock,
+  inviteMock,
 } from "~/lib/stokvels.mock"
 
 export type {
@@ -184,6 +188,17 @@ export function isDemoStokvel(stokvelId: string): boolean {
   return stokvelId.startsWith("stk_")
 }
 
+/** The mock's invitation ids start `inv_`; the API's are UUIDs. */
+export function isDemoInvitation(invitationId: string): boolean {
+  return invitationId.startsWith("inv_")
+}
+
+/** Whether a call goes to the mock: a demo id, in development only. In
+ * production a demo id goes to the API like any other and is not found. */
+function usesMock(isDemo: boolean): boolean {
+  return import.meta.env.DEV && isDemo
+}
+
 /**
  * A stokvel the API has but `GET /stokvels/{id}` can't return yet (#236):
  * its list row as a forming stokvel, priced at today's rate. R4-09: delete.
@@ -253,7 +268,7 @@ export const stokvelQueries = {
       // Demo data only in development, like the list: in production a
       // `stk_` id is looked up like any other and is not found.
       queryFn: ({ signal }) =>
-        import.meta.env.DEV && isDemoStokvel(stokvelId)
+        usesMock(isDemoStokvel(stokvelId))
           ? getStokvelMock(stokvelId)
           : detailFromList(stokvelId, signal),
     }),
@@ -270,7 +285,7 @@ export const stokvelMutations = {
    * and returns it `pending`. Demo stokvels pay the mock. */
   contribute: (stokvelId: string) => ({
     mutationFn: async (): Promise<StokvelContributionRead> => {
-      if (isDemoStokvel(stokvelId)) return contributeMock(stokvelId)
+      if (usesMock(isDemoStokvel(stokvelId))) return contributeMock(stokvelId)
       const { data } = await sdk.stokvels.contributeToStokvel({
         path: { stokvel_id: stokvelId },
         throwOnError: true,
@@ -278,6 +293,74 @@ export const stokvelMutations = {
       return data
     },
   }),
+  /** `POST /stokvels/{id}/invitations` (#230, built): Organiser only. */
+  invite: (stokvelId: string) => ({
+    mutationFn: async (
+      body: StokvelInvitationCreateRequest
+    ): Promise<SentStokvelInvitationRead> => {
+      if (usesMock(isDemoStokvel(stokvelId))) return inviteMock(stokvelId, body)
+      const { data } = await sdk.stokvels.inviteToStokvel({
+        path: { stokvel_id: stokvelId },
+        body,
+        throwOnError: true,
+      })
+      return data
+    },
+  }),
+  /** `POST /invitations/{id}/accept` (#230, built): the invitee joins and
+   * gets back the stokvel. */
+  acceptInvitation: () => ({
+    mutationFn: async (invitationId: string): Promise<StokvelRead> => {
+      if (usesMock(isDemoInvitation(invitationId))) {
+        return acceptInvitationMock(invitationId)
+      }
+      const { data } = await sdk.stokvels.acceptStokvelInvitation({
+        path: { invitation_id: invitationId },
+        throwOnError: true,
+      })
+      return data
+    },
+  }),
+  /** `POST /invitations/{id}/decline` (#230, built). Revoking (#297) is not
+   * built yet, so the Organiser has no Revoke button. */
+  declineInvitation: () => ({
+    mutationFn: async (invitationId: string): Promise<void> => {
+      if (usesMock(isDemoInvitation(invitationId))) {
+        return declineInvitationMock(invitationId)
+      }
+      await sdk.stokvels.declineStokvelInvitation({
+        path: { invitation_id: invitationId },
+        throwOnError: true,
+      })
+    },
+  }),
+}
+
+/** Invitations still waiting for an answer. */
+export function pendingInvitations(
+  detail: Pick<StokvelDetailRead, "invitations">
+): SentStokvelInvitationRead[] {
+  return detail.invitations.filter(
+    (invitation) => invitation.status === InvitationStatus.pending
+  )
+}
+
+/**
+ * Whether the Organiser can invite now: the stokvel is being set up and has
+ * a free place. Pending invitations don't hold places (the cap is checked
+ * when someone accepts, #230), so only current members count.
+ */
+export function canInvite(
+  detail: Pick<
+    StokvelDetailRead,
+    "phase" | "is_organiser" | "member_count" | "max_members"
+  >
+): boolean {
+  return (
+    detail.phase === CycleStatus.forming &&
+    detail.is_organiser &&
+    detail.member_count < detail.max_members
+  )
 }
 
 /** The development-only scenario knobs, re-exported so pages import every

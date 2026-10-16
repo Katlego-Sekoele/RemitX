@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router"
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContributionPanel } from "~/components/stokvels/contribution-panel"
+import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
 import { PotRing } from "~/components/stokvels/pot-ring"
 import {
@@ -41,6 +42,7 @@ import {
   myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
+  pendingInvitations,
   resetStokvelMockScenario,
   stokvelMockScenario,
   PHASE_LABELS,
@@ -259,8 +261,8 @@ function StokvelDetail({
           <CardHeader>
             <CardTitle>Setting up</CardTitle>
             <CardDescription>
-              {stokvel.invitations.length} invitation
-              {stokvel.invitations.length === 1 ? "" : "s"} pending ·{" "}
+              {stokvel.member_count} of {stokvel.max_members} members ·{" "}
+              {pendingInvitations(stokvel).length} invited ·{" "}
               {stokvel.my_beneficiary
                 ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
                 : "choose a payout beneficiary to be ready"}
@@ -273,6 +275,10 @@ function StokvelDetail({
             </Button>
           </CardContent>
         </Card>
+      ) : null}
+
+      {stokvel.phase === "forming" && stokvel.is_organiser ? (
+        <InviteMemberForm stokvel={stokvel} />
       ) : null}
 
       {cycle ? (
