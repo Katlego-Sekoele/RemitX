@@ -96,32 +96,25 @@ def treasury_send_lock():
     serialises the burn, the contribution tasks and `finalise` across every
     worker process.
 
-    A session-level `pg_advisory_lock` on a connection of its own, so the
-    caller can still commit its own sessions while holding it. Waits for as
-    long as another sender holds it. On SQLite (tests) there is nothing to
-    lock and it does nothing.
+    A transaction-level `pg_advisory_xact_lock`, taken in a transaction of
+    its own on a connection of its own, so the caller can still commit its
+    own sessions while holding it. The transaction stays open for the whole
+    send and the lock goes when it ends, on commit, on rollback when the
+    body raises, or when the connection drops. There is no unlock statement
+    to land on the wrong server connection: Neon's `-pooler` host
+    (PgBouncer, transaction mode) can move a client between server
+    connections between transactions, never within one. The same reason
+    `remitx_api.db.rls` uses `SET LOCAL ROLE`.
+
+    Waits for as long as another sender holds it. On SQLite (tests) there is
+    nothing to lock and it does nothing.
     """
     bind = getattr(get_session_factory(), "kw", {}).get("bind")
     if bind is None or bind.dialect.name != "postgresql":
         yield
         return
-    with bind.connect() as connection:
+    with bind.connect() as connection, connection.begin():
         connection.execute(
-            text("SELECT pg_advisory_lock(:key)"), {"key": TREASURY_SEND_LOCK_KEY}
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": TREASURY_SEND_LOCK_KEY}
         )
-        connection.commit()
-        try:
-            yield
-        finally:
-            try:
-                connection.execute(
-                    text("SELECT pg_advisory_unlock(:key)"),
-                    {"key": TREASURY_SEND_LOCK_KEY},
-                )
-                connection.commit()
-            except Exception:
-                # A session-level lock outlives a pooled connection's return
-                # to the pool. Close this one instead, which ends the
-                # session, so the lock cannot be left held.
-                connection.invalidate()
-                raise
+        yield

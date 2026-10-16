@@ -42,22 +42,28 @@ def test_the_lock_is_a_no_op_for_a_factory_with_no_bind():
 
 
 class _FakeConnection:
-    def __init__(self, fail_unlock=False):
+    """Records statements and how the lock's transaction ended."""
+
+    def __init__(self):
         self.statements = []
-        self.fail_unlock = fail_unlock
-        self.invalidated = False
+        self.ended = None
 
     def execute(self, statement, params=None):
-        sql = str(statement)
-        self.statements.append(sql)
-        if self.fail_unlock and "unlock" in sql:
-            raise RuntimeError("connection dropped")
+        self.statements.append(str(statement))
 
-    def commit(self):
-        pass
+    def begin(self):
+        connection = self
 
-    def invalidate(self):
-        self.invalidated = True
+        class _Transaction:
+            def __enter__(self):
+                connection.statements.append("BEGIN")
+                return self
+
+            def __exit__(self, exc_type, *_exc):
+                connection.ended = "rollback" if exc_type else "commit"
+                return False
+
+        return _Transaction()
 
     def __enter__(self):
         return self
@@ -73,38 +79,47 @@ def _fake_postgres(connection):
     db.configure(SimpleNamespace(kw={"bind": bind}))
 
 
-def test_the_lock_takes_and_releases_a_postgres_advisory_lock():
+def test_the_lock_is_a_transaction_level_lock_with_no_unlock():
+    """Through Neon's transaction pooler an unlock in a later statement can
+    reach a different server connection. A transaction-level lock has no
+    unlock: it goes when its transaction ends."""
     connection = _FakeConnection()
     _fake_postgres(connection)
 
     with db.treasury_send_lock():
-        assert connection.statements == ["SELECT pg_advisory_lock(:key)"]
+        assert connection.statements == [
+            "BEGIN",
+            "SELECT pg_advisory_xact_lock(:key)",
+        ]
+        assert connection.ended is None
 
-    assert connection.statements[-1] == "SELECT pg_advisory_unlock(:key)"
-    assert connection.invalidated is False
+    assert connection.ended == "commit"
+    assert not any("unlock" in sql for sql in connection.statements)
 
 
-def test_the_lock_is_released_when_the_body_raises():
+def test_the_lock_transaction_rolls_back_when_the_body_raises():
     connection = _FakeConnection()
     _fake_postgres(connection)
 
     with pytest.raises(ValueError), db.treasury_send_lock():
         raise ValueError("send failed")
 
-    assert connection.statements[-1] == "SELECT pg_advisory_unlock(:key)"
+    assert connection.ended == "rollback"
 
 
-def test_a_failed_unlock_closes_the_connection_rather_than_pool_it():
-    """A session-level lock would outlive the connection's return to the
-    pool; invalidating it ends the session, which frees the lock."""
-    connection = _FakeConnection(fail_unlock=True)
-    _fake_postgres(connection)
-
-    with pytest.raises(RuntimeError, match="connection dropped"):
-        with db.treasury_send_lock():
-            pass
-
-    assert connection.invalidated is True
+def _advisory_locks_held(engine) -> int:
+    """How many backends hold the Treasury send lock right now. A bigint
+    advisory key is stored split: high 32 bits in `classid`, low in `objid`."""
+    key = db.TREASURY_SEND_LOCK_KEY
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"
+                " AND granted AND classid = :high AND objid = :low"
+                " AND objsubid = 1"
+            ),
+            {"high": key >> 32, "low": key & 0xFFFFFFFF},
+        ).scalar_one()
 
 
 @pytest.mark.postgres
@@ -143,5 +158,38 @@ def test_the_lock_excludes_a_second_holder(postgres_url):
             text("SELECT pg_advisory_unlock(:key)"),
             {"key": db.TREASURY_SEND_LOCK_KEY},
         )
+    assert taken is True
+    engine.dispose()
+
+
+@pytest.mark.postgres
+def test_the_lock_is_held_only_inside_the_block(postgres_url):
+    """Held while the block runs, and gone after it on every backend: no
+    unlock was needed, so none can be lost."""
+    engine = create_engine(postgres_url)
+    db.configure(sessionmaker(bind=engine))
+
+    with db.treasury_send_lock():
+        assert _advisory_locks_held(engine) == 1
+
+    assert _advisory_locks_held(engine) == 0
+    engine.dispose()
+
+
+@pytest.mark.postgres
+def test_the_lock_is_released_when_the_send_raises(postgres_url):
+    engine = create_engine(postgres_url)
+    db.configure(sessionmaker(bind=engine))
+
+    with pytest.raises(RuntimeError, match="node refused"):
+        with db.treasury_send_lock():
+            raise RuntimeError("node refused")
+
+    assert _advisory_locks_held(engine) == 0
+    with engine.connect() as connection, connection.begin():
+        taken = connection.execute(
+            text("SELECT pg_try_advisory_xact_lock(:key)"),
+            {"key": db.TREASURY_SEND_LOCK_KEY},
+        ).scalar_one()
     assert taken is True
     engine.dispose()
