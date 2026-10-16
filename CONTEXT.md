@@ -51,11 +51,14 @@ The FSE beneficiary, together with the payout-currency account of theirs, that a
 _Avoid_: Recipient
 
 **Start time**:
-The moment a **Round** is scheduled to open, set by the **Organiser**. Informational only: a round accepts contributions once every earlier round is fully paid. Whether a stokvel needs a start time at all is an open question.
+The moment a **Round** opens for contributions, set by the **Organiser**.
+
+**Deadline**:
+The time by which **Members** are expected to contribute to a **Round**, set by the **Organiser** and shown to every member. It is informational only: the platform does not enforce it or penalise anyone, and a late contribution is still accepted. Consequences are for the members to handle off-platform.
+_Avoid_: Cut-off, due date
 
 **Payout time**:
-The date and time from which a **Round**'s **Pool** may be released, set by the **Organiser** for each round. It is the only date the platform enforces: a round is never released before it. A round has no separate contribution deadline. A member who has not paid by the payout time can still pay; the round waits for them, with no penalty on the platform.
-_Avoid_: Deadline, due date, cut-off
+The date and time from which a **Round**'s **Pool** may be released, set by the **Organiser** for each round and no earlier than its **Deadline**. Unlike the deadline it is enforced: a round is never released before it. A member who has not paid by then can still pay; the round waits for them. Whether to merge the deadline and the payout time into one date is an open question (P6 in the stokvel integration doc).
 
 **Pool**:
 The sum of all members' contributions in a **Round**, released as one amount to that round's scheduled member.
