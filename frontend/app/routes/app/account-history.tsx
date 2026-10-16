@@ -38,7 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table"
-import { TxHash } from "~/components/xrpl/tx-hash"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import {
   HISTORY_PAGE_SIZE,
   type HistoryRow,
@@ -322,7 +322,7 @@ function HistoryLine({
           <StatusBadge status={row.status} />
         </TableCell>
         <TableCell>
-          {row.evm_tx_hash ? <TxHash hash={row.evm_tx_hash} /> : "—"}
+          {row.evm_tx_hash ? <ChainTxHash hash={row.evm_tx_hash} /> : "—"}
         </TableCell>
       </TableRow>
       {expandable && expanded
