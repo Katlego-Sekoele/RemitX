@@ -1,16 +1,21 @@
-"""The settlement worker with its one XRPL call simulated.
+"""The settlement worker with its chain calls simulated.
 
-Runs what the Render worker runs (`python -m remitx_worker`: the health server
-plus Celery), after replacing `remitx_worker.xrpl_service.burn_tokens`. Every
-other step of settlement is the real code: the three tasks, the claims and the
-balance updates. The replacement happens before Celery forks its pool, so every
-child process inherits it.
+Runs what the deployed worker runs (`python -m remitx_worker`: the health
+server plus Celery), after replacing the EVM burn's chain calls in
+`remitx_worker.evm_service`: `burn_tokens`, `wait_for_receipt`, and
+`get_web3`, which raises so nothing can reach an EVM RPC. Every other step of
+settlement is the real code: the three tasks, the claims, storing the burn
+hash before the send, and the balance updates. The replacement happens
+before Celery forks its pool, so every child process inherits it.
 
-A simulated burn takes about as long as a real testnet one: a lognormal delay
-through the median and 95th percentile of QA's real settlements
-(qa_xrpl_timings.sql). run.sh sets LOADTEST_BURN_P50_S / P95_S from the
-profile's `burn` section. Its hashes start 10AD ("load"), so they can never be
-mistaken for real ones or for the seeder's (5EED).
+The simulated burn hands its hash to `on_signed` and returns at once, like a
+real submit. The wait for its receipt takes about as long as a real burn: a
+lognormal delay through the median and 95th percentile of QA's real
+settlements (qa_xrpl_timings.sql, measured on the XRP Ledger). run.sh sets
+LOADTEST_BURN_P50_S / P95_S from the profile's `burn` section. Its hashes
+start 10AD ("load"), so they can never be mistaken for real ones or for the
+seeder's (5EED). The file keeps its old name so the compose stack and run.sh
+need no change.
 """
 
 import math
@@ -20,7 +25,7 @@ import secrets
 import time
 from decimal import Decimal
 
-from remitx_worker import xrpl_service
+from remitx_worker import evm_service
 
 HASH_PREFIX = "10AD"
 # z-score of the 95th percentile of a standard normal distribution.
@@ -35,8 +40,9 @@ def _setting(name: str, default: str) -> float:
 # Calibrated from QA XRPL burns (see qa_xrpl_timings.sql); profiles override.
 BURN_P50_S = _setting("LOADTEST_BURN_P50_S", "8.61")
 BURN_P95_S = _setting("LOADTEST_BURN_P95_S", "10.24")
-# Share of burns that fail the way a rejected Payment does. Zero by default so
-# the report measures the happy path; raise it to see failures under load.
+# Share of burns that fail before they are signed (so nothing is sent). Zero
+# by default so the report measures the happy path; raise it to see failures
+# under load.
 FAILURE_RATE = _setting("LOADTEST_BURN_FAILURE_RATE", "0")
 
 if not 0 < BURN_P50_S <= BURN_P95_S:
@@ -49,17 +55,32 @@ _SIGMA = (math.log(BURN_P95_S) - _MU) / Z_95
 _rng = random.SystemRandom()
 
 
-def simulated_burn(amount: Decimal) -> str:
-    """Stand-in for `xrpl_service.burn_tokens`: block for a testnet-like time,
-    then return a synthetic hash or raise like a failed Payment."""
-    time.sleep(_rng.lognormvariate(_MU, _SIGMA))
+def simulated_burn(amount: Decimal, *, on_signed=None, w3=None) -> str:
+    """Stand-in for `evm_service.burn_tokens`: hand a synthetic hash to
+    `on_signed` and return it, or fail before signing (nothing sent)."""
     if _rng.random() < FAILURE_RATE:
-        raise RuntimeError("burn Payment failed: tecPATH_DRY (simulated)")
-    return HASH_PREFIX + secrets.token_hex(30).upper()
+        raise RuntimeError("burn failed before signing (simulated)")
+    tx_hash = HASH_PREFIX + secrets.token_hex(30).upper()
+    if on_signed is not None:
+        on_signed(tx_hash)
+    return tx_hash
+
+
+def simulated_wait_for_receipt(tx_hash: str, timeout: float = 120, w3=None):
+    """Stand-in for `evm_service.wait_for_receipt`: block for a testnet-like
+    time, then report the burn mined."""
+    time.sleep(_rng.lognormvariate(_MU, _SIGMA))
+    return {"transactionHash": tx_hash, "status": 1, "blockNumber": 0}
+
+
+def no_rpc():
+    raise RuntimeError("the load test simulates the chain; nothing may reach an RPC")
 
 
 def main() -> None:
-    xrpl_service.burn_tokens = simulated_burn
+    evm_service.burn_tokens = simulated_burn
+    evm_service.wait_for_receipt = simulated_wait_for_receipt
+    evm_service.get_web3 = no_rpc
 
     from remitx_worker.__main__ import main as run_worker
 

@@ -12,10 +12,9 @@ than through `remitx_api.config.Config`, so the API's config object has no way
 to hand either secret out.
 
 Models `xrpl_service._load_treasury_wallet`. The web3.py helpers below it
-(#221, #222) will replace the XRPL path, which still exists until it is
-removed in #225 (part of #276): until then normal remittances settle on the
-XRP Ledger Testnet through `xrpl_service`. Nothing calls these helpers yet;
-the burn (#278) and the stokvel contract connection (#273) build on them.
+(#221, #222) replace the XRPL path: settlement burns UCTUSD through
+`burn_tokens` (#278), and `xrpl_service` is kept only for reference. The
+stokvel contract connection (#273) builds on the same helpers.
 
 Fees: transactions use legacy `gasPrice`. The RPC does report EIP-1559 fields
 (`eth_feeHistory` returned `baseFeePerGas` in October 2026), but no type-2
@@ -23,21 +22,26 @@ transaction has been tested on this chain, and a legacy price taken from
 `eth_gasPrice` is accepted by any EVM node.
 
 Nonces: `submit_transaction` takes the Treasury Wallet's *pending* nonce at the
-moment it builds. Two tasks sending from the wallet at once can read the same
-nonce, so one replaces or is rejected in favour of the other. Every task that
-sends from the Treasury Wallet must be serialised with the others (one lock or
-one single-concurrency queue): the burn (#278), the contribution tasks and the
-scheduled release task that calls `finalise` (#273).
+moment it builds. Two sends from the wallet at once could read the same nonce,
+so one would replace or be rejected in favour of the other. To stop that,
+`submit_transaction` holds `remitx_worker.db.treasury_send_lock` from the
+nonce read until the RPC reports the nonce used. Every send from the Treasury
+Wallet must go through `submit_transaction`: the burn (#278), the
+contribution tasks and the scheduled release task that calls `finalise`
+(#273).
 
-Logging: nothing scrubs log lines. Never log a transaction dict, an account
-object or a decrypted key, and log a stokvel or member ID in its UUID form,
-not as `bytes32`. Persist a transaction hash in the database so it can be
-found again.
+Logging: nothing scrubs log lines. Never log a transaction dict, a signed
+transaction, an account object or a decrypted key, and log a stokvel or
+member ID in its UUID form, not as `bytes32`. Persist a transaction hash in
+the database so it can be found again.
 """
 
+import logging
 import os
 import re
+import time
 import uuid
+from collections.abc import Callable
 from decimal import Decimal, localcontext
 from typing import Any
 
@@ -47,8 +51,15 @@ from eth_account.signers.local import LocalAccount
 from remitx_api.config import Config
 from web3 import Web3
 from web3.contract import Contract
+from web3.exceptions import TransactionNotFound, Web3RPCError
 
-# Enough of ERC-20 for balances, approvals and transfers.
+from remitx_worker.db import treasury_send_lock
+
+logger = logging.getLogger(__name__)
+
+# Enough of ERC-20 for balances, supply, approvals, transfers and the burn.
+# `burn` is OpenZeppelin ERC20Burnable's: it destroys the caller's own
+# balance, so the Treasury needs no allowance (unlike `burnFrom`).
 ERC20_ABI = [
     {
         "name": "balanceOf",
@@ -63,6 +74,13 @@ ERC20_ABI = [
         "stateMutability": "view",
         "inputs": [],
         "outputs": [{"name": "", "type": "uint8"}],
+    },
+    {
+        "name": "totalSupply",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint256"}],
     },
     {
         "name": "allowance",
@@ -94,6 +112,13 @@ ERC20_ABI = [
         ],
         "outputs": [{"name": "", "type": "bool"}],
     },
+    {
+        "name": "burn",
+        "type": "function",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "value", "type": "uint256"}],
+        "outputs": [],
+    },
 ]
 
 # Enough digits for any uint256 (78) at full precision. Decimal's default of 28
@@ -106,6 +131,12 @@ _CALLER_TX_FIELDS = frozenset({"to", "data", "value"})
 
 # A UUID string once its hyphens are removed, as uuidToBytes32 checks it.
 _UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
+
+# After a send, how long `submit_transaction` keeps the send lock while it
+# waits for the RPC's pending nonce to move past the one it used, so the next
+# sender cannot read a stale nonce from a node that has not seen it yet.
+_NONCE_ADVANCE_TIMEOUT = 10.0
+_NONCE_ADVANCE_POLL = 0.5
 
 
 def _load_treasury_account() -> LocalAccount:
@@ -243,14 +274,32 @@ def get_token_balance(address: str, w3: Web3 | None = None) -> Decimal:
     return from_base_units(raw)
 
 
-def submit_transaction(tx: dict[str, Any], w3: Web3 | None = None) -> str:
+def submit_transaction(
+    tx: dict[str, Any],
+    w3: Web3 | None = None,
+    *,
+    on_signed: Callable[[str], None] | None = None,
+) -> str:
     """Sign `tx` as the Treasury Wallet, send it, and return its hash.
 
     `tx` may only set `to`, `data` and `value`. The nonce (pending), chain id,
     legacy `gasPrice` and gas estimate are filled in here. Does not wait for
-    the transaction to be mined: store the returned hash first, then call
-    `wait_for_receipt`, so a retry can wait on that hash instead of sending a
-    second transaction. See the module docstring on nonce collisions.
+    the transaction to be mined: call `wait_for_receipt` on the hash, so a
+    retry can wait on that hash instead of sending a second transaction.
+
+    `on_signed(tx_hash)` runs after signing and before the send. A signed
+    transaction's hash is final, so a caller can store it before anything
+    reaches the chain: then no crash can leave a sent transaction without a
+    record. If `on_signed` raises, nothing is sent.
+
+    Raises `TransactionRejected` when the RPC answers the send with an error
+    that means the node refused the transaction (`_REFUSED`), so it can never
+    be mined. Any other failure of the send (a timeout, a dropped connection,
+    an error answer not known to be a refusal) propagates as it is: it is
+    unknown whether the transaction reached a node.
+
+    Holds `treasury_send_lock` from the nonce read until the RPC's pending
+    nonce has moved past the one used (see the module docstring on nonces).
     """
     extra = set(tx) - _CALLER_TX_FIELDS
     if extra:
@@ -258,31 +307,151 @@ def submit_transaction(tx: dict[str, Any], w3: Web3 | None = None) -> str:
     w3 = w3 or get_web3()
     account = _load_treasury_account()
 
-    full_tx: dict[str, Any] = {
-        "value": 0,
-        **tx,
-        "from": account.address,
-        "nonce": w3.eth.get_transaction_count(account.address, "pending"),
-        "chainId": Config().EVM_CHAIN_ID,
-        "gasPrice": w3.eth.gas_price,
-    }
-    full_tx["gas"] = w3.eth.estimate_gas(full_tx)
+    with treasury_send_lock():
+        nonce = w3.eth.get_transaction_count(account.address, "pending")
+        full_tx: dict[str, Any] = {
+            "value": 0,
+            **tx,
+            "from": account.address,
+            "nonce": nonce,
+            "chainId": Config().EVM_CHAIN_ID,
+            "gasPrice": w3.eth.gas_price,
+        }
+        full_tx["gas"] = w3.eth.estimate_gas(full_tx)
 
-    signed = account.sign_transaction(full_tx)
-    return Web3.to_hex(w3.eth.send_raw_transaction(signed.raw_transaction))
+        signed = account.sign_transaction(full_tx)
+        tx_hash = Web3.to_hex(signed.hash)
+        if on_signed is not None:
+            on_signed(tx_hash)
+
+        try:
+            sent_hash = Web3.to_hex(w3.eth.send_raw_transaction(signed.raw_transaction))
+        except Web3RPCError as exc:
+            if _REFUSED.search(str(exc)):
+                raise TransactionRejected(tx_hash, exc) from exc
+            if not _ALREADY_KNOWN.search(str(exc)):
+                raise
+            # The node already holds this exact transaction: it was sent.
+            sent_hash = tx_hash
+        if sent_hash.lower() != tx_hash.lower():
+            # Cannot happen for a well-behaved node: the hash is the keccak of
+            # the signed bytes. Refuse to report a hash nobody stored.
+            raise RuntimeError(
+                f"EVM RPC accepted transaction {tx_hash} but reported {sent_hash}"
+            )
+        _wait_for_nonce_to_advance(w3, account.address, nonce)
+    return tx_hash
+
+
+def _wait_for_nonce_to_advance(w3: Web3, address: str, used_nonce: int) -> None:
+    """Poll until the RPC's pending nonce for `address` passes `used_nonce`.
+
+    Bounded by `_NONCE_ADVANCE_TIMEOUT`. On timeout it only logs: the send
+    has already been accepted, so failing here would report a sent
+    transaction as unsent.
+    """
+    deadline = time.monotonic() + _NONCE_ADVANCE_TIMEOUT
+    while w3.eth.get_transaction_count(address, "pending") <= used_nonce:
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "event=evm.nonce_not_advanced address=%s nonce=%s timeout=%ss",
+                address,
+                used_nonce,
+                _NONCE_ADVANCE_TIMEOUT,
+            )
+            return
+        time.sleep(_NONCE_ADVANCE_POLL)
+
+
+def burn_tokens(
+    amount: Decimal,
+    *,
+    on_signed: Callable[[str], None] | None = None,
+    w3: Web3 | None = None,
+) -> str:
+    """Burn exactly `amount` UCTUSD from the Treasury Wallet; return the tx hash.
+
+    Calls the token's `burn(uint256)`, which destroys the caller's own
+    balance and lowers `totalSupply`. Submits only: does not wait for the
+    transaction to be mined. `on_signed` is passed to `submit_transaction`,
+    so the caller can store the hash before the send, then wait on it with
+    `wait_for_receipt`.
+
+    Rejects a zero amount, and anything `to_base_units` rejects.
+    """
+    base_units = to_base_units(amount)
+    if base_units == 0:
+        raise ValueError("burn amount must be positive, got 0")
+    w3 = w3 or get_web3()
+    token = token_contract(w3)
+    tx = {"to": token.address, "data": token.encode_abi("burn", args=[base_units])}
+    return submit_transaction(tx, w3=w3, on_signed=on_signed)
+
+
+class TransactionReverted(RuntimeError):
+    """A mined transaction failed (receipt status 0): nothing it did happened."""
+
+
+class TransactionRejected(RuntimeError):
+    """The RPC answered the send with an error that means the node refused
+    the transaction: it is in no mempool and can never be mined. Raised only
+    for an error answer matching `_REFUSED`, never for a timeout, a dropped
+    connection or any other error, where it may still have reached a node."""
+
+    def __init__(self, tx_hash: str, error: Exception) -> None:
+        super().__init__(f"EVM RPC refused transaction {tx_hash}: {error}")
+        self.tx_hash = tx_hash
+
+
+# Error answers that mean the node refused the transaction outright (geth's
+# txpool messages, which Cosmos EVM reuses). An allowlist on purpose: some
+# gateways answer their own timeout as a JSON-RPC error after the node has
+# taken the transaction, and calling that a refusal could fail a burn that
+# still lands. An unlisted error is treated as unknown, never as refused.
+_REFUSED = re.compile(
+    r"insufficient funds|nonce too low|underpriced|intrinsic gas too low"
+    r"|exceeds block gas limit|invalid sender|fee cap less than block base fee",
+    re.IGNORECASE,
+)
+
+# How nodes say they already hold a transaction (geth, and Cosmos EVM's
+# mempool). Sending the same signed bytes again is not a refusal.
+_ALREADY_KNOWN = re.compile(
+    r"already known|known transaction|already in (the )?mempool", re.IGNORECASE
+)
+
+TX_PENDING = "pending"
+TX_UNKNOWN = "unknown"
+
+
+def transaction_status(tx_hash: str, w3: Web3 | None = None) -> str:
+    """`TX_PENDING` if the RPC knows the transaction, `TX_UNKNOWN` if it has
+    no record of it. Read-only, for telling a person what to check.
+
+    `TX_UNKNOWN` is not proof the transaction can never be mined: another
+    node may still hold it. Never send again on the strength of it.
+    """
+    w3 = w3 or get_web3()
+    try:
+        w3.eth.get_transaction(tx_hash)
+    except TransactionNotFound:
+        return TX_UNKNOWN
+    return TX_PENDING
 
 
 def wait_for_receipt(tx_hash: str, timeout: float = 120, w3: Web3 | None = None):
     """Wait for `tx_hash` to be mined and return its receipt.
 
-    Raises `RuntimeError` if the transaction reverted (status 0). If it is not
+    Raises `TransactionReverted` (a `RuntimeError`) if the transaction
+    reverted (status 0). Any other error means only that no answer came, so
+    the caller may wait on the same hash again. If it is not
     mined within `timeout` seconds, web3's `TimeExhausted` propagates and the
     caller may wait on the same hash again.
     """
     w3 = w3 or get_web3()
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
     if receipt["status"] == 0:
-        raise RuntimeError(f"EVM transaction {tx_hash} reverted")
+        raise TransactionReverted(f"EVM transaction {tx_hash} reverted")
     return receipt
 
 

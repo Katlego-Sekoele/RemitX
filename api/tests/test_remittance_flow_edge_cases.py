@@ -94,28 +94,42 @@ def broker(monkeypatch):
 
 
 @pytest.fixture
-def xrpl(monkeypatch):
-    """Stand-in for the one real XRPL call. Records each burn amount;
-    set `.fail` to make the next burns raise."""
+def evm(monkeypatch):
+    """Stand-in for the chain: the EVM burn and its receipt. Records each
+    burn amount; set `.fail` to make the next burns fail before anything is
+    sent. Nothing reaches an RPC: `get_web3` raises if anything asks."""
 
-    class FakeXrpl:
+    class FakeEvm:
         def __init__(self):
             self.burns = []
+            self.hashes = []
             self.fail = False
 
-        def burn_tokens(self, amount):
+        def burn_tokens(self, amount, *, on_signed=None, w3=None):
             self.burns.append(amount)
             if self.fail:
-                raise RuntimeError("tecPATH_DRY")
-            return f"HASH{len(self.burns)}"
+                raise RuntimeError("execution reverted: gas estimate failed")
+            tx_hash = f"0x{len(self.burns):064x}"
+            self.hashes.append(tx_hash)
+            if on_signed is not None:
+                on_signed(tx_hash)
+            return tx_hash
 
-    fake = FakeXrpl()
-    monkeypatch.setattr(tasks.xrpl_service, "burn_tokens", fake.burn_tokens)
+        def wait_for_receipt(self, tx_hash, timeout=120, w3=None):
+            return {"transactionHash": tx_hash, "status": 1, "blockNumber": 1}
+
+    def no_rpc():
+        raise AssertionError("a test tried to reach the EVM RPC")
+
+    fake = FakeEvm()
+    monkeypatch.setattr(tasks.evm_service, "get_web3", no_rpc)
+    monkeypatch.setattr(tasks.evm_service, "burn_tokens", fake.burn_tokens)
+    monkeypatch.setattr(tasks.evm_service, "wait_for_receipt", fake.wait_for_receipt)
     return fake
 
 
 @pytest.fixture
-def ledger(app_context, broker, xrpl):
+def ledger(app_context, broker, evm):
     """Rates, platform accounts, a KYC-approved sender and a ZWL
     beneficiary, with the worker pointed at the app's database."""
     _store_rate("18.50")  # USD -> ZAR
@@ -151,7 +165,7 @@ def ledger(app_context, broker, xrpl):
         "recipient": recipient,
         "beneficiary": beneficiary,
         "broker": broker,
-        "xrpl": xrpl,
+        "evm": evm,
     }
     worker_db.configure(None)
 
@@ -245,7 +259,7 @@ def test_full_settlement_moves_exactly_the_quoted_amounts(ledger):
     assert results[-1] == ("confirm", "settled")
     assert {leg.status for leg in _legs(quote.quote_id)} == {STATUS_CONFIRMED}
     # Exactly one on-chain burn, of exactly the quoted token amount.
-    assert env["xrpl"].burns == [quote.token_amount]
+    assert env["evm"].burns == [quote.token_amount]
 
     accounts = AccountRepository()
     sender_zar = accounts.get_user_account(env["sender"].id, CURRENCY_ZAR)
@@ -286,7 +300,7 @@ def test_every_message_delivered_twice_still_burns_and_credits_once(ledger):
     remittance_service.confirm_remittance(env["sender"].id, quote.quote_id)
     _drain(env["broker"], redeliver=True)
 
-    assert len(env["xrpl"].burns) == 1
+    assert len(env["evm"].burns) == 1
     recip_zwl = AccountRepository().get_user_account(env["recipient"].id, CURRENCY_ZWL)
     assert _balance(recip_zwl) == quote.receiver_amount
     sender_zar = AccountRepository().get_user_account(env["sender"].id, CURRENCY_ZAR)
@@ -298,7 +312,7 @@ def test_a_failed_burn_releases_the_held_funds(ledger):
     _fund(env["sender"], "1000")
     before = _all_balances()
     quote = _quote(env, "1000")
-    env["xrpl"].fail = True
+    env["evm"].fail = True
 
     remittance_service.confirm_remittance(env["sender"].id, quote.quote_id)
     results = _drain(env["broker"])
@@ -311,7 +325,7 @@ def test_a_failed_burn_releases_the_held_funds(ledger):
     assert AccountRepository().get_available_balance(sender_zar.account_id) == Decimal(
         "1000"
     )
-    env["xrpl"].fail = False
+    env["evm"].fail = False
     retry = _quote(env, "1000")
     remittance_service.confirm_remittance(env["sender"].id, retry.quote_id)
     assert _drain(env["broker"])[-1] == ("confirm", "settled")
@@ -337,7 +351,10 @@ def test_a_late_success_after_a_recorded_failure_credits_nothing(ledger):
     assert _all_balances() == before
     assert {leg.status for leg in _legs(quote.quote_id)} == {STATUS_FAILED}
     burn = next(leg for leg in _legs(quote.quote_id) if leg.type == TYPE_TOKEN_BURN)
-    assert burn.evm_tx_hash is None
+    # The burn stored its own hash before sending; the stray success's hash
+    # is never written over it.
+    assert burn.evm_tx_hash == env["evm"].hashes[-1]
+    assert burn.evm_tx_hash != "LATEHASH"
 
 
 def test_funds_stay_held_while_the_burn_is_in_flight(ledger):

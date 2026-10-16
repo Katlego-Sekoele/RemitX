@@ -24,12 +24,36 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.services import queue_service
 from sqlalchemy import select, update
 
-# xrpl_service is decommissioned (#276); replaced by evm_service in #278.
-from remitx_worker import xrpl_service
+from remitx_worker import evm_service
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
 
 logger = logging.getLogger(__name__)
+
+# How long `burn_treasury_tokens` waits for a burn's receipt, and how often and
+# how many times it retries the wait before leaving the group for a person.
+BURN_RECEIPT_TIMEOUT_SECONDS = 120
+BURN_RECEIPT_RETRY_SECONDS = 60
+BURN_RECEIPT_MAX_RETRIES = 10
+
+# The burn hash column readers use. The only other place a hash column is
+# named is `_burn_hash_values`.
+_BURN_HASH_COLUMN = Transaction.evm_tx_hash
+
+
+def _burn_hash_values(tx_hash: str) -> dict[str, str]:
+    """The column values that record `tx_hash` on a quote's `token_burn` leg.
+
+    `evm_tx_hash` is the column readers use. `xrpl_tx_hash` is its
+    deprecated name (#239), written too while the rename's expand phase
+    lets a worker on the previous release keep working.
+    """
+    return {"evm_tx_hash": tx_hash, "xrpl_tx_hash": tx_hash}
+
+
+class _BurnHashNotRecorded(Exception):
+    """`burn_treasury_tokens` could not store a signed burn's hash, so it
+    did not send it."""
 
 
 @celery.task(name="remitx_worker.tasks.ping")
@@ -139,17 +163,36 @@ def settle_remittance(quote_id: str) -> str:
     return "queued"
 
 
-@celery.task(name="remitx_worker.tasks.burn_treasury_tokens")
-def burn_treasury_tokens(quote_id: str) -> str:
-    """Submit a quote's treasury `burn` token transaction as a real XRPL `Payment`
+@celery.task(
+    bind=True,
+    name="remitx_worker.tasks.burn_treasury_tokens",
+    max_retries=BURN_RECEIPT_MAX_RETRIES,
+)
+def burn_treasury_tokens(self, quote_id: str) -> str:
+    """Burn a quote's UCTUSD from the Treasury Wallet on the XRPL EVM chain.
 
-    Claim every one of the quote's pending transactions with a guarded transition
-    to a new `processing` status so every transaction's `processed_at` reflects the
-    moment settlement actually started.
+    Claims every one of the quote's pending transactions with a guarded
+    transition to `processing`, so every transaction's `processed_at`
+    reflects the moment settlement actually started. Only the delivery that
+    makes that claim can send a burn, and it burns exactly the `token_burn`
+    leg's amount (never what the Treasury holds: it also holds float).
 
-    Does nothing else once the XRPL call resolves: recording
-    the result is handed to `confirm_treasury_burn`, so that
-    the DB changes can be made in a separate, isolated task.
+    The burn's hash is stored on the burn leg after signing and before the
+    send (`evm_service.burn_tokens`'s `on_signed`). Then the task waits for
+    the receipt, and only a confirmed burn is handed to
+    `confirm_treasury_burn`, which confirms and credits the group. A
+    remittance is therefore never final before its burn is.
+
+    A retry never sends a second burn. A delivery that finds the group
+    already claimed waits on the stored hash, or does nothing if no hash was
+    stored. If the receipt does not come, the task retries the wait
+    (`BURN_RECEIPT_MAX_RETRIES` times, `BURN_RECEIPT_RETRY_SECONDS` apart),
+    then leaves the group `processing` for a person, logged as
+    `event=settlement.burn_unconfirmed` with what the RPC knows of the hash.
+
+    A send the RPC refuses outright (`evm_service.TransactionRejected`, for
+    example too little XRP for gas) can never be mined, so it fails the group
+    at once, logged as `event=settlement.burn_rejected`.
     """
     try:
         target_id = uuid.UUID(quote_id)
@@ -169,45 +212,198 @@ def burn_treasury_tokens(quote_id: str) -> str:
             # Get all transactions with the given quote_id and pending
             # status, and update their status to processing
         )
-        # if no rows were updated, log that the quote has no pending
-        # transactions and return "skipped"
         if claimed.rowcount == 0:
-            logger.info(
-                "quote %s has no pending transactions; already burned or unknown",
-                quote_id,
-            )
-            return "skipped"
+            # Not ours to send. A redelivery of a burn that was already
+            # signed waits on the stored hash instead.
+            burn_leg = session.execute(
+                select(Transaction.status, _BURN_HASH_COLUMN).where(
+                    Transaction.quote_id == target_id,
+                    Transaction.type == TYPE_TOKEN_BURN,
+                )
+            ).first()
+        else:
+            amount = session.execute(
+                select(Transaction.amount).where(
+                    Transaction.quote_id == target_id,
+                    Transaction.type == TYPE_TOKEN_BURN,
+                    Transaction.status == TX_STATUS_PROCESSING,
+                )
+                # The amount of the token burn leg just claimed
+            ).scalar_one()
 
-        amount = session.execute(
-            select(Transaction.amount).where(
-                Transaction.quote_id == target_id,
-                Transaction.type == TYPE_TOKEN_BURN,
-                Transaction.status == TX_STATUS_PROCESSING,
-            )
-            # Get the amount of the pending token burn transaction for the
-            # given quote_id
-        ).scalar_one()
+    if claimed.rowcount == 0:
+        return _resume_burn(self, quote_id, burn_leg)
 
-    # Try to burn the tokens by calling the xrpl_service.burn_tokens
-    # function with the amount.
+    recorded: list[str] = []
+
+    def record(tx_hash: str) -> None:
+        # Its own commit, before the send: a crash after this point leaves
+        # the hash for a retry to wait on.
+        with session_scope() as session:
+            stored = session.execute(
+                update(Transaction)
+                .where(
+                    Transaction.quote_id == target_id,
+                    Transaction.type == TYPE_TOKEN_BURN,
+                    Transaction.status == TX_STATUS_PROCESSING,
+                    _BURN_HASH_COLUMN.is_(None),
+                )
+                .values(**_burn_hash_values(tx_hash))
+                .execution_options(synchronize_session=False)
+            )
+        if stored.rowcount != 1:
+            raise _BurnHashNotRecorded(tx_hash)
+        recorded.append(tx_hash)
+
     try:
-        tx_hash = xrpl_service.burn_tokens(amount)
-    except Exception as exc:
-        logger.exception("burn failed for quote %s (amount=%s)", quote_id, amount)
-        # if the burn fails, enqueue the confirm_treasury_burn task with
-        # None as the tx_hash and the exception message as the error
+        tx_hash = evm_service.burn_tokens(amount, on_signed=record)
+    except _BurnHashNotRecorded as exc:
+        # The leg left `processing` or gained a hash between the claim and
+        # now. Nothing was sent, and the leg is not this delivery's to fail.
+        logger.error(
+            "event=settlement.burn_not_recorded quote_id=%s tx_hash=%s: the burn "
+            "leg was no longer processing without a hash, so the signed burn "
+            "was not sent",
+            quote_id,
+            exc,
+        )
+        return "skipped"
+    except evm_service.TransactionRejected as exc:
+        # The RPC answered the send with an error (for example, too little
+        # XRP for gas): the burn is in no mempool and can never be mined, so
+        # the group can fail now instead of waiting out the receipt retries.
+        logger.error(
+            "event=settlement.burn_rejected quote_id=%s tx_hash=%s: the RPC "
+            "refused the signed burn; nothing was sent",
+            quote_id,
+            exc.tx_hash,
+        )
         queue_service.enqueue_confirm_treasury_burn(quote_id, None, str(exc))
         return "burn_failed"
+    except Exception as exc:
+        if not recorded:
+            # Failed before signing finished: nothing reached the chain.
+            logger.exception(
+                "burn failed for quote %s (amount=%s); nothing was sent",
+                quote_id,
+                amount,
+            )
+            queue_service.enqueue_confirm_treasury_burn(quote_id, None, str(exc))
+            return "burn_failed"
+        # The hash is stored, so the send may have reached the chain even
+        # though it raised. Failing the group now could fail a burn that
+        # lands; wait on the hash instead.
+        (tx_hash,) = recorded
+        logger.warning(
+            "event=settlement.burn_send_uncertain quote_id=%s tx_hash=%s: the "
+            "send raised after the hash was stored (%s); waiting on the hash",
+            quote_id,
+            tx_hash,
+            type(exc).__name__,
+        )
+
+    return _await_burn(self, quote_id, tx_hash)
+
+
+def _resume_burn(task, quote_id: str, burn_leg) -> str:
+    """A delivery that found nothing pending to claim: never sends."""
+    if burn_leg is None or burn_leg.status != TX_STATUS_PROCESSING:
+        logger.info(
+            "quote %s has no pending transactions; already burned or unknown",
+            quote_id,
+        )
+        return "skipped"
+    tx_hash = burn_leg[1]
+    if tx_hash is None:
+        # Either another delivery is signing right now, or a worker stopped
+        # after the claim and before signing, in which case nothing was sent.
+        # Telling those apart needs a person.
+        logger.warning(
+            "event=settlement.burn_unsigned quote_id=%s: the group is "
+            "processing but no burn hash is stored; not sending a burn",
+            quote_id,
+        )
+        return "skipped"
+    logger.info(
+        "event=settlement.burn_resumed quote_id=%s tx_hash=%s: waiting on the "
+        "stored burn instead of sending another",
+        quote_id,
+        tx_hash,
+    )
+    return _await_burn(task, quote_id, tx_hash)
+
+
+def _await_burn(task, quote_id: str, tx_hash: str) -> str:
+    """Wait for the burn's receipt, then hand the outcome to the confirm task."""
+    try:
+        evm_service.wait_for_receipt(tx_hash, timeout=BURN_RECEIPT_TIMEOUT_SECONDS)
+    except evm_service.TransactionReverted as exc:
+        # Mined and failed: no tokens were burned, so the group can fail.
+        logger.error(
+            "event=settlement.burn_reverted quote_id=%s tx_hash=%s",
+            quote_id,
+            tx_hash,
+        )
+        queue_service.enqueue_confirm_treasury_burn(quote_id, None, str(exc))
+        return "burn_failed"
+    except Exception as exc:
+        # No answer (a timeout, or the RPC unreachable): the burn may still
+        # be mined. Never fail it from here; wait on the same hash again.
+        if task.request.retries >= task.max_retries:
+            _log_burn_unconfirmed(quote_id, tx_hash, task.request.retries)
+            return "awaiting_receipt"
+        logger.warning(
+            "event=settlement.burn_receipt_retry quote_id=%s tx_hash=%s retry=%s (%s)",
+            quote_id,
+            tx_hash,
+            task.request.retries + 1,
+            type(exc).__name__,
+        )
+        raise task.retry(countdown=BURN_RECEIPT_RETRY_SECONDS, exc=exc) from None
 
     queue_service.enqueue_confirm_treasury_burn(quote_id, tx_hash)
     return "burned"
+
+
+def _log_burn_unconfirmed(quote_id: str, tx_hash: str, retries: int) -> None:
+    """Leave the group `processing` for a person, saying what the RPC knows.
+
+    Never fails or resends on what it finds: the raw transaction and nonce
+    are not stored, so "no record of it" cannot prove the burn will never be
+    mined, and a second burn would burn twice.
+    """
+    try:
+        status = evm_service.transaction_status(tx_hash)
+    except Exception as exc:
+        status = f"unavailable ({type(exc).__name__})"
+    if status == evm_service.TX_UNKNOWN:
+        detail = (
+            "the RPC has no record of the burn: it was most likely never "
+            "broadcast, or was dropped. Before failing the group, check that "
+            "the explorer has no such transaction and that the Treasury's "
+            "nonce has moved past it"
+        )
+    elif status == evm_service.TX_PENDING:
+        detail = "the RPC holds the burn but has not mined it; it may still land"
+    else:
+        detail = "look the hash up on the explorer"
+    logger.error(
+        "event=settlement.burn_unconfirmed quote_id=%s tx_hash=%s retries=%s "
+        "rpc_status=%s: no receipt, so the group is left processing for a "
+        "person; %s",
+        quote_id,
+        tx_hash,
+        retries,
+        status,
+        detail,
+    )
 
 
 @celery.task(name="remitx_worker.tasks.confirm_treasury_burn")
 def confirm_treasury_burn(
     quote_id: str, tx_hash: str | None, error: str | None = None
 ) -> str:
-    """Record the outcome of `burn_treasury_tokens`'s XRPL call.
+    """Record the outcome of `burn_treasury_tokens`'s EVM burn.
 
     On success, confirm and credit *every* remittance transactions in one commit.
 
@@ -215,18 +411,20 @@ def confirm_treasury_burn(
     transaction that's still waiting that was claimed together by
     `burn_treasury_tokens`.
 
-    `tx_hash is None` indicated a token burn failure. Therefore, every
-    transaction the `quote_id` is set to `failed`. Only transaction status
-    changes as no account balances were changed.
+    `tx_hash` is given only once the burn's receipt has confirmed it.
+    `tx_hash is None` indicated a token burn failure (nothing sent, or the
+    burn reverted). Therefore, every transaction the `quote_id` is set to
+    `failed`. Only transaction status changes as no account balances were
+    changed.
 
     A failed group sits and needs manual investigation. Groups stuck in
     ``processing`` are only logged by ``reclaim_stuck_settlements``; fully
     ``pending`` groups are re-enqueued by ``reclaim_pending_settlements``.
 
-    `error`(the original XRPL exception's message, from `burn_treasury_tokens`) is
-    logged alongside that failure so Render's log stream shows the actual
-    reason next to the group that got marked `failed`, not just the fact of
-    it.
+    `error` (the original exception's message, from `burn_treasury_tokens`)
+    is logged alongside that failure so the worker's log stream shows the
+    actual reason next to the group that got marked `failed`, not just the
+    fact of it.
     """
     try:
         # get the quote_id as a UUID object
@@ -237,7 +435,7 @@ def confirm_treasury_burn(
 
     in_flight = (TX_STATUS_PENDING, TX_STATUS_PROCESSING)
 
-    # No XRPL hash means the burn failed, so mark all legs as failed
+    # No hash means the burn failed, so mark all legs as failed
     if tx_hash is None:
         with session_scope() as session:
             result = session.execute(
@@ -299,10 +497,10 @@ def confirm_treasury_burn(
                 Transaction.quote_id == target_id,
                 Transaction.type == TYPE_TOKEN_BURN,
             )
-            .values(evm_tx_hash=tx_hash, xrpl_tx_hash=tx_hash)
+            .values(**_burn_hash_values(tx_hash))
             # Add the token burn success hash to the token burn
-            # transaction row. `xrpl_tx_hash` is the deprecated name,
-            # written too until the rename finishes rolling out
+            # transaction row (already stored before the send; the same
+            # value, written again)
         )
 
         remittance_transactions = session.execute(
