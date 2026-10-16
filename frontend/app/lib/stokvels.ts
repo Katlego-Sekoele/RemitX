@@ -7,10 +7,11 @@
  * the swap should be a change to this file only.
  */
 
-import { queryOptions } from "@tanstack/react-query"
+import { queryOptions, type QueryClient } from "@tanstack/react-query"
 
 import { amountToCents, fromCents } from "~/lib/money"
 import {
+  createStokvelMock,
   getStokvelContractStatusMock,
   getStokvelMock,
   listStokvelsMock,
@@ -159,6 +160,15 @@ export type StokvelBeneficiaryChoice = {
   payout_currency: string
 }
 
+/** One round of the schedule the Organiser sets (doc §12 step 1), before a
+ * cycle exists. ISO datetimes. */
+export type StokvelScheduleRound = {
+  round: number
+  start_time: string
+  deadline: string
+  payout_time: string
+}
+
 /** `GET /stokvels/{id}`: everything the member screen shows (R2-14, #236). */
 export type StokvelDetailRead = StokvelSummaryRead & {
   my_member_id: string
@@ -167,6 +177,21 @@ export type StokvelDetailRead = StokvelSummaryRead & {
   invitations: StokvelInvitationRead[]
   cycle: StokvelCycleRead | null
   contributions: StokvelContributionRead[]
+  /** The planned rounds while no cycle has started; null once it has. */
+  schedule: StokvelScheduleRound[] | null
+}
+
+/**
+ * `POST /stokvels` (R2-07, #229). Shape assumed by the frontend, recorded in
+ * doc §5: the Organiser enters the contribution in the Stokvel currency and
+ * the API fixes the UCTUSD amount at the live rate (D13).
+ */
+export type StokvelCreateRequest = {
+  name: string
+  goal: string | null
+  currency: string
+  contribution_fiat_amount: string
+  rounds: StokvelScheduleRound[]
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -197,8 +222,23 @@ export const stokvelQueries = {
     }),
 }
 
+/** Mutations in the shape `useMutation` spreads, like the client's. */
+export const stokvelMutations = {
+  create: () => ({
+    mutationFn: (body: StokvelCreateRequest) => createStokvelMock(body),
+  }),
+}
+
+export async function invalidateStokvels(queryClient: QueryClient) {
+  await queryClient.invalidateQueries({ queryKey: ["stokvels"] })
+}
+
 export function stokvelsPath(): string {
   return "/app/stokvels"
+}
+
+export function stokvelNewPath(): string {
+  return "/app/stokvels/new"
 }
 
 export function stokvelPath(stokvelId: string): string {

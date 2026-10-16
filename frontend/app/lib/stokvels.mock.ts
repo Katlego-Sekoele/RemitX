@@ -7,6 +7,7 @@
 
 import type {
   StokvelContractStatusRead,
+  StokvelCreateRequest,
   StokvelDetailRead,
   StokvelListRead,
 } from "~/lib/stokvels"
@@ -146,6 +147,7 @@ const GROCERIES: StokvelDetailRead = {
       created_at: "2026-10-14T16:40:00Z",
     },
   ],
+  schedule: null,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
@@ -198,6 +200,7 @@ const TAXI_FUND: StokvelDetailRead = {
   ],
   cycle: null,
   contributions: [],
+  schedule: null,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
@@ -235,6 +238,7 @@ const SCHOOL_FEES: StokvelDetailRead = {
     rounds: [],
   },
   contributions: [],
+  schedule: null,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -263,6 +267,7 @@ function summaryOf(detail: StokvelDetailRead) {
     invitations: _invitations,
     cycle: _cycle,
     contributions: _contributions,
+    schedule: _schedule,
     ...summary
   } = detail
   return summary
@@ -297,4 +302,59 @@ export function getStokvelContractStatusMock(): Promise<StokvelContractStatusRea
     paused: false,
     treasury_token_balance: "110000.00000000",
   })
+}
+
+/** The rate the mock fixes the token amount at (D13); the API uses the live
+ * one. */
+const MOCK_ZAR_PER_TOKEN = 18.25
+
+/**
+ * `POST /stokvels`: the caller becomes Organiser and first Member of a
+ * stokvel with no cycle yet. Kept in memory so the list shows it until the
+ * page reloads.
+ */
+export function createStokvelMock(
+  body: StokvelCreateRequest
+): Promise<StokvelDetailRead> {
+  const id = `stk_${Date.now().toString(36)}`
+  const token = (
+    Number(body.contribution_fiat_amount) / MOCK_ZAR_PER_TOKEN
+  ).toFixed(8)
+  const now = new Date().toISOString()
+  const detail: StokvelDetailRead = {
+    stokvel_id: id,
+    name: body.name,
+    goal: body.goal,
+    currency: body.currency,
+    contribution_amount: token,
+    contribution_fiat_estimate: Number(body.contribution_fiat_amount).toFixed(
+      2
+    ),
+    organiser_name: "Sipho Khumalo",
+    is_organiser: true,
+    member_count: 1,
+    phase: "forming",
+    current_round: null,
+    total_rounds: null,
+    next_payout_time: null,
+    my_contribution_status: null,
+    my_member_id: `mem_sipho_${id}`,
+    my_beneficiary: null,
+    members: [
+      {
+        member_id: `mem_sipho_${id}`,
+        user_id: ME,
+        full_name: "Sipho Khumalo",
+        is_organiser: true,
+        is_me: true,
+        joined_at: now,
+      },
+    ],
+    invitations: [],
+    cycle: null,
+    contributions: [],
+    schedule: body.rounds,
+  }
+  DETAILS[id] = detail
+  return settle(detail)
 }
