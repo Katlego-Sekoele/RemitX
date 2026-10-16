@@ -7,6 +7,7 @@
 
 import type {
   StokvelContractStatusRead,
+  StokvelContributionRead,
   StokvelCreateRequest,
   StokvelDetailRead,
   StokvelListRead,
@@ -85,6 +86,8 @@ const GROCERIES: StokvelDetailRead = {
           "0x51a0c9e3b2f14d7a8c6e5f0b1d2a3c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0e0",
         burn_tx_hash:
           "0x8f3a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2c21e",
+        pool_fiat_amount: "1500.00",
+        remittance_reference: "RX-STK-8C21-R1",
       },
       {
         round: 1,
@@ -97,6 +100,8 @@ const GROCERIES: StokvelDetailRead = {
         remittance_id: null,
         release_tx_hash: null,
         burn_tx_hash: null,
+        pool_fiat_amount: null,
+        remittance_reference: null,
       },
       {
         round: 2,
@@ -109,6 +114,8 @@ const GROCERIES: StokvelDetailRead = {
         remittance_id: null,
         release_tx_hash: null,
         burn_tx_hash: null,
+        pool_fiat_amount: null,
+        remittance_reference: null,
       },
     ],
   },
@@ -273,9 +280,38 @@ function summaryOf(detail: StokvelDetailRead) {
   return summary
 }
 
-/** A short pause so loading states show while the screens are built. */
-function settle<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), 250))
+/** A short pause so loading states show while the screens are built. Reads
+ * return copies, so a later write to the store is a new object to React
+ * Query and the page re-renders. */
+function settle<T>(value: T, delayMs = 250): Promise<T> {
+  return new Promise((resolve) =>
+    setTimeout(() => resolve(structuredClone(value)), delayMs)
+  )
+}
+
+/** Shaped like `ApiError` (lib/api.ts) without importing the client. */
+function apiError(message: string, status: number, code?: string): Error {
+  return Object.assign(new Error(message), {
+    name: "ApiError",
+    status,
+    body: code ? { code, detail: message } : { detail: message },
+  })
+}
+
+/** Knobs for the states the screens must show (doc §6, product docx §7).
+ * The stokvel page exposes them in development only. */
+export const stokvelMockScenario = {
+  paused: false,
+  /** The member's available balance in the Stokvel currency. */
+  available_balance: "1240.00",
+  /** How long a submitted contribution takes to confirm on chain. */
+  confirm_delay_ms: 1200,
+}
+
+export function resetStokvelMockScenario() {
+  stokvelMockScenario.paused = false
+  stokvelMockScenario.available_balance = "1240.00"
+  stokvelMockScenario.confirm_delay_ms = 1200
 }
 
 export function listStokvelsMock(): Promise<StokvelListRead> {
@@ -357,4 +393,64 @@ export function createStokvelMock(
   }
   DETAILS[id] = detail
   return settle(detail)
+}
+
+/**
+ * `POST /stokvels/{id}/contributions` (#233) followed by the worker's
+ * confirmation (#234): the contribution is `pending`, then `confirmed` with
+ * a hash. Refusals use the doc §6 codes and the ledger's own messages.
+ */
+export async function contributeMock(
+  stokvelId: string
+): Promise<StokvelContributionRead> {
+  const detail = DETAILS[stokvelId]
+  if (!detail) throw apiError("Stokvel not found", 404)
+  if (stokvelMockScenario.paused) {
+    throw apiError("Stokvels are paused", 503, "stokvel_paused")
+  }
+  const cycle = detail.cycle
+  if (!cycle || cycle.status !== "active") {
+    throw apiError("No active cycle", 409, "cycle_not_open")
+  }
+  const round = cycle.current_round
+  const already = detail.contributions.some(
+    (c) =>
+      c.cycle_id === cycle.cycle_id &&
+      c.round === round &&
+      c.member_id === detail.my_member_id &&
+      c.status !== "failed"
+  )
+  if (already) {
+    throw apiError("Already paid", 409, "contribution_already_paid")
+  }
+  if (
+    Number(stokvelMockScenario.available_balance) <
+    Number(detail.contribution_fiat_estimate)
+  ) {
+    throw apiError("Amount exceeds your available balance", 400)
+  }
+  const contribution: StokvelContributionRead = {
+    contribution_id: `con_${Date.now().toString(36)}`,
+    cycle_id: cycle.cycle_id,
+    round,
+    member_id: detail.my_member_id,
+    amount_fiat: detail.contribution_fiat_estimate,
+    amount_token: detail.contribution_amount,
+    status: "pending",
+    evm_tx_hash: null,
+    created_at: new Date().toISOString(),
+  }
+  detail.contributions.push(contribution)
+  detail.my_contribution_status = "pending"
+  stokvelMockScenario.available_balance = (
+    Number(stokvelMockScenario.available_balance) -
+    Number(detail.contribution_fiat_estimate)
+  ).toFixed(2)
+  await settle(null, stokvelMockScenario.confirm_delay_ms)
+  contribution.status = "confirmed"
+  contribution.evm_tx_hash = `0x${contribution.contribution_id
+    .replace(/[^a-z0-9]/g, "")
+    .padEnd(64, "d")}`
+  detail.my_contribution_status = "confirmed"
+  return structuredClone(contribution)
 }

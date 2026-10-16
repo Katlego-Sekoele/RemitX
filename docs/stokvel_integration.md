@@ -39,6 +39,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-08 | 1, 6 | Treasury allowance agreed with the backend: one-off `approve(vault, max)` per contract address, checked before each `contribute` and re-approved if low. Section 6 maps the token's `ERC20InsufficientAllowance` to a backend 500. Backend confirmed sections 1 and 6, and the fixed contribution amount in `createStokvel` | |
 | 2026-10-09 | 1 | MVP decision: the contribution amount is fixed per stokvel for all cycles; a new amount means a new stokvel | |
 | 2026-10-15 | 9, 13 | Frontend scaffold (R4-02 #251): `app/stokvels`, `app/stokvels/:stokvelId` and `admin/stokvel-contract` routes, sidebar entries, and mocked responses shaped like §3 and §5 behind `lib/stokvels.ts`. The R4-01 screen list (13 screens) is on #250 | #251 |
+| 2026-10-15 | 6, 13 | Stokvel page and contribute flow (R4-05 #254) on mocks: pot ring, Pay now → confirm sheet → confirming → paid with the proof link, the §6 refusals (`lib/stokvel-errors.ts` maps every code to its wording), the current round's payout tracker, payout order, members and round history. The mock confirms a contribution after a short delay and can be paused or run low on balance for the demo | #254 |
 | 2026-10-15 | 5, 13 | Create wizard (R4-03 #252) at `app/stokvels/new` on mocks: name, Stokvel currency, contribution in fiat, members, cadence and first payout day; the per-round schedule is generated and checked like the contract's `_validateSchedule`. Section 5 records the `POST /stokvels` body the frontend assumes | #252 |
 | 2026-10-09 | 2, 8, 9, 10, 13, 14 | Contract work brought up to date: section 2 lists the deploy script's settings and `DEPLOYER_PRIVATE_KEY` (local only); section 8 resolves the contract side of the contribution amount and the Treasury allowance, defers per-cycle amounts, and adds the admin-key question for pause (#244); section 9 marks the contract, tests and pause done (PR #282 merged), deployment in progress (#284) and README/ABI/ADR in review (#285); sections 10, 13 and 14 list the contract features, files and scripts | |
 | 2026-10-09 | 1 | Error precedence: `AlreadyPaid` is checked before `WrongRound` (a repeat payment always reports `AlreadyPaid`), and a round beyond the last is rejected (fix in branch `fix/duplicate-contribution-error`) | |
@@ -474,7 +475,7 @@ _Frontend assumption for `POST /stokvels` (R4-03 #252, to confirm with R2-07 #22
 | Token `ERC20InsufficientAllowance` (from UCTUSD, not the vault) | 500 `treasury_allowance_missing` | "Something went wrong. Please try again." (backend fault: re-approve, see section 1 "Treasury allowance") |
 | Token `ERC20InsufficientBalance` (from UCTUSD: the Treasury Wallet has run out of UCTUSD) | 503 `treasury_funds_low` | "Contributions are temporarily unavailable. Please try again later." (operations fault: top up the Treasury; alert the operator. The likeliest failure on testnet. Confirmed on the live token, 2026-10-09) |
 
-_Roles 1, 2 and 4 to confirm codes and wording._
+_Roles 1, 2 and 4 to confirm codes and wording._ _Role 4 (#254): the frontend reads the code from the response body as `{code}` or `{detail: {code}}`; please return one of those shapes. `frontend/app/lib/stokvel-errors.ts` carries the wording above, plus the ledger's own refusals that `POST /stokvels/{id}/contributions` shares with `POST /remittances` (available balance, daily or monthly limit, unverified)._
 
 ---
 
@@ -685,6 +686,8 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvel-create.ts`, `stokvel-create.test.ts` | Create wizard state (URL search params), validation, schedule generation mirroring `_validateSchedule`, and the `POST /stokvels` body | #252 |
 | `frontend/app/routes/app/stokvel-new.tsx` | The wizard page at `app/stokvels/new` (KYC-approved users only) | #252 |
 | `frontend/app/components/stokvels/create-progress.tsx`, `create-name-step.tsx`, `create-amount-step.tsx`, `create-review-step.tsx` | Wizard steps; the amount step prices a round's pool with `POST /quotes/preview-quote` for the live fee preview | #252 |
+| `frontend/app/lib/stokvel-errors.ts`, `stokvel-errors.test.ts` | Section 6 codes → user wording; `contributeRefusal` adds the ledger's balance, limit and verification refusals | #254 |
+| `frontend/app/components/stokvels/pot-ring.tsx`, `contribution-panel.tsx`, `payout-status.tsx`, `round-schedule.tsx` | Member screen pieces: the pot, Pay now with the confirm sheet and refusals, the payout tracker, payout order and round history | #254 |
 
 ## 14. Functions created
 
