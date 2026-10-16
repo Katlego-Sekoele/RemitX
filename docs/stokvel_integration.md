@@ -66,6 +66,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-14 | 8, 9 | Burn method confirmed: a 1-base-unit `burn(uint256)` from the Treasury, tx [`0xacfd…9cd6`](https://explorer.testnet.xrplevm.org/tx/0xacfd84b642ff7d30b535bf8256fc572657d54894a444e13039c212d4d68f9cd6) (block 9072949), lowered `totalSupply` from 99999990000000000000000000 to 99999989999999999999999999 base units. The section 8 question is closed | |
 | 2026-10-15 | 3, 13, 14 | R2-05 (#227) hardening. The cycle tables' row-level security is now one policy per operation (`SELECT` with the read rule; `INSERT` and `UPDATE` with the write rule) and has no `DELETE` policy: a Postgres probe showed the single `FOR ALL` policy let any member delete cycles, rounds and other members' cycle rows. New trigger `stokvel_cycle_member_same_stokvel` refuses a cycle member from a different stokvel. The group tables (#226) have the same delete gap; a separate ticket is proposed | |
 | 2026-10-16 | 3, 8, 9, 13, 14 | R2-06 (#228): `stokvel_contributions` built with row-level security. **Changed from the planned UNIQUE (`cycle_id`, `round`, `member_id`)** to a partial unique index over rows that have not failed, so a member can pay again after a failed attempt (otherwise a failed send would block the round for good); needs Roles 2 and 3 approval. Composite foreign keys keep the round and member inside the cycle. Added `created_at` (for limit windows) and `confirmed_at`. New open question: which ledger leg `tx_id` names (R2-11) | |
+| 2026-10-16 | 3, 5, 8, 9, 10, 13, 14 | R2-07 (#229): `POST /stokvels` and `GET /stokvels` built (section 5). Creating a stokvel is one transaction: the stokvel, its `STOKVEL` ledger account and the Organiser's membership (their own fiat account in the Stokvel currency, `invitation_id` null). `contribution_amount` is UCTUSD (D13); the ticket comment's "fiat" predates D13. A caller who is not KYC-verified gets 403, one with no account in the Stokvel currency gets 400. The list leaves out stokvels the caller has left and answered invitations, and scopes by user in the query as well as by row-level security. New open questions: where the round schedule is set, list fields that need the cycle and contribution tables, and members inserting their own membership (section 8). Interface change: needs Roles 3 and 4 approval | |
 | 2026-10-16 | Decisions, Proposals, Deviations, 1, 3, 8, 9, 12 | **Contribution deadline removed** (P6 decided): a round's only enforced date is its Organiser-set payout time (D12 amended, D7 updated). The start time stays for now; whether it is needed is a new open question (section 8). Docs only: the deployed contract, the `stokvel_rounds` table and the frontend mocks still have the deadline until the code changes in section 9 ("Removing the contribution deadline") are built | |
 
 ---
@@ -340,7 +341,7 @@ The policies look rows up through the functions `stokvel_is_member`, `stokvel_is
 
 #### Stokvel account (R3-01)
 
-- Created by `AccountRepository.create_stokvel_account`, with the label `Stokvel <id>`.
+- Created by `AccountRepository.create_stokvel_account`, with the label `Stokvel <id>`. `POST /stokvels` (R2-07) calls it in the same transaction as the stokvel, so every stokvel created through the API has one; `account_id` stays nullable for rows made before.
 - Its balance can never go below zero (CHECK `accounts_stokvel_balance_nonneg`).
 - `accounts_type_valid` now allows `STOKVEL`. The owner and reference CHECKs needed no change: only `USER` accounts must have a user and a reference.
 - It is not a platform account, so `list_platform_accounts` leaves it out.
@@ -441,6 +442,33 @@ Celery tasks, queued by name over the broker (the API never imports `remitx_work
 | `POST /admin/stokvels/{id}/rounds/{n}/finalise` | Administrator | Manual fallback if automatic finalisation fails (if P5 is approved). Audit-logged. A round that is not ready returns 409 `round_not_finalisable` |
 | `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel. **Not in v1** (P4). Takes a required `reason` in the request body |
 
+### Create and list stokvels (R2-07, built)
+
+Customer routes, tag `stokvels` (client: `api.stokvels.createStokvel`, `api.stokvels.listStokvels`). `frontend/openapi.json` has the exact schemas.
+
+**`POST /stokvels`** → `201 StokvelRead`. Request `StokvelCreateRequest`, unknown fields refused:
+
+| Field | Rule |
+|---|---|
+| `name` | Trimmed, 1 to 80 characters |
+| `currency` | The Stokvel currency: `ZAR`, `USD`, `ZWL` or `NAD`. The caller must already hold a fiat account in it |
+| `contribution_amount` | Fixed UCTUSD amount per round for the stokvel's life (D13); greater than 0, at most 8 decimal places |
+
+In one transaction: the stokvel, its `STOKVEL` ledger account (section 3) and the Organiser's `stokvel_members` row (their account in the Stokvel currency, `invitation_id` null). Nothing goes on-chain: `createStokvel` is sent when the first cycle starts (R2-10).
+
+| Status | When |
+|---|---|
+| 401 | Not signed in |
+| 403 | The caller is not KYC-verified (`KycNotApprovedToCreateStokvelError`) |
+| 400 | The caller holds no account in `currency` (`StokvelCurrencyAccountMissingError`); they open one with `POST /accounts` first. 400 as for the beneficiaries' `PayoutAccountMissingError` |
+| 422 | Invalid name, currency or amount, or an unknown field |
+
+**`GET /stokvels`** → `200 StokvelListRead`: `{stokvels, invitations}`, each newest first.
+
+- `stokvels`: those the caller is a current member of (left ones are not listed). `StokvelRead`: `stokvel_id`, `name`, `currency`, `contribution_amount` (UCTUSD, 8 dp string), `is_organiser`, `member_count` (current members), `max_members` (`MAX_STOKVEL_MEMBERS`), `created_at`, `deactivated_at`.
+- `invitations`: the caller's pending ones. `StokvelInvitationRead`: `invitation_id`, `stokvel_id`, `stokvel_name`, `currency`, `contribution_amount`, `invited_by_name` ("Tendai M."), `created_at`. No member count: an invitee cannot read the member rows under row-level security, so it would always read 0 on Postgres.
+- Both lists are filtered by the caller in the query, not only by row-level security, so SQLite (tests) returns the same rows as Postgres.
+
 ### Audit log of admin actions
 
 Admin actions on stokvels are recorded in the **existing** audit log (`audit_log`, written only through `audit_service.record_audit`, append-only, read through `GET /admin/audit` with `audit:read`). No new table is needed: action strings are free text in the database, and the `AuditAction` and `AuditSubject` enums in `models/orm/audit_log.py` gain new members. The entry is staged in the same transaction as the action, as for every other audit entry, and never contains PII: ids, round numbers, statuses and transaction hashes only.
@@ -529,6 +557,9 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Remittance status names: brief's `created → burning → burnt → credited` vs existing ledger states. Recommendation: keep the ledger states (fewer changes) | Open, product to confirm | Product, Roles 2, 3 | |
 | Payout destination (#293): pay the pool to the scheduled member's chosen beneficiary, or into the member's own account? | **Resolved (2026-10-14):** the stokvel pays the member's chosen beneficiary directly, as a remittance with the stokvel as sender. Stored per cycle in `stokvel_cycle_members.payout_beneficiary_id` and `payout_currency` | Product, Roles 2, 3 | |
 | Row-level security for the new stokvel tables | **Resolved (2026-10-09):** section 3, "Row-level security"; R2-05 and R2-06 reuse the same functions | Roles 2, 3 | |
+| Round schedule: is it sent with `POST /stokvels` (section 12, step 1: a start time and a payout time per round) or when the Organiser starts a cycle (R2-10)? `stokvel_rounds` hangs off a cycle, so the first needs a `forming` cycle at creation. R2-07 takes no schedule | Open (2026-10-16) | Product, Roles 2, 3 | |
+| Stokvel list fields from the frontend mocks (#251, #252): `phase`, `current_round`, `total_rounds`, `next_payout_time` need the cycle tables (#227), `my_contribution_status` the contribution table (#228). Both have now landed; add them to `GET /stokvels` in a follow-up to R2-07? | Open (2026-10-16) | Roles 2, 4 | |
+| A customer can insert their own `stokvel_members` row for any stokvel: the write rule is `user_id` = the caller (R2-04), with no check for an accepted invitation. No route does it today; R2-08 (accepting an invitation) relies on the API. Tighten the policy, or accept it as API-enforced? | Open (2026-10-16) | Roles 2, 3 | |
 | Seeder and load test: update stories and `tools/loadtest/fake_xrpl_worker.py` for EVM | Open | Role 6 | |
 
 Resolved: finalisation is automatic (D5); a manual admin finalise is kept as a fallback, pending approval (P5).
@@ -575,10 +606,10 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
 | Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
-| Members create stokvels and invite others | Not started | #229 (was #209) | |
+| Members create stokvels and invite others | In progress | #229 (was #209), #230 | Create and list in review (#229); invitations next (#230) |
 | DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301). cycle tables with row-level security (#227, PR #306). In review: contribution table (#228) |
 | Worker tasks | Not started | | Section 4 |
-| API routes | Not started | | Section 5 |
+| API routes | In progress | #229 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229) |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
 | Frontend screens | In progress | #251 | Routes, nav and mocks (#251); screen list on #250; member, Organiser, invitation and admin screens next (#252–#261) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
@@ -647,6 +678,7 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Stokvel contract (`StokvelVault`) | One contract for every stokvel: create stokvels, start cycles (members, schedule), contributions filled in order, automatic release and `finalise` under D5 and D12, admin pause and resume, member cap set at deployment. 69 tests | Kerry (Role 1) | #282 (merged) |
 | Contract deploy script | `npm run deploy:testnet`: deploys with admin = deployer, operator and release target = Treasury Wallet, UCTUSD, `maxMembers` 3; checks settings, token, gas and roles; records the deployment | Kerry (Role 1) | #284 |
 | Contract ABI for the backend | `contracts/abi/StokvelVault.json`, regenerated by `npm run export:abi`; a test fails if it drifts from the contract | Kerry (Role 1) | #285 |
+| Create and list stokvels | `POST /stokvels`: a KYC-verified user creates a stokvel and becomes its Organiser and first Member, with its `STOKVEL` ledger account, in one transaction. `GET /stokvels`: the caller's current stokvels and pending invitations | Claire (Role 2) | #229 |
 
 ## 11. How things are connected
 
@@ -716,6 +748,12 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite; on Postgres (`postgres` lane) an exclusive transaction-level advisory lock, held only inside the block and released when the send raises | #278 |
 | `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
+| `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07) | #229 |
+| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels` | #229 |
+| `api/remitx_api/models/schemas/stokvel.py` | `StokvelCreateRequest`, `StokvelRead`, `StokvelInvitationRead`, `StokvelListRead` | #229 |
+| `api/remitx_api/errors/stokvels.py` | `KycNotApprovedToCreateStokvelError` (403), `StokvelCurrencyAccountMissingError` (400) | #229 |
+| `api/tests/test_stokvels_route.py` | Both routes on SQLite: refusals, one transaction, validation, and the caller scoping that SQLite needs | #229 |
+| `api/tests/test_stokvels_row_security.py` | Create and list under Postgres row-level security, and the membership trigger (`postgres` lane) | #229 |
 
 ## 14. Functions created
 
@@ -740,3 +778,6 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `transaction_status(tx_hash, w3=None)` | `api/remitx_worker/evm_service.py` | Whether the RPC holds a transaction (`pending`) or has no record of it (`unknown`). Diagnostic only, for the `event=settlement.burn_unconfirmed` log line; never grounds for sending again | #278 |
 | `treasury_send_lock` | `api/remitx_worker/db.py` | Transaction-level Postgres advisory lock (`pg_advisory_xact_lock`, in a transaction of its own) that lets one Treasury transaction be built and sent at a time. No unlock statement, so it is safe through Neon's transaction pooler; a no-op on SQLite | #278 |
 | `_burn_hash_values`, `_BURN_HASH_COLUMN` | `api/remitx_worker/tasks.py` | The only place the worker names the burn hash columns: writes `evm_tx_hash` and `xrpl_tx_hash`, reads `evm_tx_hash`. Update here when #239 drops `xrpl_tx_hash` | #278 |
+| `StokvelController.create_stokvel`, `.list_stokvels` | `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel with its ledger account and the Organiser's membership in one transaction; the caller's current stokvels and pending invitations | #229 |
+| `StokvelRepository.list_for_member` | `api/remitx_api/repositories/stokvel_repository.py` | Stokvels a user is a current member of, newest first, with each one's current member count; scoped by user | #229 |
+| `StokvelInvitationRepository.list_pending_for_invitee` | `api/remitx_api/repositories/stokvel_invitation_repository.py` | A user's pending invitations, newest first, with the stokvel and the inviter; scoped by user | #229 |
