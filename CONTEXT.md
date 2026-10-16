@@ -51,18 +51,18 @@ The FSE beneficiary, together with the payout-currency account of theirs, that a
 _Avoid_: Recipient
 
 **Start time**:
-The moment a **Round** opens for contributions, set by the **Organiser**.
+The moment a **Round** is scheduled to open, set by the **Organiser**. Informational only: a round accepts contributions once every earlier round is fully paid. Whether a stokvel needs a start time at all is an open question.
 
-**Deadline**:
-The time by which **Members** are expected to contribute to a **Round**, set by the **Organiser** and shown to every member. It is informational only: the platform does not enforce it or penalise anyone, and a late contribution is still accepted. Consequences are for the members to handle off-platform.
-_Avoid_: Cut-off, due date
+**Payout time**:
+The date and time from which a **Round**'s **Pool** may be released, set by the **Organiser** for each round. It is the only date the platform enforces: a round is never released before it. A round has no separate contribution deadline. A member who has not paid by the payout time can still pay; the round waits for them, with no penalty on the platform.
+_Avoid_: Deadline, due date, cut-off
 
 **Pool**:
 The sum of all members' contributions in a **Round**, released as one amount to that round's scheduled member.
 _Avoid_: Pot, kitty, payout amount
 
 **Finalise**:
-To release a **Round**'s **Pool** and record the member it is owed to. A round is finalised once every member has contributed to the next round; the last round of a **Cycle**, having no next round, is finalised once every member has contributed to it. Happens automatically; no person triggers it.
+To release a **Round**'s **Pool** and record the member it is owed to. A round is finalised once its **Payout time** has passed and every member has contributed to the next round; the last round of a **Cycle**, having no next round, is finalised once its payout time has passed and every member has contributed to it. Happens automatically; no person triggers it.
 _Avoid_: Release, close
 
 **Continuation**:

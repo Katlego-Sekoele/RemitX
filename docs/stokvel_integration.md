@@ -66,6 +66,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-14 | 8, 9 | Burn method confirmed: a 1-base-unit `burn(uint256)` from the Treasury, tx [`0xacfd…9cd6`](https://explorer.testnet.xrplevm.org/tx/0xacfd84b642ff7d30b535bf8256fc572657d54894a444e13039c212d4d68f9cd6) (block 9072949), lowered `totalSupply` from 99999990000000000000000000 to 99999989999999999999999999 base units. The section 8 question is closed | |
 | 2026-10-15 | 3, 13, 14 | R2-05 (#227) hardening. The cycle tables' row-level security is now one policy per operation (`SELECT` with the read rule; `INSERT` and `UPDATE` with the write rule) and has no `DELETE` policy: a Postgres probe showed the single `FOR ALL` policy let any member delete cycles, rounds and other members' cycle rows. New trigger `stokvel_cycle_member_same_stokvel` refuses a cycle member from a different stokvel. The group tables (#226) have the same delete gap; a separate ticket is proposed | |
 | 2026-10-16 | 3, 8, 9, 13, 14 | R2-06 (#228): `stokvel_contributions` built with row-level security. **Changed from the planned UNIQUE (`cycle_id`, `round`, `member_id`)** to a partial unique index over rows that have not failed, so a member can pay again after a failed attempt (otherwise a failed send would block the round for good); needs Roles 2 and 3 approval. Composite foreign keys keep the round and member inside the cycle. Added `created_at` (for limit windows) and `confirmed_at`. New open question: which ledger leg `tx_id` names (R2-11) | |
+| 2026-10-16 | Decisions, Proposals, Deviations, 1, 3, 8, 9, 12 | **Contribution deadline removed** (P6 decided): a round's only enforced date is its Organiser-set payout time (D12 amended, D7 updated). The start time stays for now; whether it is needed is a new open question (section 8). Docs only: the deployed contract, the `stokvel_rounds` table and the frontend mocks still have the deadline until the code changes in section 9 ("Removing the contribution deadline") are built | |
 
 ---
 
@@ -79,12 +80,12 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | D4 | One contract deployment holds many stokvels (`mapping(stokvelId => Stokvel)`), each with nested cycles and a per-round pool. History is events plus minimal storage (paid, finalised, entitled member). | Design session |
 | D5 | Finalise is automatic. Round N releases once every member has contributed to round N+1 **and round N's payout time has passed** (D12). The last round of a cycle releases once every member has contributed to it and its payout time has passed. | CONTEXT.md, team 2026-10-07 |
 | D6 | The Stokvel is the remittance **sender**. The pool is paid to the scheduled member's Payout beneficiary through the existing remittance flow. Fee and margin are deducted from the pool (**current plan; when fees are taken is open**, see section 8). | CONTEXT.md |
-| D7 | Contributions are paid from the member's fiat account in the Stokvel currency and refunded as the original fiat amount. The deadline is informational only; there are no penalties on the platform. | CONTEXT.md |
+| D7 | Contributions are paid from the member's fiat account in the Stokvel currency and refunded as the original fiat amount. There is no contribution deadline (D12) and no penalties on the platform: paying after the payout time is accepted and only delays the release. | CONTEXT.md, deadline removed 2026-10-16 |
 | D8 | A Stokvel has no sending limits. Each contribution counts toward the member's own limits. Joining needs the required KYC standing. | CONTEXT.md |
 | D9 | The Stokvel gets a ledger `accounts` row of a new type `STOKVEL` (token currency) and is the sender of its payout remittance. | Team, 2026-10-06 |
 | D10 | The "hold the payout until the recipient pays the next round" idea is already covered by D5. The CONTEXT.md rule stays. A per-member early release (release as soon as the recipient alone has paid the next round) is not adopted. | Team, 2026-10-06 |
 | D11 | **We switch XRPL off, but we don't delete it.** Only change what the EVM chain needs in order to work, such as the settings it reads, the worker's burn, names and tests. If an XRPL file, script, setting (`XRPL_*`, `PLATFORM_WALLET_*`, `UCTUSD_ISSUER*`) or the `xrpl-py` package can stay without stopping EVM from working, leave it where it is and add a comment saying it is no longer used. The running system never calls it. This way we can go back to XRPL later without starting from scratch. | Team, 2026-10-06 (settings); extended to code, 2026-10-14 |
-| D12 | Each round has a **payout time**, set by the Organiser. It is a hard gate: `finalise` reverts before it (brief §7.1). If the payout time passes while a member has not paid, the round stays blocked, not lost, and releases once the last member pays. The contribution **deadline** stays informational (D7). A contract cannot run itself on a date, so a scheduled backend task calls `finalise` for rounds that are due (section 4); the final `contribute` call still triggers the release when the time has already passed. | Team, 2026-10-07 |
+| D12 | Each round has a **payout time**, set by the Organiser. It is the round's only enforced date: there is **no separate contribution deadline** (removed 2026-10-16, P6). It is a hard gate: `finalise` reverts before it (brief §7.1). If the payout time passes while a member has not paid, the round stays blocked, not lost, and releases once the last member pays. Because of D5, round N pays out at its payout time only if every member has also paid round N+1 by then. A contract cannot run itself on a date, so a scheduled backend task calls `finalise` for rounds that are due (section 4); the final `contribute` call still triggers the release when the time has already passed. | Team, 2026-10-07; deadline removed 2026-10-16 |
 | D13 | Contribution amount is a fixed **UCTUSD** (token) amount for the stokvel's life, set in `createStokvel` and stored as `stokvels.contribution_amount`. Member fiat debit = token amount × live rate at contribution. A new amount means a new stokvel (MVP). | Product, 2026-10-11 |
 
 ## Proposals for product (status: Proposed)
@@ -98,7 +99,7 @@ These come from the dev team and need product approval before they are treated a
 | P3 | **Member cap of 3 for the prototype, built to grow.** One constant sets the limit: backend `MAX_STOKVEL_MEMBERS`, and a `maxMembers` value in the contract set at deployment. No fixed-size arrays; round counts are `uint8` (up to 255); cycle length equals the number of members. Raising the limit to 10 or 12 (#197) is a config change. | Brief says three members. Building for more costs little now. | Proposed |
 | P4 | **Cancellation.** Ending a stokvel, including partway through a cycle, stops future rounds and refunds unfinalised contributions in the original fiat. Possibly admin-only, on request. | Reverses the brief's "refunds out of scope". | **Not in v1** (product, 2026-10-09): cancellation, refunds and disputes are out of scope (#208) |
 | P5 | **Manual admin finalise as a fallback.** Finalisation stays automatic (D5), but the Administrator can also trigger it for a round if the automatic release fails. The contract still enforces the release conditions, so a call on a round that is not ready is rejected (`NotYetFinalisable`). Also gives the demo a natural way to show a blocked finalisation. | Restores the brief's admin finalise (§7.3) as a safety net. Covers a failed trigger only, not a paused contract or RPC outage. | Proposed |
-| P6 | **Merge the contribution deadline and the payout time into one date per round.** The build keeps both (deadline informational, payout time a hard gate) because that is the smallest change. | One date is simpler for Organisers and members. | Question for product |
+| P6 | **Merge the contribution deadline and the payout time into one date per round.** | One date is simpler for Organisers and members. | **Decided (2026-10-16):** the deadline is removed; the payout time is the round's one enforced date (D12). Whether the start time is needed is still open (section 8). Code changes: section 9, "Removing the contribution deadline" |
 
 **Legal questions for product (P2):** is a payout that is conditional on a later contribution permitted under South African consumer-protection law and the stokvel exemption from the Banks Act? Trade-off to note: one late payer delays everyone's payout, because every member must have paid before a round releases.
 
@@ -109,7 +110,7 @@ These come from the dev team and need product approval before they are treated a
 The brief (§2, §7, §9) describes one stokvel, three members, an administrator who sets it up and finalises each round, and lists multiple stokvels and refunds as out of scope. This build extends it:
 
 - Many stokvels in one contract, multiple cycles, user-created with invitations (D3, D4, P1).
-- A round releases only when fully paid **and** its Organiser-set payout time has passed (D12), matching brief §7.1. The contribution deadline stays informational.
+- A round releases only when fully paid **and** its Organiser-set payout time has passed (D12), matching brief §7.1. The payout time is a round's only enforced date; there is no contribution deadline.
 - Finalisation is automatic (D5), with a manual Administrator finalise as a fallback (P5); the brief has the administrator do it every round.
 - Refunds on mid-round cancellation (P4).
 - TrustMeBank deposits and withdrawals (#202, #203), optional in the brief, are built as required.
@@ -122,6 +123,8 @@ The final demo must still show everything the brief requires: three synthetic me
 ## 1. Contract interface (Role 1)
 
 > Confirmed by Role 1 against the contract on `main` (`contracts/src/StokvelVault.sol`, merged in #282), including the error-order fix from #291 (merged 2026-10-09), **with one open item**: the ID scheme (packed UUID vs a separate generated `bytes32`) is still under discussion (section 8). Cancel and refund are not built yet (R1-06, #220, waiting on #208); they are listed as planned.
+
+> **Changing (2026-10-16, D12):** the contribution deadline is removed. `startCycle` and `getCycle` below show the target interface, without `roundDeadlines`. The deployed contract (`0x2f24…8Fe1`) and the ABI on `main` still take and return `roundDeadlines` until the change in section 9 ("Removing the contribution deadline") is built and redeployed.
 
 ### Units and IDs
 
@@ -157,8 +160,8 @@ The contract relies on the backend to identify the contributing member (brief §
 | Signature | Caller | Purpose |
 |---|---|---|
 | `createStokvel(bytes32 id, uint256 contribution)` | Operator | Register a stokvel and its fixed contribution. Emits `StokvelCreated` |
-| `startCycle(bytes32 id, bytes32[] memberIds, uint64[] roundStartTimes, uint64[] roundDeadlines, uint64[] payoutTimes)` | Operator | Start the next cycle: fix members (payout order = array order; round *i* pays `memberIds[i]`) and the schedule. One round per member. Only when no cycle is open (the first, or after the previous one closed). `roundStartTimes` and `roundDeadlines` are informational; `payoutTimes` is enforced (D12). Each round needs start ≤ deadline ≤ payout, and start and payout times may not go backwards from one round to the next (equal is allowed). Emits `CycleStarted` |
-| `contribute(bytes32 id, uint8 round, bytes32 memberId)` | Operator | Pull exactly `contribution` UCTUSD from the Treasury Wallet and record it against member and round. Rounds fill in order: a round accepts contributions only once every earlier round is fully paid. Late contributions are accepted (deadline informational). Releases any round that has become due. Emits `ContributionMade` (and `RoundFinalised` / `CycleClosed`) |
+| `startCycle(bytes32 id, bytes32[] memberIds, uint64[] roundStartTimes, uint64[] payoutTimes)` | Operator | Start the next cycle: fix members (payout order = array order; round *i* pays `memberIds[i]`) and the schedule. One round per member. Only when no cycle is open (the first, or after the previous one closed). `roundStartTimes` is informational (whether it is needed is open, section 8); `payoutTimes` is enforced (D12). Each round needs start ≤ payout, and start and payout times may not go backwards from one round to the next (equal is allowed). Emits `CycleStarted`. **Deployed version** also takes `uint64[] roundDeadlines` before `payoutTimes` and checks start ≤ deadline ≤ payout (being removed) |
+| `contribute(bytes32 id, uint8 round, bytes32 memberId)` | Operator | Pull exactly `contribution` UCTUSD from the Treasury Wallet and record it against member and round. Rounds fill in order: a round accepts contributions only once every earlier round is fully paid. A contribution after the round's payout time is still accepted; it only delays the release. Releases any round that has become due. Emits `ContributionMade` (and `RoundFinalised` / `CycleClosed`) |
 | `finalise(bytes32 id, uint8 round)` | Operator | Release one round's pool to the release target (Treasury Wallet) and record the entitled member. `round` must be the next round to release. Reverts `NotYetFinalisable` unless the paid condition (D5) holds **and** `block.timestamp >= payoutTimes[round]` (D12). Emits `RoundFinalised` (and `CycleClosed` after the last round) |
 | `pause()` / `unpause()` | Admin | Halt or resume `contribute` and `finalise` (and `refund`, when built) for every stokvel; never bypasses conditions. `createStokvel`, `startCycle` and views keep working |
 | `cancel(bytes32 id)` | Operator (admin-requested) | **Planned (R1-06, #220).** Stop the stokvel; mark contributions to unfinalised rounds refundable |
@@ -219,7 +222,7 @@ All views except `getCycle` read the stokvel's **current (latest) cycle**. Each 
 | Signature | Returns |
 |---|---|
 | `getStokvel(bytes32 id)` | `(uint256 contribution, uint32 currentCycle, bool cycleOpen)`. `currentCycle` is 0 before the first cycle |
-| `getCycle(bytes32 id, uint32 cycle)` | `(bytes32[] members, uint64[] roundStartTimes, uint64[] roundDeadlines, uint64[] payoutTimes, uint8 nextToFinalise, bool closed)`. Rounds below `nextToFinalise` are released. Reverts `UnknownCycle` for 0 or a cycle not yet started |
+| `getCycle(bytes32 id, uint32 cycle)` | `(bytes32[] members, uint64[] roundStartTimes, uint64[] payoutTimes, uint8 nextToFinalise, bool closed)`. Rounds below `nextToFinalise` are released. Reverts `UnknownCycle` for 0 or a cycle not yet started. **Deployed version** also returns `uint64[] roundDeadlines` after `roundStartTimes` (being removed) |
 | `hasPaid(bytes32 id, uint8 round, bytes32 memberId)` | `bool` |
 | `roundPool(bytes32 id, uint8 round)` | `uint256` tokens held for the round (0 once released) |
 | `isFinalisable(bytes32 id, uint8 round)` | `bool`: whether `finalise(id, round)` would succeed now. Ignores pause (check `paused()` separately). `false` when no cycle is open |
@@ -287,7 +290,7 @@ ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/sto
 |---|---|---|
 | `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service), `account_id` (its `STOKVEL` ledger account, R3-01; nullable until the account is created, unique), `current_cycle_id` (its latest cycle, R2-05; null until the first) | `V20261009_1801__stokvel_group_tables`, `V20261011_1000__stokvel_ledger_account_and_types`, `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number` (from 1; unique per stokvel), `status` (`forming`, `active`, `closed`), `total_rounds` (set at start, at least 2), `current_round` (0-based), `started_at` (null while forming), `closed_at` (set only when closed). At most one cycle per stokvel is not closed, as the contract allows one open cycle | `V20261014_1200__stokvel_cycle_tables` |
-| `stokvel_rounds` | PK (`cycle_id`, `round`); `round` is 0-based, the contract's `uint8 round`. `start_time`, `deadline` (informational), `payout_time` (hard gate, D12); CHECK start ≤ deadline ≤ payout. The cross-round order rule is checked when the cycle starts | `V20261014_1200__stokvel_cycle_tables` |
+| `stokvel_rounds` | PK (`cycle_id`, `round`); `round` is 0-based, the contract's `uint8 round`. `start_time` (informational; whether it is needed is open, section 8), `payout_time` (hard gate, D12); CHECK start ≤ payout. The cross-round order rule is checked when the cycle starts. **As built** the table also has `deadline` (informational) and CHECK start ≤ deadline ≤ payout; a new migration drops them (section 9, "Removing the contribution deadline") | `V20261014_1200__stokvel_cycle_tables` (deadline removal pending) |
 | `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_cycle_members` | PK (`cycle_id`, `member_id`); `member_id` → `stokvel_members.id` (the on-chain `memberId`). `payout_position` (0-based: the round that pays them; unique per cycle; null until the order is set), `payout_beneficiary_id` (→ `beneficiaries`) and `payout_currency` (set together; the stokvel pays this beneficiary directly, #293), `continued` (null until chosen, R2-15), `locked` (set when the cycle starts; needs a position and a beneficiary). Trigger `stokvel_cycle_member_same_stokvel`: the member row must belong to the cycle's stokvel (neither foreign key can check this) | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `invited_by_user_id`, `status` (`pending`, `accepted`, `declined`, `revoked`, `lapsed`), `created_at`, `status_changed_at`, `status_changed_by_user_id`. Status changes once, so these two columns are its history; inviting again is a new row. One pending invitation per user per stokvel; only the invitee accepts or declines | `V20261009_1801__stokvel_group_tables` |
@@ -512,11 +515,12 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | What sender name does a payout's recipient see? The recipient is usually not a member, so row-level security hides the stokvel and they see no sender name. Options: the stokvel's name (needs a narrow lookup that skips row-level security, such as a `SECURITY DEFINER` function), a fixed label such as "Stokvel payout", or nothing | Open: for R3-05 (#242) (product question 6) | Product, Roles 2, 3, 4 | |
 | When are the fee and margin taken? **A:** the payout's single remittance fee is split equally across the members and paid on top of each contribution, so the beneficiary gets the full pool. **B:** taken from the pool at payout, so members pay exactly the contribution and the beneficiary gets the pool minus fees. D6 and CONTEXT.md plan B, but nothing is built yet | Open: product question 4 in `docs/stokvel-product-questions.md`; blocks R3-05 (#242) | Product | |
 | Are the fee and margin taken from the pool converted back to fiat, and if so how? Suggestion: convert them to fiat at finalisation and deduct them from the pool before the payout, so beneficiaries receive their payout in fiat after fees | Open, product decision | Product | |
-| Contribution deadline informational only, with no penalties on the platform (D7)? | Confirm | Product | |
+| No penalties on the platform when a member pays late: the round only waits (D7)? There is no contribution deadline any more (D12) | Confirm | Product | |
 | Stokvel has no sending limits, but each contribution counts toward the member's own limits (D8)? | Confirm | Product | |
 | Treasury key storage: the encrypted key sits in `.env` rather than a database column (as the wallet seed does today). Acceptable? | Confirm | Product | |
 | Approve P5 (manual admin finalise fallback)? | Open | Product | |
-| Merge the contribution deadline and payout time into one date per round (P6)? | Open | Product | |
+| Merge the contribution deadline and payout time into one date per round (P6)? | **Resolved (2026-10-16):** yes. The deadline is removed; the payout time is the round's one enforced date (D12) | Product | |
+| Is a round **start time** needed? It is informational: the contract only checks that it is no later than the payout time and never goes backwards between rounds, and a round opens for contributions once every earlier round is fully paid, whatever its start time says. Nothing in the backend reads it, and the member screen does not show it. Keep it (for example to tell members when a round opens), or remove it too, so the payout time is a round's only date? Removing it later is another contract interface change and redeploy, so deciding before the deadline change is built saves one | Open (2026-10-16): kept for now | Product, Roles 1, 2, 3, 4 | |
 | Stuck round if a member never pays: accept it, relying on cancellation (P4) as the exit? | Open | Product | |
 | Should an admin's look at a stokvel's member data (for oversight) also be logged, as KYC reads are? | Open | Product, Role 5 | |
 | PR #211's log redaction also hides EVM transaction hashes in logs (they look like keys) until exact-value redaction lands in #204. Acceptable for debugging and the demo? | Open | Role 2, Role 6 | |
@@ -579,6 +583,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Frontend screens | In progress | #251 | Routes, nav and mocks (#251); screen list on #250; member, Organiser, invitation and admin screens next (#252–#261) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
+| Remove the contribution deadline (D12, P6) | Not started (docs done) | Ticket to create | See "Removing the contribution deadline" below. Needs a contract redeploy |
 
 ### Brief timeline
 
@@ -613,6 +618,26 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | `tools/seeder`, `tools/loadtest/fake_xrpl_worker.py` | Update for EVM |
 | Docs | [CLAUDE.md](../CLAUDE.md) (hard constraint says "XRPL Testnet only"; RLUSD wording), [DEPLOYMENT.md](DEPLOYMENT.md), `project-brief.md` (not [Transaction_Flow_Context.md](Transaction_Flow_Context.md), which stays unchanged as the original project's record); add ADRs for single contract with many stokvels (done: `docs/adr/0002-one-contract-many-stokvels.md`, #285), the `STOKVEL` ledger account (done: `docs/adr/0004-stokvel-ledger-account.md`, #238), and the single Treasury Wallet; add "Cancellation" to CONTEXT.md if P4 is approved |
 
+### Removing the contribution deadline: what changes
+
+Decided 2026-10-16 (D12, P6). The docs are updated; the code below still has the deadline. The start time stays unless the open question in section 8 decides otherwise. If it is decided first, remove the start time in the same change, so the contract is redeployed only once.
+
+| Area | Change |
+|---|---|
+| `contracts/src/StokvelVault.sol` | Remove `roundDeadlines` from `startCycle`, the `Cycle` struct and `getCycle`'s return values. `_validateSchedule` checks start ≤ payout within each round, plus the existing rule that start and payout times never go backwards. Update the NatSpec that calls the deadline informational (contract header, `startCycle`, `contribute`) |
+| `contracts/test/` | `helpers.ts` schedule fixture drops `deadlines`. Every `startCycle` call in the setup, contribute, pause, views and invariant tests drops it. In the setup tests, "deadline before start" and "payout before deadline" become one "payout before start" case, and "equal times" drops the deadline. The contribute test "accepts a late contribution (the deadline is informational)" becomes a contribution after the payout time |
+| `contracts/abi/StokvelVault.json` | Regenerate with `npm run export:abi` (the ABI drift test fails otherwise) |
+| Contract redeploy | The contract is not upgradeable, so this is a new deployment: `npm run deploy:testnet`, a new `contracts/deployments/xrplEvmTestnet.json`, Sourcify verification, `STOKVEL_CONTRACT_ADDRESS` in `.env.example` and every environment, the address in section 2, and the Treasury's one-off `approve` for the new address. Best done before the #218 smoke test creates stokvels on the old address |
+| `contracts/README.md`, `contracts/smart_contracts_changes.md` | README: the `startCycle` signature and the "the deadline is informational" line. Change log: a new entry for this change |
+| New migration (do not edit `V20261014_1200`, rule 2 in `api/alembic/README.md`) | Replace CHECK `stokvel_rounds_times_ordered` with `start_time <= payout_time` and drop `stokvel_rounds.deadline`. Rule 5 splits a column drop across two releases (make `deadline` nullable and swap the CHECK; drop it once code that no longer writes it is live). No route writes rounds yet, so Roles 2 and 3 may agree to do it in one step |
+| `api/remitx_api/models/orm/stokvel_round.py` | Remove `deadline`; update the CHECK and the docstring ("the three times"). `alembic check` must stay clean |
+| `api/tests/test_stokvel_cycle_models.py`, `api/tests/test_stokvel_contribution_model.py` | Round fixtures drop `deadline`. The time-ordering tests become start ≤ payout. `_TOUCH_ROUNDS` (an `UPDATE ... SET deadline = deadline`) needs another column |
+| `docs/diagrams/stokvel_group_tables.dbml` and `.svg` | Drop `deadline` and update the note; regenerate the SVG |
+| `frontend/app/lib/stokvels.ts`, `frontend/app/lib/stokvels.mock.ts` | Drop `deadline` from the round type and the mocked rounds |
+| `frontend/app/routes/app/stokvel.tsx` | The "Your contribution" card shows "Due {deadline} · payout {payout time}"; show the payout time only |
+| Not built yet: R2-10 (#232), R4-03 (#252) | Starting a cycle passes start times and payout times to `startCycle`, with no deadlines. The create-stokvel form asks for a start time and a payout time per round. Update the issue text, which still mentions deadlines |
+| `CONTEXT.md` | Done (2026-10-16): "Deadline" replaced by "Payout time" |
+
 ## 10. Features added
 
 _Add one entry per feature as it lands: what it does, who owns it, PR link._
@@ -637,12 +662,12 @@ Frontend → API route → controller → ledger legs (pending) → queue
 
 ## 12. User flow
 
-1. A KYC-approved user creates a stokvel (name, Stokvel currency, contribution, start time, deadlines and a payout time per round).
+1. A KYC-approved user creates a stokvel (name, Stokvel currency, contribution, and a start time and a payout time per round).
 2. The Organiser invites users by account reference. Only KYC-approved users with a fiat account in the Stokvel currency can be invited. Nobody is a member until they accept.
 3. The members agree the payout order among themselves, off the platform. The Organiser enters it, and every member can see it (D3).
 4. Each member chooses a Payout beneficiary and payout currency (the account must already exist).
 5. The Organiser starts the cycle once at least two members are ready. Invitations not yet accepted lapse. Membership, order and beneficiaries are now locked.
-6. Each round, every member contributes before the deadline (informational only).
+6. Each round, every member contributes. There is no deadline; the round's payout time is its only date, and paying after it is accepted but delays the release.
 7. The contract finalises automatically once the round is fully paid and its payout time has passed (a scheduled task releases it if everyone paid early); the payout remittance goes to the scheduled member's beneficiary; the member sees status, hashes and the remittance reference.
 8. After the last round the cycle closes. Each member chooses to continue or leave, and may change their beneficiary; a new cycle can then start.
 
