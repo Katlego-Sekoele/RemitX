@@ -89,6 +89,11 @@ ISOLATED_KEYS = (
     "OBJECT_STORAGE_BUCKET",
     "OBJECT_STORAGE_ACCESS_KEY_ID",
     "OBJECT_STORAGE_SECRET_ACCESS_KEY",
+    "EVM_TREASURY_ADDRESS",
+    "EVM_TREASURY_KEY_ENCRYPTED",
+    "EVM_ENCRYPTION_KEY",
+    # Decommissioned XRPL wallet settings (D11): nothing reads them now, but a
+    # target must still never borrow your local ones.
     "PLATFORM_WALLET_ADDRESS",
     "PLATFORM_WALLET_SEED_ENCRYPTED",
     "XRPL_ENCRYPTION_KEY",

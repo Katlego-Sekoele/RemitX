@@ -102,7 +102,7 @@ the replayed time with no change to its code.
 | Cash-out | external bank account through `BankAccountController`; a payout operator verifies, rejects, or leaves it pending; spare balance leaves through `WithdrawalController.request` | real |
 | Cash-in | bank-statement lines, reconciled next working morning by `deposit_service.process_deposits`; mistyped references land pending, and a treasury operator resolves most of them | real |
 | Sends | `QuoteController.create_quote`, then `RemittanceController.confirm`, within KYC limits and available balance | real |
-| Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the XRPL call is simulated |
+| Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the EVM burn and its receipt are simulated |
 | Exchange rates | a replaceable rate provider (`use_rate_provider`) serving a seeded USD/ZAR walk, NAD pegged to ZAR | simulated |
 | Treasury | one `treasury_funding` row per run equal to the simulated burns, so the ledger still matches the chain | direct write |
 
@@ -113,15 +113,16 @@ pending, which is how "waiting for a reviewer", "unmatched deposit" and
 "quote not yet confirmed" states arise naturally.
 
 **Simulated settlements** use synthetic hashes starting `5EED`; they do not
-exist on the XRPL testnet and their explorer links 404. No treasury tokens are
-spent.
+exist on the XRPL EVM Testnet (real hashes start `0x`) and their explorer
+links 404. No treasury tokens are spent, and nothing reaches an EVM RPC.
 
 ### The live tail
 
 Set **Live settlements** above 0 to finish a run with a few real transfers: the
 seeder signs in as a verified sender (a Clerk session through the Backend API),
 calls the target's real API (`POST /quotes`, `POST /remittances`), and waits for
-the real worker to settle on the XRPL testnet. It stops before a quote would
+the real worker to settle by burning UCTUSD on the XRPL EVM Testnet. It stops
+before a quote would
 take the run past its **budget** in uctusd: the treasury is funded by the
 lecturer and RemitX cannot replace what it burns. The target's Redis is only
 reachable inside Render, which is why the live tail goes through the API.
@@ -151,7 +152,9 @@ Change those to change the population; no code needed.
   settle together and match their quote, deposits are consistently owned, KYC
   status matches its history, approvals carry tier, rating and review date,
   every user has correctly named accounts, every beneficiary has a payout
-  account. Every seed run ends with it.
+  account. Every seed run ends with it. With `--chain` it also compares the
+  ledger's treasury balance with the Treasury Wallet's real UCTUSD balance
+  (needs `EVM_TREASURY_ADDRESS`; reads only).
 - **Schema** reads the live schema: rows per table, which story writes it, and
   columns that are NULL in every row. A table marked *no generator yet* means
   the schema moved on and the seeder has not.
@@ -170,7 +173,7 @@ KYC tiers, risk signals and ratings, onboarding steps, jurisdictions and fee
 settings are read at run time. When something does break:
 
 1. **CI fails the PR that broke it.** The `seeder` job runs a real seed against
-   a throwaway Postgres (fakes for Clerk, storage and the XRPL) and `verify`.
+   a throwaway Postgres (fakes for Clerk, storage and the EVM chain) and `verify`.
 2. A **refusal** in a run (the Runs tab lists them) means a story asked for
    something the rules now forbid: update the story in `remitx_seeder/stories/`.
 3. A **new table** shows as *no generator yet* on the Schema tab: add it to

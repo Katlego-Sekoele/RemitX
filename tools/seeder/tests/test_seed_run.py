@@ -231,6 +231,59 @@ def test_verify_catches_a_broken_ledger(run):
     assert [f.check for f in report.errors] == ["ledger.balances"]
 
 
+def _treasury_on_chain_finding(run, monkeypatch, *, address, chain_offset):
+    """`verify --chain`'s treasury finding, with the EVM balance read faked as
+    the ledger's treasury balance plus `chain_offset`."""
+    from remitx_api.repositories.account_repository import AccountRepository
+    from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
+    from remitx_worker import evm_service
+
+    from remitx_seeder.verify import run_verify
+
+    monkeypatch.setenv("EVM_TREASURY_ADDRESS", address)
+    db = run["db"]
+    token = db.open_session()
+    try:
+        treasury = AccountRepository().get_platform_account_by_label(
+            REMITX_TREASURY_WALLET_LABEL
+        )
+        read = []
+
+        def fake_balance(addr, w3=None):
+            read.append(addr)
+            return Decimal(treasury.account_balance) + chain_offset
+
+        monkeypatch.setattr(evm_service, "get_token_balance", fake_balance)
+        report = run_verify(db.session, check_chain=True)
+    finally:
+        db.close_session(token)
+    (finding,) = [f for f in report.findings if f.check == "treasury.on_chain"]
+    return finding, read
+
+
+def test_verify_chain_is_skipped_without_a_treasury_address(run, monkeypatch):
+    finding, read = _treasury_on_chain_finding(
+        run, monkeypatch, address="", chain_offset=Decimal("0")
+    )
+    assert finding.ok and "EVM_TREASURY_ADDRESS" in finding.summary
+    assert read == []
+
+
+def test_verify_chain_reads_the_evm_treasury_balance(run, monkeypatch):
+    address = "0x6C350A0A9031DE51dF0535e2e88872Cd7330F2e7"
+    finding, read = _treasury_on_chain_finding(
+        run, monkeypatch, address=address, chain_offset=Decimal("0")
+    )
+    assert read == [address]
+    assert finding.ok and "(differ)" not in finding.summary
+
+    finding, _ = _treasury_on_chain_finding(
+        run, monkeypatch, address=address, chain_offset=Decimal("1")
+    )
+    assert not finding.ok and finding.severity == "warning"
+    assert "(differ)" in finding.summary
+
+
 def test_the_live_tail_signs_in_calls_the_api_and_respects_its_budget(run):
     import json
     import random

@@ -28,7 +28,14 @@ from remitx_seeder.context import RunContext
 from remitx_seeder.sim import Simulation
 
 SYNTHETIC_HASH_PREFIX = "5EED"
-FAILURE_RESULTS = ("tecPATH_DRY", "tecUNFUNDED_PAYMENT", "tefPAST_SEQ")
+# What stops a real burn before it is signed: gas estimation reverting because
+# the Treasury Wallet is short of UCTUSD, no test XRP for gas, or an RPC that
+# does not answer.
+FAILURE_RESULTS = (
+    "execution reverted: ERC20InsufficientBalance",
+    "insufficient funds for gas * price + value",
+    "EVM RPC request timed out",
+)
 
 
 def synthetic_hash(ctx: RunContext) -> str:
@@ -138,7 +145,7 @@ class SimulatedSettlement:
         if self._fail_next:
             self._fail_next = False
             raise RuntimeError(
-                f"burn Payment failed: {self.ctx.rng.choice(FAILURE_RESULTS)}"
+                f"burn failed before signing: {self.ctx.rng.choice(FAILURE_RESULTS)}"
             )
         tx_hash = synthetic_hash(self.ctx)
         if on_signed is not None:

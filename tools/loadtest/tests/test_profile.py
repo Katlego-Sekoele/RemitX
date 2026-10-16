@@ -24,7 +24,7 @@ def test_committed_profiles_load():
 
 def test_default_seed_is_a_funded_database_only_population():
     """What Locust acts as: many verified senders, no Clerk users, no live
-    XRPL settlements, and a payout operator for cash-out."""
+    on-chain settlements, and a payout operator for cash-out."""
     seed = load_profile("default").seed
     assert seed["clerk_user_cap"] == 0
     assert seed["senders"] >= 2000

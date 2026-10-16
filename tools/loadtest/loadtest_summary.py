@@ -325,7 +325,7 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
                 f"{fast[0].name} (API {fast[0].api_cpus} CPU). "
                 f"That gap points to API CPU starvation under the smaller "
                 f"compute cap, not Postgres or the settlement queue. "
-                f"Calibrated RLUSD burn remains ~{burn_p50_s:.1f} s p50 on Testnet; "
+                f"Calibrated UCTUSD burn remains ~{burn_p50_s:.1f} s p50 on Testnet; "
                 f"queue throughput follows worker capacity and burn delay."
             )
     first = at_10[0] if at_10 else None
@@ -335,7 +335,7 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
             f"HTTP median at 10 users is already {p.http_median_ms:.0f} ms on "
             f"{c.name} (API {c.api_cpus} CPU). Latency climbs further as Locust "
             f"steps up concurrent users while RPS stays low — the API process is "
-            f"the saturation point. Calibrated RLUSD burn is ~{burn_p50_s:.1f} s p50."
+            f"the saturation point. Calibrated UCTUSD burn is ~{burn_p50_s:.1f} s p50."
         )
     if first:
         c, p = first
@@ -343,7 +343,7 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
             f"Under {c.name} (API {c.api_cpus} CPU), HTTP median at 10 users is "
             f"{p.http_median_ms:.0f} ms with peak HTTP RPS "
             f"{c.peak_http_rps:.1f}. Settlement end-to-end rate at peak users is "
-            f"{c.settle_throughput_at_peak_users:.2f}/s; RLUSD burn calibration "
+            f"{c.settle_throughput_at_peak_users:.2f}/s; UCTUSD burn calibration "
             f"is {burn_p50_s:.1f} s p50. Watch how median and RPS move across "
             f"the Locust user steps for concurrency behaviour."
         )

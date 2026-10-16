@@ -55,7 +55,7 @@ def test_to_canvas_writes_summary_and_canvas(tmp_path):
 def test_render_canvas_is_deterministic_enough():
     summary = build_summary(FIXTURE)
     text = render_canvas(summary)
-    assert "Calibrated RLUSD burn" in text
+    assert "Calibrated UCTUSD burn" in text
     assert "HTTP-only median" in text
     html = render_html(summary)
     assert "lineChart" in html or "polyline" in html
