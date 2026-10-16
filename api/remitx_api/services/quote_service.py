@@ -168,6 +168,36 @@ def to_zar(amount: Decimal, currency: str) -> Decimal:
     return round_amount(amount * token_rate / zar_rate)
 
 
+def remittance_fee_and_margin(
+    sender_amount: Decimal,
+    sender_currency: str,
+    receiver_payout_currency: str | None,
+    *,
+    fiat_to_token_exchange_rate: Decimal | None = None,
+) -> tuple[Decimal, Decimal]:
+    """(fee, margin) FSE charges on a remittance of `sender_amount` in
+    `sender_currency` paid out in `receiver_payout_currency`: the fixed fee
+    (FIXED_FEE_ZAR, in the sender's currency) plus PERCENTAGE_FEE_RATE of the
+    amount, and FX_MARGIN_RATE of it unless the payout stays in the same
+    currency. The one place these rules are worked out: `price_remittance`
+    and a stokvel contribution's fee share both use it. `fiat_to_token_exchange_rate`
+    is the sender's token rate when the caller already has it."""
+    if fiat_to_token_exchange_rate is None:
+        fiat_to_token_exchange_rate, _ = _token_rate(sender_currency)
+    fixed_fee = _convert_zar_fee_to_sender_currency(
+        Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
+    )
+    fee = round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
+    # The FX margin is a charge for converting currency, so a send that stays
+    # in one currency (e.g. ZAR -> ZAR) carries none.
+    margin = (
+        Decimal("0.00")
+        if sender_currency == receiver_payout_currency
+        else round_amount(Config.FX_MARGIN_RATE * sender_amount)
+    )
+    return fee, margin
+
+
 def token_to_fiat(token_amount: Decimal, currency: str) -> Decimal:
     """What `token_amount` UCTUSD costs in `currency` at the live rate, to the
     cent: a stokvel contribution's fiat debit (D13, the fixed token amount at
@@ -194,16 +224,11 @@ def price_remittance(
         sender_currency
     )
 
-    fixed_fee = _convert_zar_fee_to_sender_currency(
-        Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
-    )
-    fee = round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
-    # The FX margin is a charge for converting currency, so a send that stays
-    # in one currency (e.g. ZAR -> ZAR) carries none.
-    margin = (
-        Decimal("0.00")
-        if sender_currency == receiver_payout_currency
-        else round_amount(Config.FX_MARGIN_RATE * sender_amount)
+    fee, margin = remittance_fee_and_margin(
+        sender_amount,
+        sender_currency,
+        receiver_payout_currency,
+        fiat_to_token_exchange_rate=fiat_to_token_exchange_rate,
     )
     net = sender_amount - fee - margin
     if net <= 0:

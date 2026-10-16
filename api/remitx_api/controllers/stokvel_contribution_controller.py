@@ -28,7 +28,7 @@ commit so the worker can never see a contribution that might still roll back.
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_UP, Decimal
 
 from sqlalchemy.exc import IntegrityError
 
@@ -50,7 +50,7 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
-from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
     TYPE_FEE,
@@ -68,21 +68,41 @@ from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
-from remitx_api.services.quote_service import to_zar, token_to_fiat
+from remitx_api.services.quote_service import (
+    remittance_fee_and_margin,
+    to_zar,
+    token_to_fiat,
+)
 from remitx_api.services.send_limits import require_can_send
 
-_NO_FEE = Decimal("0.00")
+_CENT = Decimal("0.01")
 
 
-def contribution_fee_share(stokvel: Stokvel, cycle: StokvelCycle) -> Decimal:
-    """The member's share of the round's payout fee, paid on top of their
-    contribution, in the Stokvel currency (product question 4, option A).
+def contribution_fee_share(
+    amount_fiat: Decimal,
+    currency: str,
+    *,
+    member_count: int,
+    payout_currency: str | None,
+) -> Decimal:
+    """Each member's share of the round's payout fee, paid on top of their
+    contribution, in the Stokvel currency (product question 4, option A:
+    the beneficiary then receives the full pool).
 
-    Not decided yet: how the share is worked out before the payout's own quote
-    exists. Until product confirms it this is zero, so no fee leg is written.
-    The one place to change when it is decided.
+    The round's payout is one remittance of the pool (`amount_fiat` from
+    every member) to its recipient's beneficiary, so its fee and margin are
+    FSE's usual ones on that pool (`remittance_fee_and_margin`): no margin
+    when the recipient is paid in the Stokvel currency. The total is split
+    equally and rounded up to the cent, so the members always cover it. A
+    recipient with no payout currency yet is treated as paid in another
+    currency, so the margin is never under-collected.
+
+    Worked out at the rate when the member pays, as the contribution is; the
+    one place to change if the rule does.
     """
-    return _NO_FEE
+    pool = amount_fiat * member_count
+    fee, margin = remittance_fee_and_margin(pool, currency, payout_currency)
+    return ((fee + margin) / member_count).quantize(_CENT, rounding=ROUND_UP)
 
 
 @dataclass(frozen=True)
@@ -138,9 +158,8 @@ class StokvelContributionController:
         cycle = self._cycles.get_open_cycle(stokvel.id)
         if cycle is None or cycle.status != StokvelCycleStatus.ACTIVE.value:
             raise CycleNotOpenError()
-        cycle_member_ids = {
-            row.member_id for row in self._cycles.get_cycle_members(cycle.id)
-        }
+        cycle_members = self._cycles.get_cycle_members(cycle.id)
+        cycle_member_ids = {row.member_id for row in cycle_members}
         if member.id not in cycle_member_ids:
             raise NotACycleMemberError()
 
@@ -157,7 +176,16 @@ class StokvelContributionController:
         currency = stokvel.currency
         amount_token = stokvel.contribution_amount
         amount_fiat = token_to_fiat(amount_token, currency)
-        fee = contribution_fee_share(stokvel, cycle)
+        # The round pays the member whose payout position is the round.
+        recipient = next(
+            (row for row in cycle_members if row.payout_position == round_), None
+        )
+        fee = contribution_fee_share(
+            amount_fiat,
+            currency,
+            member_count=len(cycle_member_ids),
+            payout_currency=None if recipient is None else recipient.payout_currency,
+        )
         total = amount_fiat + fee
         # What leaves the member's account, fee included, counts against
         # their own limits (D8), as a remittance counts its gross amount.

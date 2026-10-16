@@ -143,8 +143,9 @@ class StokvelContributionRead(Schema):
     )
     fee_amount: LedgerDecimal = Field(
         description=(
-            "The member's share of the payout fee, paid on top. Zero until "
-            "product confirms the fee rule."
+            "The member's equal share of the round's payout fee (FSE's fee "
+            "and FX margin on the pool), rounded up to the cent and debited "
+            "on top of amount_fiat."
         )
     )
     amount_zar: LedgerDecimal = Field(

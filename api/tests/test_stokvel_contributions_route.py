@@ -16,16 +16,22 @@ from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
+from remitx_api.controllers.stokvel_contribution_controller import (
+    contribution_fee_share,
+)
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.db.rls import bound_row_security_context
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    CURRENCY_ZWL,
     TYPE_EVM_WALLET,
     TYPE_PLATFORM_FIAT,
+    TYPE_PLATFORM_REVENUE,
     Account,
 )
+from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
 from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.stokvel import Stokvel
@@ -39,6 +45,7 @@ from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
+    TYPE_FEE,
     TYPE_STOKVEL_CONTRIBUTION,
     Transaction,
 )
@@ -53,6 +60,10 @@ from tests.platform_account_helpers import seed_platform_accounts
 USD_ZAR = Decimal("18.50")
 CONTRIBUTION = Decimal("100")  # UCTUSD
 FIAT = Decimal("1850.00")  # CONTRIBUTION at USD_ZAR
+# Round 0's payout fee on the 3,700.00 pool, paid to ZAR (no margin):
+# 15 + 0.5% = 33.50, split between the two members.
+FEE = Decimal("16.75")
+TOTAL = FIAT + FEE  # what leaves the member's account
 _START = datetime(2026, 11, 1, tzinfo=UTC)
 
 
@@ -149,10 +160,27 @@ def _build(app, monkeypatch, *, seed_platform: bool, caller_verified=True) -> Gr
         )
         db.session.add(cycle)
         db.session.flush()
-        for position, member in enumerate(members):
+        # Round 0 pays the caller in ZAR (no FX margin), round 1 the other
+        # member in ZWL (margin applies), so the fee share differs by round.
+        pairs = ((caller, other, CURRENCY_ZAR), (other, caller, CURRENCY_ZWL))
+        for position, (member, (user, linked, payout_currency)) in enumerate(
+            zip(members, pairs, strict=True)
+        ):
+            beneficiary = Beneficiary(
+                sender_user_id=user.id,
+                linked_user_id=linked.id,
+                payout_currency=payout_currency,
+                relationship=BeneficiaryRelationship.PARENT.value,
+            )
+            db.session.add(beneficiary)
+            db.session.flush()
             db.session.add(
                 StokvelCycleMember(
-                    cycle_id=cycle.id, member_id=member.id, payout_position=position
+                    cycle_id=cycle.id,
+                    member_id=member.id,
+                    payout_position=position,
+                    payout_beneficiary_id=beneficiary.beneficiary_id,
+                    payout_currency=payout_currency,
                 )
             )
         for number in range(2):
@@ -240,17 +268,18 @@ def test_a_contribution_is_a_pending_row_plus_its_pending_legs(group):
     assert body["currency"] == "ZAR"
     assert Decimal(body["amount_token"]) == CONTRIBUTION
     assert Decimal(body["amount_fiat"]) == FIAT
-    assert Decimal(body["fee_amount"]) == 0
-    assert Decimal(body["amount_zar"]) == FIAT
+    assert Decimal(body["fee_amount"]) == FEE
+    assert Decimal(body["amount_zar"]) == TOTAL
 
     def check():
         row = db.session.get(StokvelContribution, uuid.UUID(body["contribution_id"]))
         assert row.member_id == group.caller_member_id
-        assert row.amount_zar == FIAT
-        assert row.fee_tx_id is None
+        assert row.amount_zar == TOTAL
         assert row.tx_id is None  # the deprecated column stays unused
         fiat = db.session.get(Transaction, row.fiat_tx_id)
         token = db.session.get(Transaction, row.token_tx_id)
+        fee = db.session.get(Transaction, row.fee_tx_id)
+        revenue = AccountRepository().get_platform_account(TYPE_PLATFORM_REVENUE, "ZAR")
         member_account = AccountRepository().get_user_account(
             group.caller.id, CURRENCY_ZAR
         )
@@ -267,6 +296,10 @@ def test_a_contribution_is_a_pending_row_plus_its_pending_legs(group):
         assert token.credit_account_id == treasury.account_id
         assert token.debit_account_id == stokvel.account_id
         assert (token.amount, token.currency) == (CONTRIBUTION, CURRENCY_TOKEN)
+        assert (fee.type, fee.status) == (TYPE_FEE, STATUS_PENDING)
+        assert fee.credit_account_id == member_account.account_id
+        assert fee.debit_account_id == revenue.account_id
+        assert (fee.amount, fee.currency) == (FEE, "ZAR")
         # Nothing moves until the worker confirms: balances are untouched.
         assert member_account.account_balance == Decimal("5000")
 
@@ -300,6 +333,21 @@ def test_rounds_fill_in_order_like_the_contract(group):
 
     assert response.status_code == 201, response.text
     assert response.json()["round"] == 1
+    # Round 1 pays out in ZWL, so its fee adds the 1% margin on the pool:
+    # (33.50 + 37.00) / 2.
+    assert Decimal(response.json()["fee_amount"]) == Decimal("35.25")
+
+
+def test_the_fee_share_rounds_up_to_the_cent(group):
+    # Pool 3,702.00: 15 + 18.51 = 33.51, so each of two pays 16.755 -> 16.76.
+    # (The group is only for its database: the fixed fee reads the rates.)
+    share = _in_session(
+        lambda: contribution_fee_share(
+            Decimal("1851"), "ZAR", member_count=2, payout_currency="ZAR"
+        )
+    )
+
+    assert share == Decimal("16.76")
 
 
 def test_a_failed_contribution_leaves_the_round_open_to_pay_again(group):
@@ -411,7 +459,7 @@ def test_without_an_active_cycle_there_is_nothing_to_pay(group, status):
 def test_a_short_balance_is_refused_and_nothing_is_recorded(group):
     def drain():
         account = AccountRepository().get_user_account(group.caller.id, CURRENCY_ZAR)
-        account.account_balance = FIAT - Decimal("0.01")
+        account.account_balance = TOTAL - Decimal("0.01")
         db.session.commit()
 
     _in_session(drain)
@@ -419,9 +467,23 @@ def test_a_short_balance_is_refused_and_nothing_is_recorded(group):
     response = group.contribute()
 
     assert response.status_code == 400
-    assert "1,850.00" in response.json()["detail"]
+    assert "1,866.75" in response.json()["detail"]
     assert _contributions(group) == []
     assert group.enqueued == []
+
+
+def test_a_balance_that_covers_the_contribution_but_not_the_fee_is_refused(group):
+    def drain():
+        account = AccountRepository().get_user_account(group.caller.id, CURRENCY_ZAR)
+        account.account_balance = FIAT
+        db.session.commit()
+
+    _in_session(drain)
+
+    response = group.contribute()
+
+    assert response.status_code == 400
+    assert _contributions(group) == []
 
 
 def test_an_unverified_member_is_refused(monkeypatch):
@@ -443,8 +505,9 @@ def test_contributions_count_toward_the_members_own_limits(group):
     )
 
     assert first.status_code == 201
-    assert standing.daily_used_zar == FIAT
-    assert standing.monthly_used_zar == FIAT
+    # The fee counts too: it leaves the member's account with the contribution.
+    assert standing.daily_used_zar == TOTAL
+    assert standing.monthly_used_zar == TOTAL
 
 
 def test_a_contribution_over_the_daily_limit_is_refused(group):

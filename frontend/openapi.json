@@ -4957,7 +4957,7 @@
             "type": "integer"
           },
           "fee_amount": {
-            "description": "The member's share of the payout fee, paid on top. Zero until product confirms the fee rule.",
+            "description": "The member's equal share of the round's payout fee (FSE's fee and FX margin on the pool), rounded up to the cent and debited on top of amount_fiat.",
             "title": "Fee Amount",
             "type": "string"
           },
