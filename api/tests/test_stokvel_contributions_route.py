@@ -7,6 +7,7 @@ the stokvel's STOKVEL account) be recorded at all.
 """
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -52,6 +53,9 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
+from remitx_api.repositories.stokvel_contribution_repository import (
+    StokvelContributionRepository,
+)
 from remitx_api.services import queue_service
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
@@ -222,9 +226,17 @@ def group(monkeypatch):
         yield built
 
 
-def _record(group: Group, member_id, round_, status=StokvelContributionStatus.PENDING):
-    """A contribution written directly, as if paid two days ago: before
-    today, so it does not use up the caller's daily limit."""
+def _record(
+    group: Group,
+    member_id,
+    round_,
+    status=StokvelContributionStatus.PENDING,
+    *,
+    amount_zar=FIAT,
+    created_at=None,
+):
+    """A contribution written directly, by default as if paid two days ago:
+    before today, so it does not use up the caller's daily limit."""
 
     def write():
         db.session.add(
@@ -234,9 +246,9 @@ def _record(group: Group, member_id, round_, status=StokvelContributionStatus.PE
                 member_id=member_id,
                 amount_token=CONTRIBUTION,
                 amount_fiat=FIAT,
-                amount_zar=FIAT,
+                amount_zar=amount_zar,
                 status=status.value,
-                created_at=datetime.now(UTC) - timedelta(days=2),
+                created_at=created_at or datetime.now(UTC) - timedelta(days=2),
             )
         )
         db.session.commit()
@@ -523,6 +535,59 @@ def test_a_contribution_over_the_daily_limit_is_refused(group):
     assert len(_contributions(group)) == 2  # the caller's round 0 and Sipho's
 
 
+def test_a_contribution_over_the_monthly_limit_is_refused(group, monkeypatch):
+    # The verified tier allows R25,000 a month. The clock is fixed mid-month so
+    # the earlier contribution is this month but not today, on any run date.
+    now = datetime(2026, 11, 16, 10, tzinfo=UTC)
+    monkeypatch.setattr(
+        "remitx_api.repositories.kyc_application_repository.utcnow", lambda: now
+    )
+    earlier = now - timedelta(days=6)
+    _record(
+        group,
+        group.caller_member_id,
+        0,
+        amount_zar=Decimal("23500"),
+        created_at=earlier,
+    )
+    _record(group, group.other_member_id, 0, created_at=earlier)
+
+    # Round 1 costs 1,885.25 (1,850 + a 35.25 fee share): 25,385.25 in all.
+    response = group.contribute()
+
+    assert response.status_code == 400
+    assert "monthly limit" in response.json()["detail"]
+    assert len(_contributions(group)) == 2  # only the two recorded above
+    assert group.enqueued == []
+
+
+def test_a_payment_that_slips_past_the_paid_check_is_still_refused(group, monkeypatch):
+    """If two payments for the same round both pass the "already paid" read
+    (the user lock prevents this; see the Postgres test below), the unique
+    index stops the second, and it is refused as already paid with nothing
+    left behind."""
+    _record(group, group.caller_member_id, 0)
+    monkeypatch.setattr(
+        StokvelContributionRepository,
+        "get_member_contribution",
+        lambda self, cycle_id, round_, member_id: None,
+    )
+
+    response = group.contribute()
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "contribution_already_paid"
+    assert len(_contributions(group)) == 1
+    assert group.enqueued == []
+
+    def legs():
+        return db.session.scalars(
+            select(Transaction).where(Transaction.type == TYPE_STOKVEL_CONTRIBUTION)
+        ).all()
+
+    assert _in_session(legs) == []  # the pending legs rolled back too
+
+
 def test_failed_contributions_do_not_count_toward_limits(group):
     _record(group, group.caller_member_id, 0, StokvelContributionStatus.FAILED)
 
@@ -553,6 +618,24 @@ def test_under_row_security_the_route_records_the_token_leg(postgres_app, monkey
         response = built.contribute()
 
         assert response.status_code == 201, response.text
+        assert len(built.enqueued) == 1
+
+
+@pytest.mark.postgres
+def test_two_payments_at_once_record_one_contribution(postgres_app, monkeypatch):
+    """Two requests for the same round at the same moment: the user lock
+    makes the second wait, then it reads the first one's row and is refused."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(lambda _: built.contribute(), range(2)))
+
+        assert sorted(r.status_code for r in responses) == [201, 409]
+        refused = next(r for r in responses if r.status_code == 409)
+        assert refused.json()["code"] == "contribution_already_paid"
+        assert len(_contributions(built)) == 1
         assert len(built.enqueued) == 1
 
 

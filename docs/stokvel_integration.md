@@ -722,7 +722,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/remitx_api/controllers/stokvel_contribution_controller.py` | The contribution use case: checks, pending legs, enqueue; `contribution_fee_share` | #233 |
 | `api/alembic/versions/V20261016_1352__stokvel_contribution_legs_and_rand_value.py` | `fiat_tx_id`, `token_tx_id`, `fee_tx_id`, `amount_zar` on `stokvel_contributions` | #233 |
 | `api/alembic/versions/V20261016_1500__transactions_rls_stokvel_account_legs.py` | `transactions` policy: members see and record legs on their stokvel's `STOKVEL` account | #233 |
-| `api/tests/test_stokvel_contributions_route.py` | The route's rules, legs and limits (SQLite); the token leg and member-only reads under RLS (`postgres` lane) | #233 |
+| `api/tests/test_stokvel_contributions_route.py` | The route's rules, legs, fee and daily and monthly limits, and a duplicate that slips past the paid check (SQLite); the token leg, member-only reads and two payments at once under RLS (`postgres` lane) | #233 |
 | `api/alembic/versions/V20261016_0901__stokvel_contributions.py` | Contributions table, partial unique index, composite foreign keys, RLS policies (one per operation, no customer update, no delete) | #228 |
 | `api/tests/test_stokvel_contribution_model.py` | Pay once (retry after failure), stay inside the cycle, status columns (SQLite); RLS reads, own-row inserts, worker-only updates, no deletes (`postgres` lane) | #228 |
 | `api/alembic/versions/V20261011_1000__stokvel_ledger_account_and_types.py` | `STOKVEL` account type and balance CHECK, stokvel transaction types, `stokvels.account_id` | #238 |
