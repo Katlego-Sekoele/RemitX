@@ -39,6 +39,10 @@ from remitx_api.models.orm.remittance import Remittance
 from remitx_api.models.orm.role import Role
 from remitx_api.models.orm.role_permission import RolePermission
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_contribution import (
+    StokvelContribution,
+    StokvelContributionStatus,
+)
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_invitation import (
@@ -91,6 +95,8 @@ __all__ = [
     "Role",
     "RolePermission",
     "Stokvel",
+    "StokvelContribution",
+    "StokvelContributionStatus",
     "StokvelCycle",
     "StokvelCycleMember",
     "StokvelCycleStatus",
