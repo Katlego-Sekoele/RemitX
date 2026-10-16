@@ -23,8 +23,12 @@ The contribution row points at each leg (`fiat_tx_id`, `token_tx_id`,
 The shape is `remittance_service.confirm_remittance`'s: lock the user, check
 standing, limits and balance, write everything pending, then enqueue after the
 commit so the worker can never see a contribution that might still roll back.
+Unlike a remittance, a contribution is priced here, so its rates are looked up
+before the lock: a lookup may fetch a live rate and commit, which would end
+the transaction and release the lock before the checks run.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -69,11 +73,15 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
 from remitx_api.services.quote_service import (
+    TokenRates,
     remittance_fee_and_margin,
     to_zar,
+    token_rates,
     token_to_fiat,
 )
 from remitx_api.services.send_limits import require_can_send
+
+logger = logging.getLogger(__name__)
 
 _CENT = Decimal("0.01")
 _ONCE_CONSTRAINT = "uq_stokvel_contributions_once"
@@ -96,7 +104,7 @@ def _is_paid_twice(exc: IntegrityError) -> bool:
 
 def contribution_fee_share(
     amount_fiat: Decimal,
-    currency: str,
+    rates: TokenRates,
     *,
     member_count: int,
     payout_currency: str,
@@ -119,7 +127,13 @@ def contribution_fee_share(
     fee on the pool paid out (D6). The one place to change if the rule does.
     """
     pool = amount_fiat * member_count
-    fee, margin = remittance_fee_and_margin(pool, currency, payout_currency)
+    fee, margin = remittance_fee_and_margin(
+        pool,
+        rates.currency,
+        payout_currency,
+        fiat_to_token_exchange_rate=rates.token_per_unit,
+        zar_token_rate=rates.zar_token_per_unit,
+    )
     return ((fee + margin) / member_count).quantize(_CENT, rounding=ROUND_UP)
 
 
@@ -156,26 +170,42 @@ class StokvelContributionController:
         it pending, then queue it for the chain. Enqueued only after the
         commit, as for a remittance's settlement."""
         view = self._record(user_id, stokvel_id)
-        queue_service.enqueue_submit_contribution(str(view.contribution_id))
+        # The contribution and its legs are committed `pending` now. If this
+        # enqueue is lost, the contribution holds its round and the member's
+        # balance with nothing to drive it on, so the failure is logged
+        # loudly before it propagates, as in `confirm_remittance`.
+        try:
+            queue_service.enqueue_submit_contribution(str(view.contribution_id))
+        except Exception:
+            logger.exception(
+                "contribute: failed to enqueue submit_contribution for "
+                "contribution %s (stokvel %s, round %s); it is committed "
+                "pending but was never queued",
+                view.contribution_id,
+                view.stokvel_id,
+                view.round,
+            )
+            raise
         return view
 
     @db_transaction
     def _record(
         self, user_id: uuid.UUID, stokvel_id: uuid.UUID
     ) -> StokvelContributionView:
+        stokvel = self._stokvels.get_by_id(stokvel_id)
+        if stokvel is None:
+            raise StokvelNotFoundError()
+        # Before the lock: a lookup may fetch a live rate and commit, which
+        # would release the lock. Everything below prices from these.
+        rates = token_rates(stokvel.currency)
         # Held until the commit. The limit and balance checks read what this
         # member has already done, so their contributions run one at a time.
         self._users.lock(user_id)
 
-        stokvel = self._stokvels.get_by_id(stokvel_id)
         # Not a current member: the same 404 as an unknown id. On Postgres,
         # row-level security hides the stokvel from outsiders anyway, so this
         # keeps SQLite's answer the same and reveals nothing about the id.
-        member = (
-            None
-            if stokvel is None
-            else self._members.get_active_member(stokvel.id, user_id)
-        )
+        member = self._members.get_active_member(stokvel.id, user_id)
         if member is None:
             raise StokvelNotFoundError()
         cycle = self._cycles.get_open_cycle(stokvel.id)
@@ -202,17 +232,17 @@ class StokvelContributionController:
 
         currency = stokvel.currency
         amount_token = stokvel.contribution_amount
-        amount_fiat = token_to_fiat(amount_token, currency)
+        amount_fiat = token_to_fiat(amount_token, rates)
         fee = contribution_fee_share(
             amount_fiat,
-            currency,
+            rates,
             member_count=len(cycle_member_ids),
             payout_currency=self._recipient_currency(cycle_members, round_),
         )
         total = amount_fiat + fee
         # What leaves the member's account, fee included, counts against
         # their own limits (D8), as a remittance counts its gross amount.
-        amount_zar = to_zar(total, currency)
+        amount_zar = to_zar(total, currency, rates=rates)
         require_can_send(
             self._applications.get_standing(user_id),
             amount_zar,

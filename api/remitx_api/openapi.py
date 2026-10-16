@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPBearer
+from pydantic import ConfigDict, Field
 
 from remitx_api.models.schemas.base import Schema
 
@@ -173,7 +174,19 @@ class ErrorResponse(Schema):
     """Every refusal that is not a validation failure: ``HTTPException`` and
     ``DomainError`` both answer in this shape."""
 
+    # `code` is sent only when the refusal has one, so it is optional here,
+    # unlike the response fields `Schema` marks required.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=False)
+
     detail: str
+    code: str | None = Field(
+        default=None,
+        description=(
+            "Machine-readable reason, on refusals that have one "
+            "(`DomainError.code`), e.g. `contribution_already_paid`. Absent "
+            "otherwise."
+        ),
+    )
 
 
 def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:

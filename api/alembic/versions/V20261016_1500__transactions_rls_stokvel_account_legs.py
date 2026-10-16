@@ -15,8 +15,11 @@ command together:
 - ``transactions_stokvel_member_select``: a customer may read a leg on the
   ``STOKVEL`` account of a stokvel they are or were a member of (as the group
   tables let former members read).
-- ``transactions_stokvel_member_insert``: a customer may record a leg into
-  that account (the debit side) only while they are a current member.
+- ``transactions_stokvel_member_insert``: a customer may record only a
+  contribution's token leg: a ``stokvel_contribution`` leg from the Treasury
+  Wallet (``REMITX_EVM_WALLET``) into that account, and only while they are a
+  current member. Both sides are pinned, so a member cannot book any other
+  account against their stokvel's.
 
 There is no update or delete policy for these legs, so a member's session can
 change or remove none of them, their own included, as the stokvel tables allow
@@ -43,6 +46,7 @@ _ME = "current_setting('app.current_user_id', true)"
 _APP_ROLE = "remitx_app"
 _SELECT_POLICY = "transactions_stokvel_member_select"
 _INSERT_POLICY = "transactions_stokvel_member_insert"
+_TREASURY_FUNCTION = "account_is_treasury_wallet"
 
 _STOKVEL_ACCOUNT_MEMBERS = """
   SELECT 1 FROM stokvels
@@ -72,6 +76,21 @@ def upgrade() -> None:
         )
         op.execute(f"REVOKE ALL ON FUNCTION {name}(uuid, text) FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {name}(uuid, text) TO {_APP_ROLE}")
+    # Accounts have row-level security of their own, so the Treasury check is
+    # a lookup function too.
+    op.execute(
+        f"""
+        CREATE FUNCTION {_TREASURY_FUNCTION}(p_account_id uuid)
+          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+          SET search_path = pg_catalog, public, pg_temp
+          AS $$ SELECT EXISTS (
+            SELECT 1 FROM accounts
+            WHERE account_id = p_account_id AND type = 'REMITX_EVM_WALLET'
+          ) $$
+        """
+    )
+    op.execute(f"REVOKE ALL ON FUNCTION {_TREASURY_FUNCTION}(uuid) FROM PUBLIC")
+    op.execute(f"GRANT EXECUTE ON FUNCTION {_TREASURY_FUNCTION}(uuid) TO {_APP_ROLE}")
     op.execute(
         f"""
         CREATE POLICY {_SELECT_POLICY} ON transactions FOR SELECT
@@ -84,7 +103,11 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE POLICY {_INSERT_POLICY} ON transactions FOR INSERT
-          WITH CHECK (stokvel_account_is_active_member(debit_account_id, {_ME}))
+          WITH CHECK (
+            type = 'stokvel_contribution'
+            AND {_TREASURY_FUNCTION}(credit_account_id)
+            AND stokvel_account_is_active_member(debit_account_id, {_ME})
+          )
         """
     )
 
@@ -92,5 +115,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(f"DROP POLICY IF EXISTS {_INSERT_POLICY} ON transactions")
     op.execute(f"DROP POLICY IF EXISTS {_SELECT_POLICY} ON transactions")
+    op.execute(f"DROP FUNCTION IF EXISTS {_TREASURY_FUNCTION}(uuid)")
     for name in reversed(_FUNCTIONS):
         op.execute(f"DROP FUNCTION IF EXISTS {name}(uuid, text)")

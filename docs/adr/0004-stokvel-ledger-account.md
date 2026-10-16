@@ -66,7 +66,8 @@ book into the account as they are made, and a release books out of it:
 - Members see and record legs on their stokvel's account through two
   `transactions` policies beside the unchanged `transactions_by_current_user`
   (migration `V20261016_1500`), the ledger part of the proposed fix above:
-  current and former members read them, current members record legs into
-  the account, and no member may update or delete one. The quote and
+  current and former members read them, current members record only the
+  contribution's token leg (Treasury Wallet -> the account), and no member
+  may update or delete one. The worker books the release. The quote and
   remittance parts are still pending.
 

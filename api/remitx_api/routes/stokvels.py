@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, status
+from fastapi import Depends, HTTPException, status
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.stokvel_contribution_controller import (
@@ -16,6 +16,7 @@ from remitx_api.models.schemas.stokvel import (
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
+from remitx_api.services.exchange_rate_service import RateUnavailableError
 
 router = create_customer_router(prefix="/stokvels", tags=[Tag.STOKVELS])
 controller = StokvelController()
@@ -67,7 +68,7 @@ def list_stokvels(user: User = Depends(get_current_user)):
     response_model=StokvelContributionRead,
     status_code=status.HTTP_201_CREATED,
     summary="Contribute to the stokvel's current round",
-    responses=error_responses(400, 403, 404, 409),
+    responses=error_responses(400, 403, 404, 409, 503),
 )
 def contribute_to_stokvel(
     stokvel_id: uuid.UUID,
@@ -89,7 +90,13 @@ def contribute_to_stokvel(
     paid, `contribution_already_paid` for a second payment to the open round.
     Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a
     short available balance, a send over the daily or monthly limit, or a
-    caller who is not verified."""
-    return StokvelContributionRead.from_view(
-        contributions.contribute(user.id, stokvel_id)
-    )
+    caller who is not verified. 503 when no exchange rate is available, as
+    for a quote: nothing is recorded."""
+    try:
+        view = contributions.contribute(user.id, stokvel_id)
+    except RateUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Exchange rate unavailable; try again shortly",
+        ) from exc
+    return StokvelContributionRead.from_view(view)

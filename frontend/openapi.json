@@ -1009,6 +1009,18 @@
       "ErrorResponse": {
         "description": "Every refusal that is not a validation failure: ``HTTPException`` and\n``DomainError`` both answer in this shape.",
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine-readable reason, on refusals that have one (`DomainError.code`), e.g. `contribution_already_paid`. Absent otherwise.",
+            "title": "Code"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
@@ -11374,7 +11386,7 @@
     },
     "/stokvels/{stokvel_id}/contributions": {
       "post": {
-        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `wrong_round` once every round is\npaid, `contribution_already_paid` for a second payment to the open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified.",
+        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `wrong_round` once every round is\npaid, `contribution_already_paid` for a second payment to the open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
         "operationId": "contribute_to_stokvel",
         "parameters": [
           {
@@ -11458,6 +11470,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [

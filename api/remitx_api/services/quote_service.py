@@ -141,7 +141,10 @@ def _direct_fiat_rate(
 
 
 def _convert_zar_fee_to_sender_currency(
-    fee_zar: Decimal, sender_currency: str, fiat_to_token_exchange_rate: Decimal
+    fee_zar: Decimal,
+    sender_currency: str,
+    fiat_to_token_exchange_rate: Decimal,
+    zar_token_rate: Decimal | None = None,
 ) -> Decimal:
     """Convert a ZAR-denominated fee (e.g. Config.FIXED_FEE_ZAR) into sender_currency
     units via each currency's USD/token peg (see _token_rate) — reuses the
@@ -152,20 +155,24 @@ def _convert_zar_fee_to_sender_currency(
     """
     if sender_currency == CURRENCY_ZAR:
         return fee_zar
-    zar_rate, _ = _token_rate(CURRENCY_ZAR)
-    return round_amount(fee_zar * zar_rate / fiat_to_token_exchange_rate)
+    if zar_token_rate is None:
+        zar_token_rate, _ = _token_rate(CURRENCY_ZAR)
+    return round_amount(fee_zar * zar_token_rate / fiat_to_token_exchange_rate)
 
 
-def to_zar(amount: Decimal, currency: str) -> Decimal:
+def to_zar(
+    amount: Decimal, currency: str, *, rates: "TokenRates | None" = None
+) -> Decimal:
     """`amount` of `currency` in rand, through each currency's USD/token peg:
     the fixed fee's conversion run the other way. What a send counts as
     against the sending limits, which are in rand whatever account it leaves.
-    No rate is needed, or looked up, for rand itself."""
+    No rate is needed, or looked up, for rand itself. `rates`, when given,
+    are used instead of looking the rates up."""
     if currency == CURRENCY_ZAR:
         return amount
-    token_rate, _ = _token_rate(currency)
-    zar_rate, _ = _token_rate(CURRENCY_ZAR)
-    return round_amount(amount * token_rate / zar_rate)
+    if rates is None:
+        rates = token_rates(currency)
+    return round_amount(amount * rates.token_per_unit / rates.zar_token_per_unit)
 
 
 def remittance_fee_and_margin(
@@ -174,6 +181,7 @@ def remittance_fee_and_margin(
     receiver_payout_currency: str | None,
     *,
     fiat_to_token_exchange_rate: Decimal | None = None,
+    zar_token_rate: Decimal | None = None,
 ) -> tuple[Decimal, Decimal]:
     """(fee, margin) FSE charges on a remittance of `sender_amount` in
     `sender_currency` paid out in `receiver_payout_currency`: the fixed fee
@@ -181,11 +189,15 @@ def remittance_fee_and_margin(
     amount, and FX_MARGIN_RATE of it unless the payout stays in the same
     currency. The one place these rules are worked out: `price_remittance`
     and a stokvel contribution's fee share both use it. `fiat_to_token_exchange_rate`
-    is the sender's token rate when the caller already has it."""
+    and `zar_token_rate` are the sender's and the rand's token rates when the
+    caller already has them; nothing is looked up then."""
     if fiat_to_token_exchange_rate is None:
         fiat_to_token_exchange_rate, _ = _token_rate(sender_currency)
     fixed_fee = _convert_zar_fee_to_sender_currency(
-        Config.FIXED_FEE_ZAR, sender_currency, fiat_to_token_exchange_rate
+        Config.FIXED_FEE_ZAR,
+        sender_currency,
+        fiat_to_token_exchange_rate,
+        zar_token_rate,
     )
     fee = round_amount(fixed_fee + Config.PERCENTAGE_FEE_RATE * sender_amount)
     # The FX margin is a charge for converting currency, so a send that stays
@@ -198,14 +210,48 @@ def remittance_fee_and_margin(
     return fee, margin
 
 
-def token_to_fiat(token_amount: Decimal, currency: str) -> Decimal:
-    """What `token_amount` UCTUSD costs in `currency` at the live rate, to the
-    cent: a stokvel contribution's fiat debit (D13, the fixed token amount at
-    the rate when the member pays). The same rate `price_remittance` uses
-    (`_token_rate`), the other way: dividing, as that rate is token per unit
-    of `currency`."""
-    rate, _ = _token_rate(currency)
-    return round_amount(token_amount / rate)
+@dataclass(frozen=True)
+class TokenRates:
+    """A currency's token rates, looked up once so a caller can price without
+    touching the rate store again: `exchange_rate_service.get_active_rate`
+    may fetch a live rate and commit, which must not happen inside a
+    transaction holding a lock (a stokvel contribution prices after locking
+    the member)."""
+
+    currency: str
+    # Units of `currency` per UCTUSD: the stored USD quote, unrounded.
+    units_per_token: Decimal
+    # UCTUSD per unit of `currency` and of rand, as `_token_rate` gives them.
+    token_per_unit: Decimal
+    zar_token_per_unit: Decimal
+
+
+def token_rates(currency: str) -> TokenRates:
+    """`currency`'s and the rand's token rates at the live rate. Looks up (and
+    may fetch and store) the rates, so call it before taking any lock."""
+    if currency == CURRENCY_USD:
+        units_per_token = Decimal("1")
+    else:
+        units_per_token = exchange_rate_service.get_active_rate(
+            base_currency=CURRENCY_USD, quote_currency=currency
+        ).rate
+    token_per_unit, _ = _token_rate(currency)
+    zar_token_per_unit, _ = _token_rate(CURRENCY_ZAR)
+    return TokenRates(
+        currency=currency,
+        units_per_token=units_per_token,
+        token_per_unit=token_per_unit,
+        zar_token_per_unit=zar_token_per_unit,
+    )
+
+
+def token_to_fiat(token_amount: Decimal, rates: TokenRates) -> Decimal:
+    """What `token_amount` UCTUSD costs in `rates.currency`, to the cent: a
+    stokvel contribution's fiat debit (D13, the fixed token amount at the
+    rate when the member pays). Multiplies by the stored USD quote itself,
+    not by dividing by `_token_rate`'s inverse: that is rounded to 8 places,
+    which in a currency with a large rate (ZWL) is off by whole units."""
+    return round_amount(token_amount * rates.units_per_token)
 
 
 def price_remittance(

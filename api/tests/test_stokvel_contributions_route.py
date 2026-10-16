@@ -56,7 +56,10 @@ from remitx_api.repositories.kyc_application_repository import KycApplicationRep
 from remitx_api.repositories.stokvel_contribution_repository import (
     StokvelContributionRepository,
 )
-from remitx_api.services import queue_service
+from remitx_api.repositories.user_repository import UserRepository
+from remitx_api.services import exchange_rate_service, queue_service
+from remitx_api.services.exchange_rate_provider import RateFetchError
+from remitx_api.services.quote_service import TokenRates, token_to_fiat
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
@@ -69,6 +72,13 @@ FIAT = Decimal("1850.00")  # CONTRIBUTION at USD_ZAR
 # 15 + 0.5% = 33.50, split between the two members.
 FEE = Decimal("16.75")
 TOTAL = FIAT + FEE  # what leaves the member's account
+# A ZAR stokvel's rates at USD_ZAR, for pricing without the rate store.
+ZAR_RATES = TokenRates(
+    currency=CURRENCY_ZAR,
+    units_per_token=USD_ZAR,
+    token_per_unit=(Decimal("1") / USD_ZAR).quantize(Decimal("0.00000001")),
+    zar_token_per_unit=(Decimal("1") / USD_ZAR).quantize(Decimal("0.00000001")),
+)
 _START = datetime(2026, 11, 1, tzinfo=UTC)
 
 
@@ -352,16 +362,106 @@ def test_rounds_fill_in_order_like_the_contract(group):
     assert Decimal(response.json()["fee_amount"]) == Decimal("35.25")
 
 
-def test_the_fee_share_rounds_up_to_the_cent(group):
+def test_the_fee_share_rounds_up_to_the_cent():
     # Pool 3,702.00: 15 + 18.51 = 33.51, so each of two pays 16.755 -> 16.76.
-    # (The group is only for its database: the fixed fee reads the rates.)
-    share = _in_session(
-        lambda: contribution_fee_share(
-            Decimal("1851"), "ZAR", member_count=2, payout_currency="ZAR"
-        )
+    share = contribution_fee_share(
+        Decimal("1851"), ZAR_RATES, member_count=2, payout_currency="ZAR"
     )
 
     assert share == Decimal("16.76")
+
+
+def test_the_fiat_debit_uses_the_unrounded_rate():
+    # A large rate, as for ZWL: its inverse rounded to 8 places
+    # (0.00003846) would make 100 UCTUSD cost 2,600,104.00, not 2,600,050.00.
+    rates = TokenRates(
+        currency="ZWL",
+        units_per_token=Decimal("26000.5"),
+        token_per_unit=Decimal("0.00003846"),
+        zar_token_per_unit=Decimal("0.05405405"),
+    )
+
+    assert token_to_fiat(Decimal("100"), rates) == Decimal("2600050.00")
+
+
+def test_rates_are_looked_up_before_the_member_is_locked(group, monkeypatch):
+    """A lookup that finds no valid rate fetches one live and commits, which
+    would end the transaction and release the user lock. So every lookup
+    must come before the lock, and the expired rate here forces the commit."""
+
+    def expire():
+        for rate in db.session.scalars(select(ExchangeRate)):
+            rate.valid_until = datetime.now(UTC) - timedelta(minutes=1)
+        db.session.commit()
+
+    _in_session(expire)
+    monkeypatch.setattr(
+        "remitx_api.services.exchange_rate_provider.ExchangeRateApiProvider.get_rate",
+        lambda self, base, quote: USD_ZAR,
+    )
+    events: list[str] = []
+    real_lookup = exchange_rate_service.get_active_rate
+    real_lock = UserRepository.lock
+
+    def lookup(*args, **kwargs):
+        events.append("rate")
+        return real_lookup(*args, **kwargs)
+
+    def lock(self, user_id):
+        events.append("lock")
+        return real_lock(self, user_id)
+
+    monkeypatch.setattr(exchange_rate_service, "get_active_rate", lookup)
+    monkeypatch.setattr(UserRepository, "lock", lock)
+
+    response = group.contribute()
+
+    assert response.status_code == 201, response.text
+    assert events.count("lock") == 1
+    assert "rate" in events
+    assert "rate" not in events[events.index("lock") :]
+    assert Decimal(response.json()["amount_fiat"]) == FIAT
+
+
+def test_no_exchange_rate_is_unavailable_and_nothing_is_recorded(group, monkeypatch):
+    def make_stale():
+        for rate in db.session.scalars(select(ExchangeRate)):
+            rate.fetched_at = datetime.now(UTC) - timedelta(days=30)
+            rate.valid_until = datetime.now(UTC) - timedelta(days=29)
+        db.session.commit()
+
+    _in_session(make_stale)
+
+    def fail(self, base, quote):
+        raise RateFetchError("down")
+
+    monkeypatch.setattr(
+        "remitx_api.services.exchange_rate_provider.ExchangeRateApiProvider.get_rate",
+        fail,
+    )
+
+    response = group.contribute()
+
+    assert response.status_code == 503
+    assert _contributions(group) == []
+    assert group.enqueued == []
+
+
+def test_a_lost_enqueue_is_logged_and_raised(group, monkeypatch, caplog):
+    """The contribution is already committed pending; a broker failure must
+    not pass quietly, as for a remittance's settlement."""
+
+    def broker_down(contribution_id):
+        raise ConnectionError("broker unreachable")
+
+    monkeypatch.setattr(queue_service, "enqueue_submit_contribution", broker_down)
+
+    with pytest.raises(ConnectionError):
+        group.contribute()
+
+    assert "failed to enqueue submit_contribution" in caplog.text
+    [row] = _contributions(group)
+    assert row.status == StokvelContributionStatus.PENDING.value
 
 
 def test_a_failed_contribution_leaves_the_round_open_to_pay_again(group):
@@ -801,6 +901,56 @@ def test_row_security_refuses_a_stokvel_leg_from_a_former_member(
             return seen
 
         assert _in_session(read_then_record)
+
+
+@pytest.mark.postgres
+def test_row_security_lets_a_member_record_only_the_token_leg(
+    postgres_app, monkeypatch
+):
+    """The insert policy pins both sides: a member may add only a
+    stokvel_contribution leg from the Treasury Wallet into their stokvel's
+    account. Any other source, or any other type, is refused."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+
+        def accounts():
+            stokvel = db.session.get(Stokvel, built.stokvel_id)
+            repo = AccountRepository()
+            return (
+                stokvel.account_id,
+                repo.get_platform_account(TYPE_EVM_WALLET, CURRENCY_TOKEN).account_id,
+                repo.get_platform_account(TYPE_PLATFORM_FIAT, "ZAR").account_id,
+            )
+
+        stokvel_account_id, treasury_id, bank_id = _in_session(accounts)
+
+        def refused(credit_account_id, type_) -> bool:
+            def run():
+                with bound_row_security_context(built.caller.id, is_admin_route=False):
+                    db.session.add(
+                        Transaction(
+                            type=type_,
+                            credit_account_id=credit_account_id,
+                            debit_account_id=stokvel_account_id,
+                            amount=CONTRIBUTION,
+                            currency=CURRENCY_TOKEN,
+                            status=STATUS_PENDING,
+                        )
+                    )
+                    try:
+                        db.session.flush()
+                    except Exception as exc:
+                        return "row-level security" in str(exc)
+                    finally:
+                        db.session.rollback()
+                    return False
+
+            return _in_session(run)
+
+        assert not refused(treasury_id, TYPE_STOKVEL_CONTRIBUTION)
+        assert refused(bank_id, TYPE_STOKVEL_CONTRIBUTION)  # not the Treasury
+        assert refused(treasury_id, TYPE_FEE)  # not a contribution leg
 
 
 @pytest.mark.postgres
