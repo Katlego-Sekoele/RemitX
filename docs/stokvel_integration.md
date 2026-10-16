@@ -637,7 +637,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 
 1. **EVM switch-over** (#204–#206): see the list below.
 2. **Contract** (#197–#200, now #212–#220): Hardhat project in `contracts/` (done, PR #282), tests per brief §7.5 (done), deploy and record the address in section 2 (#218, in progress).
-3. **Backend stokvel domain**: models and migrations → repositories → controllers → thin routes. Copy the shape of `confirm_remittance` for contributions: lock the user, check standing and limits, check available balance, insert pending legs sharing a group id.
+3. **Backend stokvel domain**: models and migrations → repositories → controllers → thin routes. Copy the shape of `confirm_remittance` for contributions: lock the user, check standing and limits, check available balance, insert pending legs. **Built (R2-11, #233):** the contribution row points at its legs (`fiat_tx_id`, `token_tx_id`, `fee_tx_id`) instead of a group id (section 8).
 4. **Settlement** (#201): contribution submit and confirm, event sync, pool release → stokvel account → remittance → existing burn chain. A retried settlement must not duplicate release, burn or credit.
 5. **Frontend**: member and Organiser screens, invitations, admin pause and cancel, using shadcn/ui and Aceternity per CLAUDE.md; run `npm run generate:api`.
 6. **Testing and demo**: three members × three rounds, blocked round, duplicate contribution, early finalisation, settlement retry test, seeder story updates.
@@ -675,7 +675,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
        → worker (web3.py) → stokvel contract → event → sync task → database
 ```
 
-- **Contribution:** the member's fiat account is debited for `contribution_amount × live rate` (counts toward their limits), and the worker sends exactly `contribution_amount` UCTUSD from the Treasury Wallet to the contract with `contribute`. The contribution is `confirmed` only after the on-chain event.
+- **Contribution:** the member's fiat account is debited for `contribution_amount × live rate` plus their fee share (D6), and both count toward their limits (D8). The ledger books member fiat → RemitX bank, Treasury → `STOKVEL` and member → fee revenue (section 3). The worker sends exactly `contribution_amount` UCTUSD from the Treasury Wallet to the contract with `contribute`. The contribution is `confirmed` only after the on-chain event.
 - **Finalisation:** when every member has paid round N+1 (or everyone has paid the last round) **and the round's payout time has passed**, the contract releases round N's pool to the Treasury Wallet. The database credits the stokvel's `STOKVEL` ledger account.
 - **Payout:** the stokvel is the sender. A quote and remittance are created from the stokvel account to the scheduled member's Payout beneficiary, for the full pool: FSE's fee and margin were already paid by the members on top of their contributions (D6), so the payout charges none. The existing settlement chain burns the UCTUSD and credits the beneficiary's payout-currency account. The burn hash, beneficiary credit and remittance reference are stored together.
 - **No bridge:** nothing moves on the XRP Ledger; the remittance step produces the quotation, record and reference, and the burn stands for the simulated cash-out.
