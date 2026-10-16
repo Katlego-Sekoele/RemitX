@@ -51,9 +51,9 @@ book into the account as they are made, and a release books out of it:
 
 | Step | Ledger | On-chain |
 |---|---|---|
-| Contribution | member fiat -> RemitX bank; Treasury Wallet -> `STOKVEL` | Treasury -> contract |
+| Contribution | member fiat -> RemitX bank; Treasury Wallet -> `STOKVEL`; member fiat -> RemitX fee revenue (their fee share, paid on top, D6) | Treasury -> contract |
 | Pool release | `STOKVEL` -> Treasury Wallet | contract -> Treasury |
-| Payout | Treasury -> `STOKVEL` -> beneficiary token -> Treasury -> burn | burn |
+| Payout | Treasury -> `STOKVEL` -> beneficiary token -> Treasury -> burn (the full pool: no fee, the members paid it) | burn |
 
 - The `STOKVEL` balance is therefore the stokvel's **unreleased pools in the
   contract**, not a released pool waiting for its payout, as first written.
