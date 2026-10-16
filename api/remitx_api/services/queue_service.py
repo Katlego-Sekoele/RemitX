@@ -23,6 +23,8 @@ PROCESS_INTEGRATION_MESSAGE = "remitx_worker.tasks.process_integration_message"
 SETTLE_REMITTANCE = "remitx_worker.tasks.settle_remittance"
 BURN_TREASURY_TOKENS = "remitx_worker.tasks.burn_treasury_tokens"
 CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
+# The stokvel worker tasks (doc section 4): R2-12 (#234) registers this name.
+SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -166,6 +168,20 @@ def enqueue_confirm_treasury_burn(
     producer.send_task(
         CONFIRM_TREASURY_BURN,
         args=[quote_id, tx_hash, error],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_submit_contribution(contribution_id: str) -> None:
+    """Enqueued by `POST /stokvels/{id}/contributions` once the pending
+    contribution and its legs are committed: the worker claims it and sends
+    `contribute` from the Treasury Wallet (R2-12, #234). Only ever needs
+    `contribution_id`, the key its claim is guarded on.
+    """
+    producer.send_task(
+        SUBMIT_CONTRIBUTION,
+        args=[contribution_id],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()

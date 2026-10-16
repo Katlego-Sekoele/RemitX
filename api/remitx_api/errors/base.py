@@ -17,9 +17,15 @@ class DomainError(Exception):
 
     Subclasses set ``status_code`` and build ``detail`` — the message the
     caller reads, so it says what to do about it, not just what failed.
+
+    ``code`` is an optional stable, machine-readable name for the refusal
+    (the stokvel codes in docs/stokvel_integration.md section 6), for a
+    client that has to tell refusals with the same status apart. The
+    response carries it next to ``detail`` when it is set.
     """
 
     status_code: int = status.HTTP_400_BAD_REQUEST
+    code: str | None = None
 
     def __init__(self, detail: str) -> None:
         super().__init__(detail)

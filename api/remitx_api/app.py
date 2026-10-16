@@ -61,10 +61,11 @@ def create_app(config_class: type[Config] = Config) -> FastAPI:
         act on, and routes are supposed to be HTTP only. The body matches
         ``HTTPException``'s so a client sees one error shape.
         """
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": exc.detail},
-        )
+        content = {"detail": exc.detail}
+        # A refusal with a stable name says so too (stokvel codes, doc §6).
+        if exc.code is not None:
+            content["code"] = exc.code
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.middleware("http")
     async def db_session_middleware(request: Request, call_next):

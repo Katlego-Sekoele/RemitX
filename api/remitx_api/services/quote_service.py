@@ -168,6 +168,16 @@ def to_zar(amount: Decimal, currency: str) -> Decimal:
     return round_amount(amount * token_rate / zar_rate)
 
 
+def token_to_fiat(token_amount: Decimal, currency: str) -> Decimal:
+    """What `token_amount` UCTUSD costs in `currency` at the live rate, to the
+    cent: a stokvel contribution's fiat debit (D13, the fixed token amount at
+    the rate when the member pays). The same rate `price_remittance` uses
+    (`_token_rate`), the other way: dividing, as that rate is token per unit
+    of `currency`."""
+    rate, _ = _token_rate(currency)
+    return round_amount(token_amount / rate)
+
+
 def price_remittance(
     sender_amount: Decimal, sender_currency: str, receiver_payout_currency: str
 ) -> RemittancePricing:
