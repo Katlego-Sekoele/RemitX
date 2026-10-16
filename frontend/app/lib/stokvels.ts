@@ -13,14 +13,18 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query"
 
 import {
   sdk,
+  type BeneficiaryRead,
+  type StokvelPayoutOrderRequest,
   type SentStokvelInvitationRead,
   type StokvelContributionRead,
+  type StokvelCycleStartRequest,
   type StokvelInvitationCreateRequest,
   type StokvelInvitationRead,
   type StokvelListRead,
   type StokvelRead,
 } from "~/client"
 import { amountToCents, fromCents } from "~/lib/money"
+import type { StokvelRoundTimes } from "~/lib/stokvel-schedule"
 import {
   demoStokvelsMock,
   acceptInvitationMock,
@@ -29,6 +33,9 @@ import {
   getStokvelContractStatusMock,
   getStokvelMock,
   inviteMock,
+  setMyBeneficiaryMock,
+  setPayoutOrderMock,
+  startCycleMock,
 } from "~/lib/stokvels.mock"
 
 export type {
@@ -96,6 +103,9 @@ export type StokvelMemberRead = {
   is_organiser: boolean
   is_me: boolean
   joined_at: string
+  /** Has chosen a payout beneficiary for the next cycle. A cycle starts
+   * only when every member has (#232). */
+  payout_ready: boolean
 }
 
 /** R4-09: assumed until #236 (or #244 for the contract). */
@@ -176,6 +186,9 @@ export type StokvelDetailRead = StokvelRead & {
    * `GET /stokvels/{id}` (#236) isn't wired: its phase, members and
    * invitations aren't known, so nothing may act on them. R4-09: drop. */
   partial: boolean
+  /** Member ids in the payout order the Organiser entered for the next
+   * cycle (D3), or null until entered. Index = round. */
+  planned_payout_order: string[] | null
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -245,6 +258,7 @@ async function detailFromList(
     cycle: null,
     contributions: [],
     partial: true,
+    planned_payout_order: null,
   }
 }
 
@@ -326,6 +340,47 @@ export const stokvelMutations = {
       return data
     },
   }),
+  /** `PUT /stokvels/{id}/members/me/beneficiary` (#231, built): the payout
+   * goes to this beneficiary in their saved payout currency. */
+  setMyBeneficiary: (stokvelId: string) => ({
+    mutationFn: async (beneficiary: BeneficiaryRead): Promise<void> => {
+      if (usesMock(isDemoStokvel(stokvelId))) {
+        return setMyBeneficiaryMock(stokvelId, beneficiary)
+      }
+      await sdk.stokvels.setMyBeneficiary({
+        path: { stokvel_id: stokvelId },
+        body: { beneficiary_id: beneficiary.beneficiary_id },
+        throwOnError: true,
+      })
+    },
+  }),
+  /** `PUT /stokvels/{id}/payout-order` (#231, built): Organiser only. */
+  setPayoutOrder: (stokvelId: string) => ({
+    mutationFn: async (body: StokvelPayoutOrderRequest): Promise<void> => {
+      if (usesMock(isDemoStokvel(stokvelId))) {
+        return setPayoutOrderMock(stokvelId, body)
+      }
+      await sdk.stokvels.setPayoutOrder({
+        path: { stokvel_id: stokvelId },
+        body,
+        throwOnError: true,
+      })
+    },
+  }),
+  /** `POST /stokvels/{id}/cycles` (#232, built in #348): one round per
+   * current member, in payout order. Pending invitations lapse. */
+  startCycle: (stokvelId: string) => ({
+    mutationFn: async (body: StokvelCycleStartRequest): Promise<void> => {
+      if (usesMock(isDemoStokvel(stokvelId))) {
+        return startCycleMock(stokvelId, body)
+      }
+      await sdk.stokvels.startStokvelCycle({
+        path: { stokvel_id: stokvelId },
+        body,
+        throwOnError: true,
+      })
+    },
+  }),
   /** `POST /invitations/{id}/decline` (#230, built). Revoking (#297) is not
    * built yet, so the Organiser has no Revoke button. */
   declineInvitation: () => ({
@@ -383,10 +438,68 @@ export function normaliseReference(reference: string): string {
   return reference.trim().toLowerCase()
 }
 
+/** Why the Organiser can't start the cycle yet, in the order to fix them
+ * (#232's `too_few_members` and `cycle_not_ready`); empty when it can. */
+export function startCycleBlockers(
+  detail: Pick<StokvelDetailRead, "members" | "planned_payout_order" | "phase">
+): string[] {
+  if (detail.phase !== CycleStatus.forming) return []
+  const blockers: string[] = []
+  if (detail.members.length < 2) {
+    blockers.push("A cycle needs at least 2 members.")
+  }
+  for (const member of detail.members) {
+    if (!member.payout_ready) {
+      blockers.push(
+        member.is_me
+          ? "Choose your payout beneficiary."
+          : `${member.full_name.split(" ")[0]} hasn't chosen a payout beneficiary yet.`
+      )
+    }
+  }
+  const order = detail.planned_payout_order ?? []
+  const everyone = new Set(detail.members.map((m) => m.member_id))
+  if (
+    order.length !== everyone.size ||
+    !order.every((memberId) => everyone.has(memberId))
+  ) {
+    blockers.push("Set the payout order.")
+  }
+  return blockers
+}
+
+/** The planned order, completed with any member not in it yet (a new member
+ * joins at the end), so the Organiser always has a full list. */
+export function payoutOrderWithEveryone(
+  detail: Pick<StokvelDetailRead, "members" | "planned_payout_order">
+): string[] {
+  const everyone = detail.members.map((m) => m.member_id)
+  const kept = (detail.planned_payout_order ?? []).filter((id) =>
+    everyone.includes(id)
+  )
+  return [...kept, ...everyone.filter((id) => !kept.includes(id))]
+}
+
+/** `order` with the item at `from` moved one place up (-1) or down (+1). */
+export function moveInOrder(
+  order: readonly string[],
+  from: number,
+  step: -1 | 1
+): string[] {
+  const to = from + step
+  if (from < 0 || to < 0 || from >= order.length || to >= order.length) {
+    return [...order]
+  }
+  const next = [...order]
+  ;[next[from], next[to]] = [next[to], next[from]]
+  return next
+}
+
 /** The development-only scenario knobs, re-exported so pages import every
  * stokvel thing from this file and R4-09 stays a change here. */
 export {
   resetStokvelMockScenario,
+  simulateInviteesAcceptMock,
   stokvelMockScenario,
 } from "~/lib/stokvels.mock"
 

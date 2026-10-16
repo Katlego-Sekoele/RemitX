@@ -9,6 +9,7 @@
  */
 
 import type {
+  BeneficiaryRead,
   SentStokvelInvitationRead,
   StokvelContributionRead,
   StokvelInvitationRead,
@@ -16,6 +17,7 @@ import type {
   StokvelRead,
 } from "~/client"
 import { amountToCents, fromCents, subtractMoney, sumMoney } from "~/lib/money"
+import type { StokvelRoundTimes } from "~/lib/stokvel-schedule"
 import {
   feeShare,
   poolAmount,
@@ -57,6 +59,7 @@ const GROCERIES: StokvelDetailRead = {
       is_organiser: false,
       is_me: false,
       joined_at: "2026-09-10T08:00:00Z",
+      payout_ready: true,
     },
     {
       member_id: "mem_sipho",
@@ -65,6 +68,7 @@ const GROCERIES: StokvelDetailRead = {
       is_organiser: false,
       is_me: true,
       joined_at: "2026-09-10T09:30:00Z",
+      payout_ready: true,
     },
     {
       member_id: "mem_lerato",
@@ -73,6 +77,7 @@ const GROCERIES: StokvelDetailRead = {
       is_organiser: true,
       is_me: false,
       joined_at: "2026-09-09T18:00:00Z",
+      payout_ready: true,
     },
   ],
   invitations: [],
@@ -171,6 +176,7 @@ const GROCERIES: StokvelDetailRead = {
     },
   ],
   partial: false,
+  planned_payout_order: null,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
@@ -200,6 +206,7 @@ const TAXI_FUND: StokvelDetailRead = {
       is_organiser: true,
       is_me: true,
       joined_at: "2026-10-12T11:00:00Z",
+      payout_ready: false,
     },
     {
       member_id: "mem_naledi_taxi",
@@ -208,6 +215,7 @@ const TAXI_FUND: StokvelDetailRead = {
       is_organiser: false,
       is_me: false,
       joined_at: "2026-10-13T08:15:00Z",
+      payout_ready: true,
     },
   ],
   invitations: [
@@ -223,6 +231,7 @@ const TAXI_FUND: StokvelDetailRead = {
   cycle: null,
   contributions: [],
   partial: false,
+  planned_payout_order: null,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
@@ -263,6 +272,7 @@ const SCHOOL_FEES: StokvelDetailRead = {
   },
   contributions: [],
   partial: false,
+  planned_payout_order: null,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -656,6 +666,7 @@ export async function acceptInvitationMock(
         is_organiser: true,
         is_me: false,
         joined_at: invitation.created_at,
+        payout_ready: true,
       },
       {
         member_id: myMemberId,
@@ -664,12 +675,14 @@ export async function acceptInvitationMock(
         is_organiser: false,
         is_me: true,
         joined_at: now,
+        payout_ready: false,
       },
     ],
     invitations: [],
     cycle: null,
     contributions: [],
     partial: false,
+    planned_payout_order: null,
   }
   DETAILS[detail.stokvel_id] = detail
   return structuredClone(summaryOf(detail))
@@ -681,4 +694,177 @@ export async function declineInvitationMock(
 ): Promise<void> {
   await settle(null)
   takeMyInvitation(invitationId)
+}
+
+function formingDetail(stokvelId: string): StokvelDetailRead {
+  const detail = DETAILS[stokvelId]
+  if (!detail) throw apiError("Stokvel not found.", 404)
+  if (detail.phase !== "forming") {
+    throw apiError(
+      "The payout order and beneficiaries are locked while a cycle is running.",
+      409,
+      "cycle_locked"
+    )
+  }
+  return detail
+}
+
+/** `PUT /stokvels/{id}/members/me/beneficiary` (#231) on a demo stokvel:
+ * the pool goes to this beneficiary in their saved payout currency. */
+export async function setMyBeneficiaryMock(
+  stokvelId: string,
+  beneficiary: Pick<
+    BeneficiaryRead,
+    "beneficiary_id" | "full_name" | "payout_currency"
+  >
+): Promise<void> {
+  await settle(null)
+  const detail = formingDetail(stokvelId)
+  detail.my_beneficiary = {
+    beneficiary_id: beneficiary.beneficiary_id,
+    full_name: beneficiary.full_name ?? "your beneficiary",
+    payout_currency: beneficiary.payout_currency,
+  }
+  const me = detail.members.find((member) => member.is_me)
+  if (me) me.payout_ready = true
+}
+
+/** `PUT /stokvels/{id}/payout-order` (#231) on a demo stokvel: every
+ * current member exactly once (D3). */
+export async function setPayoutOrderMock(
+  stokvelId: string,
+  body: { member_ids: string[] }
+): Promise<void> {
+  await settle(null, 150)
+  const detail = formingDetail(stokvelId)
+  if (!detail.is_organiser) {
+    throw apiError(
+      "Only the stokvel's organiser can set the payout order.",
+      403,
+      "not_organiser"
+    )
+  }
+  const everyone = new Set(detail.members.map((member) => member.member_id))
+  const order = body.member_ids
+  if (new Set(order).size !== order.length) {
+    throw apiError(
+      "Each member can appear only once in the payout order.",
+      422,
+      "invalid_payout_order"
+    )
+  }
+  if (
+    order.length !== everyone.size ||
+    !order.every((memberId) => everyone.has(memberId))
+  ) {
+    throw apiError(
+      "The payout order must include every current member.",
+      422,
+      "invalid_payout_order"
+    )
+  }
+  detail.planned_payout_order = [...order]
+}
+
+/**
+ * `POST /stokvels/{id}/cycles` (#232, as in #348) on a demo stokvel: starts
+ * the cycle with the members in payout order, one round each. Pending
+ * invitations lapse; members, order and beneficiaries lock.
+ */
+export async function startCycleMock(
+  stokvelId: string,
+  body: { rounds: StokvelRoundTimes[] }
+): Promise<void> {
+  await settle(null, 600)
+  const detail = DETAILS[stokvelId]
+  if (!detail) throw apiError("Stokvel not found.", 404)
+  if (!detail.is_organiser) {
+    throw apiError(
+      "Only the stokvel's organiser can start the cycle.",
+      403,
+      "not_organiser"
+    )
+  }
+  if (detail.phase !== "forming") {
+    throw apiError(
+      "This stokvel's cycle has already started.",
+      409,
+      "cycle_in_progress"
+    )
+  }
+  if (detail.members.length < 2) {
+    throw apiError("A cycle needs at least 2 members.", 409, "too_few_members")
+  }
+  const order = detail.planned_payout_order
+  const waiting = detail.members.find((member) => !member.payout_ready)
+  if (waiting || !order || order.length !== detail.members.length) {
+    throw apiError(
+      "Every member needs a place in the payout order and a payout beneficiary first.",
+      409,
+      "cycle_not_ready"
+    )
+  }
+  if (body.rounds.length !== order.length) {
+    throw apiError("Plan one round for each member.", 422, "invalid_schedule")
+  }
+  for (const invitation of detail.invitations) {
+    if (invitation.status === "pending") invitation.status = "lapsed"
+  }
+  detail.cycle = {
+    cycle_id: `cyc_${Date.now().toString(36)}`,
+    cycle_number: 1,
+    status: "active",
+    current_round: 0,
+    total_rounds: order.length,
+    started_at: new Date().toISOString(),
+    closed_at: null,
+    payout_order: [...order],
+    rounds: body.rounds.map((round, i) => ({
+      ...round,
+      round: i,
+      recipient_member_id: order[i],
+      release_status: i === 0 ? "pending" : null,
+      remittance_status: null,
+      remittance_id: null,
+      release_tx_hash: null,
+      burn_tx_hash: null,
+      pool_fiat_amount: null,
+      remittance_reference: null,
+    })),
+  }
+  detail.phase = "active"
+  detail.current_round = 0
+  detail.total_rounds = order.length
+  detail.next_payout_time = body.rounds[0]?.payout_time ?? null
+}
+
+/**
+ * Development only: everyone invited to a demo stokvel accepts and picks a
+ * beneficiary, so the Organiser can reach Start cycle in a demo. Removed
+ * with the mock in R4-09.
+ */
+export async function simulateInviteesAcceptMock(
+  stokvelId: string
+): Promise<number> {
+  await settle(null, 0)
+  const detail = DETAILS[stokvelId]
+  if (!detail) return 0
+  let joined = 0
+  for (const invitation of detail.invitations) {
+    if (invitation.status !== "pending") continue
+    if (detail.members.length >= detail.max_members) break
+    invitation.status = "accepted"
+    detail.members.push({
+      member_id: `mem_${invitation.invitation_id}`,
+      user_id: INVITEE_OF[invitation.invitation_id] ?? invitation.invitation_id,
+      full_name: invitation.invitee_name ?? invitation.account_reference,
+      is_organiser: false,
+      is_me: false,
+      joined_at: new Date().toISOString(),
+      payout_ready: true,
+    })
+    joined++
+  }
+  detail.member_count = detail.members.length
+  return joined
 }

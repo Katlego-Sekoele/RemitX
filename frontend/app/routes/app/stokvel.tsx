@@ -5,7 +5,9 @@ import { Link, useParams } from "react-router"
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContributionPanel } from "~/components/stokvels/contribution-panel"
+import { CycleSetup } from "~/components/stokvels/cycle-setup"
 import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
+import { PayoutBeneficiaryCard } from "~/components/stokvels/payout-beneficiary-card"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
 import { PotRing } from "~/components/stokvels/pot-ring"
 import {
@@ -45,6 +47,7 @@ import {
   paidMemberIds,
   pendingInvitations,
   resetStokvelMockScenario,
+  simulateInviteesAcceptMock,
   stokvelMockScenario,
   PHASE_LABELS,
   poolAmount,
@@ -258,34 +261,64 @@ function StokvelDetail({
           />
         </>
       ) : stokvel.phase === "forming" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Setting up</CardTitle>
-            <CardDescription>
-              {stokvel.member_count} of {stokvel.max_members} members
-              {/* A stokvel built from its list row (`partial`) doesn't know
-                  its invitations or beneficiary yet: say only what's known. */}
-              {stokvel.partial ? null : (
-                <>
-                  {" "}
-                  · {pendingInvitations(stokvel).length} invited ·{" "}
-                  {stokvel.my_beneficiary
-                    ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
-                    : "choose a payout beneficiary to be ready"}
-                </>
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Beneficiary picker, payout order and Start cycle: #255. */}
-            <Button variant="outline" disabled>
-              {stokvel.is_organiser ? "Start cycle" : "Choose beneficiary"}
-            </Button>
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Setting up</CardTitle>
+              <CardDescription>
+                {stokvel.member_count} of {stokvel.max_members} members
+                {/* A stokvel built from its list row (`partial`) doesn't know
+                    its invitations yet: say only what's known. */}
+                {stokvel.partial
+                  ? null
+                  : ` · ${pendingInvitations(stokvel).length} invited`}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <PayoutBeneficiaryCard stokvel={stokvel} />
+          {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
+          {stokvel.is_organiser ? (
+            !stokvel.partial && stokvel.members.length > 0 ? (
+              <CycleSetup stokvel={stokvel} />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Start the cycle</CardTitle>
+                  <CardDescription>
+                    The payout order and Start cycle appear here once the page
+                    can list this stokvel&apos;s members.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Waiting to start</CardTitle>
+                <CardDescription>
+                  {stokvel.organiser_name ?? "The organiser"} starts the cycle
+                  once everyone has chosen a payout beneficiary.
+                </CardDescription>
+              </CardHeader>
+              {stokvel.planned_payout_order ? (
+                <CardContent>
+                  <ol className="flex flex-col gap-1">
+                    {stokvel.planned_payout_order.map((memberId, i) => {
+                      const m = member(memberId)
+                      return (
+                        <li key={memberId}>
+                          Round {i + 1}:{" "}
+                          {m ? (m.is_me ? "You" : m.full_name) : "A member"}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </CardContent>
+              ) : null}
+            </Card>
+          )}
+        </>
       ) : null}
-
-      {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
 
       {cycle ? (
         <PayoutQueue
@@ -345,14 +378,16 @@ function StokvelDetail({
         />
       ) : null}
 
-      {import.meta.env.DEV ? <MockScenarios /> : null}
+      {import.meta.env.DEV ? (
+        <MockScenarios stokvelId={stokvel.stokvel_id} />
+      ) : null}
     </div>
   )
 }
 
 /** Development only: the states the screen must show while the API is
  * mocked (doc §6; product docx §7). Removed with the mock in R4-09. */
-function MockScenarios() {
+function MockScenarios({ stokvelId }: { stokvelId: string }) {
   const queryClient = useQueryClient()
   const refresh = () => invalidateStokvels(queryClient)
   return (
@@ -360,7 +395,8 @@ function MockScenarios() {
       <CardHeader>
         <CardTitle>Mock scenarios</CardTitle>
         <CardDescription>
-          Development only. Change the mocked API&apos;s answer, then pay.
+          Development only. Change the mocked API&apos;s answer, then pay or
+          start the cycle.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
@@ -383,6 +419,16 @@ function MockScenarios() {
           }}
         >
           Low balance
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={async () => {
+            await simulateInviteesAcceptMock(stokvelId)
+            refresh()
+          }}
+        >
+          Invitees accept
         </Button>
         <Button
           size="sm"

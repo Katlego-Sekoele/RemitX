@@ -391,3 +391,140 @@ test("accepting a demo invitation joins; it can't be answered twice", async () =
   resetStokvelMockScenario()
   assert.equal((await demoStokvelsMock()).invitations.length, 1)
 })
+
+test("moveInOrder swaps neighbours and ignores moves off the ends", async () => {
+  const { moveInOrder } = await import("./stokvels")
+  assert.deepEqual(moveInOrder(["a", "b", "c"], 2, -1), ["a", "c", "b"])
+  assert.deepEqual(moveInOrder(["a", "b", "c"], 0, 1), ["b", "a", "c"])
+  assert.deepEqual(moveInOrder(["a", "b"], 0, -1), ["a", "b"])
+  assert.deepEqual(moveInOrder(["a", "b"], 1, 1), ["a", "b"])
+})
+
+test("payoutOrderWithEveryone keeps the saved order and adds newcomers", async () => {
+  const { payoutOrderWithEveryone } = await import("./stokvels")
+  const members = ["a", "b", "c"].map((member_id) => ({ member_id }))
+  assert.deepEqual(
+    payoutOrderWithEveryone({
+      members: members as never,
+      planned_payout_order: ["c", "gone", "a"],
+    }),
+    ["c", "a", "b"]
+  )
+  assert.deepEqual(
+    payoutOrderWithEveryone({
+      members: members as never,
+      planned_payout_order: null,
+    }),
+    ["a", "b", "c"]
+  )
+})
+
+test("startCycleBlockers lists what stops the cycle starting", async () => {
+  const { startCycleBlockers } = await import("./stokvels")
+  const me = {
+    member_id: "m1",
+    full_name: "Sipho Khumalo",
+    is_me: true,
+    payout_ready: false,
+  }
+  const thandi = {
+    member_id: "m2",
+    full_name: "Thandi Nkosi",
+    is_me: false,
+    payout_ready: false,
+  }
+  assert.deepEqual(
+    startCycleBlockers({
+      phase: "forming",
+      members: [me] as never,
+      planned_payout_order: null,
+    }),
+    [
+      "A cycle needs at least 2 members.",
+      "Choose your payout beneficiary.",
+      "Set the payout order.",
+    ]
+  )
+  assert.deepEqual(
+    startCycleBlockers({
+      phase: "forming",
+      members: [{ ...me, payout_ready: true }, thandi] as never,
+      planned_payout_order: ["m2", "m1"],
+    }),
+    ["Thandi hasn't chosen a payout beneficiary yet."]
+  )
+  assert.deepEqual(
+    startCycleBlockers({
+      phase: "active",
+      members: [me] as never,
+      planned_payout_order: null,
+    }),
+    []
+  )
+})
+
+test("set up and start a demo cycle, refusing as the API does", async () => {
+  const {
+    setMyBeneficiaryMock,
+    setPayoutOrderMock,
+    simulateInviteesAcceptMock,
+    startCycleMock,
+  } = await import("./stokvels.mock")
+  const { generateSchedule } = await import("./stokvel-schedule")
+  const { payoutOrderWithEveryone, pendingInvitations, startCycleBlockers } =
+    await import("./stokvels")
+  const taxi = "stk_77e0"
+
+  // Sipho has no beneficiary yet, and no order is set.
+  await expect(startCycleMock(taxi, { rounds: [] })).rejects.toMatchObject({
+    status: 409,
+    body: { code: "cycle_not_ready" },
+  })
+  await setMyBeneficiaryMock(taxi, {
+    beneficiary_id: "ben_tendai",
+    full_name: "Tendai Moyo",
+    payout_currency: "ZWL",
+  })
+  // Earlier tests left Bongani and Thandi invited; one place is free.
+  assert.equal(await simulateInviteesAcceptMock(taxi), 1)
+  const ready = await getStokvelMock(taxi)
+  assert.equal(ready.member_count, 3)
+  assert.equal(ready.my_beneficiary?.payout_currency, "ZWL")
+
+  const order = payoutOrderWithEveryone(ready).reverse()
+  await expect(
+    setPayoutOrderMock(taxi, { member_ids: [order[0], order[0], order[1]] })
+  ).rejects.toMatchObject({
+    status: 422,
+    body: { code: "invalid_payout_order" },
+  })
+  await setPayoutOrderMock(taxi, { member_ids: order })
+  assert.deepEqual(startCycleBlockers(await getStokvelMock(taxi)), [])
+
+  const rounds = generateSchedule({
+    firstPayout: new Date(2026, 10, 20, 14, 0),
+    frequency: "monthly",
+    rounds: 3,
+    payByDaysBefore: 2,
+    now: new Date(2026, 9, 16),
+  })
+  await startCycleMock(taxi, { rounds })
+  const started = await getStokvelMock(taxi)
+  assert.equal(started.phase, "active")
+  assert.deepEqual(started.cycle?.payout_order, order)
+  assert.equal(started.cycle?.rounds[0].recipient_member_id, order[0])
+  assert.equal(started.next_payout_time, rounds[0].payout_time)
+  // The invitation still pending lapsed; the setup is locked now.
+  assert.equal(pendingInvitations(started).length, 0)
+  await expect(
+    setMyBeneficiaryMock(taxi, {
+      beneficiary_id: "ben_x",
+      full_name: "X",
+      payout_currency: "ZAR",
+    })
+  ).rejects.toMatchObject({ status: 409, body: { code: "cycle_locked" } })
+  await expect(startCycleMock(taxi, { rounds })).rejects.toMatchObject({
+    status: 409,
+    body: { code: "cycle_in_progress" },
+  })
+})

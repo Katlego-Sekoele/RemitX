@@ -31,6 +31,14 @@ export const STOKVEL_ERROR_MESSAGES = {
   not_invitee: "Only the person invited can answer this invitation.",
   invitation_not_pending:
     "This invitation has already been answered or has expired.",
+  // Payout order, beneficiary and starting a cycle (#231, #232). Not here:
+  // cycle_not_ready and invalid_schedule, whose `detail` says which part is
+  // missing or wrong, so the API's message is shown as is.
+  cycle_locked:
+    "The payout order and beneficiaries are locked while a cycle is running.",
+  cycle_not_forming: "This stokvel's next cycle hasn't been opened yet.",
+  cycle_in_progress: "This stokvel's cycle has already started.",
+  too_few_members: "A cycle needs at least 2 members.",
   // #232: a cycle has started but is not on-chain yet; worth a retry.
   cycle_starting:
     "This stokvel's cycle is still being set up. Try again in a minute.",
