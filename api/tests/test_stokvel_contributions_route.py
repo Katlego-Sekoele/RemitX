@@ -57,7 +57,8 @@ from remitx_api.repositories.stokvel_contribution_repository import (
     StokvelContributionRepository,
 )
 from remitx_api.services import queue_service
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 from tests.platform_account_helpers import seed_platform_accounts
 
@@ -185,6 +186,7 @@ def _build(app, monkeypatch, *, seed_platform: bool, caller_verified=True) -> Gr
                     payout_position=position,
                     payout_beneficiary_id=beneficiary.beneficiary_id,
                     payout_currency=payout_currency,
+                    locked=True,
                 )
             )
         for number in range(2):
@@ -395,17 +397,19 @@ def test_an_unknown_stokvel_is_not_found(group):
     assert "code" not in response.json()
 
 
-def test_someone_who_is_not_a_member_is_refused(group):
+def test_someone_who_is_not_a_member_gets_not_found(group):
+    # As for an unknown id: on Postgres row-level security hides the stokvel
+    # from them anyway (see the postgres test below).
     outsider = _in_session(lambda: _commit(_user(f"out_{uuid.uuid4().hex[:6]}")))
     group.client.app.dependency_overrides[get_current_user] = lambda: outsider
 
     response = group.contribute()
 
-    assert response.status_code == 403
-    assert response.json()["code"] == "not_a_member"
+    assert response.status_code == 404
+    assert _contributions(group) == []
 
 
-def test_a_member_who_left_is_refused(group):
+def test_a_member_who_left_gets_not_found(group):
     def leave():
         db.session.get(StokvelMember, group.caller_member_id).left_at = datetime.now(
             UTC
@@ -416,8 +420,7 @@ def test_a_member_who_left_is_refused(group):
 
     response = group.contribute()
 
-    assert response.status_code == 403
-    assert response.json()["code"] == "not_a_member"
+    assert response.status_code == 404
 
 
 def test_a_member_outside_the_current_cycle_is_refused(group):
@@ -588,6 +591,41 @@ def test_a_payment_that_slips_past_the_paid_check_is_still_refused(group, monkey
     assert _in_session(legs) == []  # the pending legs rolled back too
 
 
+def test_another_integrity_error_is_not_reported_as_already_paid(group, monkeypatch):
+    """Only the once-per-round index means "already paid": any other
+    constraint is a fault and is raised as is, not answered with a 409."""
+
+    def broken_add(self, entity):
+        raise IntegrityError("INSERT", {}, Exception("FOREIGN KEY constraint failed"))
+
+    monkeypatch.setattr(StokvelContributionRepository, "add", broken_add)
+
+    with pytest.raises(IntegrityError):
+        group.contribute()
+    assert group.enqueued == []
+
+
+def test_a_round_without_a_locked_recipient_is_a_fault(group):
+    # The fee depends on the recipient's payout currency, which is fixed
+    # only once their row is locked: never priced on a currency that might
+    # still change.
+    def unlock():
+        row = db.session.scalars(
+            select(StokvelCycleMember).where(
+                StokvelCycleMember.cycle_id == group.cycle_id,
+                StokvelCycleMember.payout_position == 0,
+            )
+        ).one()
+        row.locked = False
+        db.session.commit()
+
+    _in_session(unlock)
+
+    with pytest.raises(RuntimeError, match="locked recipient"):
+        group.contribute()
+    assert _contributions(group) == []
+
+
 def test_failed_contributions_do_not_count_toward_limits(group):
     _record(group, group.caller_member_id, 0, StokvelContributionStatus.FAILED)
 
@@ -637,6 +675,132 @@ def test_two_payments_at_once_record_one_contribution(postgres_app, monkeypatch)
         assert refused.json()["code"] == "contribution_already_paid"
         assert len(_contributions(built)) == 1
         assert len(built.enqueued) == 1
+
+
+@pytest.mark.postgres
+def test_under_row_security_an_outsider_gets_not_found(postgres_app, monkeypatch):
+    """Row-level security hides the stokvel from someone outside it, so they
+    get the same 404 as for an unknown id, as on SQLite."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+        outsider = _in_session(lambda: _commit(_user(f"out_{uuid.uuid4().hex[:6]}")))
+        postgres_app.dependency_overrides[get_current_user] = lambda: outsider
+
+        response = built.contribute()
+
+        assert response.status_code == 404
+        assert _contributions(built) == []
+
+
+@pytest.mark.postgres
+def test_under_row_security_a_slipped_duplicate_is_refused_as_paid(
+    postgres_app, monkeypatch
+):
+    """Postgres names the violated constraint, so the once-per-round index
+    is told apart from any other and answered as already paid."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+        _record(built, built.caller_member_id, 0)
+        monkeypatch.setattr(
+            StokvelContributionRepository,
+            "get_member_contribution",
+            lambda self, cycle_id, round_, member_id: None,
+        )
+
+        response = built.contribute()
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "contribution_already_paid"
+
+
+@pytest.mark.postgres
+def test_row_security_lets_no_member_change_or_remove_a_stokvel_leg(
+    postgres_app, monkeypatch
+):
+    """Members may read and record legs on their stokvel's account, but no
+    member's session may update or delete one: not another member's, and not
+    their own."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+        contribution_id = uuid.UUID(built.contribute().json()["contribution_id"])
+        leg_id = _in_session(
+            lambda: db.session.get(StokvelContribution, contribution_id).token_tx_id
+        )
+
+        def rows_changed(user: User, statement) -> int:
+            def run():
+                with bound_row_security_context(user.id, is_admin_route=False):
+                    changed = db.session.execute(statement).rowcount
+                db.session.rollback()
+                return changed
+
+            return _in_session(run)
+
+        where = Transaction.tx_id == leg_id
+        for user in (built.caller, built.other):
+            assert (
+                rows_changed(
+                    user, update(Transaction).where(where).values(amount=Decimal("1"))
+                )
+                == 0
+            )
+            assert rows_changed(user, delete(Transaction).where(where)) == 0
+
+        def amount():
+            return db.session.get(Transaction, leg_id).amount
+
+        assert _in_session(amount) == CONTRIBUTION
+
+
+@pytest.mark.postgres
+def test_row_security_refuses_a_stokvel_leg_from_a_former_member(
+    postgres_app, monkeypatch
+):
+    """A member who has left may still read the stokvel's legs, but may
+    record none."""
+    with TestClient(postgres_app) as client:
+        built = _build(postgres_app, monkeypatch, seed_platform=False)
+        built.client = client
+        contribution_id = uuid.UUID(built.contribute().json()["contribution_id"])
+
+        def leave():
+            db.session.get(StokvelMember, built.other_member_id).left_at = datetime.now(
+                UTC
+            )
+            db.session.commit()
+            contribution = db.session.get(StokvelContribution, contribution_id)
+            token = db.session.get(Transaction, contribution.token_tx_id)
+            return token.tx_id, token.credit_account_id, token.debit_account_id
+
+        leg_id, treasury_id, stokvel_account_id = _in_session(leave)
+
+        def read_then_record():
+            with bound_row_security_context(built.other.id, is_admin_route=False):
+                seen = (
+                    db.session.scalars(
+                        select(Transaction).where(Transaction.tx_id == leg_id)
+                    ).first()
+                    is not None
+                )
+                db.session.add(
+                    Transaction(
+                        type=TYPE_STOKVEL_CONTRIBUTION,
+                        credit_account_id=treasury_id,
+                        debit_account_id=stokvel_account_id,
+                        amount=CONTRIBUTION,
+                        currency=CURRENCY_TOKEN,
+                        status=STATUS_PENDING,
+                    )
+                )
+                with pytest.raises(Exception, match="row-level security"):
+                    db.session.flush()
+            db.session.rollback()
+            return seen
+
+        assert _in_session(read_then_record)
 
 
 @pytest.mark.postgres

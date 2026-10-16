@@ -8,11 +8,22 @@ neither, so the contribution API could not record it, and members could not see
 their stokvel's legs (doc section 8, which also rejects reading them through a
 server-side query that skips row-level security).
 
-This adds one clause to the policy: a leg on the ``STOKVEL`` account of a
-stokvel the caller is a member of (current or former, as for the group
-tables). The lookup is a ``SECURITY DEFINER`` function, as for the stokvel
-policies, so the policy does not re-enter row-level security on ``stokvels``
-and ``stokvel_members``. Everything else in the policy is unchanged.
+``transactions_by_current_user`` is left exactly as it is. Two permissive
+policies are added beside it, and Postgres ORs permissive policies for the same
+command together:
+
+- ``transactions_stokvel_member_select``: a customer may read a leg on the
+  ``STOKVEL`` account of a stokvel they are or were a member of (as the group
+  tables let former members read).
+- ``transactions_stokvel_member_insert``: a customer may record a leg into
+  that account (the debit side) only while they are a current member.
+
+There is no update or delete policy for these legs, so a member's session can
+change or remove none of them, their own included, as the stokvel tables allow
+no deletes (``V20261014_1200``, ``V20261016_0901``). Workers and admin routes
+already pass the original policy. The lookups are ``SECURITY DEFINER``
+functions, as for the stokvel policies, so the policies do not re-enter
+row-level security on ``stokvels`` and ``stokvel_members``.
 
 Revision ID: 3d9a61c47e20
 Revises: 86264fa21295
@@ -30,70 +41,56 @@ depends_on: str | tuple | None = None
 
 _ME = "current_setting('app.current_user_id', true)"
 _APP_ROLE = "remitx_app"
-_POLICY = "transactions_by_current_user"
-_FUNCTION = "stokvel_account_is_member"
+_SELECT_POLICY = "transactions_stokvel_member_select"
+_INSERT_POLICY = "transactions_stokvel_member_insert"
 
-# The policy as V20260922_2245 created it.
-_ORIGINAL = f"""
-COALESCE({_ME}, '') = ''
-OR current_setting('app.is_admin_route', true) = 'true'
-OR EXISTS (
-  SELECT 1 FROM accounts
-  WHERE accounts.type = 'USER'
-    AND accounts.user_id::text = {_ME}
-    AND (
-      accounts.account_id = transactions.credit_account_id
-      OR accounts.account_id = transactions.debit_account_id
-    )
-)
-OR EXISTS (
-  SELECT 1 FROM quotes
-  WHERE quotes.quote_id = transactions.quote_id
-    AND (
-      sender_user_id::text = {_ME}
-      OR beneficiary_user_id::text = {_ME}
-    )
-)
+_STOKVEL_ACCOUNT_MEMBERS = """
+  SELECT 1 FROM stokvels
+  JOIN stokvel_members ON stokvel_members.stokvel_id = stokvels.id
+  WHERE stokvels.account_id = p_account_id
+    AND stokvel_members.user_id::text = p_user_id
 """
 
-_WITH_STOKVEL_ACCOUNT = f"""{_ORIGINAL}
-OR {_FUNCTION}(transactions.credit_account_id, {_ME})
-OR {_FUNCTION}(transactions.debit_account_id, {_ME})
-"""
-
-
-def _replace_policy(expression: str) -> None:
-    op.execute(f"DROP POLICY IF EXISTS {_POLICY} ON transactions")
-    op.execute(
-        f"""
-        CREATE POLICY {_POLICY} ON transactions
-          USING ({expression})
-          WITH CHECK ({expression})
-        """
-    )
+# name: whether p_user_id is (or, for the first, was) a member of the stokvel
+# whose STOKVEL account is p_account_id
+_FUNCTIONS = {
+    "stokvel_account_is_member": _STOKVEL_ACCOUNT_MEMBERS,
+    "stokvel_account_is_active_member": _STOKVEL_ACCOUNT_MEMBERS
+    + "    AND stokvel_members.left_at IS NULL\n",
+}
 
 
 def upgrade() -> None:
+    for name, sql in _FUNCTIONS.items():
+        op.execute(
+            f"""
+            CREATE FUNCTION {name}(p_account_id uuid, p_user_id text)
+              RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $$ SELECT EXISTS ({sql}) $$
+            """
+        )
+        op.execute(f"REVOKE ALL ON FUNCTION {name}(uuid, text) FROM PUBLIC")
+        op.execute(f"GRANT EXECUTE ON FUNCTION {name}(uuid, text) TO {_APP_ROLE}")
     op.execute(
         f"""
-        CREATE FUNCTION {_FUNCTION}(p_account_id uuid, p_user_id text)
-          RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-          SET search_path = pg_catalog, public, pg_temp
-          AS $$
-            SELECT EXISTS (
-              SELECT 1 FROM stokvels
-              JOIN stokvel_members ON stokvel_members.stokvel_id = stokvels.id
-              WHERE stokvels.account_id = p_account_id
-                AND stokvel_members.user_id::text = p_user_id
-            )
-          $$
+        CREATE POLICY {_SELECT_POLICY} ON transactions FOR SELECT
+          USING (
+            stokvel_account_is_member(credit_account_id, {_ME})
+            OR stokvel_account_is_member(debit_account_id, {_ME})
+          )
         """
     )
-    op.execute(f"REVOKE ALL ON FUNCTION {_FUNCTION}(uuid, text) FROM PUBLIC")
-    op.execute(f"GRANT EXECUTE ON FUNCTION {_FUNCTION}(uuid, text) TO {_APP_ROLE}")
-    _replace_policy(_WITH_STOKVEL_ACCOUNT)
+    op.execute(
+        f"""
+        CREATE POLICY {_INSERT_POLICY} ON transactions FOR INSERT
+          WITH CHECK (stokvel_account_is_active_member(debit_account_id, {_ME}))
+        """
+    )
 
 
 def downgrade() -> None:
-    _replace_policy(_ORIGINAL)
-    op.execute(f"DROP FUNCTION IF EXISTS {_FUNCTION}(uuid, text)")
+    op.execute(f"DROP POLICY IF EXISTS {_INSERT_POLICY} ON transactions")
+    op.execute(f"DROP POLICY IF EXISTS {_SELECT_POLICY} ON transactions")
+    for name in reversed(_FUNCTIONS):
+        op.execute(f"DROP FUNCTION IF EXISTS {name}(uuid, text)")

@@ -76,6 +76,22 @@ from remitx_api.services.quote_service import (
 from remitx_api.services.send_limits import require_can_send
 
 _CENT = Decimal("0.01")
+_ONCE_CONSTRAINT = "uq_stokvel_contributions_once"
+# SQLite names no constraint in its error, only the columns of a unique one.
+_ONCE_SQLITE_MESSAGE = (
+    "UNIQUE constraint failed: stokvel_contributions.cycle_id, "
+    "stokvel_contributions.round, stokvel_contributions.member_id"
+)
+
+
+def _is_paid_twice(exc: IntegrityError) -> bool:
+    """Whether `exc` is a violation of `uq_stokvel_contributions_once`.
+    Postgres (psycopg2) names the constraint in the error's diagnostics;
+    SQLite gives only the unique columns in its message."""
+    diag = getattr(exc.orig, "diag", None)
+    if diag is not None:
+        return diag.constraint_name == _ONCE_CONSTRAINT
+    return _ONCE_SQLITE_MESSAGE in str(exc.orig)
 
 
 def contribution_fee_share(
@@ -83,7 +99,7 @@ def contribution_fee_share(
     currency: str,
     *,
     member_count: int,
-    payout_currency: str | None,
+    payout_currency: str,
 ) -> Decimal:
     """Each member's share of the round's payout fee, paid on top of their
     contribution, in the Stokvel currency (product question 4, option A:
@@ -93,12 +109,14 @@ def contribution_fee_share(
     every member) to its recipient's beneficiary, so its fee and margin are
     FSE's usual ones on that pool (`remittance_fee_and_margin`): no margin
     when the recipient is paid in the Stokvel currency. The total is split
-    equally and rounded up to the cent, so the members always cover it. A
-    recipient with no payout currency yet is treated as paid in another
-    currency, so the margin is never under-collected.
+    equally and rounded up to the cent, so the members always cover it. The
+    recipient's payout currency is locked when the cycle starts, so it is the
+    same for every member of the round.
 
-    Worked out at the rate when the member pays, as the contribution is; the
-    one place to change if the rule does.
+    Worked out at the rate when the member pays, as the contribution is. In a
+    stokvel whose currency is not ZAR, members who pay at different rates pay
+    slightly different shares, and the shares need not add up exactly to the
+    fee on the pool paid out (D6). The one place to change if the rule does.
     """
     pool = amount_fiat * member_count
     fee, margin = remittance_fee_and_margin(pool, currency, payout_currency)
@@ -150,11 +168,16 @@ class StokvelContributionController:
         self._users.lock(user_id)
 
         stokvel = self._stokvels.get_by_id(stokvel_id)
-        if stokvel is None:
-            raise StokvelNotFoundError()
-        member = self._members.get_active_member(stokvel.id, user_id)
+        # Not a current member: the same 404 as an unknown id. On Postgres,
+        # row-level security hides the stokvel from outsiders anyway, so this
+        # keeps SQLite's answer the same and reveals nothing about the id.
+        member = (
+            None
+            if stokvel is None
+            else self._members.get_active_member(stokvel.id, user_id)
+        )
         if member is None:
-            raise NotACycleMemberError()
+            raise StokvelNotFoundError()
         cycle = self._cycles.get_open_cycle(stokvel.id)
         if cycle is None or cycle.status != StokvelCycleStatus.ACTIVE.value:
             raise CycleNotOpenError()
@@ -162,11 +185,15 @@ class StokvelContributionController:
         cycle_member_ids = {row.member_id for row in cycle_members}
         if member.id not in cycle_member_ids:
             raise NotACycleMemberError()
+        if cycle.total_rounds is None:
+            # Set when the cycle starts (stokvel_cycles_started_has_total_rounds
+            # holds it): never reported as a round that isn't open.
+            raise RuntimeError(f"active cycle {cycle.id} has no total_rounds")
 
         round_ = self._contributions.open_round(
             cycle.id,
             member_count=len(cycle_member_ids),
-            total_rounds=cycle.total_rounds or 0,
+            total_rounds=cycle.total_rounds,
         )
         if round_ is None:
             raise NoOpenRoundError()
@@ -176,15 +203,11 @@ class StokvelContributionController:
         currency = stokvel.currency
         amount_token = stokvel.contribution_amount
         amount_fiat = token_to_fiat(amount_token, currency)
-        # The round pays the member whose payout position is the round.
-        recipient = next(
-            (row for row in cycle_members if row.payout_position == round_), None
-        )
         fee = contribution_fee_share(
             amount_fiat,
             currency,
             member_count=len(cycle_member_ids),
-            payout_currency=None if recipient is None else recipient.payout_currency,
+            payout_currency=self._recipient_currency(cycle_members, round_),
         )
         total = amount_fiat + fee
         # What leaves the member's account, fee included, counts against
@@ -253,9 +276,12 @@ class StokvelContributionController:
                 )
             )
         except IntegrityError as exc:
-            # uq_stokvel_contributions_once: a concurrent request for the same
-            # member and round got there first. The decorator rolls back.
-            raise ContributionAlreadyPaidError() from exc
+            # Only uq_stokvel_contributions_once means a concurrent request
+            # for the same member and round got there first. Any other
+            # constraint is a fault, raised as is. The decorator rolls back.
+            if _is_paid_twice(exc):
+                raise ContributionAlreadyPaidError() from exc
+            raise
 
         return StokvelContributionView(
             contribution_id=contribution.id,
@@ -278,6 +304,20 @@ class StokvelContributionController:
             # one is a deployment fault, not something the member can fix.
             raise RuntimeError(f"no {type_} platform account in {currency}")
         return account
+
+    @staticmethod
+    def _recipient_currency(cycle_members, round_: int) -> str:
+        """The payout currency of the member the round pays (the one whose
+        payout position is the round). Locked when the cycle starts, so every
+        member of a round prices the fee on the same currency."""
+        recipient = next(
+            (row for row in cycle_members if row.payout_position == round_), None
+        )
+        if recipient is None or not recipient.locked:
+            # An active cycle's members are all locked with a position and a
+            # beneficiary (stokvel_cycle_members_locked_is_complete).
+            raise RuntimeError(f"round {round_} has no locked recipient")
+        return recipient.payout_currency
 
     @staticmethod
     def _stokvel_account_id(stokvel: Stokvel) -> uuid.UUID:

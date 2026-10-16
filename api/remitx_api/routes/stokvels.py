@@ -81,8 +81,10 @@ def contribute_to_stokvel(
     own sending limits. Returns the contribution `pending`; it is confirmed
     once the worker's on-chain `contribute` is mined.
 
-    Refusals carry a `code` (doc section 6): 404 for an unknown stokvel; 403
-    `not_a_member` if the caller is not a member of its current cycle; 409
+    Refusals carry a `code` (doc section 6): 404 for an unknown stokvel or
+    one the caller is not a current member of (the same answer, so an id
+    reveals nothing); 403 `not_a_member` for a member outside its current
+    cycle; 409
     `cycle_not_open` with no active cycle, `wrong_round` once every round is
     paid, `contribution_already_paid` for a second payment to the open round.
     Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a

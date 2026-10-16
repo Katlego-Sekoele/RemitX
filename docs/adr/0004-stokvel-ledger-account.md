@@ -63,8 +63,10 @@ book into the account as they are made, and a release books out of it:
   for "tokens held by the contract" is needed.
 - `accounts_stokvel_balance_nonneg` still holds: a release never takes out
   more than the contributions put in.
-- Members see and record legs on their stokvel's account through the
-  `transactions` policy (`stokvel_account_is_member`, migration
-  `V20261016_1500`), the ledger part of the proposed fix above. The quote and
+- Members see and record legs on their stokvel's account through two
+  `transactions` policies beside the unchanged `transactions_by_current_user`
+  (migration `V20261016_1500`), the ledger part of the proposed fix above:
+  current and former members read them, current members record legs into
+  the account, and no member may update or delete one. The quote and
   remittance parts are still pending.
 

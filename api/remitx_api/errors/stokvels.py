@@ -51,8 +51,9 @@ class StokvelNotFoundError(NotFoundError):
 
 
 class NotACycleMemberError(ForbiddenError):
-    """The caller is not a member of the stokvel's current cycle, so they have
-    no round to pay into (contract error `NotMember`)."""
+    """The caller is a current member of the stokvel but not of its current
+    cycle, so they have no round to pay into (contract error `NotMember`).
+    Someone who is not a current member at all gets `StokvelNotFoundError`."""
 
     code = "not_a_member"
 
