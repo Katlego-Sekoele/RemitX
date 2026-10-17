@@ -8,7 +8,7 @@ holds the Treasury send lock and can store its hash before the send.
 The ABI is a copy of `contracts/abi/StokvelVault.json`
 (`remitx_worker/abi/StokvelVault.json`): the worker image is built from
 `api/` only, so it cannot read the contracts folder.
-`tests/test_stokvel_contract.py` fails if the two copies differ.
+`tests/test_worker_stokvel_contribution.py` fails if the two copies differ.
 
 IDs: stokvel and member IDs are database UUIDs packed into `bytes32`
 (`evm_service.uuid_to_bytes32`, section 1). Log them in their UUID form.

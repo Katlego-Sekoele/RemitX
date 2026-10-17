@@ -59,13 +59,20 @@ RETRY_SECONDS = 60
 MAX_RETRIES = 10
 
 # Refusals that are the platform's to fix, not the member's: the contract is
-# paused (OI-4), or the Treasury is short of UCTUSD or of allowance (section
-# 6: operations faults). Retried, so a contribution survives a top-up; failed
-# only once the retries run out. Every other refusal is a rule the contract
-# enforces (NotMember, AlreadyPaid, WrongRound, CycleNotOpen, ...): it fails
-# the contribution at once.
+# paused (OI-4); the Treasury is short of UCTUSD or of allowance (section 6:
+# operations faults); the Treasury lacks OPERATOR_ROLE (a deployment fault);
+# or the token transfer itself failed. Retried, so a contribution survives the
+# fix; failed only once the retries run out. Every other refusal is a rule the
+# contract enforces (NotMember, AlreadyPaid, WrongRound, CycleNotOpen, ...):
+# it fails the contribution at once.
 _RETRYABLE_REFUSALS = frozenset(
-    {"EnforcedPause", "ERC20InsufficientBalance", "ERC20InsufficientAllowance"}
+    {
+        "EnforcedPause",
+        "ERC20InsufficientBalance",
+        "ERC20InsufficientAllowance",
+        "AccessControlUnauthorizedAccount",
+        "SafeERC20FailedOperation",
+    }
 )
 
 
@@ -236,8 +243,27 @@ def _retry_unsent(
     rejected_hash: str | None = None,
 ) -> str:
     """Nothing reached the chain: hand the claim back and retry, or fail the
-    contribution once the retries are spent."""
+    contribution once the retries are spent.
+
+    `rejected_hash` is the hash of a transaction the RPC refused. It never
+    existed, so it is cleared either way: left on a failed row, it would
+    block the member's retry, whose identical transaction (same calldata,
+    and the same nonce, since nothing was mined) signs to the same hash and
+    hits the unique index on `evm_tx_hash`. A reverted transaction's hash is
+    kept; it never comes through here."""
     if task.request.retries >= task.max_retries:
+        if rejected_hash is not None:
+            with session_scope() as session:
+                session.execute(
+                    update(StokvelContribution)
+                    .where(
+                        StokvelContribution.id == target_id,
+                        StokvelContribution.status == PROCESSING,
+                        StokvelContribution.evm_tx_hash == rejected_hash,
+                    )
+                    .values(evm_tx_hash=None)
+                    .execution_options(synchronize_session=False)
+                )
         logger.error(
             "event=stokvel.contribution_unsent contribution_id=%s retries=%s "
             "(%s): giving up; nothing was sent",

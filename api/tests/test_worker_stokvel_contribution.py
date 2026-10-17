@@ -483,7 +483,14 @@ def test_a_rule_refusal_fails_it_without_sending(
 
 
 @pytest.mark.parametrize(
-    "error", ["EnforcedPause", "ERC20InsufficientBalance", "ERC20InsufficientAllowance"]
+    "error",
+    [
+        "EnforcedPause",
+        "ERC20InsufficientBalance",
+        "ERC20InsufficientAllowance",
+        "AccessControlUnauthorizedAccount",
+        "SafeERC20FailedOperation",
+    ],
 )
 def test_a_platform_refusal_is_retried_then_succeeds(
     session_factory, pending, enqueued, chain, error
@@ -551,6 +558,64 @@ def test_a_refused_send_drops_its_hash_and_retries(
     assert result == "mined"
     assert len(chain.contributes) == 2
     assert enqueued == [(pending["id"], TX_HASH, BLOCK)]
+
+
+def _second_attempt(factory, pending) -> str:
+    """A new pending contribution for the same member and round, as the API
+    writes after a failed one: the member paying again."""
+    with factory() as session:
+        first = session.get(StokvelContribution, uuid.UUID(pending["id"]))
+        legs = []
+        for tx_id in pending["legs"]:
+            old = session.get(Transaction, tx_id)
+            legs.append(
+                _leg(
+                    session,
+                    type_=old.type,
+                    source=old.credit_account_id,
+                    destination=old.debit_account_id,
+                    amount=old.amount,
+                    currency=old.currency,
+                )
+            )
+        retry = StokvelContribution(
+            cycle_id=first.cycle_id,
+            round=first.round,
+            member_id=first.member_id,
+            amount_token=first.amount_token,
+            amount_fiat=first.amount_fiat,
+            amount_zar=first.amount_zar,
+            fiat_tx_id=legs[0],
+            token_tx_id=legs[1],
+            fee_tx_id=legs[2],
+        )
+        session.add(retry)
+        session.commit()
+        return str(retry.id)
+
+
+def test_a_refused_send_that_fails_leaves_no_hash_to_block_a_retry(
+    session_factory, pending, enqueued, chain
+):
+    """The RPC refuses every send (the Treasury out of XRP for gas) until the
+    retries run out. The refused transaction never existed, so the failed row
+    keeps no hash: after a top-up, the member's second attempt signs the
+    identical transaction (same calldata and nonce, so the same hash) and
+    must not hit the unique index on `evm_tx_hash`."""
+    chain.after_signing = [
+        evm_service.TransactionRejected(TX_HASH, Exception("insufficient funds"))
+    ] * (stokvel_tasks.MAX_RETRIES + 1)
+
+    assert submit_contribution.apply(args=[pending["id"]]).get() == "failed"
+    assert confirm_contribution(*enqueued[0]) == "failed"
+    failed = _row(session_factory, pending["id"])
+    assert (failed.status, failed.evm_tx_hash) == ("failed", None)
+
+    retry_id = _second_attempt(session_factory, pending)
+    assert submit_contribution(retry_id) == "mined"
+    assert confirm_contribution(*enqueued[-1]) == "confirmed"
+    retry = _row(session_factory, retry_id)
+    assert (retry.status, retry.evm_tx_hash) == ("confirmed", TX_HASH)
 
 
 def test_a_send_that_raises_after_its_hash_is_stored_is_waited_on(
