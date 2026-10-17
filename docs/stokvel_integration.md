@@ -74,6 +74,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-16 | 5, 6, 8, 9, 11, 14 | R2-11 second review (#340). A contribution looks its rates up before locking the member (`quote_service.token_rates`): a lookup may fetch a live rate and commit, which released the lock. The fiat debit multiplies by the stored USD quote, not a rounded inverse. A lost enqueue is logged loudly, as in `confirm_remittance`. No exchange rate answers 503. `ErrorResponse` in the OpenAPI spec gains an optional `code`. The insert policy now pins both sides: a `stokvel_contribution` leg from the Treasury Wallet (`account_is_treasury_wallet`) into the member's stokvel's account. Section 11 corrected to the agreed release direction (`STOKVEL` → Treasury); R3-03 (#342) and R3-04 to match | #340 |
 | 2026-10-17 | 4, 6, 8, 9, 13, 14 | R2-12 (#234): `stokvel.submit_contribution` and `stokvel.confirm_contribution` built in `remitx_worker/stokvel_tasks.py`, over a new contract wrapper `remitx_worker/stokvel_contract.py` (`contribute`, the Treasury allowance check, revert decoding against the vault and `IERC20Errors`). Task names stay `stokvel.<name>` (section 4), the convention for every stokvel task. `confirm_contribution` also takes the receipt's `block_number` (a confirmed row needs it). Platform-side refusals (paused, Treasury short of UCTUSD or allowance, Treasury without `OPERATOR_ROLE`, a failed token transfer) and sends that never reached the chain are retried; contract rule refusals fail the contribution at once. The worker carries a copy of the ABI (its image is built from `api/` only), checked against `contracts/abi/` by a test. Open question added: reclaiming contributions left `pending` or `processing` | #234 |
 | 2026-10-18 | none | Comment fix in `V20261016_1500` (from the review of #344): `accounts` has no row-level security, so `account_is_treasury_wallet` is a lookup function for consistency and future-proofing, not because a plain subquery would be hidden. No schema or behaviour change | |
+| 2026-10-17 | 3, 5, 6, 8, 9, 10, 13, 14 | R2-08 (#230): `POST /stokvels/{id}/invitations`, `POST /invitations/{id}/accept` and `POST /invitations/{id}/decline` built (section 5). Accepting sets the invitation to `accepted` and inserts the member row in one transaction, under a lock on the `stokvels` row, so `MAX_STOKVEL_MEMBERS` holds for two accepts at once. `stokvel_members` now has one policy per operation and no `DELETE`: a customer may insert their own row only as the Organiser with no invitation, or with their accepted invitation to that stokvel; a trigger fixes `stokvel_id`, `user_id`, `invitation_id` and `joined_at` (section 3; resolves the section 8 question). New lookups `kyc_latest_status` and `stokvel_active_member_count` answer the invitee's KYC for the Organiser and the member count for an invitee, which row-level security hides. New refusal codes (section 6). `GET /stokvels` no longer lists a pending invitation to a deactivated stokvel (#339 review). Interface change: row-level security needs Roles 2 and 3 approval; routes and codes need Roles 2, 3 and 4 (section 5), and Roles 1, 2 and 4 (section 6) | |
 
 ---
 
@@ -319,18 +320,22 @@ As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `
 | Table | A customer reads | A customer writes |
 |---|---|---|
 | `stokvels` | Stokvels they organise, are a member of, or hold a pending invitation to | As Organiser |
-| `stokvel_members` | Their own rows and their fellow members' | Their own rows |
+| `stokvel_members` | Their own rows and their fellow members' | Insert their own row only as the Organiser with no invitation, or with their accepted invitation to that stokvel (`stokvel_member_can_join`, R2-08); update their own row. No deletes |
 | `stokvel_invitations` | Their own, plus every invitation of a stokvel they are a member of or hold a pending invitation to | As invitee or Organiser |
 | `stokvel_cycles` | Cycles of a stokvel they are a member of | As Organiser (insert and update only) |
 | `stokvel_rounds` | Rounds of a stokvel they are a member of | As Organiser (insert and update only) |
 | `stokvel_cycle_members` | Every row of a stokvel they are a member of | As Organiser, or their own row (beneficiary, continuation); insert and update only. Which columns each may change is checked by the controller |
 | `stokvel_contributions` | Every contribution of a stokvel they are a member of | Insert only, for their own member row. No customer updates (the worker writes status, hash and block) and no deletes |
 
-The group tables have one `FOR ALL` policy each. The cycle tables have one policy per operation instead: `FOR SELECT` with the read rule, and `FOR INSERT` and `FOR UPDATE` with the write rule. An `UPDATE` of a row the write rule does not allow matches no rows, rather than raising an error.
+`stokvels` and `stokvel_invitations` have one `FOR ALL` policy each. `stokvel_members` (since R2-08, `V20261017_1820`) and the cycle tables have one policy per operation instead: `FOR SELECT` with the read rule, and `FOR INSERT` and `FOR UPDATE` with the write rule. An `UPDATE` of a row the write rule does not allow matches no rows, rather than raising an error.
 
-**Customers cannot delete cycle rows.** The cycle tables have no `DELETE` policy, so no one connected as `remitx_app` can delete from them, the Organiser included. Because the app always connects as `remitx_app`, that covers workers and admin routes too. A future task that needs deletes must add a `DELETE` policy for exactly who may delete, with a Postgres test. The reason: a single `FOR ALL` policy checks `DELETE` against its read rule only, so any member could delete what they can see. The group tables still work that way; a separate ticket is proposed to fix them.
+**Customers cannot delete cycle rows.** The cycle tables have no `DELETE` policy, so no one connected as `remitx_app` can delete from them, the Organiser included. Because the app always connects as `remitx_app`, that covers workers and admin routes too. A future task that needs deletes must add a `DELETE` policy for exactly who may delete, with a Postgres test. The reason: a single `FOR ALL` policy checks `DELETE` against its read rule only, so any member could delete what they can see. `stokvels` and `stokvel_invitations` still work that way; a separate ticket is proposed to fix them. `stokvel_members` has no `DELETE` policy either (R2-08).
 
-The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation` (R2-04), and `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser` and `stokvel_member_is_user` (R2-05), because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Tests: `api/tests/test_stokvel_group_models.py` and `api/tests/test_stokvel_cycle_models.py` (`postgres` lane).
+**A membership's identity is fixed.** The trigger `stokvel_member_identity_fixed` refuses any update to `stokvel_id`, `user_id`, `invitation_id` or `joined_at`, for every role, with SQLSTATE 23514: leaving and rejoining makes a new row. `invitation_id` is unique, so one accepted invitation admits once.
+
+**Lookups that return a value, not rows (R2-08).** Row-level security hides two things the invitation routes need: the invitee's KYC applications from the Organiser, and the member rows from an invitee who has not joined. `kyc_latest_status(user)` returns the status of the user's latest application (the API decides from it, as `get_standing` does); `stokvel_active_member_count(stokvel)` returns the number of current members. Both are `SECURITY DEFINER`, executable only by `remitx_app`.
+
+The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation` (R2-04), `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser` and `stokvel_member_is_user` (R2-05), and `stokvel_member_can_join` (R2-08), because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Tests: `api/tests/test_stokvel_group_models.py`, `api/tests/test_stokvel_cycle_models.py` and `api/tests/test_stokvel_member_row_security.py` (`postgres` lane).
 
 ### Ledger changes
 
@@ -434,9 +439,9 @@ All stokvel tasks are registered as `stokvel.<name>` in `api/remitx_worker/stokv
 |---|---|---|
 | `POST /stokvels` | Authenticated user (KYC standing) | Create a stokvel |
 | `GET /stokvels` | Authenticated user | List the caller's stokvels and pending invitations |
-| `POST /stokvels/{id}/invitations` | Organiser | Invite a user |
-| `POST /invitations/{id}/accept` | Invitee | Accept an invitation |
-| `POST /invitations/{id}/decline` | Invitee | Decline an invitation |
+| `POST /stokvels/{id}/invitations` | Organiser | Invite a user. **Built (R2-08, #230)** |
+| `POST /invitations/{id}/accept` | Invitee | Accept an invitation. **Built (R2-08, #230)** |
+| `POST /invitations/{id}/decline` | Invitee | Decline an invitation. **Built (R2-08, #230)** |
 | `POST /invitations/{id}/revoke` | Organiser | Revoke a pending invitation (#297) |
 | `PUT /stokvels/{id}/payout-order` | Organiser | Enter the payout order the members agreed off the platform (D3), before a cycle |
 | `PUT /stokvels/{id}/members/me/beneficiary` | Member | Choose beneficiary and payout currency for the next cycle |
@@ -472,8 +477,27 @@ In one transaction: the stokvel, its `STOKVEL` ledger account (section 3) and th
 **`GET /stokvels`** → `200 StokvelListRead`: `{stokvels, invitations}`, each newest first.
 
 - `stokvels`: those the caller is a current member of (left ones are not listed). `StokvelRead`: `stokvel_id`, `name`, `currency`, `contribution_amount` (UCTUSD, 8 dp string), `is_organiser`, `member_count` (current members), `max_members` (`MAX_STOKVEL_MEMBERS`), `created_at`, `deactivated_at`.
-- `invitations`: the caller's pending ones. `StokvelInvitationRead`: `invitation_id`, `stokvel_id`, `stokvel_name`, `currency`, `contribution_amount`, `invited_by_name` ("Tendai M."), `created_at`. No member count: an invitee cannot read the member rows under row-level security, so it would always read 0 on Postgres.
+- `invitations`: the caller's pending ones, leaving out invitations to a deactivated stokvel (they cannot be accepted; R2-08). `StokvelInvitationRead`: `invitation_id`, `stokvel_id`, `stokvel_name`, `currency`, `contribution_amount`, `invited_by_name` ("Tendai M."), `created_at`. No member count: an invitee cannot read the member rows under row-level security, so it would always read 0 on Postgres.
 - Both lists are filtered by the caller in the query, not only by row-level security, so SQLite (tests) returns the same rows as Postgres.
+
+### Invitations (R2-08, built)
+
+Customer routes, tag `stokvels` (client: `api.stokvels.inviteToStokvel`, `api.stokvels.acceptStokvelInvitation`, `api.stokvels.declineStokvelInvitation`). Nobody becomes a Member without accepting; row-level security holds the same rule (section 3). Refusal codes and wording are in section 6.
+
+**`POST /stokvels/{id}/invitations`** → `201 SentStokvelInvitationRead`: `invitation_id`, `stokvel_id`, `invitee_name` ("Thandi M.", or null), `account_reference`, `status` (`pending`), `created_at`. Request `StokvelInvitationCreateRequest`: `account_reference` (trimmed, 1 to 64 characters), unknown fields refused. The invitee is the owner of that account, which must be in the Stokvel currency. Invitations may outnumber the free places: the cap holds at accepting, and is checked here only to refuse early.
+
+**`POST /invitations/{id}/accept`** → `200 StokvelRead`, the stokvel joined. In one transaction, holding the `stokvels` row (`SELECT ... FOR UPDATE`): re-check the caller's KYC, find their account in the Stokvel currency, count current members against `MAX_STOKVEL_MEMBERS`, set the invitation to `accepted` (guarded by `status = 'pending'`; `status_changed_by_user_id` = the invitee), then insert their `stokvel_members` row (`account_id`, `invitation_id`). The status changes first because the insert policy requires an accepted invitation.
+
+**`POST /invitations/{id}/decline`** → `204`. Sets the invitation to `declined` (same guard). The Organiser may invite them again.
+
+| Status | When |
+|---|---|
+| 401 | Not signed in |
+| 404 | Unknown stokvel, or one the caller is not the Organiser or a current member of; unknown account reference; unknown invitation, or one the caller can neither answer nor see as a fellow member |
+| 403 | Not the Organiser (invite); not the invitee (accept, decline); invitee not verified (invite); caller no longer verified (accept) |
+| 400 | The caller's own reference (invite); no account in the Stokvel currency (accept, `StokvelCurrencyAccountMissingError`) |
+| 409 | Already a member; already a pending invitation; stokvel deactivated; invitation no longer pending |
+| 422 | Account not in the Stokvel currency; stokvel full; invalid request body |
 
 ### Audit log of admin actions
 
@@ -523,6 +547,23 @@ _TBD per endpoint: request and response shape, errors._
 | No usable exchange rate (the live fetch failed and no stored rate is recent enough) | 503, no code | "Exchange rate unavailable; try again shortly", as for a quote. Nothing is recorded |
 
 **In the worker (R2-12):** a contribution is sent after the API has answered, so these errors never reach the member as a status. `stokvel.submit_contribution` fails the contribution on a rule refusal and retries on the platform's faults: `EnforcedPause`, the Treasury's token errors (`ERC20InsufficientBalance`, `ERC20InsufficientAllowance`), `AccessControlUnauthorizedAccount` (the Treasury without `OPERATOR_ROLE`) and `SafeERC20FailedOperation`, and on a send or `approve` the RPC refused (section 4). The member sees the contribution `failed` (and may pay again) or, eventually, `confirmed`.
+
+**Refusals for invitations (R2-08):** `MaxMembersExceeded`'s `too_many_members` above is also the API's answer when the stokvel is full, checked when inviting and holding at accepting. The rest are the API's own:
+
+| Case | API status and code | Message shown to the user |
+|---|---|---|
+| A member who is not the Organiser invites | 403 `not_organiser` | "Only the stokvel's organiser can invite members." |
+| Invitee not KYC-verified | 403 `invitee_not_verified` | "This person isn't verified yet, so they can't be invited." |
+| Invitee's account not in the Stokvel currency | 422 `invitee_currency_mismatch` | "The account's currency must match the stokvel's currency ({currency})." |
+| Invitee already a current member | 409 `already_a_member` | "This person is already a member of the stokvel." |
+| Invitee already has a pending invitation (`uq_stokvel_invitations_pending`) | 409 `invitation_already_pending` | "This person already has a pending invitation." |
+| Stokvel deactivated | 409 `stokvel_deactivated` | "This stokvel is no longer active." |
+| A fellow member answers someone else's invitation | 403 `not_invitee` | "Only the person invited can answer this invitation." |
+| Invitation already accepted, declined, revoked or lapsed | 409 `invitation_not_pending` | "This invitation has already been answered or has expired." |
+| Unknown stokvel, reference or invitation, or one the caller cannot see | 404, no code | "Stokvel not found.", "No account has the reference '{reference}'.", "Invitation not found." |
+| The Organiser's own reference | 400, no code | "You can't invite yourself." |
+| Accepting with no account in the Stokvel currency | 400, no code | `StokvelCurrencyAccountMissingError`'s message, as for `POST /stokvels` |
+| Accepting after the caller's verification lapsed | 403, no code | "Only verified customers can join a stokvel. Finish verification to continue." |
 
 _Roles 1, 2 and 4 to confirm codes and wording._
 
@@ -580,7 +621,8 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Row-level security for the new stokvel tables | **Resolved (2026-10-09):** section 3, "Row-level security"; R2-05 and R2-06 reuse the same functions | Roles 2, 3 | |
 | Round schedule: is it sent with `POST /stokvels` (section 12, step 1: start time, deadlines and payout time per round) or when the Organiser starts a cycle (R2-10)? `stokvel_rounds` hangs off a cycle, so the first needs a `forming` cycle at creation. R2-07 takes no schedule | Open (2026-10-16) | Product, Roles 2, 3 | |
 | Stokvel list fields from the frontend mocks (#251, #252): `phase`, `current_round`, `total_rounds`, `next_payout_time` need the cycle tables (#227), `my_contribution_status` the contribution table (#228). Both have now landed; add them to `GET /stokvels` in a follow-up to R2-07? | Open (2026-10-16) | Roles 2, 4 | |
-| A customer can insert their own `stokvel_members` row for any stokvel: the write rule is `user_id` = the caller (R2-04), with no check for an accepted invitation. No route does it today; R2-08 (accepting an invitation) relies on the API. Tighten the policy, or accept it as API-enforced? | Open (2026-10-16) | Roles 2, 3 | |
+| A customer can insert their own `stokvel_members` row for any stokvel: the write rule is `user_id` = the caller (R2-04), with no check for an accepted invitation. No route does it today; R2-08 (accepting an invitation) relies on the API. Tighten the policy, or accept it as API-enforced? | **Resolved (2026-10-17, R2-08):** tightened. One policy per operation, no `DELETE`; insert only as the Organiser with no invitation or with your accepted invitation to that stokvel; identity columns fixed by a trigger (section 3) | Roles 2, 3 | #230 |
+| When a stokvel is deactivated, should its pending invitations be set to `lapsed` (or `revoked`)? R2-08 hides them from `GET /stokvels` and refuses to accept them, but leaves them `pending`, because no deactivation route exists yet | Open (2026-10-17): for the ticket that adds deactivation | Roles 2, 3 | |
 | Seeder and load test: update stories and `tools/loadtest/fake_xrpl_worker.py` for EVM | **Resolved (2026-10-15, #278 and R6-02 #267):** both fake the EVM burn and receipt; the load test's fake worker is now `fake_evm_worker.py`. Still to do: recalibrate the load test's burn timings (`qa_burn_timings.sql`) once QA has real EVM burns; until then the profiles say `"calibrated_on": "XRP Ledger, pre-EVM"` and every report shows it | Role 6 | |
 | The ledger treasury (`REMITX_EVM_WALLET` account) still starts from the XRPL wallet's balance (`V20260924_1352` read the XRPL trust line), so it does not match the EVM Treasury Wallet's UCTUSD. Rebase it with a one-off `treasury_funding` adjustment to the EVM balance? Until then `verify --chain` reports `(differ)` and says why (#267 review) | Open (2026-10-17): ticket to open | Roles 2, 3, 6 | |
 
@@ -628,10 +670,10 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
 | Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
-| Members create stokvels and invite others | In progress | #229 (was #209), #230 | Create and list in review (#229); invitations next (#230) |
+| Members create stokvels and invite others | In progress | #229 (was #209), #230, #297 | Create and list done (#229, PR #339); invite, accept and decline in review (#230); revoke next (#297) |
 | DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301). cycle tables with row-level security (#227, PR #306). In review: contribution table (#228) |
 | Worker tasks | In progress | #234 | Section 4. Built: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234). Next: the cycle tasks (#232), event sync (#235), release (#241) |
-| API routes | In progress | #229, #233 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `POST /stokvels/{id}/contributions` (#233, in review) |
+| API routes | In progress | #229, #233 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `POST /stokvels/{id}/contributions` (#233); invitations (#230, in review) |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
 | Frontend screens | In progress | #251 | Routes, nav and mocks (#251); screen list on #250; member, Organiser, invitation and admin screens next (#252–#261) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
@@ -681,6 +723,7 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Contract deploy script | `npm run deploy:testnet`: deploys with admin = deployer, operator and release target = Treasury Wallet, UCTUSD, `maxMembers` 3; checks settings, token, gas and roles; records the deployment | Kerry (Role 1) | #284 |
 | Contract ABI for the backend | `contracts/abi/StokvelVault.json`, regenerated by `npm run export:abi`; a test fails if it drifts from the contract | Kerry (Role 1) | #285 |
 | Create and list stokvels | `POST /stokvels`: a KYC-verified user creates a stokvel and becomes its Organiser and first Member, with its `STOKVEL` ledger account, in one transaction. `GET /stokvels`: the caller's current stokvels and pending invitations | Claire (Role 2) | #229 |
+| Stokvel invitations | The Organiser invites a verified user by account reference in the Stokvel currency; the invitee accepts (becoming a Member, within `MAX_STOKVEL_MEMBERS`) or declines. Nobody becomes a Member without accepting, enforced by the API and by row-level security | Claire (Role 2) | #230 |
 
 ## 11. How things are connected
 
@@ -759,11 +802,16 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite; on Postgres (`postgres` lane) an exclusive transaction-level advisory lock, held only inside the block and released when the send raises | #278 |
 | `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
 | `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07) | #229 |
-| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels` | #229 |
-| `api/remitx_api/models/schemas/stokvel.py` | `StokvelCreateRequest`, `StokvelRead`, `StokvelInvitationRead`, `StokvelListRead` | #229 |
+| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`; `POST /stokvels/{id}/invitations` (#230) | #229 |
+| `api/remitx_api/models/schemas/stokvel.py` | `StokvelCreateRequest`, `StokvelRead`, `StokvelInvitationRead`, `StokvelListRead`; `StokvelInvitationCreateRequest`, `SentStokvelInvitationRead` (#230) | #229 |
 | `api/remitx_api/errors/stokvels.py` | `KycNotApprovedToCreateStokvelError` (403), `StokvelCurrencyAccountMissingError` (400) | #229 |
 | `api/tests/test_stokvels_route.py` | Both routes on SQLite: refusals, one transaction, validation, and the caller scoping that SQLite needs | #229 |
 | `api/tests/test_stokvels_row_security.py` | Create and list under Postgres row-level security, and the membership trigger (`postgres` lane) | #229 |
+| `api/alembic/versions/V20261017_1820__stokvel_member_write_rules.py` | `stokvel_members` policies per operation, the identity trigger, and the `kyc_latest_status` and `stokvel_active_member_count` lookups (section 3) | #230 |
+| `api/remitx_api/controllers/stokvel_invitation_controller.py` | Invite, accept and decline (R2-08) | #230 |
+| `api/remitx_api/routes/stokvel_invitations.py` | `POST /invitations/{id}/accept`, `POST /invitations/{id}/decline` | #230 |
+| `api/tests/test_stokvel_invitations_route.py` | The three routes on SQLite (the #209 examples, every refusal, one transaction) and under Postgres row-level security (KYC lookup, cap for an invitee, two accepts for the last place) | #230 |
+| `api/tests/test_stokvel_member_row_security.py` | The `stokvel_members` write rules, identity trigger and lookups (`postgres` lane) | #230 |
 | `tools/loadtest/fake_evm_worker.py` (was `fake_xrpl_worker.py`) | The load test's real worker with the EVM burn and receipt simulated | #267 |
 | `tools/loadtest/qa_burn_timings.sql` (was `qa_xrpl_timings.sql`) | QA's real EVM burn timings, for calibrating the load test | #267 |
 
@@ -809,4 +857,13 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `KycApplicationRepository.get_standing` (changed) | `api/remitx_api/repositories/kyc_application_repository.py` | Daily and monthly used amounts now add the member's stokvel contributions (`contributed_zar`) to their remittances (D8) | #233 |
 | `contribute_to_stokvel` (route) | `api/remitx_api/routes/stokvels.py` | `POST /stokvels/{id}/contributions`, response `StokvelContributionRead` (`api/remitx_api/models/schemas/stokvel.py`) | #233 |
 | `stokvel_account_is_member`, `stokvel_account_is_active_member`, `account_is_treasury_wallet` (SQL) | `api/alembic/versions/V20261016_1500__transactions_rls_stokvel_account_legs.py` | Whether a user is (or was, for the first) a member of the stokvel an account belongs to, and whether an account is the Treasury Wallet: the read and insert `transactions` policies | #233 |
-| `StokvelInvitationRepository.list_pending_for_invitee` | `api/remitx_api/repositories/stokvel_invitation_repository.py` | A user's pending invitations, newest first, with the stokvel and the inviter; scoped by user | #229 |
+| `StokvelInvitationRepository.list_pending_for_invitee` | `api/remitx_api/repositories/stokvel_invitation_repository.py` | A user's pending invitations, newest first, with the stokvel and the inviter; scoped by user. Leaves out deactivated stokvels (#230) | #229 |
+| `StokvelInvitationController.invite`, `.accept`, `.decline` | `api/remitx_api/controllers/stokvel_invitation_controller.py` | Invite by account reference; accept (lock the stokvel, check KYC, account and cap, mark accepted, insert the member) and decline, each in one transaction | #230 |
+| `stokvel_view` | `api/remitx_api/controllers/stokvel_controller.py` | A stokvel as a user sees it (`StokvelView`); was `StokvelController._view`, now shared with accepting | #230 |
+| `StokvelRepository.lock` | `api/remitx_api/repositories/stokvel_repository.py` | The stokvel, `SELECT ... FOR UPDATE` | #230 |
+| `StokvelMemberRepository.count_active` | `api/remitx_api/repositories/stokvel_member_repository.py` | Current members of a stokvel; `stokvel_active_member_count` on Postgres | #230 |
+| `StokvelInvitationRepository.set_status_if_pending` | `api/remitx_api/repositories/stokvel_invitation_repository.py` | Answer an invitation, guarded by `status = 'pending'`; whether it changed | #230 |
+| `KycApplicationRepository.is_other_user_verified` | `api/remitx_api/repositories/kyc_application_repository.py` | Whether another user is verified, by their latest application; `kyc_latest_status` on Postgres | #230 |
+| `invite_to_stokvel`, `accept_stokvel_invitation`, `decline_stokvel_invitation` (routes) | `api/remitx_api/routes/stokvels.py`, `api/remitx_api/routes/stokvel_invitations.py` | The three invitation routes (section 5) | #230 |
+| `NotStokvelOrganiserError`, `StokvelDeactivatedError`, `InviteeAccountNotFoundError`, `CannotInviteYourselfError`, `InviteeCurrencyMismatchError`, `InviteeNotKycVerifiedError`, `AlreadyStokvelMemberError`, `InvitationAlreadyPendingError`, `TooManyMembersError`, `InvitationNotFoundError`, `NotInviteeError`, `InvitationNotPendingError`, `KycNotApprovedToJoinStokvelError` | `api/remitx_api/errors/stokvels.py` | The invitation refusals (section 6) | #230 |
+| `stokvel_member_can_join`, `kyc_latest_status`, `stokvel_active_member_count` (SQL); trigger `stokvel_member_identity_fixed` | `api/alembic/versions/V20261017_1820__stokvel_member_write_rules.py` | The `stokvel_members` insert rule, the two lookups, and the fixed identity columns (section 3) | #230 |
