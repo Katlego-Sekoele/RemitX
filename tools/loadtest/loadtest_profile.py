@@ -38,6 +38,9 @@ class Burn:
     p50_s: float
     p95_s: float
     failure_rate: float
+    # Where p50_s / p95_s were measured (e.g. "XRP Ledger, pre-EVM"), shown
+    # beside them in every report so stale timings are visible
+    calibrated_on: str
 
 
 @dataclass(frozen=True)
@@ -216,6 +219,11 @@ class Profile:
             raise ValueError("burn needs 0 < p50_s <= p95_s")
         if not 0 <= failure_rate <= 1:
             raise ValueError("burn.failure_rate must be between 0 and 1")
+        calibrated_on = burn_raw.get("calibrated_on")
+        if not isinstance(calibrated_on, str) or not calibrated_on.strip():
+            raise ValueError(
+                "burn.calibrated_on must say where p50_s and p95_s were measured"
+            )
 
         pool_raw = _require(raw, "database_pool")
         compute_raw = raw.get("compute")
@@ -303,7 +311,12 @@ class Profile:
                 step_seconds=step_seconds,
                 spawn_rate=float(spawn_rate),
             ),
-            burn=Burn(p50_s=p50, p95_s=p95, failure_rate=failure_rate),
+            burn=Burn(
+                p50_s=p50,
+                p95_s=p95,
+                failure_rate=failure_rate,
+                calibrated_on=calibrated_on.strip(),
+            ),
             api=api,
             worker=worker,
             postgres=postgres,

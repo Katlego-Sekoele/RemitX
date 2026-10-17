@@ -94,8 +94,8 @@ class Scenario:
     email_domain: str = "example.com"
     kyc: KycBehaviour = field(default_factory=KycBehaviour)
     money: MoneyBehaviour = field(default_factory=MoneyBehaviour)
-    # Real settlements through the target's API, worker and XRPL at the end
-    # of the run. 0 keeps everything simulated.
+    # Real settlements through the target's API, worker and EVM chain at the
+    # end of the run. 0 keeps everything simulated.
     live_settlements: int = 0
     # The most uctusd the live tail may burn in one run.
     live_token_budget: float = 25.0

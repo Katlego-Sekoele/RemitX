@@ -4,7 +4,8 @@
   "burn": {
     "p50_s": 8.61,
     "p95_s": 10.24,
-    "failure_rate": 0
+    "failure_rate": 0,
+    "calibrated_on": "XRP Ledger, pre-EVM"
   },
   "locust": {
     "steps": [10, 25],

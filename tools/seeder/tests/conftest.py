@@ -63,8 +63,10 @@ def pytest_configure(config) -> None:
     url = create_database(DATABASE_NAME)
     os.environ["DATABASE_URL"] = url
     os.environ["CLERK_SECRET_KEY"] = ""
-    # The XRPL is faked here, and a wallet from your local .env would make
-    # the treasury-funding migration read its real balance off the testnet.
+    # The chain is faked here. A treasury from your local .env would let a
+    # check read its real EVM balance, and an old XRPL wallet would make the
+    # (decommissioned) treasury-funding migration read the XRP Ledger.
+    os.environ["EVM_TREASURY_ADDRESS"] = ""
     os.environ["PLATFORM_WALLET_ADDRESS"] = ""
     migrate(url)
     config._seeder_database = DATABASE_NAME

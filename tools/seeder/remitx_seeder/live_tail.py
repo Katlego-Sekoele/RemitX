@@ -9,8 +9,9 @@ Clerk account and a beneficiary, it
 2. signs in as them with a Clerk session token (development instances allow
    the Backend API to open one);
 3. calls the target's real API: `POST /quotes`, then `POST /remittances`;
-4. polls `GET /remittances/{id}` while the real worker settles it on the XRPL
-   testnet, and records the real hash.
+4. polls `GET /remittances/{id}` while the real worker settles it by burning
+   UCTUSD from the target's Treasury Wallet on the XRPL EVM Testnet, and
+   records the real hash.
 
 It runs on the real clock, and it stops before a quote would take the run's
 burns past `live_token_budget` uctusd: the treasury is funded by the lecturer
