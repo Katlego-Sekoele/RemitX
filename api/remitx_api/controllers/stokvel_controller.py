@@ -67,6 +67,24 @@ class StokvelListView:
     invitations: list[StokvelInvitationView]
 
 
+def stokvel_view(
+    stokvel: Stokvel, user_id: uuid.UUID, *, member_count: int
+) -> StokvelView:
+    """`stokvel` as `user_id` sees it. Shared with accepting an invitation,
+    which answers with the stokvel just joined."""
+    return StokvelView(
+        stokvel_id=stokvel.id,
+        name=stokvel.name,
+        currency=stokvel.currency,
+        contribution_amount=_amount(stokvel.contribution_amount),
+        is_organiser=stokvel.organiser_user_id == user_id,
+        member_count=member_count,
+        max_members=Config().MAX_STOKVEL_MEMBERS,
+        created_at=stokvel.created_at,
+        deactivated_at=stokvel.deactivated_at,
+    )
+
+
 class StokvelController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
@@ -113,14 +131,14 @@ class StokvelController:
                 invitation_id=None,
             )
         )
-        return self._view(stokvel, user_id, member_count=1)
+        return stokvel_view(stokvel, user_id, member_count=1)
 
     def list_stokvels(self, user_id: uuid.UUID) -> StokvelListView:
         """The stokvels the caller is a current member of, and their pending
         invitations, each newest first."""
         return StokvelListView(
             stokvels=[
-                self._view(stokvel, user_id, member_count=member_count)
+                stokvel_view(stokvel, user_id, member_count=member_count)
                 for stokvel, member_count in self._stokvels.list_for_member(user_id)
             ],
             invitations=[
@@ -139,19 +157,4 @@ class StokvelController:
                     self._invitations.list_pending_for_invitee(user_id)
                 )
             ],
-        )
-
-    def _view(
-        self, stokvel: Stokvel, user_id: uuid.UUID, *, member_count: int
-    ) -> StokvelView:
-        return StokvelView(
-            stokvel_id=stokvel.id,
-            name=stokvel.name,
-            currency=stokvel.currency,
-            contribution_amount=_amount(stokvel.contribution_amount),
-            is_organiser=stokvel.organiser_user_id == user_id,
-            member_count=member_count,
-            max_members=Config().MAX_STOKVEL_MEMBERS,
-            created_at=stokvel.created_at,
-            deactivated_at=stokvel.deactivated_at,
         )

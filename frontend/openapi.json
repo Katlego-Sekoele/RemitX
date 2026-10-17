@@ -4868,6 +4868,53 @@
         "title": "RoleRevokeRequest",
         "type": "object"
       },
+      "SentStokvelInvitationRead": {
+        "description": "An invitation the Organiser has sent.",
+        "properties": {
+          "account_reference": {
+            "title": "Account Reference",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "invitation_id": {
+            "format": "uuid",
+            "title": "Invitation Id",
+            "type": "string"
+          },
+          "invitee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitee Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelInvitationStatus"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation_id",
+          "stokvel_id",
+          "invitee_name",
+          "account_reference",
+          "status",
+          "created_at"
+        ],
+        "title": "SentStokvelInvitationRead",
+        "type": "object"
+      },
       "SettlementRecoveryKind": {
         "enum": [
           "retry_enqueue",
@@ -5040,6 +5087,24 @@
         "title": "StokvelCreateRequest",
         "type": "object"
       },
+      "StokvelInvitationCreateRequest": {
+        "additionalProperties": false,
+        "description": "Invite the owner of an account to the stokvel.",
+        "properties": {
+          "account_reference": {
+            "description": "The invitee's account reference, e.g. `thandi2-zar`. The account must be in the Stokvel currency: the invitee's contributions are paid from it.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Account Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_reference"
+        ],
+        "title": "StokvelInvitationCreateRequest",
+        "type": "object"
+      },
       "StokvelInvitationRead": {
         "description": "An invitation to join a stokvel that the caller has not answered.",
         "properties": {
@@ -5092,6 +5157,17 @@
         ],
         "title": "StokvelInvitationRead",
         "type": "object"
+      },
+      "StokvelInvitationStatus": {
+        "enum": [
+          "pending",
+          "accepted",
+          "declined",
+          "revoked",
+          "lapsed"
+        ],
+        "title": "StokvelInvitationStatus",
+        "type": "string"
       },
       "StokvelListRead": {
         "description": "The caller's stokvels and pending invitations, each newest first.",
@@ -9859,6 +9935,187 @@
         ]
       }
     },
+    "/invitations/{invitation_id}/accept": {
+      "post": {
+        "description": "Accept the caller's invitation. They become a Member, paying\ncontributions from their own account in the Stokvel currency, and get\nback the stokvel they joined.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed, and `stokvel_deactivated`; 422 `too_many_members` when the\nstokvel is full; 403 if the caller is no longer verified; 400 if they\nhold no account in the Stokvel currency (they open one with\n`POST /accounts` first).",
+        "operationId": "accept_stokvel_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Accept a stokvel invitation",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/invitations/{invitation_id}/decline": {
+      "post": {
+        "description": "Decline the caller's invitation. They do not become a Member, and the\nOrganiser may invite them again.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed.",
+        "operationId": "decline_stokvel_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Decline a stokvel invitation",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
     "/kyc/application": {
       "get": {
         "description": "Standing, the application the caller is on now if any, and its next\nstep. The whole history is `GET /kyc/applications`.",
@@ -11488,6 +11745,115 @@
           }
         ],
         "summary": "Contribute to the stokvel's current round",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/invitations": {
+      "post": {
+        "description": "Invite the owner of `account_reference` to the caller's stokvel. They\nbecome a Member only if they accept. Invitations may outnumber the free\nplaces: the member cap holds when an invitation is accepted.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an unknown\nstokvel or one the caller is not a member of, and for an unknown\nreference; 403 `not_organiser` for a member who is not the Organiser;\n403 `invitee_not_verified` for an invitee who is not KYC-verified; 422\n`invitee_currency_mismatch` for an account not in the Stokvel currency;\n422 `too_many_members` when the stokvel is full; 409 `already_a_member`,\n`invitation_already_pending` or `stokvel_deactivated`; 400 for the\ncaller's own reference.",
+        "operationId": "invite_to_stokvel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelInvitationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentStokvelInvitationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Invite a user to the stokvel",
         "tags": [
           "stokvels"
         ]
