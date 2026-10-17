@@ -1,5 +1,6 @@
-"""Request/response schemas for creating and listing stokvels (R2-07) and
-contributing to one (R2-11)."""
+"""Request/response schemas for creating and listing stokvels (R2-07),
+inviting members (R2-08), setting up a cycle (R2-09) and contributing
+(R2-11)."""
 
 import uuid
 from typing import Annotated
@@ -16,6 +17,10 @@ from remitx_api.controllers.stokvel_controller import (
 )
 from remitx_api.controllers.stokvel_invitation_controller import (
     SentStokvelInvitationView,
+)
+from remitx_api.controllers.stokvel_setup_controller import (
+    PayoutOrderView,
+    PayoutPlaceView,
 )
 from remitx_api.models.orm.account import PayoutCurrency
 from remitx_api.models.orm.stokvel_invitation import StokvelInvitationStatus
@@ -210,4 +215,54 @@ class SentStokvelInvitationRead(Schema):
             account_reference=view.account_reference,
             status=view.status,
             created_at=view.created_at,
+        )
+
+
+class StokvelPayoutOrderRequest(Schema):
+    """The payout order the members agreed off the platform (D3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    member_ids: list[uuid.UUID] = Field(
+        min_length=1,
+        description=(
+            "Every current member's `member_id`, each once, in the order they "
+            "are paid: the first is paid in round 0. Replaces any earlier "
+            "order."
+        ),
+    )
+
+
+class StokvelPayoutPlaceRead(Schema):
+    """One member's place in the payout order."""
+
+    member_id: uuid.UUID
+    # 0-based, as on the contract: the round that pays this member.
+    payout_position: int
+    # "Thandi M."; null when the member has no name on file.
+    name: str | None
+
+    @classmethod
+    def from_view(cls, view: PayoutPlaceView) -> "StokvelPayoutPlaceRead":
+        return cls(
+            member_id=view.member_id,
+            payout_position=view.payout_position,
+            name=view.name,
+        )
+
+
+class StokvelPayoutOrderRead(Schema):
+    """The payout order of the stokvel's forming cycle, first paid first."""
+
+    stokvel_id: uuid.UUID
+    # 1 for the stokvel's first cycle.
+    cycle_number: int
+    order: list[StokvelPayoutPlaceRead]
+
+    @classmethod
+    def from_view(cls, view: PayoutOrderView) -> "StokvelPayoutOrderRead":
+        return cls(
+            stokvel_id=view.stokvel_id,
+            cycle_number=view.cycle_number,
+            order=[StokvelPayoutPlaceRead.from_view(place) for place in view.order],
         )

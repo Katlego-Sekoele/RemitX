@@ -10,6 +10,7 @@ from remitx_api.controllers.stokvel_controller import StokvelController
 from remitx_api.controllers.stokvel_invitation_controller import (
     StokvelInvitationController,
 )
+from remitx_api.controllers.stokvel_setup_controller import StokvelSetupController
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.stokvel import (
     SentStokvelInvitationRead,
@@ -17,6 +18,8 @@ from remitx_api.models.schemas.stokvel import (
     StokvelCreateRequest,
     StokvelInvitationCreateRequest,
     StokvelListRead,
+    StokvelPayoutOrderRead,
+    StokvelPayoutOrderRequest,
     StokvelRead,
 )
 from remitx_api.openapi import Tag, error_responses
@@ -27,6 +30,7 @@ router = create_customer_router(prefix="/stokvels", tags=[Tag.STOKVELS])
 controller = StokvelController()
 contributions = StokvelContributionController()
 invitations = StokvelInvitationController()
+setup = StokvelSetupController()
 
 
 @router.post(
@@ -134,4 +138,32 @@ def invite_to_stokvel(
     caller's own reference."""
     return SentStokvelInvitationRead.from_view(
         invitations.invite(user.id, stokvel_id, payload.account_reference)
+    )
+
+
+@router.put(
+    "/{stokvel_id}/payout-order",
+    response_model=StokvelPayoutOrderRead,
+    summary="Set the payout order",
+    responses=error_responses(403, 404, 409, 422),
+)
+def set_payout_order(
+    stokvel_id: uuid.UUID,
+    payload: StokvelPayoutOrderRequest,
+    user: User = Depends(get_current_user),
+):
+    """Enter the payout order the members agreed off the platform (D3) for
+    the stokvel's next cycle: `member_ids[0]` is paid in round 0. It must
+    list every current member exactly once, and replaces any earlier order.
+    It can be changed as often as needed until the cycle starts.
+
+    Refusals carry a `code` where doc section 6 gives one: 404 for an
+    unknown stokvel or one the caller is not a current member of; 403
+    `not_organiser` for a member who is not the Organiser; 409
+    `stokvel_deactivated`, `cycle_locked` once the cycle has started, or
+    `cycle_not_forming` when the last cycle has closed and the next is not
+    open yet; 422 `invalid_payout_order` for a duplicate, a former member,
+    someone who is not a member, or a current member left out."""
+    return StokvelPayoutOrderRead.from_view(
+        setup.set_payout_order(user.id, stokvel_id, payload.member_ids)
     )

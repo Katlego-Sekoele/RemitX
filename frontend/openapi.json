@@ -5194,6 +5194,87 @@
         "title": "StokvelListRead",
         "type": "object"
       },
+      "StokvelPayoutOrderRead": {
+        "description": "The payout order of the stokvel's forming cycle, first paid first.",
+        "properties": {
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "order": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelPayoutPlaceRead"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_number",
+          "order"
+        ],
+        "title": "StokvelPayoutOrderRead",
+        "type": "object"
+      },
+      "StokvelPayoutOrderRequest": {
+        "additionalProperties": false,
+        "description": "The payout order the members agreed off the platform (D3).",
+        "properties": {
+          "member_ids": {
+            "description": "Every current member's `member_id`, each once, in the order they are paid: the first is paid in round 0. Replaces any earlier order.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Member Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "member_ids"
+        ],
+        "title": "StokvelPayoutOrderRequest",
+        "type": "object"
+      },
+      "StokvelPayoutPlaceRead": {
+        "description": "One member's place in the payout order.",
+        "properties": {
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "payout_position": {
+            "title": "Payout Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member_id",
+          "payout_position",
+          "name"
+        ],
+        "title": "StokvelPayoutPlaceRead",
+        "type": "object"
+      },
       "StokvelRead": {
         "description": "A stokvel the caller is a current member of.",
         "properties": {
@@ -11854,6 +11935,105 @@
           }
         ],
         "summary": "Invite a user to the stokvel",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/payout-order": {
+      "put": {
+        "description": "Enter the payout order the members agreed off the platform (D3) for\nthe stokvel's next cycle: `member_ids[0]` is paid in round 0. It must\nlist every current member exactly once, and replaces any earlier order.\nIt can be changed as often as needed until the cycle starts.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an\nunknown stokvel or one the caller is not a current member of; 403\n`not_organiser` for a member who is not the Organiser; 409\n`stokvel_deactivated`, `cycle_locked` once the cycle has started, or\n`cycle_not_forming` when the last cycle has closed and the next is not\nopen yet; 422 `invalid_payout_order` for a duplicate, a former member,\nsomeone who is not a member, or a current member left out.",
+        "operationId": "set_payout_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelPayoutOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelPayoutOrderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Set the payout order",
         "tags": [
           "stokvels"
         ]

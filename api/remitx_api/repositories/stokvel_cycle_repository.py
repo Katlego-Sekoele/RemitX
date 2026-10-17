@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
@@ -60,6 +60,17 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
         db.session.add(member)
         db.session.flush()
         return member
+
+    def clear_payout_positions(self, cycle_id: uuid.UUID) -> None:
+        """Clear every payout position in the cycle, former members' rows
+        included, so a new order can be written row by row without meeting
+        `uq_stokvel_cycle_members_cycle_id_position` halfway."""
+        db.session.execute(
+            update(StokvelCycleMember)
+            .where(StokvelCycleMember.cycle_id == cycle_id)
+            .values(payout_position=None)
+        )
+        db.session.flush()
 
     def get_cycle_rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
         """Get the information about the rounds in a cycle, for a given cycle_id."""
