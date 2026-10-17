@@ -27,6 +27,20 @@ class StokvelMemberRepository(Repository[StokvelMember, uuid.UUID]):
             )
         ).one_or_none()
 
+    def list_active(self, stokvel_id: uuid.UUID) -> list[StokvelMember]:
+        """The stokvel's current members, the Organiser included, in the
+        order they joined."""
+        return list(
+            db.session.scalars(
+                select(StokvelMember)
+                .where(
+                    StokvelMember.stokvel_id == stokvel_id,
+                    StokvelMember.left_at.is_(None),
+                )
+                .order_by(StokvelMember.joined_at, StokvelMember.id)
+            ).all()
+        )
+
     def count_active(self, stokvel_id: uuid.UUID) -> int:
         """The stokvel's current members, the Organiser included.
 

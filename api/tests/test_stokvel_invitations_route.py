@@ -31,6 +31,8 @@ from remitx_api.models.orm.account import (
 )
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
     StokvelInvitationStatus,
@@ -178,6 +180,43 @@ def _members(stokvel_id) -> set[uuid.UUID]:
                     StokvelMember.stokvel_id == stokvel_id,
                     StokvelMember.left_at.is_(None),
                 )
+            ).all()
+        )
+    )
+
+
+def _open_cycle(stokvel_id, status: StokvelCycleStatus) -> None:
+    """Cycle 1 of the stokvel in `status`, with no member rows, written
+    directly."""
+
+    def insert():
+        started = status != StokvelCycleStatus.FORMING
+        db.session.add(
+            StokvelCycle(
+                stokvel_id=stokvel_id,
+                cycle_number=1,
+                status=status.value,
+                total_rounds=2 if started else None,
+                current_round=0 if started else None,
+                started_at=datetime.now(UTC) if started else None,
+            )
+        )
+        db.session.commit()
+
+    _in_session(insert)
+
+
+def _cycle_members(stokvel_id) -> set[uuid.UUID]:
+    """Users with a row in any cycle of the stokvel."""
+    return set(
+        _in_session(
+            lambda: db.session.scalars(
+                select(StokvelMember.user_id)
+                .join(
+                    StokvelCycleMember,
+                    StokvelCycleMember.member_id == StokvelMember.id,
+                )
+                .where(StokvelMember.stokvel_id == stokvel_id)
             ).all()
         )
     )
@@ -656,6 +695,44 @@ def test_a_failed_member_insert_leaves_the_invitation_pending(api, monkeypatch):
     assert _members(stokvel_id) == {organiser.id}
 
 
+def test_accepting_during_a_forming_cycle_adds_a_cycle_row(api):
+    """The new member can then choose a beneficiary and be placed in the
+    payout order (R2-09)."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    _open_cycle(stokvel_id, StokvelCycleStatus.FORMING)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    assert api.accept(invitee, invitation_id).status_code == 200
+
+    assert _cycle_members(stokvel_id) == {invitee.id}
+
+
+def test_accepting_during_an_active_cycle_adds_no_cycle_row(api):
+    """They join the next cycle (#237), not the one already running."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    _open_cycle(stokvel_id, StokvelCycleStatus.ACTIVE)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    assert api.accept(invitee, invitation_id).status_code == 200
+
+    assert _cycle_members(stokvel_id) == set()
+
+
+def test_accepting_into_a_stokvel_with_no_cycle_adds_no_cycle_row(api):
+    """A stokvel made before cycles opened at creation: the setup routes
+    open its cycle on demand."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    assert api.accept(invitee, invitation_id).status_code == 200
+
+    assert _members(stokvel_id) == {organiser.id, invitee.id}
+    assert _cycle_members(stokvel_id) == set()
+
+
 # --- decline -------------------------------------------------------------------
 
 
@@ -720,6 +797,21 @@ def test_under_row_security_an_invitee_accepts_and_declines(pg_api):
     assert accepted.json()["member_count"] == 2
     assert declined.status_code == 204, declined.text
     assert _members(stokvel_id) == {organiser.id, joiner.id}
+
+
+@pytest.mark.postgres
+def test_under_row_security_an_invitee_joins_the_forming_cycle(pg_api):
+    """The invitee can see the cycle only once they are a member, and may
+    insert their own cycle row."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    _open_cycle(stokvel_id, StokvelCycleStatus.FORMING)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    accepted = pg_api.accept(invitee, invitation_id)
+
+    assert accepted.status_code == 200, accepted.text
+    assert _cycle_members(stokvel_id) == {invitee.id}
 
 
 @pytest.mark.postgres

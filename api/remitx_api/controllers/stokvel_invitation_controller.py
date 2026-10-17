@@ -39,6 +39,7 @@ from remitx_api.errors.stokvels import (
     TooManyMembersError,
 )
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
     StokvelInvitationStatus,
@@ -47,6 +48,7 @@ from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
+from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_invitation_repository import (
     StokvelInvitationRepository,
 )
@@ -87,6 +89,7 @@ class StokvelInvitationController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
         self._applications = KycApplicationRepository()
+        self._cycles = StokvelCycleRepository()
         self._invitations = StokvelInvitationRepository()
         self._members = StokvelMemberRepository()
         self._stokvels = StokvelRepository()
@@ -156,7 +159,12 @@ class StokvelInvitationController:
     def accept(self, user_id: uuid.UUID, invitation_id: uuid.UUID) -> StokvelView:
         """Accept the caller's invitation: they become a Member, paying from
         their own account in the Stokvel currency. Answers with the stokvel
-        they joined."""
+        they joined.
+
+        A member who joins while the cycle is `forming` gets a row in it
+        (R2-09), to choose their beneficiary and be placed in the payout
+        order. During an active cycle they wait for the next one (#237).
+        """
         invitation = self._own_invitation(user_id, invitation_id)
         # Held until the commit, so two accepts cannot both pass the cap.
         # Nothing below may commit before the member is inserted.
@@ -176,7 +184,7 @@ class StokvelInvitationController:
             raise TooManyMembersError(max_members)
 
         self._answer(invitation, user_id, StokvelInvitationStatus.ACCEPTED)
-        self._members.add(
+        member = self._members.add(
             StokvelMember(
                 stokvel_id=stokvel.id,
                 user_id=user_id,
@@ -184,6 +192,10 @@ class StokvelInvitationController:
                 invitation_id=invitation.id,
             )
         )
+        # Looked up after joining: row-level security shows cycles to members
+        cycle = self._cycles.get_open_cycle(stokvel.id)
+        if cycle is not None and cycle.status == StokvelCycleStatus.FORMING.value:
+            self._cycles.add_cycle_member(cycle.id, member.id)
         return stokvel_view(stokvel, user_id, member_count=member_count + 1)
 
     @db_transaction
