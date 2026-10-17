@@ -44,7 +44,7 @@ block for the seeder, and feeds the rest into the stack.
 |---|---|
 | `seed` | Seeder scenario (senders, KYC/money rates, …) |
 | `locust` | `steps`, `step_seconds`, `spawn_rate` |
-| `burn` | Simulated EVM burn delay (`p50_s`, `p95_s`) and `failure_rate` |
+| `burn` | Simulated EVM burn delay (`p50_s`, `p95_s`), `failure_rate`, and `calibrated_on` (where the timings were measured; required, and shown beside them in every report) |
 | `api` / `worker` / `postgres` | Single-run limits when `compute` is omitted. With a sweep: top-level `api` and `worker` are forbidden; top-level `postgres` holds only `max_connections` (shared). |
 | `compute` | Optional list of full steps `{ name, api, worker, postgres }`. Seed once; recreate Postgres + API + worker per step; same Locust user ramp. Order small→large so the starved case sees the cleaner DB first. |
 | `database_pool` | SQLAlchemy QueuePool per process (fixed for the run). |
@@ -123,17 +123,24 @@ QA branch. It measures real EVM settlements (hashes starting `0x`), which
 skips the seeder's simulated ones and the XRP Ledger burns from before the
 switch-over, and drops outliers such as the worker-wake bug's multi-hour waits
 (anything outside Tukey's far-out fences). Put its `burn_p50_s` and
-`burn_p95_s` in the profile's `burn` section:
+`burn_p95_s` in the profile's `burn` section, and say where they came from:
 
 ```json
-"burn": { "p50_s": 4.2, "p95_s": 7.9, "failure_rate": 0 }
+"burn": {
+  "p50_s": 4.2,
+  "p95_s": 7.9,
+  "failure_rate": 0,
+  "calibrated_on": "XRPL EVM Testnet, QA 2026-10"
+}
 ```
 
 Report the query's real testnet figures as the UCTUSD transaction processing
 time; the load test's own SETTLE rows show how the queue behaves under load.
 
-The defaults (p50 8.61 s, p95 10.24 s) were measured on the XRP Ledger, before
-the switch to EVM. Recalibrate once QA has real EVM burns.
+The committed defaults (p50 8.61 s, p95 10.24 s) were measured on the XRP
+Ledger, before the switch to EVM, so their `calibrated_on` is
+`"XRP Ledger, pre-EVM"` and every report says so. Recalibrate once QA has
+real EVM burns.
 
 ## Files
 

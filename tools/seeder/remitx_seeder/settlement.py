@@ -28,12 +28,15 @@ from remitx_seeder.context import RunContext
 from remitx_seeder.sim import Simulation
 
 SYNTHETIC_HASH_PREFIX = "5EED"
-# What stops a real burn before it is signed: gas estimation reverting because
-# the Treasury Wallet is short of UCTUSD, no test XRP for gas, or an RPC that
-# does not answer.
+# What stops a real burn before it is signed, so nothing is sent and the
+# worker fails the group with no hash: gas estimation reverting because the
+# Treasury Wallet is short of UCTUSD, an RPC on the wrong chain (`get_web3`),
+# or an RPC that does not answer. Refusals the node gives *after* signing
+# (`evm_service._REFUSED`, e.g. "insufficient funds") are a different story
+# and are not simulated here.
 FAILURE_RESULTS = (
     "execution reverted: ERC20InsufficientBalance",
-    "insufficient funds for gas * price + value",
+    "EVM_RPC_URL reports chain id 1, expected EVM_CHAIN_ID 1449000",
     "EVM RPC request timed out",
 )
 

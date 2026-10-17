@@ -64,6 +64,24 @@ def test_bad_locust_steps_are_refused():
         Profile.from_dict(raw)
 
 
+@pytest.mark.parametrize("calibrated_on", [None, "", "   ", 8.61])
+def test_burn_timings_must_say_where_they_were_measured(calibrated_on):
+    """So a report can never pass off stale timings as current ones."""
+    raw = json.loads((PROFILES / "default.json").read_text())
+    if calibrated_on is None:
+        del raw["burn"]["calibrated_on"]
+    else:
+        raw["burn"]["calibrated_on"] = calibrated_on
+    with pytest.raises(ValueError, match="burn.calibrated_on"):
+        Profile.from_dict(raw)
+
+
+def test_committed_profiles_say_their_burn_is_pre_evm():
+    """Until QA has real EVM burns, the timings are the XRP Ledger ones."""
+    for name in list_profiles():
+        assert load_profile(name).burn.calibrated_on == "XRP Ledger, pre-EVM"
+
+
 def test_pool_must_fit_under_postgres_max_connections():
     raw = json.loads((PROFILES / "default.json").read_text())
     raw["database_pool"] = {"pool_size": 400, "max_overflow": 400}

@@ -102,6 +102,18 @@ ISOLATED_KEYS = (
     "SEEDER_API_ORIGIN",
 )
 
+# Chain settings a non-local target must not borrow either: a local `.env`
+# pointed at a fork or another token would make `verify --chain` read the
+# wrong chain. Blanking would break them (Config takes an empty value as
+# given, not its default), so they are reset to the public XRPL EVM Testnet
+# values, which the target's file may still override. Must match the defaults
+# in `remitx_api.config` (tests/test_settings.py checks this).
+PUBLIC_CHAIN_SETTINGS = {
+    "EVM_RPC_URL": "https://rpc.testnet.xrplevm.org",
+    "EVM_CHAIN_ID": "1449000",
+    "UCTUSD_CONTRACT_ADDRESS": "0x7055071C7B79A859d9514e62833BFf041ce71074",
+}
+
 
 def load_target_env(target: str) -> dict[str, str]:
     """Put the target's env file into `os.environ`, overriding what is there.
@@ -114,5 +126,6 @@ def load_target_env(target: str) -> dict[str, str]:
     if target != "local":
         for key in ISOLATED_KEYS:
             os.environ[key] = ""
+        os.environ.update(PUBLIC_CHAIN_SETTINGS)
     os.environ.update(values)
     return values

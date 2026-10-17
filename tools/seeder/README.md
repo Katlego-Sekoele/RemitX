@@ -154,7 +154,10 @@ Change those to change the population; no code needed.
   every user has correctly named accounts, every beneficiary has a payout
   account. Every seed run ends with it. With `--chain` it also compares the
   ledger's treasury balance with the Treasury Wallet's real UCTUSD balance
-  (needs `EVM_TREASURY_ADDRESS`; reads only).
+  (needs `EVM_TREASURY_ADDRESS`; reads only). On any database from before the
+  EVM switch it reports `(differ)`, and says so: the ledger treasury still
+  starts from the XRPL wallet's balance and needs a one-off rebase to the EVM
+  Treasury Wallet before the comparison means anything.
 - **Schema** reads the live schema: rows per table, which story writes it, and
   columns that are NULL in every row. A table marked *no generator yet* means
   the schema moved on and the seeder has not.

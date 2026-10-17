@@ -62,6 +62,7 @@ def _report_payload(summary: RunSummary) -> dict:
         "description": summary.description,
         "burnP50": summary.burn_p50_s,
         "burnP95": summary.burn_p95_s,
+        "burnCalibratedOn": summary.burn_calibrated_on,
         "computeLabels": ", ".join(
             f"{c.name} (API {c.api_cpus} / worker {c.worker_cpus} / "
             f"pg {c.postgres_cpus} CPU)"
@@ -122,6 +123,7 @@ export default function LoadtestPerformanceReport() {{
           <Pill tone="info">HTTP vs SETTLE split</Pill>
           <Pill tone="neutral">
             UCTUSD burn p50 {{data.burnP50}} s / p95 {{data.burnP95}} s
+            (calibrated on {{data.burnCalibratedOn}})
           </Pill>
         </Row>
       </Stack>
@@ -180,17 +182,18 @@ export default function LoadtestPerformanceReport() {{
         <Text>
           Message-queue throughput is the Locust SETTLE “end to end” rate
           (settlements per second). UCTUSD processing time uses the profile’s
-          calibrated Testnet burn (from qa_burn_timings.sql) plus in-run
-          “chain + confirm” medians under load.
+          calibrated burn (from qa_burn_timings.sql; calibrated on{{" "}}
+          {{data.burnCalibratedOn}}) plus in-run “chain + confirm” medians
+          under load.
         </Text>
         <Grid columns={{3}} gap={{12}}>
           <Stat
             value={{`${{data.burnP50}} s`}}
-            label="Calibrated UCTUSD burn p50 (Testnet)"
+            label={{`Calibrated UCTUSD burn p50 (${{data.burnCalibratedOn}})`}}
           />
           <Stat
             value={{`${{data.burnP95}} s`}}
-            label="Calibrated UCTUSD burn p95 (Testnet)"
+            label={{`Calibrated UCTUSD burn p95 (${{data.burnCalibratedOn}})`}}
           />
           <Stat
             value={{data.headline.httpFailPct}}
@@ -418,7 +421,7 @@ app.innerHTML = `
   <p class="muted">Profile ${{esc(data.profileName)}}. ${{esc(data.description)}} Compute: ${{esc(data.computeLabels)}}. Locust user steps: ${{esc(data.locustSteps.join(" → "))}}.</p>
   <div class="pills">
     <span class="pill">HTTP vs SETTLE split</span>
-    <span class="pill">UCTUSD burn p50 ${{esc(data.burnP50)}} s / p95 ${{esc(data.burnP95)}} s</span>
+    <span class="pill">UCTUSD burn p50 ${{esc(data.burnP50)}} s / p95 ${{esc(data.burnP95)}} s (calibrated on ${{esc(data.burnCalibratedOn)}})</span>
   </div>
   <div class="callout">${{esc(data.bottleneck)}}</div>
   <div class="stats">
@@ -439,10 +442,10 @@ app.innerHTML = `
   </section>
   <section>
     <h2>Settlement: queue throughput, UCTUSD time, success rates</h2>
-    <p class="muted">Message-queue throughput is the Locust SETTLE “end to end” rate (settlements per second). UCTUSD processing time uses the profile’s calibrated Testnet burn plus in-run “chain + confirm” medians under load.</p>
+    <p class="muted">Message-queue throughput is the Locust SETTLE “end to end” rate (settlements per second). UCTUSD processing time uses the profile’s calibrated burn (calibrated on ${{esc(data.burnCalibratedOn)}}) plus in-run “chain + confirm” medians under load.</p>
     <div class="stats">
-      <div class="stat"><div class="v">${{esc(data.burnP50)}} s</div><div class="l">Calibrated UCTUSD burn p50 (Testnet)</div></div>
-      <div class="stat"><div class="v">${{esc(data.burnP95)}} s</div><div class="l">Calibrated UCTUSD burn p95 (Testnet)</div></div>
+      <div class="stat"><div class="v">${{esc(data.burnP50)}} s</div><div class="l">Calibrated UCTUSD burn p50 (${{esc(data.burnCalibratedOn)}})</div></div>
+      <div class="stat"><div class="v">${{esc(data.burnP95)}} s</div><div class="l">Calibrated UCTUSD burn p95 (${{esc(data.burnCalibratedOn)}})</div></div>
       <div class="stat ${{failTone}}"><div class="v">${{esc(data.headline.httpFailPct)}}</div><div class="l">HTTP failure rate (all compute)</div></div>
     </div>
     ${{table(
