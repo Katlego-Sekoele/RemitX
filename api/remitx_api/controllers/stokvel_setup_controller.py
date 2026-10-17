@@ -1,5 +1,6 @@
 """Setting up a stokvel's next cycle before it starts (R2-09): the Organiser
-enters the payout order the members agreed off the platform (D3).
+enters the payout order the members agreed off the platform (D3), and each
+member chooses the beneficiary the stokvel pays their pool to (#293).
 
 Everything here happens while the cycle is `forming` and is locked once it
 starts (R2-10). Each use case holds the stokvel row lock, as accepting an
@@ -16,6 +17,10 @@ from dataclasses import dataclass
 
 from remitx_api.controllers.stokvel_controller import open_forming_cycle
 from remitx_api.db.transaction import db_transaction
+from remitx_api.errors.beneficiaries import (
+    PayoutAccountMissingError,
+    UnknownBeneficiaryError,
+)
 from remitx_api.errors.stokvels import (
     CycleNotFormingError,
     InvalidPayoutOrderError,
@@ -28,6 +33,7 @@ from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import short_display_name
+from remitx_api.repositories.beneficiary_repository import BeneficiaryRepository
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_member_repository import StokvelMemberRepository
 from remitx_api.repositories.stokvel_repository import StokvelRepository
@@ -50,8 +56,18 @@ class PayoutOrderView:
     order: list[PayoutPlaceView]
 
 
+@dataclass(frozen=True)
+class PayoutBeneficiaryView:
+    stokvel_id: uuid.UUID
+    cycle_number: int
+    member_id: uuid.UUID
+    beneficiary_id: uuid.UUID
+    payout_currency: str
+
+
 class StokvelSetupController:
     def __init__(self) -> None:
+        self._beneficiaries = BeneficiaryRepository()
         self._cycles = StokvelCycleRepository()
         self._members = StokvelMemberRepository()
         self._stokvels = StokvelRepository()
@@ -69,7 +85,7 @@ class StokvelSetupController:
         collides with the new order nor counts as placed when the cycle
         starts.
         """
-        stokvel = self._lock_own_stokvel(user_id, stokvel_id)
+        stokvel, _member = self._lock_own_stokvel(user_id, stokvel_id)
         if stokvel.organiser_user_id != user_id:
             raise NotStokvelOrganiserError("set the payout order")
         if stokvel.deactivated_at is not None:
@@ -102,15 +118,60 @@ class StokvelSetupController:
             ],
         )
 
-    def _lock_own_stokvel(self, user_id: uuid.UUID, stokvel_id: uuid.UUID) -> Stokvel:
-        """The stokvel, locked until the transaction ends, if `user_id` is a
-        current member. Anyone else gets the same 404 as an unknown id."""
+    @db_transaction
+    def set_beneficiary(
+        self, user_id: uuid.UUID, stokvel_id: uuid.UUID, beneficiary_id: uuid.UUID
+    ) -> PayoutBeneficiaryView:
+        """Choose which of the caller's own beneficiaries the stokvel pays
+        their pool to in the forming cycle. Replaces any earlier choice.
+
+        The payout currency is the beneficiary's own, copied now: changing
+        the beneficiary later does not move a choice already made. The
+        recipient must still hold a fiat account in it, as when the
+        beneficiary was added.
+        """
+        stokvel, member = self._lock_own_stokvel(user_id, stokvel_id)
+        if stokvel.deactivated_at is not None:
+            raise StokvelDeactivatedError()
+        cycle = self._forming_cycle(
+            stokvel, is_organiser=stokvel.organiser_user_id == user_id
+        )
+
+        row = self._beneficiaries.get_sender_beneficiary(user_id, beneficiary_id)
+        if row is None:
+            raise UnknownBeneficiaryError(beneficiary_id)
+        currency = row.beneficiary.payout_currency
+        if currency not in row.payout_currencies:
+            raise PayoutAccountMissingError(currency, row.payout_currencies)
+
+        cycle_member = self._cycles.get_cycle_member(
+            cycle.id, member.id
+        ) or self._cycles.add_cycle_member(cycle.id, member.id)
+        if cycle_member.locked:
+            raise PayoutSetupLockedError()
+        cycle_member.payout_beneficiary_id = row.beneficiary.beneficiary_id
+        cycle_member.payout_currency = currency
+        return PayoutBeneficiaryView(
+            stokvel_id=stokvel.id,
+            cycle_number=cycle.cycle_number,
+            member_id=member.id,
+            beneficiary_id=row.beneficiary.beneficiary_id,
+            payout_currency=currency,
+        )
+
+    def _lock_own_stokvel(
+        self, user_id: uuid.UUID, stokvel_id: uuid.UUID
+    ) -> tuple[Stokvel, StokvelMember]:
+        """The stokvel, locked until the transaction ends, and the caller's
+        current membership of it. Anyone who is not a current member gets the
+        same 404 as an unknown id."""
         stokvel = self._stokvels.lock(stokvel_id)
         if stokvel is None:
             raise StokvelNotFoundError()
-        if self._members.get_active_member(stokvel.id, user_id) is None:
+        member = self._members.get_active_member(stokvel.id, user_id)
+        if member is None:
             raise StokvelNotFoundError()
-        return stokvel
+        return stokvel, member
 
     def _forming_cycle(self, stokvel: Stokvel, *, is_organiser: bool) -> StokvelCycle:
         """The stokvel's open cycle, if it is still `forming`. A stokvel that

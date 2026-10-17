@@ -14,6 +14,8 @@ from remitx_api.controllers.stokvel_setup_controller import StokvelSetupControll
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.stokvel import (
     SentStokvelInvitationRead,
+    StokvelBeneficiaryRead,
+    StokvelBeneficiaryRequest,
     StokvelContributionRead,
     StokvelCreateRequest,
     StokvelInvitationCreateRequest,
@@ -166,4 +168,30 @@ def set_payout_order(
     someone who is not a member, or a current member left out."""
     return StokvelPayoutOrderRead.from_view(
         setup.set_payout_order(user.id, stokvel_id, payload.member_ids)
+    )
+
+
+@router.put(
+    "/{stokvel_id}/members/me/beneficiary",
+    response_model=StokvelBeneficiaryRead,
+    summary="Choose my payout beneficiary",
+    responses=error_responses(400, 404, 409, 422),
+)
+def set_my_beneficiary(
+    stokvel_id: uuid.UUID,
+    payload: StokvelBeneficiaryRequest,
+    user: User = Depends(get_current_user),
+):
+    """Choose which of the caller's own beneficiaries the stokvel pays their
+    pool to in its next cycle, in that beneficiary's payout currency.
+    Replaces any earlier choice, and can be changed until the cycle starts.
+
+    Refusals carry a `code` where doc section 6 gives one: 404 for an
+    unknown stokvel or one the caller is not a current member of, and for a
+    beneficiary that is unknown or not the caller's; 400 if the recipient
+    no longer holds an account in the beneficiary's payout currency; 409
+    `stokvel_deactivated`, `cycle_locked` once the cycle has started, or
+    `cycle_not_forming` when there is no cycle to set up yet."""
+    return StokvelBeneficiaryRead.from_view(
+        setup.set_beneficiary(user.id, stokvel_id, payload.beneficiary_id)
     )

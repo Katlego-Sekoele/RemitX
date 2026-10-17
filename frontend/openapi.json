@@ -4981,6 +4981,60 @@
         "title": "SkippedStatementLineReason",
         "type": "string"
       },
+      "StokvelBeneficiaryRead": {
+        "description": "The caller's payout beneficiary for the stokvel's forming cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "payout_currency": {
+            "$ref": "#/components/schemas/PayoutCurrency",
+            "description": "The beneficiary's payout currency when chosen. Fixed for the cycle once it starts."
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_number",
+          "member_id",
+          "beneficiary_id",
+          "payout_currency"
+        ],
+        "title": "StokvelBeneficiaryRead",
+        "type": "object"
+      },
+      "StokvelBeneficiaryRequest": {
+        "additionalProperties": false,
+        "description": "The beneficiary the stokvel pays the caller's pool to.",
+        "properties": {
+          "beneficiary_id": {
+            "description": "One of the caller's own beneficiaries (`GET /beneficiaries`). They are paid in the beneficiary's payout currency.",
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beneficiary_id"
+        ],
+        "title": "StokvelBeneficiaryRequest",
+        "type": "object"
+      },
       "StokvelContributionRead": {
         "description": "A contribution just recorded. It is `pending` until the worker has\nsent `contribute` on-chain and it is mined; then `confirmed`, or `failed`\nif nothing landed (the member may then pay the round again).",
         "properties": {
@@ -11935,6 +11989,105 @@
           }
         ],
         "summary": "Invite a user to the stokvel",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/members/me/beneficiary": {
+      "put": {
+        "description": "Choose which of the caller's own beneficiaries the stokvel pays their\npool to in its next cycle, in that beneficiary's payout currency.\nReplaces any earlier choice, and can be changed until the cycle starts.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an\nunknown stokvel or one the caller is not a current member of, and for a\nbeneficiary that is unknown or not the caller's; 400 if the recipient\nno longer holds an account in the beneficiary's payout currency; 409\n`stokvel_deactivated`, `cycle_locked` once the cycle has started, or\n`cycle_not_forming` when there is no cycle to set up yet.",
+        "operationId": "set_my_beneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelBeneficiaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelBeneficiaryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Choose my payout beneficiary",
         "tags": [
           "stokvels"
         ]

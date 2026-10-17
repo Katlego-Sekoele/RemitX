@@ -1,4 +1,5 @@
-"""`PUT /stokvels/{id}/payout-order` (R2-09).
+"""`PUT /stokvels/{id}/payout-order` and
+`PUT /stokvels/{id}/members/me/beneficiary` (R2-09).
 
 On SQLite, which has no row-level security, except the tests marked
 `postgres`, which run the same routes under it (TEST_DATABASE_URL). The
@@ -19,7 +20,8 @@ from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.account import CURRENCY_USD, CURRENCY_ZAR
+from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
@@ -86,11 +88,13 @@ def _stokvel(
     *others: Person,
     cycle: StokvelCycleStatus | None = StokvelCycleStatus.FORMING,
     deactivated: bool = False,
+    rowless: tuple[Person, ...] = (),
 ) -> Group:
     """A ZAR stokvel with `organiser` and `others` as current members,
     written directly. `cycle` is the status of its cycle 1, each member with
-    an empty row while it is forming; None writes no cycle, as for a
-    stokvel made before cycles opened at creation."""
+    an empty row while it is forming, except those in `rowless` (members
+    who joined before rows were added on accepting); None writes no cycle,
+    as for a stokvel made before cycles opened at creation."""
 
     def insert():
         stokvel = Stokvel(
@@ -109,7 +113,9 @@ def _stokvel(
             row = _cycle(stokvel.id, cycle)
             stokvel.current_cycle_id = row.id
             if cycle == StokvelCycleStatus.FORMING:
-                for member_id in member_ids.values():
+                for person, member_id in member_ids.items():
+                    if person in rowless:
+                        continue
                     db.session.add(
                         StokvelCycleMember(cycle_id=row.id, member_id=member_id)
                     )
@@ -187,6 +193,56 @@ def _positions(stokvel_id) -> dict[uuid.UUID, int | None]:
     )
 
 
+def _beneficiary(sender: Person, linked: Person, currency=CURRENCY_ZAR) -> uuid.UUID:
+    """`sender`'s beneficiary `linked`, paid in `currency`, written directly
+    (so without the check that `linked` holds an account in it)."""
+
+    def insert():
+        beneficiary = Beneficiary(
+            sender_user_id=sender.id,
+            linked_user_id=linked.id,
+            payout_currency=currency,
+            relationship=BeneficiaryRelationship.PARENT.value,
+        )
+        db.session.add(beneficiary)
+        db.session.commit()
+        return beneficiary.beneficiary_id
+
+    return _in_session(insert)
+
+
+def _open_usd_account(person: Person) -> None:
+    def open_account():
+        user = db.session.get(User, person.id)
+        AccountRepository().open_user_account(
+            user.id, user.base_reference, CURRENCY_USD
+        )
+        db.session.commit()
+
+    _in_session(open_account)
+
+
+def _choices(stokvel_id) -> dict[uuid.UUID, tuple[uuid.UUID | None, str | None]]:
+    """Each open-cycle row's (beneficiary, payout currency), by member id."""
+    return {
+        member_id: (beneficiary_id, currency)
+        for member_id, beneficiary_id, currency in _in_session(
+            lambda: db.session.execute(
+                select(
+                    StokvelCycleMember.member_id,
+                    StokvelCycleMember.payout_beneficiary_id,
+                    StokvelCycleMember.payout_currency,
+                )
+                .join(StokvelCycle, StokvelCycle.id == StokvelCycleMember.cycle_id)
+                .where(
+                    StokvelCycle.stokvel_id == stokvel_id,
+                    StokvelCycle.status != StokvelCycleStatus.CLOSED.value,
+                )
+            ).all()
+        )
+    }
+
+
 class Api:
     """Calls the routes as a chosen user."""
 
@@ -202,6 +258,13 @@ class Api:
         return self.client.put(
             f"/stokvels/{stokvel_id}/payout-order",
             json={"member_ids": [str(member_id) for member_id in member_ids]},
+            headers={USER_HEADER: str(as_.id)},
+        )
+
+    def beneficiary(self, as_: Person, stokvel_id, beneficiary_id):
+        return self.client.put(
+            f"/stokvels/{stokvel_id}/members/me/beneficiary",
+            json={"beneficiary_id": str(beneficiary_id)},
             headers={USER_HEADER: str(as_.id)},
         )
 
@@ -447,17 +510,7 @@ def test_a_stokvel_with_no_cycle_gets_its_first_one(api):
 def test_a_member_with_no_cycle_row_gets_one(api):
     """A member who joined before members got a row on accepting."""
     organiser, thandi = _person("sipho"), _person()
-    group = _stokvel(organiser, thandi)
-
-    def drop_row():
-        db.session.execute(
-            StokvelCycleMember.__table__.delete().where(
-                StokvelCycleMember.member_id == group.member_id(thandi)
-            )
-        )
-        db.session.commit()
-
-    _in_session(drop_row)
+    group = _stokvel(organiser, thandi, rowless=(thandi,))
     order = [group.member_id(thandi), group.member_id(organiser)]
 
     assert api.payout_order(organiser, group.stokvel_id, order).status_code == 200
@@ -467,6 +520,187 @@ def test_a_member_with_no_cycle_row_gets_one(api):
 def test_setting_the_order_anonymously_is_rejected(anonymous_client):
     response = anonymous_client.put(
         f"/stokvels/{uuid.uuid4()}/payout-order", json={"member_ids": []}
+    )
+    assert response.status_code == 401
+
+
+# --- beneficiary ---------------------------------------------------------------
+
+
+def test_a_member_chooses_their_beneficiary(api):
+    """The payout currency is the beneficiary's own, copied onto the row."""
+    organiser, thandi, mother = _person("sipho"), _person(), _person("mother")
+    _open_usd_account(mother)
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, mother, CURRENCY_USD)
+
+    response = api.beneficiary(thandi, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "stokvel_id": str(group.stokvel_id),
+        "cycle_number": 1,
+        "member_id": str(group.member_id(thandi)),
+        "beneficiary_id": str(beneficiary_id),
+        "payout_currency": "USD",
+    }
+    assert _choices(group.stokvel_id) == {
+        group.member_id(organiser): (None, None),
+        group.member_id(thandi): (beneficiary_id, CURRENCY_USD),
+    }
+
+
+def test_the_beneficiary_can_be_changed(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    first = _beneficiary(thandi, _person("mother"))
+    second = _beneficiary(thandi, _person("brother"))
+
+    assert api.beneficiary(thandi, group.stokvel_id, first).status_code == 200
+    response = api.beneficiary(thandi, group.stokvel_id, second)
+
+    assert response.status_code == 200, response.text
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (
+        second,
+        CURRENCY_ZAR,
+    )
+
+
+def test_the_organiser_chooses_their_own_beneficiary_too(api):
+    organiser = _person("sipho")
+    group = _stokvel(organiser)
+    beneficiary_id = _beneficiary(organiser, _person("mother"))
+
+    response = api.beneficiary(organiser, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert _choices(group.stokvel_id) == {
+        group.member_id(organiser): (beneficiary_id, CURRENCY_ZAR)
+    }
+
+
+def test_someone_elses_beneficiary_is_not_found(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    theirs = _beneficiary(organiser, _person("mother"))
+
+    response = api.beneficiary(thandi, group.stokvel_id, theirs)
+
+    _refused(response, 404)
+    assert response.json()["detail"] == "Beneficiary not found"
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (None, None)
+
+
+def test_an_unknown_beneficiary_is_not_found(api):
+    organiser = _person("sipho")
+    group = _stokvel(organiser)
+
+    _refused(api.beneficiary(organiser, group.stokvel_id, uuid.uuid4()), 404)
+
+
+def test_the_recipient_must_still_hold_the_payout_account(api):
+    """Re-checked at choosing: a beneficiary in USD whose person holds only
+    ZAR is refused, as when adding the beneficiary."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, _person("mother"), CURRENCY_USD)
+
+    response = api.beneficiary(thandi, group.stokvel_id, beneficiary_id)
+
+    _refused(response, 400)
+    assert response.json()["detail"] == (
+        "They don't have a USD account. They can be paid in ZAR."
+    )
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (None, None)
+
+
+def test_an_outsider_cannot_choose_a_beneficiary(api):
+    outsider = _person("outsider")
+    group = _stokvel(_person("sipho"))
+    beneficiary_id = _beneficiary(outsider, _person("mother"))
+
+    _refused(api.beneficiary(outsider, group.stokvel_id, beneficiary_id), 404)
+
+
+def test_the_beneficiary_is_locked_once_the_cycle_has_started(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, cycle=StokvelCycleStatus.ACTIVE)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+
+    _refused(
+        api.beneficiary(thandi, group.stokvel_id, beneficiary_id), 409, "cycle_locked"
+    )
+
+
+def test_after_the_last_cycle_closes_there_is_no_beneficiary_to_choose(api):
+    organiser = _person("sipho")
+    group = _stokvel(organiser, cycle=StokvelCycleStatus.CLOSED)
+    beneficiary_id = _beneficiary(organiser, _person("mother"))
+
+    _refused(
+        api.beneficiary(organiser, group.stokvel_id, beneficiary_id),
+        409,
+        "cycle_not_forming",
+    )
+
+
+def test_a_deactivated_stokvel_takes_no_beneficiary(api):
+    organiser = _person("sipho")
+    group = _stokvel(organiser, deactivated=True)
+    beneficiary_id = _beneficiary(organiser, _person("mother"))
+
+    _refused(
+        api.beneficiary(organiser, group.stokvel_id, beneficiary_id),
+        409,
+        "stokvel_deactivated",
+    )
+
+
+def test_a_member_waits_for_the_organiser_to_open_a_missing_cycle(api):
+    """Row-level security lets only the Organiser insert a cycle, so a
+    member of a stokvel with none is refused until the Organiser opens it."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, cycle=None)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+
+    _refused(
+        api.beneficiary(thandi, group.stokvel_id, beneficiary_id),
+        409,
+        "cycle_not_forming",
+    )
+    assert _choices(group.stokvel_id) == {}
+
+
+def test_the_organiser_opens_a_missing_cycle_by_choosing(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, cycle=None)
+    beneficiary_id = _beneficiary(organiser, _person("mother"))
+
+    response = api.beneficiary(organiser, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert _choices(group.stokvel_id) == {
+        group.member_id(organiser): (beneficiary_id, CURRENCY_ZAR),
+        group.member_id(thandi): (None, None),
+    }
+
+
+def test_a_member_with_no_cycle_row_gets_one_by_choosing(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, rowless=(thandi,))
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+
+    assert api.beneficiary(thandi, group.stokvel_id, beneficiary_id).status_code == 200
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (
+        beneficiary_id,
+        CURRENCY_ZAR,
+    )
+
+
+def test_choosing_anonymously_is_rejected(anonymous_client):
+    response = anonymous_client.put(
+        f"/stokvels/{uuid.uuid4()}/members/me/beneficiary",
+        json={"beneficiary_id": str(uuid.uuid4())},
     )
     assert response.status_code == 401
 
@@ -516,4 +750,37 @@ def test_under_row_security_an_outsider_cannot_see_the_stokvel(pg_api):
             _person("outsider"), group.stokvel_id, [group.member_id(organiser)]
         ),
         404,
+    )
+
+
+@pytest.mark.postgres
+def test_under_row_security_a_member_chooses_their_beneficiary(pg_api):
+    """The member writes only their own row, and the recipient's accounts
+    are visible to the payout-account check."""
+    organiser, thandi, mother = _person("sipho"), _person(), _person("mother")
+    _open_usd_account(mother)
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, mother, CURRENCY_USD)
+
+    response = pg_api.beneficiary(thandi, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert _choices(group.stokvel_id) == {
+        group.member_id(organiser): (None, None),
+        group.member_id(thandi): (beneficiary_id, CURRENCY_USD),
+    }
+
+
+@pytest.mark.postgres
+def test_under_row_security_a_member_adds_their_own_missing_row(pg_api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, rowless=(thandi,))
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+
+    response = pg_api.beneficiary(thandi, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (
+        beneficiary_id,
+        CURRENCY_ZAR,
     )

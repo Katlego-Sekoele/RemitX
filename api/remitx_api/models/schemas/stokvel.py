@@ -19,6 +19,7 @@ from remitx_api.controllers.stokvel_invitation_controller import (
     SentStokvelInvitationView,
 )
 from remitx_api.controllers.stokvel_setup_controller import (
+    PayoutBeneficiaryView,
     PayoutOrderView,
     PayoutPlaceView,
 )
@@ -265,4 +266,43 @@ class StokvelPayoutOrderRead(Schema):
             stokvel_id=view.stokvel_id,
             cycle_number=view.cycle_number,
             order=[StokvelPayoutPlaceRead.from_view(place) for place in view.order],
+        )
+
+
+class StokvelBeneficiaryRequest(Schema):
+    """The beneficiary the stokvel pays the caller's pool to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beneficiary_id: uuid.UUID = Field(
+        description=(
+            "One of the caller's own beneficiaries (`GET /beneficiaries`). "
+            "They are paid in the beneficiary's payout currency."
+        )
+    )
+
+
+class StokvelBeneficiaryRead(Schema):
+    """The caller's payout beneficiary for the stokvel's forming cycle."""
+
+    stokvel_id: uuid.UUID
+    # 1 for the stokvel's first cycle.
+    cycle_number: int
+    member_id: uuid.UUID
+    beneficiary_id: uuid.UUID
+    payout_currency: PayoutCurrency = Field(
+        description=(
+            "The beneficiary's payout currency when chosen. Fixed for the "
+            "cycle once it starts."
+        )
+    )
+
+    @classmethod
+    def from_view(cls, view: PayoutBeneficiaryView) -> "StokvelBeneficiaryRead":
+        return cls(
+            stokvel_id=view.stokvel_id,
+            cycle_number=view.cycle_number,
+            member_id=view.member_id,
+            beneficiary_id=view.beneficiary_id,
+            payout_currency=view.payout_currency,
         )
