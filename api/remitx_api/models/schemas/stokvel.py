@@ -1,10 +1,14 @@
-"""Request/response schemas for creating and listing stokvels (R2-07)."""
+"""Request/response schemas for creating and listing stokvels (R2-07) and
+contributing to one (R2-11)."""
 
 import uuid
 from typing import Annotated
 
 from pydantic import ConfigDict, Field, StringConstraints
 
+from remitx_api.controllers.stokvel_contribution_controller import (
+    StokvelContributionView,
+)
 from remitx_api.controllers.stokvel_controller import (
     StokvelInvitationView,
     StokvelListView,
@@ -114,4 +118,53 @@ class StokvelListRead(Schema):
             invitations=[
                 StokvelInvitationRead.from_view(item) for item in view.invitations
             ],
+        )
+
+
+class StokvelContributionRead(Schema):
+    """A contribution just recorded. It is `pending` until the worker has
+    sent `contribute` on-chain and it is mined; then `confirmed`, or `failed`
+    if nothing landed (the member may then pay the round again)."""
+
+    contribution_id: uuid.UUID
+    stokvel_id: uuid.UUID
+    # 1 for the stokvel's first cycle.
+    cycle_number: int
+    # 0-based, as on the contract.
+    round: int
+    status: str
+    # The Stokvel currency the member paid in.
+    currency: StokvelCurrency
+    amount_token: LedgerDecimal = Field(
+        description="UCTUSD sent to the contract: the stokvel's fixed contribution."
+    )
+    amount_fiat: LedgerDecimal = Field(
+        description="Debited from the member's account: amount_token at the live rate."
+    )
+    fee_amount: LedgerDecimal = Field(
+        description=(
+            "The member's equal share of the round's payout fee (FSE's fee "
+            "and FX margin on the pool), rounded up to the cent and debited "
+            "on top of amount_fiat."
+        )
+    )
+    amount_zar: LedgerDecimal = Field(
+        description="amount_fiat plus the fee in rand: what counts against the limits."
+    )
+    created_at: UtcDateTime
+
+    @classmethod
+    def from_view(cls, view: StokvelContributionView) -> "StokvelContributionRead":
+        return cls(
+            contribution_id=view.contribution_id,
+            stokvel_id=view.stokvel_id,
+            cycle_number=view.cycle_number,
+            round=view.round,
+            status=view.status,
+            currency=view.currency,
+            amount_token=view.amount_token,
+            amount_fiat=view.amount_fiat,
+            fee_amount=view.fee_amount,
+            amount_zar=view.amount_zar,
+            created_at=view.created_at,
         )

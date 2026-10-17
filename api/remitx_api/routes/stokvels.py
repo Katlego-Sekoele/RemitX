@@ -1,18 +1,26 @@
-from fastapi import Depends, status
+import uuid
+
+from fastapi import Depends, HTTPException, status
 
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.controllers.stokvel_contribution_controller import (
+    StokvelContributionController,
+)
 from remitx_api.controllers.stokvel_controller import StokvelController
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.stokvel import (
+    StokvelContributionRead,
     StokvelCreateRequest,
     StokvelListRead,
     StokvelRead,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
+from remitx_api.services.exchange_rate_service import RateUnavailableError
 
 router = create_customer_router(prefix="/stokvels", tags=[Tag.STOKVELS])
 controller = StokvelController()
+contributions = StokvelContributionController()
 
 
 @router.post(
@@ -53,3 +61,42 @@ def list_stokvels(user: User = Depends(get_current_user)):
     to join one that they have not answered yet, each newest first. A
     stokvel the caller has left is not listed."""
     return StokvelListRead.from_view(controller.list_stokvels(user.id))
+
+
+@router.post(
+    "/{stokvel_id}/contributions",
+    response_model=StokvelContributionRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Contribute to the stokvel's current round",
+    responses=error_responses(400, 403, 404, 409, 503),
+)
+def contribute_to_stokvel(
+    stokvel_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """Pay the caller's fixed contribution into their stokvel's open round:
+    the first round that does not yet have a contribution from every member,
+    as on the contract. No body: the member, round and amount are the
+    stokvel's. The member is debited the UCTUSD contribution at the live rate
+    from their account in the Stokvel currency, and it counts toward their
+    own sending limits. Returns the contribution `pending`; it is confirmed
+    once the worker's on-chain `contribute` is mined.
+
+    Refusals carry a `code` (doc section 6): 404 for an unknown stokvel or
+    one the caller is not a current member of (the same answer, so an id
+    reveals nothing); 403 `not_a_member` for a member outside its current
+    cycle; 409
+    `cycle_not_open` with no active cycle, `wrong_round` once every round is
+    paid, `contribution_already_paid` for a second payment to the open round.
+    Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a
+    short available balance, a send over the daily or monthly limit, or a
+    caller who is not verified. 503 when no exchange rate is available, as
+    for a quote: nothing is recorded."""
+    try:
+        view = contributions.contribute(user.id, stokvel_id)
+    except RateUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Exchange rate unavailable; try again shortly",
+        ) from exc
+    return StokvelContributionRead.from_view(view)
