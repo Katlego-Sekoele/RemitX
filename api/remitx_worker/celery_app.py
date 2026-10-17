@@ -18,6 +18,8 @@ celery.conf.beat_schedule = {
     },
 }
 celery.autodiscover_tasks(["remitx_worker"])
+# The stokvel tasks (doc section 4) live in their own module.
+celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_tasks")
 
 
 @worker_ready.connect
