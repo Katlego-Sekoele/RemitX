@@ -147,8 +147,6 @@ class StokvelSetupController:
         cycle_member = self._cycles.get_cycle_member(
             cycle.id, member.id
         ) or self._cycles.add_cycle_member(cycle.id, member.id)
-        if cycle_member.locked:
-            raise PayoutSetupLockedError()
         cycle_member.payout_beneficiary_id = row.beneficiary.beneficiary_id
         cycle_member.payout_currency = currency
         return PayoutBeneficiaryView(
