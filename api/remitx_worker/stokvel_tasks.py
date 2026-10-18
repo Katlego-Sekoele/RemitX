@@ -213,9 +213,13 @@ def submit_contribution(self, contribution_id: str) -> str:
         )
         return "failed"
     except evm_service.TransactionRejected as exc:
-        # The RPC refused the signed transaction: it is in no mempool and can
-        # never be mined, so the stored hash is dropped with the claim.
-        return _retry_unsent(self, target_id, contribution_id, exc, exc.tx_hash)
+        # The RPC refused a signed transaction: it is in no mempool and can
+        # never be mined. If it was the `contribute`, its stored hash is
+        # dropped with the claim. It may instead have been the allowance's
+        # `approve`, whose hash was never stored on the contribution, so only
+        # a hash `record` stored counts as ours.
+        rejected = recorded[0] if recorded else None
+        return _retry_unsent(self, target_id, contribution_id, exc, rejected)
     except Exception as exc:
         if not recorded:
             # Failed before signing finished: nothing reached the chain.

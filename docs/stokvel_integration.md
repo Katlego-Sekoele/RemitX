@@ -521,7 +521,7 @@ _TBD per endpoint: request and response shape, errors._
 | Over the member's daily or monthly limit, contributions and remittances together (D8) | 400, no code | The existing `LimitExceededError` message (`require_can_send`) |
 | No usable exchange rate (the live fetch failed and no stored rate is recent enough) | 503, no code | "Exchange rate unavailable; try again shortly", as for a quote. Nothing is recorded |
 
-**In the worker (R2-12):** a contribution is sent after the API has answered, so these errors never reach the member as a status. `stokvel.submit_contribution` fails the contribution on a rule refusal and retries on `EnforcedPause` and the Treasury's token errors (section 4). The member sees the contribution `failed` (and may pay again) or, eventually, `confirmed`.
+**In the worker (R2-12):** a contribution is sent after the API has answered, so these errors never reach the member as a status. `stokvel.submit_contribution` fails the contribution on a rule refusal and retries on the platform's faults: `EnforcedPause`, the Treasury's token errors (`ERC20InsufficientBalance`, `ERC20InsufficientAllowance`), `AccessControlUnauthorizedAccount` (the Treasury without `OPERATOR_ROLE`) and `SafeERC20FailedOperation`, and on a send or `approve` the RPC refused (section 4). The member sees the contribution `failed` (and may pay again) or, eventually, `confirmed`.
 
 _Roles 1, 2 and 4 to confirm codes and wording._
 

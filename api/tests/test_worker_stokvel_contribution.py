@@ -98,6 +98,7 @@ class FakeChain:
 
     def __init__(self):
         self.allowances = []
+        self.allowance_errors: list[BaseException] = []
         self.contributes = []
         self.sent = []
         self.waits = []
@@ -109,6 +110,8 @@ class FakeChain:
     def ensure_allowance(self, amount, w3=None):
         assert w3 is W3
         self.allowances.append(amount)
+        if self.allowance_errors:
+            raise self.allowance_errors.pop(0)
 
     def contribute(self, stokvel_id, round_, member_id, *, on_signed=None, w3=None):
         assert w3 is W3
@@ -616,6 +619,42 @@ def test_a_refused_send_that_fails_leaves_no_hash_to_block_a_retry(
     assert confirm_contribution(*enqueued[-1]) == "confirmed"
     retry = _row(session_factory, retry_id)
     assert (retry.status, retry.evm_tx_hash) == ("confirmed", TX_HASH)
+
+
+APPROVE_HASH = "0x" + "a9" * 32
+
+
+def test_a_refused_approve_hands_the_claim_back_and_retries(
+    session_factory, pending, enqueued, chain
+):
+    """The allowance's `approve` is refused (the Treasury out of XRP for
+    gas). Its hash was never stored on the contribution, so the claim must
+    still be handed back and retried, not left processing."""
+    chain.allowance_errors = [
+        evm_service.TransactionRejected(APPROVE_HASH, Exception("insufficient funds"))
+    ]
+
+    result = submit_contribution.apply(args=[pending["id"]]).get()
+
+    assert result == "mined"
+    assert len(chain.allowances) == 2
+    assert chain.contributes == [(pending["stokvel_id"], 0, pending["member_id"])]
+    assert enqueued == [(pending["id"], TX_HASH, BLOCK)]
+
+
+def test_a_refused_approve_fails_the_contribution_once_the_retries_are_spent(
+    session_factory, pending, enqueued, chain
+):
+    chain.allowance_errors = [
+        evm_service.TransactionRejected(APPROVE_HASH, Exception("insufficient funds"))
+    ] * (stokvel_tasks.MAX_RETRIES + 1)
+
+    assert submit_contribution.apply(args=[pending["id"]]).get() == "failed"
+    assert chain.contributes == []
+    assert confirm_contribution(*enqueued[0]) == "failed"
+    row = _row(session_factory, pending["id"])
+    assert (row.status, row.evm_tx_hash) == ("failed", None)
+    assert _leg_statuses(session_factory, pending["legs"]) == {STATUS_FAILED}
 
 
 def test_a_send_that_raises_after_its_hash_is_stored_is_waited_on(
