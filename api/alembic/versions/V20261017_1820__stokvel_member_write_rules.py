@@ -15,8 +15,9 @@ policy per operation, as for the cycle tables (``V20261014_1200``):
 - no ``DELETE`` policy, so no customer route can remove a membership
 
 The trigger ``stokvel_member_identity_fixed`` refuses any update to
-``stokvel_id``, ``user_id``, ``invitation_id`` or ``joined_at``, for every role:
-leaving and rejoining makes a new row, so these never change. Like
+``stokvel_id``, ``user_id``, ``invitation_id`` or ``joined_at``, and clearing a
+set ``left_at``, for every role: leaving and rejoining makes a new row, so
+these never change and a former membership is never reopened. Like
 ``stokvel_member_account_is_fiat``, it raises SQLSTATE 23514.
 
 Two lookups let a customer route answer what row-level security hides from it,
@@ -157,10 +158,11 @@ def upgrade() -> None:
              OR NEW.user_id IS DISTINCT FROM OLD.user_id
              OR NEW.invitation_id IS DISTINCT FROM OLD.invitation_id
              OR NEW.joined_at IS DISTINCT FROM OLD.joined_at
+             OR (OLD.left_at IS NOT NULL AND NEW.left_at IS NULL)
           THEN
             RAISE EXCEPTION
               'a stokvel membership''s stokvel, user, invitation and join time'
-              ' cannot change'
+              ' cannot change, and a former membership cannot be reopened'
               USING ERRCODE = '23514';
           END IF;
           RETURN NEW;

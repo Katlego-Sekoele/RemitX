@@ -271,12 +271,13 @@ def test_no_customer_can_delete_a_membership_their_own_included(session):
 @pytest.mark.postgres
 @pytest.mark.parametrize("bound", [True, False], ids=["customer", "unbound"])
 @pytest.mark.parametrize(
-    "column", ["stokvel_id", "user_id", "invitation_id", "joined_at"]
+    "column", ["stokvel_id", "user_id", "invitation_id", "joined_at", "left_at"]
 )
 def test_a_memberships_identity_cannot_change(session, column, bound):
     """For every role, workers included: leaving and rejoining makes a new
-    row. Moving to another ZAR stokvel keeps the account valid, so the
-    refusal is this trigger's, not the account trigger's."""
+    row, so a former membership is never reopened. Moving to another ZAR
+    stokvel keeps the account valid, so the refusal is this trigger's, not the
+    account trigger's."""
     organiser = _customer()
     stokvel = _stokvel(organiser)
     other = _stokvel(organiser, "Other")
@@ -298,7 +299,11 @@ def test_a_memberships_identity_cannot_change(session, column, bound):
         },
         "invitation_id": {"invitation_id": invitation.id},
         "joined_at": {"joined_at": row.joined_at - timedelta(days=1)},
+        "left_at": {"left_at": None},
     }[column]
+    if column == "left_at":
+        # Leaving is allowed; coming back on the same row is not.
+        row.left_at = datetime.now(UTC)
     db.session.commit()
 
     def change():
