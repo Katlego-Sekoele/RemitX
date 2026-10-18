@@ -301,10 +301,17 @@ def test_a_memberships_identity_cannot_change(session, column, bound):
         "joined_at": {"joined_at": row.joined_at - timedelta(days=1)},
         "left_at": {"left_at": None},
     }[column]
+    db.session.commit()
     if column == "left_at":
         # Leaving is allowed; coming back on the same row is not.
-        row.left_at = datetime.now(UTC)
-    db.session.commit()
+        with bound_row_security_context(organiser.id, is_admin_route=False):
+            left = db.session.execute(
+                update(StokvelMember)
+                .where(StokvelMember.id == row_id)
+                .values(left_at=datetime.now(UTC))
+            ).rowcount
+        db.session.commit()
+        assert left == 1
 
     def change():
         statement = (
