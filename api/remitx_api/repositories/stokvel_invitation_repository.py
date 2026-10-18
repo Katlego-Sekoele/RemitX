@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel import Stokvel
@@ -23,7 +24,8 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
         self, user_id: uuid.UUID
     ) -> list[tuple[StokvelInvitation, Stokvel, User]]:
         """`user_id`'s unanswered invitations, newest first, each with its
-        stokvel and the user who sent it.
+        stokvel and the user who sent it. An invitation to a deactivated
+        stokvel is left out: it can no longer be accepted.
 
         Scoped by `user_id` here, not only by row-level security, so SQLite
         returns the same rows as Postgres.
@@ -35,7 +37,35 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
             .where(
                 StokvelInvitation.invitee_user_id == user_id,
                 StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
+                Stokvel.deactivated_at.is_(None),
             )
             .order_by(StokvelInvitation.created_at.desc(), StokvelInvitation.id)
         ).all()
         return [(invitation, stokvel, inviter) for invitation, stokvel, inviter in rows]
+
+    def set_status_if_pending(
+        self,
+        invitation_id: uuid.UUID,
+        status: StokvelInvitationStatus,
+        *,
+        by_user_id: uuid.UUID,
+        at: datetime,
+    ) -> bool:
+        """Move a pending invitation to its final `status`, recording who
+        changed it and when. Guarded by `status = 'pending'`, so of two
+        requests answering the same invitation exactly one changes it.
+        Whether this one did. Flushes only: the caller commits."""
+        result = db.session.execute(
+            update(StokvelInvitation)
+            .where(
+                StokvelInvitation.id == invitation_id,
+                StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
+            )
+            .values(
+                status=status.value,
+                status_changed_at=at,
+                status_changed_by_user_id=by_user_id,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return result.rowcount == 1

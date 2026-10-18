@@ -15,6 +15,16 @@ class StokvelRepository(Repository[Stokvel, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Stokvel)
 
+    def lock(self, stokvel_id: uuid.UUID) -> Stokvel | None:
+        """The stokvel, locked until the transaction ends, or None if the
+        caller cannot see it. Accepting an invitation holds it so two accepts
+        cannot both pass `MAX_STOKVEL_MEMBERS`. A pending invitee may take
+        the lock: the read rule, which they pass, is also the update rule's
+        `USING`."""
+        return db.session.scalars(
+            select(Stokvel).where(Stokvel.id == stokvel_id).with_for_update()
+        ).one_or_none()
+
     def list_for_member(self, user_id: uuid.UUID) -> list[tuple[Stokvel, int]]:
         """Stokvels `user_id` is a current member of, newest first, each with
         its number of current members. Former memberships are left out.

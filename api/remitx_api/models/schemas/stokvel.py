@@ -14,7 +14,11 @@ from remitx_api.controllers.stokvel_controller import (
     StokvelListView,
     StokvelView,
 )
+from remitx_api.controllers.stokvel_invitation_controller import (
+    SentStokvelInvitationView,
+)
 from remitx_api.models.orm.account import PayoutCurrency
+from remitx_api.models.orm.stokvel_invitation import StokvelInvitationStatus
 from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
 
 # A Stokvel currency is any fiat currency a customer can hold an account in.
@@ -166,5 +170,44 @@ class StokvelContributionRead(Schema):
             amount_fiat=view.amount_fiat,
             fee_amount=view.fee_amount,
             amount_zar=view.amount_zar,
+            created_at=view.created_at,
+        )
+
+
+class StokvelInvitationCreateRequest(Schema):
+    """Invite the owner of an account to the stokvel."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    account_reference: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+    ] = Field(
+        description=(
+            "The invitee's account reference, e.g. `thandi2-zar`. The account "
+            "must be in the Stokvel currency: the invitee's contributions are "
+            "paid from it."
+        )
+    )
+
+
+class SentStokvelInvitationRead(Schema):
+    """An invitation the Organiser has sent."""
+
+    invitation_id: uuid.UUID
+    stokvel_id: uuid.UUID
+    # "Thandi M."; null when the invitee has no name on file.
+    invitee_name: str | None
+    account_reference: str
+    status: StokvelInvitationStatus
+    created_at: UtcDateTime
+
+    @classmethod
+    def from_view(cls, view: SentStokvelInvitationView) -> "SentStokvelInvitationRead":
+        return cls(
+            invitation_id=view.invitation_id,
+            stokvel_id=view.stokvel_id,
+            invitee_name=view.invitee_name,
+            account_reference=view.account_reference,
+            status=view.status,
             created_at=view.created_at,
         )

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from fastapi import status
+
 from remitx_api.errors.base import (
     ConflictError,
     DomainError,
@@ -104,3 +106,132 @@ class ContributionInsufficientBalanceError(DomainError):
         self.available = available
         self.needed = needed
         self.currency = currency
+
+
+# --- Invitations (R2-08). Codes and wording are doc section 6's.
+
+
+class NotStokvelOrganiserError(ForbiddenError):
+    """Only the Organiser invites. A fellow member can see the stokvel, so
+    gets this rather than `StokvelNotFoundError`."""
+
+    code = "not_organiser"
+
+    def __init__(self) -> None:
+        super().__init__("Only the stokvel's organiser can invite members.")
+
+
+class StokvelDeactivatedError(ConflictError):
+    """The stokvel has been decommissioned: nobody can be invited or join."""
+
+    code = "stokvel_deactivated"
+
+    def __init__(self) -> None:
+        super().__init__("This stokvel is no longer active.")
+
+
+class InviteeAccountNotFoundError(NotFoundError):
+    """No customer account has that reference."""
+
+    def __init__(self, reference: str) -> None:
+        super().__init__(f"No account has the reference {reference!r}.")
+        self.reference = reference
+
+
+class CannotInviteYourselfError(DomainError):
+    """The reference is one of the Organiser's own accounts: they are a
+    member already (`stokvel_invitations_not_self`)."""
+
+    def __init__(self) -> None:
+        super().__init__("You can't invite yourself.")
+
+
+class InviteeCurrencyMismatchError(DomainError):
+    """The invitee pays contributions from the referenced account, so it
+    must be in the Stokvel currency (D7)."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "invitee_currency_mismatch"
+
+    def __init__(self, currency: str) -> None:
+        super().__init__(
+            f"The account's currency must match the stokvel's currency ({currency})."
+        )
+        self.currency = currency
+
+
+class InviteeNotKycVerifiedError(ForbiddenError):
+    """Members receive cross-border payouts, so an invitee must be verified,
+    as anyone sending a remittance is."""
+
+    code = "invitee_not_verified"
+
+    def __init__(self) -> None:
+        super().__init__("This person isn't verified yet, so they can't be invited.")
+
+
+class AlreadyStokvelMemberError(ConflictError):
+    """The invitee is a current member of the stokvel."""
+
+    code = "already_a_member"
+
+    def __init__(self) -> None:
+        super().__init__("This person is already a member of the stokvel.")
+
+
+class InvitationAlreadyPendingError(ConflictError):
+    """The invitee already has a pending invitation to this stokvel
+    (`uq_stokvel_invitations_pending`)."""
+
+    code = "invitation_already_pending"
+
+    def __init__(self) -> None:
+        super().__init__("This person already has a pending invitation.")
+
+
+class TooManyMembersError(DomainError):
+    """The stokvel has `MAX_STOKVEL_MEMBERS` current members (contract error
+    `MaxMembersExceeded`)."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "too_many_members"
+
+    def __init__(self, max_members: int) -> None:
+        super().__init__(f"A stokvel can have at most {max_members} members.")
+        self.max_members = max_members
+
+
+class InvitationNotFoundError(NotFoundError):
+    """No invitation with that id that the caller can see."""
+
+    def __init__(self) -> None:
+        super().__init__("Invitation not found.")
+
+
+class NotInviteeError(ForbiddenError):
+    """Only the invitee answers their invitation. Fellow members can see it,
+    so get this rather than `InvitationNotFoundError`."""
+
+    code = "not_invitee"
+
+    def __init__(self) -> None:
+        super().__init__("Only the person invited can answer this invitation.")
+
+
+class InvitationNotPendingError(ConflictError):
+    """The invitation was already accepted, declined, revoked or lapsed."""
+
+    code = "invitation_not_pending"
+
+    def __init__(self) -> None:
+        super().__init__("This invitation has already been answered or has expired.")
+
+
+class KycNotApprovedToJoinStokvelError(ForbiddenError):
+    """The invitee's verification has lapsed since they were invited."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Only verified customers can join a stokvel. Finish verification "
+            "to continue."
+        )

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel_member import StokvelMember
@@ -26,3 +26,21 @@ class StokvelMemberRepository(Repository[StokvelMember, uuid.UUID]):
                 StokvelMember.left_at.is_(None),
             )
         ).one_or_none()
+
+    def count_active(self, stokvel_id: uuid.UUID) -> int:
+        """The stokvel's current members, the Organiser included.
+
+        An invitee is not a member yet, so row-level security hides the rows
+        from them. On Postgres this asks `stokvel_active_member_count`
+        (`V20261017_1820`), which returns the count and nothing else.
+        """
+        if db.session.get_bind().dialect.name == "postgresql":
+            return db.session.scalar(
+                select(func.stokvel_active_member_count(stokvel_id))
+            )
+        return db.session.scalar(
+            select(func.count()).where(
+                StokvelMember.stokvel_id == stokvel_id,
+                StokvelMember.left_at.is_(None),
+            )
+        )

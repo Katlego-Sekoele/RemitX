@@ -135,6 +135,24 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             .order_by(KycApplication.created_at.desc())
         ).first()
 
+    def is_other_user_verified(self, user_id: uuid.UUID) -> bool:
+        """Whether someone other than the caller is verified, by the same
+        rule as `KycStanding.is_verified`: their latest application.
+
+        Row-level security lets a customer read only their own applications,
+        so on Postgres this asks `kyc_latest_status` (`V20261017_1820`),
+        which returns the status and nothing else. An approval past its
+        review date reads `approved` here and `review_due` through
+        `effective_status`, and both are verified, so the stored status is
+        enough. For the caller's own standing, use `get_standing`.
+        """
+        if db.session.get_bind().dialect.name == "postgresql":
+            status = db.session.scalar(select(func.kyc_latest_status(user_id)))
+        else:
+            latest = self.get_latest_for_user(user_id)
+            status = None if latest is None else latest.status
+        return status is not None and KycStatus(status) in VERIFIED_STATUSES
+
     def get_standing(self, user_id: uuid.UUID) -> KycStanding:
         latest = self.get_latest_for_user(user_id)
         verified = db.session.scalars(
