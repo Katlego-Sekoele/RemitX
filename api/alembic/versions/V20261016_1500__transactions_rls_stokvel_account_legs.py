@@ -76,8 +76,9 @@ def upgrade() -> None:
         )
         op.execute(f"REVOKE ALL ON FUNCTION {name}(uuid, text) FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {name}(uuid, text) TO {_APP_ROLE}")
-    # Accounts have row-level security of their own, so the Treasury check is
-    # a lookup function too.
+    # The Treasury check is a lookup function too. `accounts` has no row-level
+    # security today, so a plain subquery would also work; the function keeps
+    # the policy correct if it ever gets some, as for the stokvel lookups.
     op.execute(
         f"""
         CREATE FUNCTION {_TREASURY_FUNCTION}(p_account_id uuid)
