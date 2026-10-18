@@ -267,6 +267,16 @@ def uuid_to_bytes32(value: uuid.UUID | str) -> bytes:
     return value.bytes + bytes(16)
 
 
+def bytes32_to_uuid(value: bytes) -> uuid.UUID | None:
+    """A contract `bytes32` ID back to the database UUID `uuid_to_bytes32`
+    packed: its first 16 bytes. None if it is not 32 bytes or its last 16 are
+    not zero, so it was not packed from a UUID (another backend's ID, if the
+    contract is shared)."""
+    if len(value) != 32 or any(value[16:]):
+        return None
+    return uuid.UUID(bytes=bytes(value[:16]))
+
+
 def get_native_balance(address: str, w3: Web3 | None = None) -> Decimal:
     """The address's test XRP (gas) balance. The native coin has 18 decimals."""
     w3 = w3 or get_web3()

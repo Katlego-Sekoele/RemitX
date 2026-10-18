@@ -45,6 +45,11 @@ class Config:
     SETTLEMENT_RECLAIM_INTERVAL_SECONDS = int(
         os.getenv("SETTLEMENT_RECLAIM_INTERVAL_SECONDS", "300")
     )
+    # How often the worker's embedded beat runs `stokvel.sync_events`, which
+    # reads the stokvel contract's events into the database (R2-13, #235).
+    STOKVEL_SYNC_INTERVAL_SECONDS = int(
+        os.getenv("STOKVEL_SYNC_INTERVAL_SECONDS", "30")
+    )
     # Only remittance groups fully ``pending`` for at least this long are
     # re-enqueued on the beat tick (boot reclaim ignores the age gate).
     SETTLEMENT_RECLAIM_MIN_AGE_SECONDS = int(
@@ -222,6 +227,27 @@ class Config:
     @property
     def STOKVEL_CONTRACT_ADDRESS(self) -> str:
         return os.getenv("STOKVEL_CONTRACT_ADDRESS", "")
+
+    # The event sync's first block for a contract with no cursor yet: its
+    # deployment block (doc section 2), so no history is skipped or rescanned.
+    @property
+    def STOKVEL_SYNC_START_BLOCK(self) -> int:
+        return int(os.getenv("STOKVEL_SYNC_START_BLOCK", "0"))
+
+    # Blocks behind the chain head the event sync stays, so it reads only
+    # blocks the chain will not undo.
+    @property
+    def STOKVEL_SYNC_CONFIRMATIONS(self) -> int:
+        return int(os.getenv("STOKVEL_SYNC_CONFIRMATIONS", "2"))
+
+    # Blocks per `eth_getLogs` call (RPCs cap the range), and calls per run.
+    @property
+    def STOKVEL_SYNC_BLOCK_RANGE(self) -> int:
+        return int(os.getenv("STOKVEL_SYNC_BLOCK_RANGE", "2000"))
+
+    @property
+    def STOKVEL_SYNC_MAX_RANGES(self) -> int:
+        return int(os.getenv("STOKVEL_SYNC_MAX_RANGES", "10"))
 
     # Must equal the deployed stokvel contract's maxMembers.
     @property

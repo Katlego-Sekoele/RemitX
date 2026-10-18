@@ -17,6 +17,9 @@ Duplicate messages: only the delivery whose guarded claim
 (`pending -> processing`) succeeds may send. Its hash is stored before the
 send, so a redelivery waits on that hash rather than paying twice.
 
+R2-13 (#235): `stokvel.sync_events` reads the contract's events into the
+database on the beat (`stokvel_sync` applies them).
+
 R2-10 (#232) adds the cycle tasks to this module.
 """
 
@@ -24,14 +27,14 @@ import logging
 import uuid
 
 from remitx_api.clock import utcnow
-from remitx_api.models.orm.account import Account
+from remitx_api.config import Config
 from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
     StokvelContributionStatus,
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
+from remitx_api.models.orm.stokvel_sync_state import StokvelSyncState
 from remitx_api.models.orm.transaction import (
-    STATUS_CONFIRMED as TX_STATUS_CONFIRMED,
     STATUS_FAILED as TX_STATUS_FAILED,
     STATUS_PENDING as TX_STATUS_PENDING,
     STATUS_PROCESSING as TX_STATUS_PROCESSING,
@@ -39,10 +42,17 @@ from remitx_api.models.orm.transaction import (
 )
 from remitx_api.services import queue_service
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
-from remitx_worker import evm_service, stokvel_contract
+from remitx_worker import evm_service, stokvel_contract, stokvel_sync
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
+from remitx_worker.stokvel_ledger import (
+    IN_FLIGHT as _IN_FLIGHT,
+    LEGS_IN_FLIGHT as _LEGS_IN_FLIGHT,
+    contribution_legs as _legs,
+    record_mined,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,18 +89,6 @@ _RETRYABLE_REFUSALS = frozenset(
 class _HashNotRecorded(Exception):
     """`submit_contribution` could not store a signed `contribute`'s hash, so
     it did not send it."""
-
-
-def _legs(contribution: StokvelContribution) -> list[uuid.UUID]:
-    return [
-        tx_id
-        for tx_id in (
-            contribution.fiat_tx_id,
-            contribution.token_tx_id,
-            contribution.fee_tx_id,
-        )
-        if tx_id is not None
-    ]
 
 
 def _parse(contribution_id: str) -> uuid.UUID | None:
@@ -401,10 +399,8 @@ def confirm_contribution(
     """Record the outcome of `submit_contribution`. Database only.
 
     `tx_hash` (with its `block_number`) is given only once the receipt has
-    confirmed the `contribute`. Then the contribution and its legs become
-    `confirmed` and the legs move their balances, in one commit: the member's
-    fiat to RemitX's bank, UCTUSD from the Treasury to the stokvel's
-    `STOKVEL` account, and the fee to fee revenue.
+    confirmed the `contribute`: then `record_mined` confirms it and moves its
+    balances, in one commit.
 
     `tx_hash` None means nothing was sent or the call reverted: the
     contribution and its legs become `failed`, which frees the member's held
@@ -412,33 +408,41 @@ def confirm_contribution(
 
     Guarded on the contribution still being `pending` or `processing`, so a
     replayed message changes nothing and never credits twice. The event sync
-    (R2-13, #235) relies on the same guard.
+    (R2-13, #235) records a mined contribution through the same guard.
     """
     target_id = _parse(contribution_id)
     if target_id is None:
         return "skipped"
-    in_flight = (PENDING, PROCESSING)
-    legs_in_flight = (TX_STATUS_PENDING, TX_STATUS_PROCESSING)
+
+    if tx_hash is not None:
+        if block_number is None:
+            raise ValueError("a confirmed contribution needs its block number")
+        with session_scope() as session:
+            settled = record_mined(session, target_id, tx_hash, block_number)
+        if settled is None:
+            logger.info(
+                "contribution %s is not pending or processing; already "
+                "recorded or unknown",
+                contribution_id,
+            )
+            return "skipped"
+        logger.info(
+            "contribution %s confirmed (%s, block %s): %d legs confirmed and settled",
+            contribution_id,
+            tx_hash,
+            block_number,
+            settled,
+        )
+        return "confirmed"
 
     with session_scope() as session:
-        if tx_hash is None:
-            values = {"status": FAILED}
-        else:
-            if block_number is None:
-                raise ValueError("a confirmed contribution needs its block number")
-            values = {
-                "status": CONFIRMED,
-                "evm_tx_hash": tx_hash,
-                "block_number": block_number,
-                "confirmed_at": utcnow(),
-            }
         changed = session.execute(
             update(StokvelContribution)
             .where(
                 StokvelContribution.id == target_id,
-                StokvelContribution.status.in_(in_flight),
+                StokvelContribution.status.in_(_IN_FLIGHT),
             )
-            .values(**values)
+            .values(status=FAILED)
             .execution_options(synchronize_session=False)
         )
         if changed.rowcount == 0:
@@ -448,62 +452,120 @@ def confirm_contribution(
                 contribution_id,
             )
             return "skipped"
-        contribution = session.get(StokvelContribution, target_id)
-        leg_ids = _legs(contribution)
-
-        if tx_hash is None:
-            session.execute(
-                update(Transaction)
-                .where(
-                    Transaction.tx_id.in_(leg_ids),
-                    Transaction.status.in_(legs_in_flight),
-                )
-                .values(status=TX_STATUS_FAILED)
-                .execution_options(synchronize_session=False)
-            )
-            logger.error(
-                "contribution %s failed (%s): it and its legs are marked failed; "
-                "no balance changed",
-                contribution_id,
-                error or "unknown error",
-            )
-            return "failed"
-
         session.execute(
             update(Transaction)
             .where(
-                Transaction.tx_id.in_(leg_ids),
-                Transaction.status.in_(legs_in_flight),
+                Transaction.tx_id.in_(
+                    _legs(session.get(StokvelContribution, target_id))
+                ),
+                Transaction.status.in_(_LEGS_IN_FLIGHT),
             )
-            .values(status=TX_STATUS_CONFIRMED, confirmed_at=utcnow())
+            .values(status=TX_STATUS_FAILED)
             .execution_options(synchronize_session=False)
         )
-        legs = session.execute(
-            select(
-                Transaction.credit_account_id,
-                Transaction.debit_account_id,
-                Transaction.amount,
-            ).where(Transaction.tx_id.in_(leg_ids))
-        ).all()
-        # `debit_account_id` is the destination, `credit_account_id` the
-        # source (transaction.py). Destinations first, as in settlement.
-        for _source, destination, amount in legs:
-            session.execute(
-                update(Account)
-                .where(Account.account_id == destination)
-                .values(account_balance=Account.account_balance + amount)
-            )
-        for source, _destination, amount in legs:
-            session.execute(
-                update(Account)
-                .where(Account.account_id == source)
-                .values(account_balance=Account.account_balance - amount)
-            )
-    logger.info(
-        "contribution %s confirmed (%s, block %s): %d legs confirmed and settled",
+    logger.error(
+        "contribution %s failed (%s): it and its legs are marked failed; "
+        "no balance changed",
         contribution_id,
-        tx_hash,
-        block_number,
-        len(legs),
+        error or "unknown error",
     )
-    return "confirmed"
+    return "failed"
+
+
+@celery.task(name="stokvel.sync_events")
+def sync_events() -> str:
+    """Read the stokvel contract's events since the cursor and apply them
+    (R2-13, #235). Run by the worker's beat every
+    `STOKVEL_SYNC_INTERVAL_SECONDS`.
+
+    Reads up to `STOKVEL_SYNC_MAX_RANGES` ranges of `STOKVEL_SYNC_BLOCK_RANGE`
+    blocks, staying `STOKVEL_SYNC_CONFIRMATIONS` blocks behind the head. Each
+    range is one transaction: it moves the cursor with a compare-and-set
+    (only from the block this run read), then applies the range's events
+    (`stokvel_sync.apply_event`). So a crash leaves the cursor and the
+    changes together, and an overlapping run finds the cursor moved and
+    stops: on Postgres its update waits for this one's commit and then
+    matches nothing. Every handler is guarded, so a replayed range changes
+    nothing.
+    """
+    config = Config()
+    address = config.STOKVEL_CONTRACT_ADDRESS
+    if not address:
+        logger.info("STOKVEL_CONTRACT_ADDRESS is not set; no events to sync")
+        return "skipped"
+    key = address.lower()
+
+    try:
+        w3 = evm_service.get_web3()
+        head = w3.eth.block_number - config.STOKVEL_SYNC_CONFIRMATIONS
+    except Exception as exc:
+        logger.warning("event=stokvel.sync_rpc_error (%s): will retry next run", exc)
+        return "rpc_error"
+
+    outcomes: dict[str, int] = {}
+    last = None
+    for _ in range(config.STOKVEL_SYNC_MAX_RANGES):
+        with session_scope() as session:
+            state = session.get(StokvelSyncState, key)
+            last = (
+                state.last_processed_block
+                if state is not None
+                else config.STOKVEL_SYNC_START_BLOCK - 1
+            )
+            has_cursor = state is not None
+        from_block = last + 1
+        if from_block > head:
+            break
+        to_block = min(head, from_block + config.STOKVEL_SYNC_BLOCK_RANGE - 1)
+
+        try:
+            events = stokvel_contract.fetch_events(from_block, to_block, w3)
+        except Exception as exc:
+            logger.warning(
+                "event=stokvel.sync_rpc_error from_block=%s to_block=%s (%s): "
+                "will retry next run",
+                from_block,
+                to_block,
+                exc,
+            )
+            break
+
+        try:
+            with session_scope() as session:
+                if has_cursor:
+                    moved = session.execute(
+                        update(StokvelSyncState)
+                        .where(
+                            StokvelSyncState.id == key,
+                            StokvelSyncState.last_processed_block == last,
+                        )
+                        .values(last_processed_block=to_block, updated_at=utcnow())
+                        .execution_options(synchronize_session=False)
+                    )
+                    if moved.rowcount != 1:
+                        logger.info(
+                            "event=stokvel.sync_raced: another run moved the "
+                            "cursor past block %s; stopping",
+                            last,
+                        )
+                        break
+                else:
+                    session.add(StokvelSyncState(id=key, last_processed_block=to_block))
+                    session.flush()
+                for event in events:
+                    outcome = stokvel_sync.apply_event(session, event)
+                    outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        except IntegrityError:
+            # Another run created the cursor first.
+            logger.info("event=stokvel.sync_raced: the cursor was just created")
+            break
+        last = to_block
+
+    summary = ", ".join(f"{count} {name}" for name, count in sorted(outcomes.items()))
+    logger.info(
+        "event=stokvel.sync_done cursor=%s head=%s %s",
+        last,
+        head,
+        summary or "no events",
+    )
+    return f"synced to {last}"

@@ -1,6 +1,7 @@
 """The worker's wrapper over the StokvelVault contract (doc section 1).
 
-R2-12 (#234) adds `contribute` and the Treasury allowance it needs. R2-10
+R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
+(#235) reads the events the sync applies (`fetch_events`). R2-10
 (#232) adds `createStokvel` and `startCycle` here, and R3-04 (#241)
 `finalise`. Every send goes through `evm_service.submit_transaction`, so it
 holds the Treasury send lock and can store its hash before the send.
@@ -15,6 +16,7 @@ IDs: stokvel and member IDs are database UUIDs packed into `bytes32`
 """
 
 import json
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -158,3 +160,64 @@ def contribute(
         ],
     )
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+# The events `stokvel.sync_events` applies (doc section 4, "Contract event →
+# database update"). `StokvelCreated` and `CycleStarted` only confirm what the
+# backend itself sent, so they are not read.
+SYNCED_EVENTS = ("ContributionMade", "RoundFinalised", "CycleClosed")
+
+
+def _event_topic(name: str) -> bytes:
+    entry = next(
+        entry
+        for entry in VAULT_ABI
+        if entry["type"] == "event" and entry["name"] == name
+    )
+    return Web3.keccak(text=_signature(entry))
+
+
+_EVENT_TOPICS = {name: _event_topic(name) for name in SYNCED_EVENTS}
+
+
+@dataclass(frozen=True)
+class ContractEvent:
+    """One decoded vault event, with where it happened on-chain."""
+
+    name: str
+    args: dict[str, Any]
+    tx_hash: str
+    block_number: int
+    log_index: int
+
+
+def fetch_events(from_block: int, to_block: int, w3: Web3) -> list[ContractEvent]:
+    """The vault's `SYNCED_EVENTS` in blocks `from_block`..`to_block`
+    (inclusive), in chain order (block, then log index). One `eth_getLogs`
+    call: the caller keeps the range within what the RPC allows."""
+    contract = vault(w3)
+    logs = w3.eth.get_logs(
+        {
+            "address": contract.address,
+            "fromBlock": from_block,
+            "toBlock": to_block,
+            "topics": [list(_EVENT_TOPICS.values())],
+        }
+    )
+    by_topic = {topic: name for name, topic in _EVENT_TOPICS.items()}
+    events = []
+    for log in logs:
+        name = by_topic.get(bytes(log["topics"][0]))
+        if name is None:
+            continue
+        decoded = contract.events[name]().process_log(log)
+        events.append(
+            ContractEvent(
+                name=name,
+                args=dict(decoded["args"]),
+                tx_hash=Web3.to_hex(decoded["transactionHash"]),
+                block_number=decoded["blockNumber"],
+                log_index=decoded["logIndex"],
+            )
+        )
+    return sorted(events, key=lambda event: (event.block_number, event.log_index))
