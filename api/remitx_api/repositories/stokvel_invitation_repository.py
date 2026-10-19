@@ -69,3 +69,26 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
             .execution_options(synchronize_session="fetch")
         )
         return result.rowcount == 1
+
+    def lapse_pending(
+        self, stokvel_id: uuid.UUID, *, by_user_id: uuid.UUID, at: datetime
+    ) -> int:
+        """Lapse every invitation to the stokvel that is still pending, as
+        when its Organiser starts a cycle (CONTEXT.md, Invitation): the
+        invitee is not a member of that cycle. Recorded as the Organiser's
+        answer (`V20261019_1052`). The number lapsed. Flushes only: the
+        caller commits."""
+        result = db.session.execute(
+            update(StokvelInvitation)
+            .where(
+                StokvelInvitation.stokvel_id == stokvel_id,
+                StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
+            )
+            .values(
+                status=StokvelInvitationStatus.LAPSED.value,
+                status_changed_at=at,
+                status_changed_by_user_id=by_user_id,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return result.rowcount
