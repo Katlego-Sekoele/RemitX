@@ -362,8 +362,10 @@ class StokvelCycleStartRequest(Schema):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Not `min_length=2`: a one-member stokvel sends its one round and gets
+    # 409 `too_few_members` from the controller, not a generic 422.
     rounds: list[StokvelRoundTimesRequest] = Field(
-        min_length=2,
+        min_length=1,
         max_length=255,
         description=(
             "One round per current member, in payout order: round 0 pays the "

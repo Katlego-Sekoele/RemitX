@@ -102,8 +102,10 @@ def contribute_to_stokvel(
     one the caller is not a current member of (the same answer, so an id
     reveals nothing); 403 `not_a_member` for a member outside its current
     cycle; 409
-    `cycle_not_open` with no active cycle, `wrong_round` once every round is
-    paid, `contribution_already_paid` for a second payment to the open round.
+    `cycle_not_open` with no active cycle, `cycle_starting` while a started
+    cycle is not yet open on-chain (try again shortly), `wrong_round` once
+    every round is paid, `contribution_already_paid` for a second payment to
+    the open round.
     Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a
     short available balance, a send over the daily or monthly limit, or a
     caller who is not verified. 503 when no exchange rate is available, as

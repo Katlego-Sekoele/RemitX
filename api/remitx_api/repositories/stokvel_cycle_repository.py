@@ -1,13 +1,28 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import Select, exists, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.repositories.repository import Repository
+
+
+def locked_members_query(cycle_id: uuid.UUID) -> Select:
+    """A started cycle's members, in payout order. The cycle's members are its
+    locked rows: a member who left before it started keeps an unlocked row
+    with no position, and is not in it (R2-10). Shared with the worker, which
+    runs it on its own session."""
+    return (
+        select(StokvelCycleMember)
+        .where(
+            StokvelCycleMember.cycle_id == cycle_id,
+            StokvelCycleMember.locked.is_(True),
+        )
+        .order_by(StokvelCycleMember.payout_position)
+    )
 
 
 class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
@@ -85,7 +100,7 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
         )
         db.session.flush()
 
-    def set_round(
+    def add_round(
         self,
         cycle_id: uuid.UUID,
         round_: int,
@@ -94,15 +109,16 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
         deadline: datetime,
         payout_time: datetime,
     ) -> StokvelRound:
-        """Write one round's times, updating the row in place if the cycle
-        already has it (there is no delete). Flushes only."""
-        row = db.session.get(StokvelRound, (cycle_id, round_))
-        if row is None:
-            row = StokvelRound(cycle_id=cycle_id, round=round_)
-            db.session.add(row)
-        row.start_time = start_time
-        row.deadline = deadline
-        row.payout_time = payout_time
+        """Stage one round's times. A cycle's rounds are written once, when it
+        starts. Flushes only."""
+        row = StokvelRound(
+            cycle_id=cycle_id,
+            round=round_,
+            start_time=start_time,
+            deadline=deadline,
+            payout_time=payout_time,
+        )
+        db.session.add(row)
         db.session.flush()
         return row
 
@@ -129,3 +145,8 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
                 )
             ).all()
         )
+
+    def get_locked_members(self, cycle_id: uuid.UUID) -> list[StokvelCycleMember]:
+        """A started cycle's members, in payout order (`locked_members_query`).
+        `get_cycle_members` also returns former members' unlocked rows."""
+        return list(db.session.scalars(locked_members_query(cycle_id)).all())

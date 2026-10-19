@@ -89,6 +89,8 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
                 status_changed_at=at,
                 status_changed_by_user_id=by_user_id,
             )
-            .execution_options(synchronize_session="fetch")
+            # "evaluate" updates any loaded invitation in Python; "fetch"
+            # would SELECT the rows first, and only the count is used.
+            .execution_options(synchronize_session="evaluate")
         )
         return result.rowcount

@@ -260,7 +260,9 @@ def test_one_member_cannot_start_a_cycle(api, enqueued):
     )
     _choose(api, group, organiser)
 
-    response = api.start(organiser, group.stokvel_id, _schedule(2))
+    # One round per member, as the docs say: the controller's 409, not the
+    # schema's 422 (#348 review)
+    response = api.start(organiser, group.stokvel_id, _schedule(1))
 
     _refused(response, 409, "too_few_members")
     assert _open_cycle(group.stokvel_id).status == "forming"
@@ -427,7 +429,10 @@ def test_more_members_than_the_cap_are_refused(api, monkeypatch):
     )
 
 
-def test_a_lost_enqueue_is_logged_and_raised(api, monkeypatch, caplog):
+def test_a_lost_enqueue_is_logged_and_left_to_the_sweep(api, monkeypatch, caplog):
+    """The start is committed, so it is answered as started: a 500 would only
+    send the Organiser into `cycle_in_progress`. The worker's
+    `stokvel.register_started_cycles` queues it later."""
     organiser, thandi = _person("sipho"), _person()
     group = _ready(api, organiser, thandi)
 
@@ -436,9 +441,11 @@ def test_a_lost_enqueue_is_logged_and_raised(api, monkeypatch, caplog):
 
     monkeypatch.setattr(queue_service, "enqueue_start_cycle", broker_down)
 
-    with caplog.at_level(logging.ERROR), pytest.raises(ConnectionError):
-        api.start(organiser, group.stokvel_id, _schedule(2))
+    with caplog.at_level(logging.ERROR):
+        response = api.start(organiser, group.stokvel_id, _schedule(2))
 
+    assert response.status_code == 201
+    assert response.json()["registered_at"] is None
     assert "failed to enqueue start_cycle" in caplog.text
     assert _open_cycle(group.stokvel_id).status == "active"
 
@@ -493,7 +500,7 @@ def test_a_schedule_the_contract_would_refuse_is_refused(
 @pytest.mark.parametrize(
     "rounds",
     [
-        pytest.param(_schedule(2)[:1], id="fewer than two rounds"),
+        pytest.param([], id="no rounds"),
         pytest.param(
             [{**_schedule(2)[0], "start_time": "2026-11-02T09:00:00"}, _schedule(2)[1]],
             id="time without an offset",

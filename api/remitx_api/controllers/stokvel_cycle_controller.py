@@ -118,19 +118,19 @@ class StokvelCycleController:
         registration on-chain. Enqueued only after the commit, so the worker
         never sees a start that might still roll back."""
         view = self._start(user_id, stokvel_id, schedule)
-        # The cycle is committed `active` now. If this enqueue is lost, it is
-        # never registered on-chain and contributions wait for good, so the
-        # failure is logged loudly before it propagates, as in `contribute`.
+        # The cycle is committed `active` now, so the start has happened: a
+        # 500 would only make the Organiser retry into `cycle_in_progress`.
+        # A lost enqueue is picked up by the worker's sweep
+        # (`stokvel.register_started_cycles`), so it is logged, not raised.
         try:
             queue_service.enqueue_start_cycle(str(view.cycle_id))
         except Exception:
             logger.exception(
                 "start_cycle: failed to enqueue start_cycle for cycle %s "
-                "(stokvel %s); it is committed active but was never queued",
+                "(stokvel %s); committed active, the sweep will queue it",
                 view.cycle_id,
                 view.stokvel_id,
             )
-            raise
         return view
 
     @db_transaction
@@ -165,7 +165,7 @@ class StokvelCycleController:
         times = _checked_schedule(schedule, len(rows))
 
         for round_, round_times in enumerate(times):
-            self._cycles.set_round(
+            self._cycles.add_round(
                 cycle.id,
                 round_,
                 start_time=round_times.start_time,
@@ -224,9 +224,12 @@ class StokvelCycleController:
         leaving a gap no current member fills, and a member who joined since
         has none.
         """
+        by_member = {
+            row.member_id: row for row in self._cycles.get_cycle_members(cycle_id)
+        }
         rows = []
         for member_id in member_ids:
-            row = self._cycles.get_cycle_member(cycle_id, member_id)
+            row = by_member.get(member_id)
             if row is None or row.payout_position is None:
                 raise CycleNotReadyError.order_missing()
             rows.append(row)
