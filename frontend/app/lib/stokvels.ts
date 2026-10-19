@@ -241,8 +241,10 @@ export const stokvelQueries = {
   detail: (stokvelId: string) =>
     queryOptions({
       queryKey: ["stokvels", "detail", stokvelId],
+      // Demo data only in development, like the list: in production a
+      // `stk_` id is looked up like any other and is not found.
       queryFn: ({ signal }) =>
-        isDemoStokvel(stokvelId)
+        import.meta.env.DEV && isDemoStokvel(stokvelId)
           ? getStokvelMock(stokvelId)
           : detailFromList(stokvelId, signal),
     }),

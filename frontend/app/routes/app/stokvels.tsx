@@ -55,10 +55,11 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * The member's stokvels and pending invitations (R4-02 scaffold, #251), in
- * the shape of `GET /stokvels` (#229). Reads mocked data until R4-09; the
- * create wizard is at app/stokvels/new (#252), invitation actions are R4-04
- * (#253). Round and payout details live on each stokvel's own page.
+ * The member's stokvels and pending invitations (R4-02 scaffold, #251),
+ * from `GET /stokvels` (#229); in development the mock's demo stokvels are
+ * added. The create wizard is at app/stokvels/new (#252), invitation actions
+ * are R4-04 (#253). Round and payout details live on each stokvel's own
+ * page.
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
