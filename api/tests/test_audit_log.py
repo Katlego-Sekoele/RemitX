@@ -5,7 +5,12 @@ from unittest.mock import patch
 
 import pytest
 from remitx_api.extensions import db
-from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
+from remitx_api.models.orm.audit_log import (
+    STOKVEL_CONTRACT_SUBJECT_ID,
+    AuditAction,
+    AuditLog,
+    AuditSubject,
+)
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.user_role import UserRole
 from remitx_api.repositories.user_repository import UserRepository
@@ -65,6 +70,69 @@ def test_list_audit_records_meta_audit_and_supports_filters():
         meta = entries[0]
         assert meta.actor_user_id == auditor.id
         assert meta.after["filters"]["action"] == AuditAction.KYC_PII_VIEWED.value
+
+
+def _record_stokvel(
+    actor_id: uuid.UUID, action: AuditAction, *, reason: str | None = None
+):
+    subject = (
+        AuditSubject.STOKVEL_CONTRACT
+        if action is not AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY
+        else AuditSubject.STOKVEL
+    )
+    subject_id = (
+        STOKVEL_CONTRACT_SUBJECT_ID
+        if subject is AuditSubject.STOKVEL_CONTRACT
+        else uuid.uuid4()
+    )
+    record_audit(
+        actor_user_id=actor_id,
+        action=action,
+        subject_type=subject,
+        subject_id=subject_id,
+        after={"paused": action is AuditAction.STOKVEL_CONTRACT_PAUSED},
+        reason=reason,
+    )
+
+
+def test_stokvel_audit_shares_the_callers_transaction():
+    auditor = make_user("stokvel-audit")
+
+    with rbac_client(auditor, permissions=(PermissionCode.AUDIT_READ,)) as client:
+        _record_stokvel(
+            auditor.id, AuditAction.STOKVEL_CONTRACT_PAUSED, reason="rpc outage"
+        )
+        _record_stokvel(auditor.id, AuditAction.STOKVEL_CONTRACT_UNPAUSED)
+        _record_stokvel(auditor.id, AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY)
+        db.session.rollback()
+        assert list(db.session.scalars(select(AuditLog))) == []
+
+        _record_stokvel(
+            auditor.id, AuditAction.STOKVEL_CONTRACT_PAUSED, reason="rpc outage"
+        )
+        _record_stokvel(auditor.id, AuditAction.STOKVEL_CONTRACT_UNPAUSED)
+        _record_stokvel(auditor.id, AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY)
+        _seed_entry(auditor.id, AuditAction.KYC_PII_VIEWED)
+
+        listed = client.get("/admin/audit", params={"action_prefix": "stokvel."})
+        assert listed.status_code == 200
+        actions = {row["action"] for row in listed.json()}
+        assert actions == {
+            AuditAction.STOKVEL_CONTRACT_PAUSED.value,
+            AuditAction.STOKVEL_CONTRACT_UNPAUSED.value,
+            AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value,
+        }
+        pause = next(
+            row
+            for row in listed.json()
+            if row["action"] == AuditAction.STOKVEL_CONTRACT_PAUSED.value
+        )
+        assert pause["reason"] == "rpc outage"
+        assert pause["subject_id"] == str(STOKVEL_CONTRACT_SUBJECT_ID)
+
+        missed = client.get("/admin/audit", params={"action_prefix": "stokvel%"})
+        assert missed.status_code == 200
+        assert missed.json() == []
 
 
 def test_list_audit_paginates_with_before_cursor():

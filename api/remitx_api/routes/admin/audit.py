@@ -39,6 +39,12 @@ def list_audit_log(
         str | None,
         Query(description="Exact action string, e.g. ``kyc.pii.viewed``."),
     ] = None,
+    action_prefix: Annotated[
+        str | None,
+        Query(
+            description="Prefix, e.g. ``stokvel.`` for every stokvel action.",
+        ),
+    ] = None,
     subject_type: Annotated[
         str | None,
         Query(description="Subject kind, e.g. ``kyc_application``."),
@@ -80,6 +86,7 @@ def list_audit_log(
         actor_user_id=operator.id,
         actor_user_id_filter=actor_user_id,
         action=action,
+        action_prefix=action_prefix,
         subject_type=subject_type,
         subject_id=subject_id,
         created_after=created_after,
