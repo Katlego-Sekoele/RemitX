@@ -28,6 +28,7 @@ import {
 import { formatMoney } from "~/lib/money"
 import {
   explorerTxUrl,
+  payoutProofHash,
   PAYOUT_STAGE_LABELS,
   payoutStage,
   roundLabel,
@@ -81,6 +82,8 @@ export function PayoutStatus({
   const to = beneficiaryName ?? `${recipientName}'s beneficiary`
   const sendingTitle = `Sending to ${to}`
 
+  const proof = payoutProofHash(round)
+
   return (
     <Card>
       <CardHeader>
@@ -108,7 +111,7 @@ export function PayoutStatus({
             : stage === "delivered"
               ? `${to} received the payout${payoutCurrency ? ` in ${payoutCurrency}` : ""}.`
               : stage === "failed"
-                ? "The transfer didn't go through. We're retrying; nothing is lost."
+                ? "The transfer didn't go through. The RemitX team has been notified; your pool is safe."
                 : "Exchange rate is fixed when the payout is sent."}
         </CardDescription>
       </CardHeader>
@@ -128,7 +131,7 @@ export function PayoutStatus({
               </DescriptionDetails>
             </DescriptionItem>
           ) : null}
-          {(round.burn_tx_hash ?? round.release_tx_hash) ? (
+          {proof ? (
             <DescriptionItem>
               <DescriptionTerm>Proof of payment</DescriptionTerm>
               <DescriptionDetails>
@@ -138,9 +141,7 @@ export function PayoutStatus({
                   nativeButton={false}
                   render={
                     <a
-                      href={explorerTxUrl(
-                        (round.burn_tx_hash ?? round.release_tx_hash) as string
-                      )}
+                      href={explorerTxUrl(proof)}
                       target="_blank"
                       rel="noreferrer"
                     />

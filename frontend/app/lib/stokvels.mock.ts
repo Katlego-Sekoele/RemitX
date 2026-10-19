@@ -9,14 +9,18 @@
  */
 
 import type {
+  StokvelContributionRead,
   StokvelInvitationRead,
   StokvelListRead,
   StokvelRead,
 } from "~/client"
-import type {
-  StokvelContractStatusRead,
-  StokvelContributionRead,
-  StokvelDetailRead,
+import { amountToCents, fromCents, subtractMoney, sumMoney } from "~/lib/money"
+import {
+  feeShare,
+  poolAmount,
+  type StokvelContractStatusRead,
+  type StokvelDetailRead,
+  type StokvelRoundContributionRead,
 } from "~/lib/stokvels"
 
 const ME = "usr_sipho"
@@ -135,6 +139,7 @@ const GROCERIES: StokvelDetailRead = {
       member_id: memberId,
       amount_fiat: "500.00",
       amount_token: "27.40000000",
+      fee_amount: "7.50",
       status: "confirmed" as const,
       evm_tx_hash: `0x${(i + 1).toString(16).padStart(64, "a")}`,
       created_at: "2026-09-20T10:00:00Z",
@@ -146,6 +151,7 @@ const GROCERIES: StokvelDetailRead = {
       member_id: "mem_thabo",
       amount_fiat: "500.00",
       amount_token: "27.40000000",
+      fee_amount: "7.50",
       status: "confirmed",
       evm_tx_hash: `0x${"b".repeat(64)}`,
       created_at: "2026-10-13T09:12:00Z",
@@ -157,6 +163,7 @@ const GROCERIES: StokvelDetailRead = {
       member_id: "mem_lerato",
       amount_fiat: "500.00",
       amount_token: "27.40000000",
+      fee_amount: "7.50",
       status: "confirmed",
       evm_tx_hash: `0x${"c".repeat(64)}`,
       created_at: "2026-10-14T16:40:00Z",
@@ -346,22 +353,38 @@ export function getStokvelContractStatusMock(): Promise<StokvelContractStatusRea
   })
 }
 
+/** The mock's fee on a round's pool, as FSE's: R15 + 0.5% of the pool, no
+ * margin (demo recipients are paid in the Stokvel currency). */
+function mockFeeShare(detail: StokvelDetailRead): string {
+  const pool = poolAmount(
+    detail.contribution_fiat_estimate,
+    detail.member_count
+  )
+  const fee = fromCents(1500n + (amountToCents(pool) + 100n) / 200n)
+  return feeShare(fee, "0", detail.member_count)
+}
+
 /**
  * `POST /stokvels/{id}/contributions` (#233) followed by the worker's
  * confirmation (#234): the contribution is `pending`, then `confirmed` with
- * a hash. Refusals use the doc §6 codes and the ledger's own messages.
+ * a hash. The member pays the contribution plus a fee share on top (D6).
+ * Refusals use the doc §6 codes and the API's own messages.
  */
 export async function contributeMock(
   stokvelId: string
 ): Promise<StokvelContributionRead> {
   const detail = DETAILS[stokvelId]
-  if (!detail) throw apiError("Stokvel not found", 404)
+  if (!detail) throw apiError("Stokvel not found.", 404)
   if (stokvelMockScenario.paused) {
-    throw apiError("Stokvels are paused", 503, "stokvel_paused")
+    throw apiError("Stokvels are temporarily paused.", 503, "stokvel_paused")
   }
   const cycle = detail.cycle
   if (!cycle || cycle.status !== "active") {
-    throw apiError("No active cycle", 409, "cycle_not_open")
+    throw apiError(
+      "This stokvel has no active cycle right now.",
+      409,
+      "cycle_not_open"
+    )
   }
   const round = cycle.current_round
   const already = detail.contributions.some(
@@ -372,36 +395,56 @@ export async function contributeMock(
       c.status !== "failed"
   )
   if (already) {
-    throw apiError("Already paid", 409, "contribution_already_paid")
+    throw apiError(
+      "You've already paid for this round.",
+      409,
+      "contribution_already_paid"
+    )
   }
-  if (
-    Number(stokvelMockScenario.available_balance) <
-    Number(detail.contribution_fiat_estimate)
-  ) {
-    throw apiError("Amount exceeds your available balance", 400)
+  const fee = mockFeeShare(detail)
+  const needed = sumMoney([detail.contribution_fiat_estimate, fee])
+  const available = stokvelMockScenario.available_balance
+  if (amountToCents(available) < amountToCents(needed)) {
+    throw apiError(
+      `Your available ${detail.currency} balance is ${available}, and this contribution needs ${needed}. Top up your ${detail.currency} account first.`,
+      400
+    )
   }
-  const contribution: StokvelContributionRead = {
+  const now = new Date().toISOString()
+  const entry: StokvelRoundContributionRead = {
     contribution_id: `con_${Date.now().toString(36)}`,
     cycle_id: cycle.cycle_id,
     round,
     member_id: detail.my_member_id,
     amount_fiat: detail.contribution_fiat_estimate,
     amount_token: detail.contribution_amount,
+    fee_amount: fee,
     status: "pending",
     evm_tx_hash: null,
-    created_at: new Date().toISOString(),
+    created_at: now,
   }
-  detail.contributions.push(contribution)
+  detail.contributions.push(entry)
   detail.my_contribution_status = "pending"
-  stokvelMockScenario.available_balance = (
-    Number(stokvelMockScenario.available_balance) -
-    Number(detail.contribution_fiat_estimate)
-  ).toFixed(2)
+  stokvelMockScenario.available_balance = subtractMoney(available, needed)
   await settle(null, stokvelMockScenario.confirm_delay_ms)
-  contribution.status = "confirmed"
-  contribution.evm_tx_hash = `0x${contribution.contribution_id
+  entry.status = "confirmed"
+  entry.evm_tx_hash = `0x${entry.contribution_id
     .replace(/[^a-z0-9]/g, "")
     .padEnd(64, "d")}`
   detail.my_contribution_status = "confirmed"
-  return structuredClone(contribution)
+  // The API answers `pending` at once; the mock answers after confirming so
+  // the page's poll has something to show.
+  return {
+    contribution_id: entry.contribution_id,
+    stokvel_id: stokvelId,
+    cycle_number: cycle.cycle_number,
+    round,
+    status: "confirmed",
+    currency: detail.currency,
+    amount_token: entry.amount_token,
+    amount_fiat: entry.amount_fiat,
+    fee_amount: fee,
+    amount_zar: needed,
+    created_at: now,
+  }
 }

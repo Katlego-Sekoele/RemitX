@@ -12,27 +12,24 @@ function apiError(message: string, status: number, body?: unknown) {
   return Object.assign(new Error(message), { name: "ApiError", status, body })
 }
 
-test("codes are read from the body, then the detail, then the message", () => {
+test("codes are read from the body's code, as the API sends them", () => {
   assert.equal(
     stokvelErrorCode(apiError("x", 409, { code: "contribution_already_paid" })),
     "contribution_already_paid"
   )
   assert.equal(
+    stokvelErrorCode(
+      apiError("x", 409, { detail: "Starting", code: "cycle_starting" })
+    ),
+    "cycle_starting"
+  )
+  // No code, an unknown code, or no body: nothing to map.
+  assert.equal(
     stokvelErrorCode(apiError("x", 503, { detail: "stokvel_paused" })),
-    "stokvel_paused"
-  )
-  assert.equal(
-    stokvelErrorCode(apiError("x", 409, { detail: { code: "wrong_round" } })),
-    "wrong_round"
-  )
-  assert.equal(
-    stokvelErrorCode(apiError("409 round_not_finalisable", 409)),
-    "round_not_finalisable"
-  )
-  assert.equal(
-    stokvelErrorCode(apiError("boom", 500, { detail: "boom" })),
     null
   )
+  assert.equal(stokvelErrorCode(apiError("x", 409, { code: "nope" })), null)
+  assert.equal(stokvelErrorCode(apiError("409 wrong_round", 409)), null)
   assert.equal(stokvelErrorCode("not an error"), null)
 })
 
@@ -50,7 +47,12 @@ test("known codes get the doc §6 wording, others keep the API message", () => {
 
 test("contribute refusals cover the ledger's own checks", () => {
   assert.equal(
-    contributeRefusal(apiError("Amount exceeds your available balance", 400)),
+    contributeRefusal(
+      apiError(
+        "Your available ZAR balance is 500.00, and this contribution needs 507.50. Top up your ZAR account first.",
+        400
+      )
+    ),
     "insufficient_balance"
   )
   assert.equal(
@@ -80,4 +82,13 @@ test("final refusals are the ones a retry cannot fix", () => {
   assert.ok(isFinalRefusal("cycle_not_open"))
   assert.ok(!isFinalRefusal("stokvel_paused"))
   assert.ok(!isFinalRefusal("insufficient_balance"))
+  // #232: a cycle on its way on-chain; Pay now stays available.
+  assert.ok(!isFinalRefusal("cycle_starting"))
+  assert.equal(
+    contributeRefusalMessage(
+      "cycle_starting",
+      apiError("x", 409, { code: "cycle_starting" })
+    ),
+    "This stokvel's cycle is still being set up. Try again in a minute."
+  )
 })

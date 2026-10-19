@@ -14,6 +14,7 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query"
 import {
   sdk,
   type SentStokvelInvitationRead,
+  type StokvelContributionRead,
   type StokvelInvitationRead,
   type StokvelListRead,
   type StokvelRead,
@@ -28,6 +29,7 @@ import {
 
 export type {
   SentStokvelInvitationRead,
+  StokvelContributionRead,
   StokvelCreateRequest,
   StokvelInvitationRead,
   StokvelListRead,
@@ -126,13 +128,15 @@ export type StokvelCycleRead = {
 }
 
 /** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelContributionRead = {
+export type StokvelRoundContributionRead = {
   contribution_id: string
   cycle_id: string
   round: number
   member_id: string
   amount_fiat: string
   amount_token: string
+  /** The member's fee share, paid on top (D6), as the API's `fee_amount`. */
+  fee_amount: string
   status: ContributionStatus
   evm_tx_hash: string | null
   created_at: string
@@ -163,7 +167,7 @@ export type StokvelDetailRead = StokvelRead & {
   members: StokvelMemberRead[]
   invitations: SentStokvelInvitationRead[]
   cycle: StokvelCycleRead | null
-  contributions: StokvelContributionRead[]
+  contributions: StokvelRoundContributionRead[]
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -262,11 +266,26 @@ export const stokvelQueries = {
 
 /** Mutations in the shape `useMutation` spreads, like the client's. */
 export const stokvelMutations = {
-  /** `POST /stokvels/{id}/contributions` (#233): pays the current round. */
+  /** `POST /stokvels/{id}/contributions` (#233, built): pays the open round
+   * and returns it `pending`. Demo stokvels pay the mock. */
   contribute: (stokvelId: string) => ({
-    mutationFn: () => contributeMock(stokvelId),
+    mutationFn: async (): Promise<StokvelContributionRead> => {
+      if (isDemoStokvel(stokvelId)) return contributeMock(stokvelId)
+      const { data } = await sdk.stokvels.contributeToStokvel({
+        path: { stokvel_id: stokvelId },
+        throwOnError: true,
+      })
+      return data
+    },
   }),
 }
+
+/** The development-only scenario knobs, re-exported so pages import every
+ * stokvel thing from this file and R4-09 stays a change here. */
+export {
+  resetStokvelMockScenario,
+  stokvelMockScenario,
+} from "~/lib/stokvels.mock"
 
 export async function invalidateStokvels(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: ["stokvels"] })
@@ -392,6 +411,29 @@ export function tokenToFiat(token: string, rate: string): string {
   )
 }
 
+/** A contribution's hash as proof of payment: only once it is confirmed. The
+ * worker stores the hash before sending, so a pending one may never be
+ * mined (doc §3). */
+export function contributionProofHash(
+  contribution: Pick<StokvelRoundContributionRead, "status" | "evm_tx_hash">
+): string | null {
+  return contribution.status === ContributionStatus.confirmed
+    ? contribution.evm_tx_hash
+    : null
+}
+
+/** A round's payout hash as proof: only once the release is confirmed. */
+export function payoutProofHash(
+  round: Pick<
+    StokvelRoundRead,
+    "release_status" | "burn_tx_hash" | "release_tx_hash"
+  >
+): string | null {
+  return round.release_status === ReleaseStatus.released
+    ? (round.burn_tx_hash ?? round.release_tx_hash)
+    : null
+}
+
 /** Members whose contribution to `round` of the current cycle is confirmed. */
 export function paidMemberIds(
   detail: Pick<StokvelDetailRead, "cycle" | "contributions">,
@@ -430,6 +472,8 @@ export function payoutStage(
   everyonePaid: boolean
 ): PayoutStage {
   if (round.remittance_status === RemittanceStatus.confirmed) return "delivered"
+  // A failed release never reaches a remittance, so check it first.
+  if (round.release_status === ReleaseStatus.failed) return "failed"
   if (round.remittance_status === RemittanceStatus.failed) return "failed"
   if (round.remittance_status) return "sending"
   if (round.release_status === ReleaseStatus.released) return "released"
@@ -442,7 +486,7 @@ export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
   released: "Released",
   sending: "Sending",
   delivered: "Delivered",
-  failed: "Didn't go through, we're retrying",
+  failed: "Didn't go through",
 }
 
 /** Members who have not paid `round` of the current cycle. */

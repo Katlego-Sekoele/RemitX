@@ -131,6 +131,35 @@ test("payoutStage follows release then remittance status", async () => {
     ),
     "failed"
   )
+  // A failed pool release never reaches a remittance.
+  assert.equal(
+    payoutStage({ release_status: "failed", remittance_status: null }, true),
+    "failed"
+  )
+})
+
+test("a hash is proof only once confirmed", async () => {
+  const { contributionProofHash, payoutProofHash } = await import("./stokvels")
+  const hash = `0x${"a".repeat(64)}`
+  assert.equal(
+    contributionProofHash({ status: "pending", evm_tx_hash: hash }),
+    null
+  )
+  assert.equal(
+    contributionProofHash({ status: "processing", evm_tx_hash: hash }),
+    null
+  )
+  assert.equal(
+    contributionProofHash({ status: "confirmed", evm_tx_hash: hash }),
+    hash
+  )
+  const round = { burn_tx_hash: null, release_tx_hash: hash }
+  assert.equal(
+    payoutProofHash({ ...round, release_status: "processing" }),
+    null
+  )
+  assert.equal(payoutProofHash({ ...round, release_status: "failed" }), null)
+  assert.equal(payoutProofHash({ ...round, release_status: "released" }), hash)
 })
 
 test("contributeMock pays once, confirms, and refuses the doc §6 cases", async () => {
@@ -151,19 +180,28 @@ test("contributeMock pays once, confirms, and refuses the doc §6 cases", async 
     body: { code: "cycle_not_open" },
   })
 
-  stokvelMockScenario.available_balance = "10.00"
-  await expect(contributeMock("stk_8c21")).rejects.toThrow(/available balance/)
+  // Covers the R500 contribution but not the R7.50 fee share on top.
+  stokvelMockScenario.available_balance = "505.00"
+  await expect(contributeMock("stk_8c21")).rejects.toThrow(
+    /available ZAR balance is 505.00, and this contribution needs 507.50/
+  )
   stokvelMockScenario.available_balance = "1240.00"
 
   const before = await getStokvelMock("stk_8c21")
   assert.equal(outstandingMembers(before).length, 1)
   const paid = await contributeMock("stk_8c21")
   assert.equal(paid.status, "confirmed")
-  assert.match(paid.evm_tx_hash ?? "", /^0x[0-9a-z]{64}$/)
+  // R15 + 0.5% of the R1,500 pool = R22.50, split over 3 members.
+  assert.equal(paid.fee_amount, "7.50")
+  assert.equal(paid.amount_zar, "507.50")
   const after = await getStokvelMock("stk_8c21")
   assert.equal(outstandingMembers(after).length, 0)
   assert.equal(after.my_contribution_status, "confirmed")
-  assert.equal(stokvelMockScenario.available_balance, "740.00")
+  assert.equal(stokvelMockScenario.available_balance, "732.50")
+  const mine = after.contributions.find(
+    (c) => c.member_id === after.my_member_id && c.round === 1
+  )
+  assert.match(mine?.evm_tx_hash ?? "", /^0x[0-9a-z]{64}$/)
 
   await expect(contributeMock("stk_8c21")).rejects.toMatchObject({
     status: 409,

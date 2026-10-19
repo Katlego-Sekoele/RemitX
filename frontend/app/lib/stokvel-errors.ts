@@ -19,6 +19,9 @@ export const STOKVEL_ERROR_MESSAGES = {
   treasury_allowance_missing: "Something went wrong. Please try again.",
   treasury_funds_low:
     "Contributions are temporarily unavailable. Please try again later.",
+  // #232: a cycle has started but is not on-chain yet; worth a retry.
+  cycle_starting:
+    "This stokvel's cycle is still being set up. Try again in a minute.",
 } as const
 
 export type StokvelErrorCode = keyof typeof STOKVEL_ERROR_MESSAGES
@@ -35,26 +38,14 @@ function statusOf(error: unknown): number | null {
     : null
 }
 
-/**
- * The §6 code on a failed call, if it carries one. The API puts it in the
- * body as `{code}` or `{detail: {code}}`; until #233 lands, the message is
- * also searched so a mock or a bare `{detail: "stokvel_paused"}` still maps.
- */
+/** The §6 code on a failed call: the API sends `{ detail, code }`, with
+ * `code` only on refusals that have one (`ErrorResponse`, #340). */
 export function stokvelErrorCode(error: unknown): StokvelErrorCode | null {
-  if (!(error instanceof Error)) return null
-  const body = "body" in error ? error.body : undefined
-  if (body && typeof body === "object") {
-    const direct = (body as { code?: unknown }).code
-    if (isStokvelErrorCode(direct)) return direct
-    const detail = (body as { detail?: unknown }).detail
-    if (isStokvelErrorCode(detail)) return detail
-    if (detail && typeof detail === "object") {
-      const nested = (detail as { code?: unknown }).code
-      if (isStokvelErrorCode(nested)) return nested
-    }
-  }
-  const match = error.message.match(/\b[a-z]+(?:_[a-z]+)+\b/g)
-  return match?.find(isStokvelErrorCode) ?? null
+  if (!(error instanceof Error) || !("body" in error)) return null
+  const body = error.body
+  if (!body || typeof body !== "object") return null
+  const code = (body as { code?: unknown }).code
+  return isStokvelErrorCode(code) ? code : null
 }
 
 /** The §6 wording for a known code, otherwise the API's own message. */
@@ -78,7 +69,10 @@ export function contributeRefusal(error: unknown): ContributeRefusal {
   const status = statusOf(error)
   if (status === 403) return "unverified"
   if (status === 400 && error instanceof Error) {
-    if (/available balance/i.test(error.message)) return "insufficient_balance"
+    // "Your available ZAR balance is …" from the API; the mock says the same.
+    if (/available \w* ?balance/i.test(error.message)) {
+      return "insufficient_balance"
+    }
     if (/\b(daily|monthly) limit\b/i.test(error.message)) return "over_limit"
   }
   return "other"

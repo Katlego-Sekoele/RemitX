@@ -14,6 +14,7 @@ import {
 import { beneficiaryInitials } from "~/lib/beneficiaries"
 import {
   explorerTxUrl,
+  payoutProofHash,
   PAYOUT_STAGE_LABELS,
   payoutStage,
   type StokvelCycleRead,
@@ -124,7 +125,7 @@ export function RoundSchedule({
               cycle.status === "active" && round.round > cycle.current_round
             const paid = paidByRound(round.round)
             const stage = payoutStage(round, paid >= memberCount)
-            const proof = round.burn_tx_hash ?? round.release_tx_hash
+            const proof = payoutProofHash(round)
             return (
               <li
                 key={round.round}

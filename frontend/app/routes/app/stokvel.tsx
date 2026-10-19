@@ -40,6 +40,8 @@ import {
   invalidateStokvels,
   outstandingMembers,
   paidMemberIds,
+  resetStokvelMockScenario,
+  stokvelMockScenario,
   PHASE_LABELS,
   poolAmount,
   roundLabel,
@@ -47,10 +49,6 @@ import {
   stokvelsPath,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
-import {
-  resetStokvelMockScenario,
-  stokvelMockScenario,
-} from "~/lib/stokvels.mock"
 import type { Route } from "./+types/stokvel"
 
 // Nested under the Stokvels sidebar entry: that module owns the title.
@@ -72,11 +70,11 @@ export default function StokvelPage() {
     ...stokvelQueries.detail(stokvelId),
     enabled: Boolean(stokvelId),
     // A contribution confirms on chain a few seconds after it is sent.
-    refetchInterval: (query) =>
-      query.state.data?.my_contribution_status === "pending" ||
-      query.state.data?.my_contribution_status === "processing"
-        ? 1500
-        : false,
+    refetchInterval: (query) => {
+      if (query.state.status === "error") return false
+      const status = query.state.data?.my_contribution_status
+      return status === "pending" || status === "processing" ? 1500 : false
+    },
   })
   const accounts = useQuery(api.accounts.getAccounts())
 
