@@ -230,9 +230,12 @@ class Config:
 
     # The event sync's first block for a contract with no cursor yet: its
     # deployment block (doc section 2), so no history is skipped or rescanned.
+    # Required once STOKVEL_CONTRACT_ADDRESS is set: with no cursor and no
+    # start block the sync refuses to run rather than scan from genesis.
     @property
-    def STOKVEL_SYNC_START_BLOCK(self) -> int:
-        return int(os.getenv("STOKVEL_SYNC_START_BLOCK", "0"))
+    def STOKVEL_SYNC_START_BLOCK(self) -> int | None:
+        value = os.getenv("STOKVEL_SYNC_START_BLOCK", "").strip()
+        return int(value) if value else None
 
     # Blocks behind the chain head the event sync stays, so it reads only
     # blocks the chain will not undo.

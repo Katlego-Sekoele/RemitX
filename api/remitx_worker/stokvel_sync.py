@@ -1,31 +1,46 @@
 """Applying the stokvel contract's events to the database (R2-13, #235).
 
 `stokvel.sync_events` (in `stokvel_tasks`) reads the vault's events block range
-by block range and hands each one to `apply_event`, inside the same database
-transaction that moves the cursor (`StokvelSyncState`). Every handler is
-guarded, so applying an event twice changes nothing: a replayed range, or an
-event the worker already recorded from a receipt, is a no-op.
+by block range and hands each one to `apply_event`, inside the transaction that
+moves the cursor (`StokvelSyncState`). Every handler is guarded, so applying an
+event twice changes nothing: a replayed range, or an event the worker already
+recorded from a receipt, is a no-op.
+
+A handler reports one of:
+
+- `APPLIED` / `ALREADY_RECORDED` / `UNKNOWN`: done (for `UNKNOWN`, the
+  database has no such stokvel or cycle: the contract is shared, so a local
+  or QA backend sees the other's stokvels too)
+- `WAITING`: it cannot be applied yet; the task holds it
+  (`StokvelHeldEvent`) and retries it on every run
+- raises `EventNeedsAPerson` when the chain and the database disagree; the
+  task holds it as failed, without changing anything
+
+The events:
 
 - `ContributionMade`: records the contribution as mined through
   `stokvel_ledger.record_mined`, the same guard `confirm_contribution` uses.
   The safety net for a confirmation that was lost.
-- `CycleClosed`: closes the cycle (`active -> closed`).
-- `RoundFinalised`: only noted for now. Who records a release (the payout row
-  and the `STOKVEL -> Treasury` leg) is R3-04's (#241), and its interface is
-  still being agreed (doc section 8). `_round_finalised` is where the sync
-  will queue it.
-
-Events the database cannot place (a stokvel or cycle it does not have) are
-skipped quietly: the contract is shared, so a local or QA backend sees the
-other's stokvels too.
+- `RoundFinalised`: waiting until R3-04 (#241) builds `stokvel.release_pool`,
+  which records the payout and the `STOKVEL -> Treasury` leg (interface
+  proposed in doc section 8). Held, so the rounds released before then are
+  recorded once it exists.
+- `CycleClosed`: closes the cycle (`active -> closed`), but only once every
+  round's payout is recorded as released. Until then it waits, so the cycle
+  is not closed (and a new one cannot open) with a payout missing.
 """
 
 import logging
+from typing import Any
 
 from remitx_api.clock import utcnow
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
-from sqlalchemy import select, update
+from remitx_api.models.orm.stokvel_payout import (
+    StokvelPayout,
+    StokvelPayoutReleaseStatus,
+)
+from sqlalchemy import func, select, update
 
 from remitx_worker import evm_service
 from remitx_worker.stokvel_contract import ContractEvent
@@ -37,8 +52,13 @@ logger = logging.getLogger(__name__)
 APPLIED = "applied"
 ALREADY_RECORDED = "already_recorded"
 UNKNOWN = "unknown"
-UNMATCHED = "unmatched"
-NOTED = "noted"
+WAITING = "waiting"
+
+
+class EventNeedsAPerson(Exception):
+    """The event and the database disagree in a way the sync must not guess
+    at. Nothing was changed; the task holds the event as failed with this
+    message."""
 
 
 def apply_event(session, event: ContractEvent) -> str:
@@ -52,9 +72,29 @@ def apply_event(session, event: ContractEvent) -> str:
     return handler(session, event)
 
 
+def args_to_json(args: dict[str, Any]) -> dict[str, Any]:
+    """An event's arguments in a JSON column: bytes as 0x hex strings. The
+    vault's synced events have only `bytes32` and integer arguments, so a
+    string is always bytes."""
+    return {
+        key: "0x" + bytes(value).hex()
+        if isinstance(value, bytes | bytearray)
+        else value
+        for key, value in args.items()
+    }
+
+
+def args_from_json(args: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: bytes.fromhex(value[2:]) if isinstance(value, str) else value
+        for key, value in args.items()
+    }
+
+
 def _cycle(session, event: ContractEvent) -> StokvelCycle | None:
     """The database cycle an event names: its stokvel (the packed `id`) and
-    the contract's 1-based `cycle`, which is `cycle_number`."""
+    the contract's 1-based `cycle`, which is `cycle_number` (R2-10 keeps the
+    two equal)."""
     stokvel_id = evm_service.bytes32_to_uuid(event.args["id"])
     if stokvel_id is None:
         return None
@@ -95,12 +135,11 @@ def _contribution_made(session, event: ContractEvent) -> str:
         if in_flight.evm_tx_hash and (
             in_flight.evm_tx_hash.lower() != event.tx_hash.lower()
         ):
-            logger.warning(
-                "event=stokvel.sync_hash_differs contribution_id=%s stored=%s "
-                "event=%s: recording the mined transaction from the event",
-                in_flight.id,
-                in_flight.evm_tx_hash,
-                event.tx_hash,
+            # The worker sent a different transaction for this contribution
+            # than the one the chain recorded: do not move the books onto it.
+            raise EventNeedsAPerson(
+                f"contribution {in_flight.id} stored {in_flight.evm_tx_hash}, "
+                f"but the chain recorded it in {event.tx_hash}"
             )
         if evm_service.to_base_units(in_flight.amount_token) != event.args["amount"]:
             logger.warning(
@@ -126,26 +165,45 @@ def _contribution_made(session, event: ContractEvent) -> str:
         return APPLIED
     if any(row.status == CONFIRMED for row in rows):
         return ALREADY_RECORDED
-    # Paid on-chain, but the database has it failed or not at all: the
-    # books and the chain disagree, which needs a person.
-    logger.error(
-        "event=stokvel.sync_contribution_unmatched cycle_id=%s round=%s "
-        "member_id=%s tx_hash=%s block=%s: the chain has this contribution "
-        "but no pending or confirmed row does",
-        cycle.id,
-        event.args["round"],
-        member_id,
-        event.tx_hash,
-        event.block_number,
+    # Paid on-chain, but the database has it failed or not at all.
+    raise EventNeedsAPerson(
+        f"the chain has a contribution for cycle {cycle.id} round "
+        f"{event.args['round']} member {member_id} that no pending or "
+        "confirmed row matches"
     )
-    return UNMATCHED
 
 
 def _cycle_closed(session, event: ContractEvent) -> str:
     cycle = _cycle(session, event)
     if cycle is None:
         return _skip_unknown(event)
-    closed = session.execute(
+    if cycle.status == StokvelCycleStatus.CLOSED.value:
+        return ALREADY_RECORDED
+    if cycle.status != StokvelCycleStatus.ACTIVE.value:
+        raise EventNeedsAPerson(
+            f"the chain closed cycle {cycle.id}, which the database has as "
+            f"{cycle.status}"
+        )
+    released = session.scalar(
+        select(func.count())
+        .select_from(StokvelPayout)
+        .where(
+            StokvelPayout.cycle_id == cycle.id,
+            StokvelPayout.release_status == StokvelPayoutReleaseStatus.RELEASED.value,
+        )
+    )
+    if released < (cycle.total_rounds or 0):
+        # The last round's RoundFinalised comes in the same transaction and
+        # is still waiting for the release task: closing now would leave its
+        # payout unrecorded and let a new cycle open.
+        logger.info(
+            "event=stokvel.sync_cycle_close_waiting cycle_id=%s released=%s of %s",
+            cycle.id,
+            released,
+            cycle.total_rounds,
+        )
+        return WAITING
+    session.execute(
         update(StokvelCycle)
         .where(
             StokvelCycle.id == cycle.id,
@@ -154,46 +212,26 @@ def _cycle_closed(session, event: ContractEvent) -> str:
         .values(status=StokvelCycleStatus.CLOSED.value, closed_at=utcnow())
         .execution_options(synchronize_session=False)
     )
-    if closed.rowcount == 1:
-        logger.info(
-            "event=stokvel.sync_cycle_closed cycle_id=%s tx_hash=%s block=%s",
-            cycle.id,
-            event.tx_hash,
-            event.block_number,
-        )
-        return APPLIED
-    if cycle.status == StokvelCycleStatus.CLOSED.value:
-        return ALREADY_RECORDED
-    logger.error(
-        "event=stokvel.sync_cycle_unmatched cycle_id=%s status=%s tx_hash=%s: "
-        "the chain closed a cycle the database has as %s",
+    logger.info(
+        "event=stokvel.sync_cycle_closed cycle_id=%s tx_hash=%s block=%s",
         cycle.id,
-        cycle.status,
         event.tx_hash,
-        cycle.status,
+        event.block_number,
     )
-    return UNMATCHED
+    return APPLIED
 
 
 def _round_finalised(session, event: ContractEvent) -> str:
-    """Noted only, until R3-04 (#241) builds `stokvel.release_pool`.
+    """Waiting until R3-04 (#241) builds `stokvel.release_pool`.
 
     Proposed interface (doc section 8): queue
-    `release_pool(cycle_id, round, tx_hash, block_number)`. It records the
-    release that already happened on-chain (the payout row, released, and
-    the `STOKVEL -> Treasury` leg) without calling `finalise` again. The
-    scheduled release (R3-11, #248) also catches any round left unrecorded.
+    `release_pool(cycle_id, round, tx_hash, block_number)` here and return
+    `APPLIED`. It records the release that already happened on-chain (the
+    payout row, released, and the `STOKVEL -> Treasury` leg) without calling
+    `finalise` again. Until then the event is held, and every round released
+    meanwhile is recorded on the first run after the change.
     """
     cycle = _cycle(session, event)
     if cycle is None:
         return _skip_unknown(event)
-    logger.info(
-        "event=stokvel.round_finalised cycle_id=%s round=%s pool=%s tx_hash=%s "
-        "block=%s: released on-chain; recorded by the release task (R3-04)",
-        cycle.id,
-        event.args["round"],
-        event.args["pool"],
-        event.tx_hash,
-        event.block_number,
-    )
-    return NOTED
+    return WAITING

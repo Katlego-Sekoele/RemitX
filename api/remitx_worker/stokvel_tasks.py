@@ -26,6 +26,7 @@ R2-10 (#232) adds the cycle tasks to this module.
 import logging
 import uuid
 
+from hexbytes import HexBytes
 from remitx_api.clock import utcnow
 from remitx_api.config import Config
 from remitx_api.models.orm.stokvel_contribution import (
@@ -33,6 +34,11 @@ from remitx_api.models.orm.stokvel_contribution import (
     StokvelContributionStatus,
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
+from remitx_api.models.orm.stokvel_held_event import (
+    HELD_FAILED,
+    HELD_WAITING,
+    StokvelHeldEvent,
+)
 from remitx_api.models.orm.stokvel_sync_state import StokvelSyncState
 from remitx_api.models.orm.transaction import (
     STATUS_FAILED as TX_STATUS_FAILED,
@@ -43,6 +49,7 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.services import queue_service
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
+from web3 import Web3
 
 from remitx_worker import evm_service, stokvel_contract, stokvel_sync
 from remitx_worker.celery_app import celery
@@ -473,9 +480,13 @@ def confirm_contribution(
 
 
 class _CursorRaced(Exception):
-    """Another `sync_events` run created the cursor between this run's read
-    and its insert. Raised only from the cursor insert, and the transaction
-    rolls back."""
+    """Another `sync_events` run moved or created the cursor between this
+    run's read and its write. Raised only from the cursor write, and the
+    range's transaction rolls back."""
+
+
+# Held events retried per run, oldest first.
+_HELD_RETRY_LIMIT = 200
 
 
 @celery.task(name="stokvel.sync_events")
@@ -484,15 +495,19 @@ def sync_events() -> str:
     (R2-13, #235). Run by the worker's beat every
     `STOKVEL_SYNC_INTERVAL_SECONDS`.
 
-    Reads up to `STOKVEL_SYNC_MAX_RANGES` ranges of `STOKVEL_SYNC_BLOCK_RANGE`
-    blocks, staying `STOKVEL_SYNC_CONFIRMATIONS` blocks behind the head. Each
-    range is one transaction: it moves the cursor with a compare-and-set
-    (only from the block this run read), then applies the range's events
-    (`stokvel_sync.apply_event`). So a crash leaves the cursor and the
-    changes together, and an overlapping run finds the cursor moved and
-    stops: on Postgres its update waits for this one's commit and then
-    matches nothing. Every handler is guarded, so a replayed range changes
-    nothing.
+    First retries the held events (`StokvelHeldEvent`), so a release task or
+    a fix that has since arrived catches them up. Then reads up to
+    `STOKVEL_SYNC_MAX_RANGES` ranges of `STOKVEL_SYNC_BLOCK_RANGE` blocks,
+    staying `STOKVEL_SYNC_CONFIRMATIONS` blocks behind the head. Each range is
+    one transaction: a compare-and-set on the cursor (only from the block
+    this run read; on Postgres an overlapping run waits, then matches nothing
+    and stops), then the range's events in chain order.
+
+    Each event is applied in its own savepoint. One that waits for something
+    that does not exist yet, fails, will not decode, or disagrees with the
+    database is held instead, so the cursor moves on and no single event can
+    stop the sync, and nothing is lost. An RPC error leaves the cursor for the
+    next run. Every handler is guarded, so a replayed range changes nothing.
     """
     config = Config()
     address = config.STOKVEL_CONTRACT_ADDRESS
@@ -500,6 +515,22 @@ def sync_events() -> str:
         logger.info("STOKVEL_CONTRACT_ADDRESS is not set; no events to sync")
         return "skipped"
     key = address.lower()
+
+    with session_scope() as session:
+        state = session.get(StokvelSyncState, key)
+        last = None if state is None else state.last_processed_block
+    has_cursor = last is not None
+    if not has_cursor:
+        if config.STOKVEL_SYNC_START_BLOCK is None:
+            # Without it the first run would scan from genesis: thousands of
+            # eth_getLogs calls before the deployment block.
+            logger.error(
+                "event=stokvel.sync_misconfigured: STOKVEL_CONTRACT_ADDRESS is "
+                "set but STOKVEL_SYNC_START_BLOCK is not; set it to the "
+                "contract's deployment block"
+            )
+            return "misconfigured"
+        last = config.STOKVEL_SYNC_START_BLOCK - 1
 
     try:
         w3 = evm_service.get_web3()
@@ -509,23 +540,16 @@ def sync_events() -> str:
         return "rpc_error"
 
     outcomes: dict[str, int] = {}
-    last = None
+    _retry_held(key, w3, outcomes)
+
     for _ in range(config.STOKVEL_SYNC_MAX_RANGES):
-        with session_scope() as session:
-            state = session.get(StokvelSyncState, key)
-            last = (
-                state.last_processed_block
-                if state is not None
-                else config.STOKVEL_SYNC_START_BLOCK - 1
-            )
-            has_cursor = state is not None
         from_block = last + 1
         if from_block > head:
             break
         to_block = min(head, from_block + config.STOKVEL_SYNC_BLOCK_RANGE - 1)
 
         try:
-            events = stokvel_contract.fetch_events(from_block, to_block, w3)
+            logs = stokvel_contract.fetch_logs(from_block, to_block, w3)
         except Exception as exc:
             logger.warning(
                 "event=stokvel.sync_rpc_error from_block=%s to_block=%s (%s): "
@@ -538,39 +562,20 @@ def sync_events() -> str:
 
         try:
             with session_scope() as session:
-                if has_cursor:
-                    moved = session.execute(
-                        update(StokvelSyncState)
-                        .where(
-                            StokvelSyncState.id == key,
-                            StokvelSyncState.last_processed_block == last,
-                        )
-                        .values(last_processed_block=to_block, updated_at=utcnow())
-                        .execution_options(synchronize_session=False)
-                    )
-                    if moved.rowcount != 1:
-                        logger.info(
-                            "event=stokvel.sync_raced: another run moved the "
-                            "cursor past block %s; stopping",
-                            last,
-                        )
-                        break
-                else:
-                    session.add(StokvelSyncState(id=key, last_processed_block=to_block))
-                    try:
-                        session.flush()
-                    except IntegrityError as exc:
-                        # Only the cursor's own insert can mean another run
-                        # created it first. Any other integrity error, from
-                        # applying an event, is a real fault and propagates.
-                        raise _CursorRaced() from exc
-                for event in events:
-                    outcome = stokvel_sync.apply_event(session, event)
-                    outcomes[outcome] = outcomes.get(outcome, 0) + 1
+                _move_cursor(session, key, has_cursor, last, to_block)
+                for log in logs:
+                    _apply_log(session, key, w3, log, outcomes)
         except _CursorRaced:
-            logger.info("event=stokvel.sync_raced: the cursor was just created")
+            with session_scope() as session:
+                state = session.get(StokvelSyncState, key)
+                last = None if state is None else state.last_processed_block
+            logger.info(
+                "event=stokvel.sync_raced: another run moved the cursor to %s; "
+                "stopping",
+                last,
+            )
             break
-        last = to_block
+        last, has_cursor = to_block, True
 
     summary = ", ".join(f"{count} {name}" for name, count in sorted(outcomes.items()))
     logger.info(
@@ -580,3 +585,206 @@ def sync_events() -> str:
         summary or "no events",
     )
     return f"synced to {last}"
+
+
+def _move_cursor(session, key: str, has_cursor: bool, last: int, to_block: int):
+    """Compare-and-set the cursor from `last` to `to_block`, or create it.
+    Raises `_CursorRaced` if another run got there first."""
+    if has_cursor:
+        moved = session.execute(
+            update(StokvelSyncState)
+            .where(
+                StokvelSyncState.id == key,
+                StokvelSyncState.last_processed_block == last,
+            )
+            .values(last_processed_block=to_block, updated_at=utcnow())
+            .execution_options(synchronize_session=False)
+        )
+        if moved.rowcount != 1:
+            raise _CursorRaced()
+        return
+    session.add(StokvelSyncState(id=key, last_processed_block=to_block))
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        # Only the cursor's own insert can mean another run created it
+        # first; event errors never reach here (each has its savepoint).
+        raise _CursorRaced() from exc
+
+
+def _count(outcomes: dict[str, int], outcome: str) -> None:
+    outcomes[outcome] = outcomes.get(outcome, 0) + 1
+
+
+def _apply_log(session, key: str, w3, log, outcomes: dict[str, int]) -> None:
+    """Decode and apply one log from a range, holding it if it cannot be."""
+    try:
+        event = stokvel_contract.decode_log(log, w3)
+    except Exception as exc:
+        _hold_undecoded(session, key, log, exc)
+        _count(outcomes, "held_failed")
+        return
+    held_reason, error, outcome = _try_apply(session, event)
+    if held_reason is None:
+        _count(outcomes, outcome)
+        return
+    _hold(session, key, event, held_reason, error)
+    _count(outcomes, f"held_{held_reason}")
+
+
+def _try_apply(session, event) -> tuple[str | None, str | None, str]:
+    """Apply `event` in a savepoint. Returns (held reason or None, error,
+    outcome). On a failure the savepoint rolls back, so nothing it did
+    stays."""
+    savepoint = session.begin_nested()
+    try:
+        outcome = stokvel_sync.apply_event(session, event)
+    except stokvel_sync.EventNeedsAPerson as exc:
+        savepoint.rollback()
+        return HELD_FAILED, str(exc), "failed"
+    except Exception as exc:
+        savepoint.rollback()
+        return HELD_FAILED, f"{type(exc).__name__}: {exc}", "failed"
+    savepoint.commit()
+    if outcome == stokvel_sync.WAITING:
+        return HELD_WAITING, None, outcome
+    return None, None, outcome
+
+
+def _held_row(session, key: str, tx_hash: str, log_index: int):
+    return session.scalar(
+        select(StokvelHeldEvent).where(
+            StokvelHeldEvent.contract_address == key,
+            StokvelHeldEvent.tx_hash == tx_hash,
+            StokvelHeldEvent.log_index == log_index,
+        )
+    )
+
+
+def _hold(session, key: str, event, reason: str, error: str | None) -> None:
+    row = _held_row(session, key, event.tx_hash, event.log_index)
+    if row is not None:  # a replayed range: already held
+        return
+    session.add(
+        StokvelHeldEvent(
+            contract_address=key,
+            tx_hash=event.tx_hash,
+            log_index=event.log_index,
+            block_number=event.block_number,
+            name=event.name,
+            args=stokvel_sync.args_to_json(event.args),
+            reason=reason,
+            error=error,
+        )
+    )
+    log = logger.error if reason == HELD_FAILED else logger.info
+    log(
+        "event=stokvel.sync_event_held reason=%s name=%s tx_hash=%s log_index=%s "
+        "block=%s%s",
+        reason,
+        event.name,
+        event.tx_hash,
+        event.log_index,
+        event.block_number,
+        f": {error}" if error else "",
+    )
+
+
+def _raw_log_to_json(log) -> dict:
+    def hexed(value):
+        return (
+            "0x" + bytes(value).hex() if isinstance(value, bytes | bytearray) else value
+        )
+
+    return {
+        key: [hexed(topic) for topic in value] if key == "topics" else hexed(value)
+        for key, value in dict(log).items()
+    }
+
+
+def _raw_log_from_json(raw: dict) -> dict:
+    hex_fields = {"data", "transactionHash", "blockHash"}
+    return {
+        key: [HexBytes(topic) for topic in value]
+        if key == "topics"
+        else HexBytes(value)
+        if key in hex_fields
+        else value
+        for key, value in raw.items()
+    }
+
+
+def _hold_undecoded(session, key: str, log, exc: Exception) -> None:
+    tx_hash = Web3.to_hex(log["transactionHash"])
+    if _held_row(session, key, tx_hash, log["logIndex"]) is not None:
+        return
+    error = f"did not decode: {type(exc).__name__}: {exc}"
+    session.add(
+        StokvelHeldEvent(
+            contract_address=key,
+            tx_hash=tx_hash,
+            log_index=log["logIndex"],
+            block_number=log["blockNumber"],
+            raw_log=_raw_log_to_json(log),
+            reason=HELD_FAILED,
+            error=error,
+        )
+    )
+    logger.error(
+        "event=stokvel.sync_event_held reason=failed tx_hash=%s log_index=%s "
+        "block=%s: %s",
+        tx_hash,
+        log["logIndex"],
+        log["blockNumber"],
+        error,
+    )
+
+
+def _retry_held(key: str, w3, outcomes: dict[str, int]) -> None:
+    """Try the unresolved held events again, oldest first, each in its own
+    savepoint. One that now applies is resolved; one that still cannot keeps
+    its row with the latest reason and error."""
+    with session_scope() as session:
+        held = session.scalars(
+            select(StokvelHeldEvent)
+            .where(
+                StokvelHeldEvent.contract_address == key,
+                StokvelHeldEvent.resolved_at.is_(None),
+            )
+            .order_by(StokvelHeldEvent.block_number, StokvelHeldEvent.log_index)
+            .limit(_HELD_RETRY_LIMIT)
+        ).all()
+        for row in held:
+            try:
+                event = (
+                    stokvel_contract.decode_log(_raw_log_from_json(row.raw_log), w3)
+                    if row.raw_log is not None
+                    else stokvel_contract.ContractEvent(
+                        name=row.name,
+                        args=stokvel_sync.args_from_json(row.args),
+                        tx_hash=row.tx_hash,
+                        block_number=row.block_number,
+                        log_index=row.log_index,
+                    )
+                )
+            except Exception as exc:
+                row.attempts += 1
+                row.error = f"did not decode: {type(exc).__name__}: {exc}"
+                continue
+            reason, error, outcome = _try_apply(session, event)
+            if reason is None:
+                row.resolved_at = utcnow()
+                _count(outcomes, "resolved")
+                logger.info(
+                    "event=stokvel.sync_event_resolved name=%s tx_hash=%s "
+                    "log_index=%s outcome=%s attempts=%s",
+                    event.name,
+                    event.tx_hash,
+                    event.log_index,
+                    outcome,
+                    row.attempts,
+                )
+                continue
+            row.attempts += 1
+            row.reason, row.error = reason, error
+            _count(outcomes, f"still_{reason}")

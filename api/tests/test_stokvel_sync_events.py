@@ -2,8 +2,9 @@
 
 Same conventions as test_worker_stokvel_contribution.py, whose fixtures this
 reuses: the task runs against a scratch SQLite file with the chain faked.
-`stokvel_contract.fetch_events` returns events from a list, and the client's
-`eth.block_number` is the chain head.
+`stokvel_contract.fetch_logs` returns logs from a list (already-decoded
+events, which the faked `decode_log` passes through, or a raw `BAD_LOG` it
+refuses), and the client's `eth.block_number` is the chain head.
 
 The ticket's "done when": replaying the same events leaves the database
 unchanged.
@@ -15,7 +16,7 @@ unchanged.
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -26,8 +27,15 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
+from remitx_api.models.orm.stokvel_held_event import StokvelHeldEvent
+from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.stokvel_sync_state import StokvelSyncState
-from remitx_api.models.orm.transaction import STATUS_CONFIRMED, Transaction
+from remitx_api.models.orm.transaction import (
+    STATUS_CONFIRMED,
+    TYPE_STOKVEL_POOL_RELEASE,
+    Transaction,
+)
 from remitx_worker import evm_service, stokvel_contract, stokvel_sync
 from remitx_worker.stokvel_contract import ContractEvent
 from remitx_worker.stokvel_tasks import (
@@ -36,7 +44,7 @@ from remitx_worker.stokvel_tasks import (
     sync_events,
 )
 from sqlalchemy import select, update
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError
 from tests.kyc_helpers import make_user
 from tests.test_worker_stokvel_contribution import (
     BLOCK,
@@ -57,34 +65,65 @@ START = 100
 EVENT_HASH = "0x" + "e1" * 32
 
 
+def _raw_log(block, log_index=0):
+    """A raw log the faked `decode_log` refuses: what a drifted ABI copy or a
+    malformed log looks like to the sync."""
+    return {
+        "address": CONTRACT,
+        "topics": [HexBytes(b"\xab" * 32)],
+        "data": HexBytes(b""),
+        "blockNumber": block,
+        "transactionHash": HexBytes(b"\xbd" * 32),
+        "logIndex": log_index,
+        "blockHash": HexBytes(b"\x00" * 32),
+        "transactionIndex": 0,
+    }
+
+
 class FakeLogs:
-    """The vault's events on a fake chain: `events` in any order, and a
-    head. `fetch_events` filters by block as the real one does, and records
-    each range asked for."""
+    """The vault's logs on a fake chain, in any order, and a head.
+    `fetch_logs` filters by block and sorts as the real one does, and records
+    each range asked for. `decode_log` passes a `ContractEvent` through and
+    refuses a raw log unless `decodes` is set."""
 
     def __init__(self):
-        self.events: list[ContractEvent] = []
+        self.events: list = []
         self.head = START + 50
         self.ranges: list[tuple[int, int]] = []
         self.fail: BaseException | None = None
         self.before_return = None
+        self.decodes: ContractEvent | None = None
 
-    def fetch_events(self, from_block, to_block, w3):
+    @staticmethod
+    def _where(log):
+        if isinstance(log, ContractEvent):
+            return log.block_number, log.log_index
+        return log["blockNumber"], log["logIndex"]
+
+    def fetch_logs(self, from_block, to_block, w3):
         self.ranges.append((from_block, to_block))
         if self.fail is not None:
             raise self.fail
         if self.before_return is not None:
             self.before_return()
         return sorted(
-            (e for e in self.events if from_block <= e.block_number <= to_block),
-            key=lambda e: (e.block_number, e.log_index),
+            (e for e in self.events if from_block <= self._where(e)[0] <= to_block),
+            key=self._where,
         )
+
+    def decode_log(self, log, w3):
+        if isinstance(log, ContractEvent):
+            return log
+        if self.decodes is not None:
+            return self.decodes
+        raise ValueError("Could not decode the log with the vault ABI")
 
 
 @pytest.fixture
 def logs(session_factory, monkeypatch):
     fake = FakeLogs()
-    monkeypatch.setattr(stokvel_contract, "fetch_events", fake.fetch_events)
+    monkeypatch.setattr(stokvel_contract, "fetch_logs", fake.fetch_logs)
+    monkeypatch.setattr(stokvel_contract, "decode_log", fake.decode_log)
     monkeypatch.setattr(
         evm_service,
         "get_web3",
@@ -127,6 +166,18 @@ def _contribution_made(stokvel_id, member_id, block, **kwargs):
     )
 
 
+def _round_finalised(stokvel_id, member_id, block, round_=0, **kwargs):
+    return _event(
+        "RoundFinalised",
+        block,
+        stokvel_id=stokvel_id,
+        round=round_,
+        memberId=evm_service.uuid_to_bytes32(member_id),
+        pool=2 * 10**20,
+        **kwargs,
+    )
+
+
 def _cursor(session_factory):
     with session_factory() as session:
         state = session.get(StokvelSyncState, CONTRACT.lower())
@@ -138,6 +189,19 @@ def _set_cursor(session_factory, block):
         state = session.get(StokvelSyncState, CONTRACT.lower())
         state.last_processed_block = block
         session.commit()
+
+
+def _held(session_factory):
+    """(name, reason, resolved) for every held event, in chain order."""
+    with session_factory() as session:
+        return [
+            (row.name, row.reason, row.resolved_at is not None)
+            for row in session.scalars(
+                select(StokvelHeldEvent).order_by(
+                    StokvelHeldEvent.block_number, StokvelHeldEvent.log_index
+                )
+            )
+        ]
 
 
 def _snapshot(session_factory):
@@ -157,6 +221,10 @@ def _snapshot(session_factory):
             ),
             "cycles": sorted(
                 (str(c.id), c.status, c.closed_at) for c in session.query(StokvelCycle)
+            ),
+            "held": sorted(
+                (h.tx_hash, h.log_index, h.reason, h.resolved_at is not None)
+                for h in session.query(StokvelHeldEvent)
             ),
         }
 
@@ -178,13 +246,49 @@ def _submit(pending_id, monkeypatch):
     monkeypatch.setattr(evm_service, "get_web3", sync_client)
 
 
+def _release_every_round(session_factory, pending):
+    """Record every round of the cycle as released, as the release task
+    (R3-04) will: a `STOKVEL -> Treasury` leg and a released payout each."""
+    accounts = pending["accounts"]
+    with session_factory() as session:
+        row = session.get(StokvelContribution, uuid.UUID(pending["id"]))
+        members = session.scalars(
+            select(StokvelCycleMember).where(
+                StokvelCycleMember.cycle_id == row.cycle_id
+            )
+        ).all()
+        for member in members:
+            leg = Transaction(
+                tx_id=uuid.uuid4(),
+                type=TYPE_STOKVEL_POOL_RELEASE,
+                credit_account_id=accounts["stokvel"],
+                debit_account_id=accounts["treasury"],
+                amount=Decimal("0.01"),
+                currency="UCTUSD",
+                status=STATUS_CONFIRMED,
+            )
+            session.add(leg)
+            session.flush()
+            session.add(
+                StokvelPayout(
+                    cycle_id=row.cycle_id,
+                    round=member.payout_position,
+                    member_id=member.member_id,
+                    release_status="released",
+                    release_tx_hash="0x" + f"{member.payout_position:02x}" * 32,
+                    release_block_number=START,
+                    release_tx_id=leg.tx_id,
+                    released_at=datetime.now(UTC) - timedelta(minutes=1),
+                )
+            )
+        session.commit()
+
+
 # --- ContributionMade --------------------------------------------------------
 
 
 def test_a_contribution_made_on_chain_is_confirmed_and_settled(
-    session_factory,
-    pending,
-    logs,
+    session_factory, pending, logs
 ):
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [_contribution_made(stokvel_id, member_id, START + 3)]
@@ -213,30 +317,23 @@ def test_a_contribution_made_on_chain_is_confirmed_and_settled(
 def test_replaying_the_same_events_leaves_the_database_unchanged(
     session_factory, pending, logs, caplog
 ):
-    """The ticket's "done when". Every event type, read twice."""
+    """The ticket's "done when". Every event type, read twice: the applied
+    one is not applied again, and the held ones are not held twice."""
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [
         _contribution_made(stokvel_id, member_id, START + 3),
-        _event(
-            "RoundFinalised",
-            START + 3,
-            stokvel_id=stokvel_id,
-            log_index=1,
-            round=0,
-            memberId=evm_service.uuid_to_bytes32(member_id),
-            pool=10**20,
-        ),
+        _round_finalised(stokvel_id, member_id, START + 3, log_index=1),
         _event("CycleClosed", START + 4, stokvel_id=stokvel_id),
     ]
     sync_events()
     after_first = _snapshot(session_factory)
 
     _set_cursor(session_factory, START - 1)  # read the same blocks again
-    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_sync"):
+    with caplog.at_level(logging.INFO, logger="remitx_worker"):
         sync_events()
 
     assert _snapshot(session_factory) == after_first
-    assert "unmatched" not in caplog.text
+    assert "reason=failed" not in caplog.text
 
 
 def test_a_contribution_the_worker_already_confirmed_is_not_credited_again(
@@ -252,12 +349,12 @@ def test_a_contribution_the_worker_already_confirmed_is_not_credited_again(
     logs.head = BLOCK + 10
     monkeypatch.setenv("STOKVEL_SYNC_START_BLOCK", str(BLOCK))
 
-    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_sync"):
+    with caplog.at_level(logging.INFO, logger="remitx_worker"):
         sync_events()
 
     assert _snapshot(session_factory) == after_confirm
-    # Recognised as already recorded, not flagged as a mismatch.
-    assert "sync_contribution_unmatched" not in caplog.text
+    # Recognised as already recorded, not held for a person.
+    assert "reason=failed" not in caplog.text
 
 
 def test_the_event_confirms_a_contribution_whose_confirmation_was_lost(
@@ -278,28 +375,48 @@ def test_the_event_confirms_a_contribution_whose_confirmation_was_lost(
         assert (row.status, row.evm_tx_hash) == ("confirmed", TX_HASH)
 
 
-def test_a_contribution_the_database_failed_is_flagged_not_changed(
-    session_factory,
-    pending,
-    logs,
-    caplog,
+def test_a_different_transaction_hash_is_held_not_written(
+    session_factory, pending, enqueued, chain, logs, monkeypatch, caplog
+):
+    """The worker stored one transaction, the chain recorded another: the
+    books must not be moved onto it (#346 review)."""
+    _submit(pending["id"], monkeypatch)  # stores TX_HASH, stays processing
+    before = _snapshot(session_factory)
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_contribution_made(stokvel_id, member_id, START + 1)]
+
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.stokvel_tasks"):
+        sync_events()
+
+    after = _snapshot(session_factory)
+    assert after["contributions"] == before["contributions"]
+    assert after["balances"] == before["balances"]
+    assert _held(session_factory) == [("ContributionMade", "failed", False)]
+    assert "stored " + TX_HASH in caplog.text
+    assert _cursor(session_factory) == logs.head
+
+
+def test_a_contribution_the_database_failed_is_held_for_a_person(
+    session_factory, pending, logs, caplog
 ):
     confirm_contribution(pending["id"], None, None, "reverted")
     before = _snapshot(session_factory)
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [_contribution_made(stokvel_id, member_id, START + 1)]
 
-    with caplog.at_level(logging.ERROR, logger="remitx_worker.stokvel_sync"):
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.stokvel_tasks"):
         sync_events()
 
-    assert _snapshot(session_factory) == before
-    assert "event=stokvel.sync_contribution_unmatched" in caplog.text
+    after = _snapshot(session_factory)
+    assert {k: v for k, v in after.items() if k != "held"} == {
+        k: v for k, v in before.items() if k != "held"
+    }
+    assert _held(session_factory) == [("ContributionMade", "failed", False)]
+    assert "event=stokvel.sync_event_held reason=failed" in caplog.text
 
 
 def test_events_for_stokvels_this_database_lacks_are_skipped(
-    session_factory,
-    pending,
-    logs,
+    session_factory, pending, logs
 ):
     """The contract is shared, so other backends' stokvels show up too."""
     before = _snapshot(session_factory)
@@ -322,63 +439,202 @@ def test_events_for_stokvels_this_database_lacks_are_skipped(
     assert _cursor(session_factory) == logs.head
 
 
-# --- CycleClosed and RoundFinalised -----------------------------------------
+# --- RoundFinalised and CycleClosed -----------------------------------------
 
 
-def test_cycle_closed_closes_the_cycle_once(
-    session_factory,
-    pending,
-    logs,
+def test_round_finalised_is_held_and_recorded_once_the_release_task_exists(
+    session_factory, pending, logs, monkeypatch, caplog
 ):
+    """Until R3-04 builds the release, a RoundFinalised waits. The cursor
+    still moves on, and the first run after the handler can record it
+    resolves it: no round released meanwhile is lost (#346 review)."""
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_round_finalised(stokvel_id, member_id, START + 2)]
+
+    sync_events()
+
+    assert _held(session_factory) == [("RoundFinalised", "waiting", False)]
+    assert _cursor(session_factory) == logs.head
+
+    recorded = []
+
+    def release_task_exists(session, event):
+        recorded.append((event.args["round"], event.tx_hash))
+        return stokvel_sync.APPLIED
+
+    monkeypatch.setattr(stokvel_sync, "_round_finalised", release_task_exists)
+    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
+        sync_events()
+
+    assert recorded == [(0, EVENT_HASH)]
+    assert _held(session_factory) == [("RoundFinalised", "waiting", True)]
+    assert "event=stokvel.sync_event_resolved" in caplog.text
+
+
+def test_cycle_closed_waits_until_every_payout_is_released(
+    session_factory, pending, logs
+):
+    """The last round's RoundFinalised and CycleClosed share a transaction.
+    The cycle stays open until every round's payout is recorded, so it never
+    closes with a payout missing, and a new cycle cannot open early."""
     stokvel_id, cycle_id, _member_id = _ids(session_factory, pending)
     logs.events = [_event("CycleClosed", START + 2, stokvel_id=stokvel_id)]
 
     sync_events()
 
     with session_factory() as session:
+        assert session.get(StokvelCycle, cycle_id).status == "active"
+    assert _held(session_factory) == [("CycleClosed", "waiting", False)]
+
+    _release_every_round(session_factory, pending)
+    sync_events()
+
+    with session_factory() as session:
         cycle = session.get(StokvelCycle, cycle_id)
         assert cycle.status == "closed"
         assert cycle.closed_at is not None
-    session = session_factory()
-    assert (
-        stokvel_sync.apply_event(session, logs.events[0])
-        == stokvel_sync.ALREADY_RECORDED
-    )
-    session.close()
+    assert _held(session_factory) == [("CycleClosed", "waiting", True)]
 
 
-def test_round_finalised_is_only_noted_until_the_release_task_exists(
-    session_factory,
-    pending,
-    logs,
-    caplog,
+def test_cycle_closed_with_every_payout_released_closes_once(
+    session_factory, pending, logs
 ):
-    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
-    before = _snapshot(session_factory)
-    logs.events = [
-        _event(
-            "RoundFinalised",
-            START + 2,
-            stokvel_id=stokvel_id,
-            round=0,
-            memberId=evm_service.uuid_to_bytes32(member_id),
-            pool=2 * 10**20,
-        )
-    ]
+    _release_every_round(session_factory, pending)
+    stokvel_id, cycle_id, _member_id = _ids(session_factory, pending)
+    logs.events = [_event("CycleClosed", START + 2, stokvel_id=stokvel_id)]
 
-    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_sync"):
+    sync_events()
+
+    with session_factory() as session:
+        assert session.get(StokvelCycle, cycle_id).status == "closed"
+    assert _held(session_factory) == []
+    session = session_factory()
+    try:
+        assert (
+            stokvel_sync.apply_event(session, logs.events[0])
+            == stokvel_sync.ALREADY_RECORDED
+        )
+    finally:
+        session.close()
+
+
+# --- One event never stops the sync ----------------------------------------
+
+
+def test_an_event_that_fails_is_held_and_the_rest_still_apply(
+    session_factory, pending, logs, monkeypatch, caplog
+):
+    """One event raises; it is held with the error, its changes roll back
+    (savepoint), the other event in the range applies, and the cursor moves
+    on, so no single event can stop the sync (#346 review)."""
+    stokvel_id, cycle_id, member_id = _ids(session_factory, pending)
+    _release_every_round(session_factory, pending)
+    logs.events = [
+        _event("CycleClosed", START + 1, stokvel_id=stokvel_id),
+        _contribution_made(stokvel_id, member_id, START + 2),
+    ]
+    real = stokvel_sync._cycle_closed
+
+    def closes_then_crashes(session, event):
+        real(session, event)  # writes, then fails: the savepoint undoes it
+        raise RuntimeError("worker hit a bug")
+
+    monkeypatch.setattr(stokvel_sync, "_cycle_closed", closes_then_crashes)
+
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.stokvel_tasks"):
         sync_events()
 
-    assert _snapshot(session_factory) == before
-    assert "event=stokvel.round_finalised" in caplog.text
+    with session_factory() as session:
+        assert session.get(StokvelCycle, cycle_id).status == "active"
+        assert (
+            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
+            == "confirmed"
+        )
+    assert _held(session_factory) == [("CycleClosed", "failed", False)]
+    assert "RuntimeError: worker hit a bug" in caplog.text
+    assert _cursor(session_factory) == logs.head
+
+    monkeypatch.setattr(stokvel_sync, "_cycle_closed", real)  # the bug is fixed
+    sync_events()
+    with session_factory() as session:
+        assert session.get(StokvelCycle, cycle_id).status == "closed"
+    assert _held(session_factory) == [("CycleClosed", "failed", True)]
+
+
+@pytest.mark.parametrize("cursor_exists", [False, True])
+def test_a_constraint_failure_while_applying_is_held_not_called_a_race(
+    session_factory, pending, logs, caplog, cursor_exists
+):
+    """A CHECK violation from applying an event is a real fault: it is held
+    for a person with the error, not mistaken for another run creating the
+    cursor, and nothing it did stays (#346 review)."""
+    if cursor_exists:
+        sync_events()  # an empty run creates the cursor at the head
+        logs.ranges.clear()
+    with session_factory() as session:
+        # The member can no longer cover the legs: settling breaks
+        # accounts_user_balance_nonneg.
+        session.get(Account, pending["accounts"]["member"]).account_balance = 0
+        session.commit()
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    block = (_cursor(session_factory) or START - 1) + 1
+    logs.events = [_contribution_made(stokvel_id, member_id, block)]
+    logs.head = block
+
+    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
+        sync_events()
+
+    assert "sync_raced" not in caplog.text
+    assert "IntegrityError" in caplog.text
+    assert _held(session_factory) == [("ContributionMade", "failed", False)]
+    assert _cursor(session_factory) == block
+    with session_factory() as session:
+        assert (
+            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
+            == "pending"
+        )
+
+
+def test_a_log_that_will_not_decode_is_held_not_called_an_rpc_error(
+    session_factory, pending, logs, caplog
+):
+    """A drifted ABI copy or a malformed log: held raw with a decode error,
+    the rest of the range applies, and once it decodes it is applied."""
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [
+        _raw_log(START + 1),
+        _contribution_made(stokvel_id, member_id, START + 2),
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.stokvel_tasks"):
+        sync_events()
+
+    assert "sync_rpc_error" not in caplog.text
+    assert "did not decode" in caplog.text
+    assert _held(session_factory) == [(None, "failed", False)]
+    assert _cursor(session_factory) == logs.head
+    with session_factory() as session:
+        assert (
+            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
+            == "confirmed"
+        )
+
+    _release_every_round(session_factory, pending)
+    logs.decodes = _event(  # the ABI is fixed
+        "CycleClosed",
+        START + 1,
+        stokvel_id=stokvel_id,
+        tx_hash="0x" + "bd" * 32,
+    )
+    sync_events()
+    assert _held(session_factory) == [(None, "failed", True)]
 
 
 # --- The cursor --------------------------------------------------------------
 
 
 def test_the_cursor_starts_at_the_start_block_and_reads_in_ranges(
-    session_factory,
-    logs,
+    session_factory, logs
 ):
     logs.head = START + 24
 
@@ -393,9 +649,7 @@ def test_the_cursor_starts_at_the_start_block_and_reads_in_ranges(
 
 
 def test_it_stays_behind_the_head_and_carries_on_from_the_cursor(
-    session_factory,
-    logs,
-    monkeypatch,
+    session_factory, logs, monkeypatch
 ):
     monkeypatch.setenv("STOKVEL_SYNC_CONFIRMATIONS", "5")
     logs.head = START + 14
@@ -410,11 +664,7 @@ def test_it_stays_behind_the_head_and_carries_on_from_the_cursor(
     assert _cursor(session_factory) == START + 15
 
 
-def test_a_run_reads_at_most_the_configured_ranges(
-    session_factory,
-    logs,
-    monkeypatch,
-):
+def test_a_run_reads_at_most_the_configured_ranges(session_factory, logs, monkeypatch):
     monkeypatch.setenv("STOKVEL_SYNC_MAX_RANGES", "2")
     logs.head = START + 100
 
@@ -433,49 +683,30 @@ def test_up_to_date_reads_nothing(session_factory, logs):
     assert _cursor(session_factory) is None
 
 
-def test_a_failure_while_applying_keeps_the_cursor_and_the_range_together(
-    session_factory,
-    pending,
-    logs,
-    monkeypatch,
+def test_without_a_start_block_a_first_run_refuses_to_scan_from_genesis(
+    session_factory, logs, monkeypatch, caplog
 ):
-    """Two events in one range; the second raises. The first is rolled back
-    with the cursor, so the next run reads the whole range again."""
-    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
-    logs.events = [
-        _contribution_made(stokvel_id, member_id, START + 1),
-        _event("CycleClosed", START + 2, stokvel_id=stokvel_id),
-    ]
-    before = _snapshot(session_factory)
-    real_apply = stokvel_sync.apply_event
+    monkeypatch.setenv("STOKVEL_SYNC_START_BLOCK", "")
 
-    def crash_on_cycle_closed(session, event):
-        if event.name == "CycleClosed":
-            raise RuntimeError("worker died")
-        return real_apply(session, event)
+    with caplog.at_level(logging.ERROR, logger="remitx_worker.stokvel_tasks"):
+        assert sync_events() == "misconfigured"
 
-    monkeypatch.setattr(stokvel_sync, "apply_event", crash_on_cycle_closed)
+    assert logs.ranges == []
+    assert "event=stokvel.sync_misconfigured" in caplog.text
 
-    with pytest.raises(RuntimeError):
-        sync_events()
 
-    assert _snapshot(session_factory) == before
-    assert _cursor(session_factory) is None
-
-    monkeypatch.setattr(stokvel_sync, "apply_event", real_apply)
+def test_with_a_cursor_the_start_block_is_not_needed(
+    session_factory, logs, monkeypatch
+):
+    logs.head = START + 5
     sync_events()
-    with session_factory() as session:
-        assert (
-            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
-            == "confirmed"
-        )
+    monkeypatch.setenv("STOKVEL_SYNC_START_BLOCK", "")
+    logs.head = START + 8
+
+    assert sync_events() == f"synced to {START + 8}"
 
 
-def test_an_rpc_error_leaves_the_cursor_for_the_next_run(
-    session_factory,
-    logs,
-    caplog,
-):
+def test_an_rpc_error_leaves_the_cursor_for_the_next_run(session_factory, logs, caplog):
     logs.fail = ConnectionError("RPC down")
 
     with caplog.at_level(logging.WARNING, logger="remitx_worker.stokvel_tasks"):
@@ -485,63 +716,25 @@ def test_an_rpc_error_leaves_the_cursor_for_the_next_run(
     assert "event=stokvel.sync_rpc_error" in caplog.text
 
 
-def test_a_run_that_finds_the_cursor_moved_stops_without_applying(
-    session_factory,
-    pending,
-    logs,
+def test_a_run_that_finds_the_cursor_moved_stops_and_reports_where_it_is(
+    session_factory, pending, logs, caplog
 ):
     """Two runs overlap: while this one reads the chain, the other moves the
-    cursor. This one applies nothing and stops."""
+    cursor. This one applies nothing, and reports the cursor where the other
+    left it, not where this one started."""
     sync_events()  # creates the cursor at the head
     head = logs.head
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [_contribution_made(stokvel_id, member_id, head + 1)]
     logs.head = head + 5
-    logs.before_return = lambda: _set_cursor(session_factory, head + 5)
+    logs.before_return = lambda: _set_cursor(session_factory, head + 3)
     before = _snapshot(session_factory)
 
-    sync_events()
+    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
+        assert sync_events() == f"synced to {head + 3}"
 
     assert _snapshot(session_factory) == before
-    assert _cursor(session_factory) == head + 5
-
-
-@pytest.mark.parametrize("cursor_exists", [False, True])
-def test_a_constraint_failure_while_applying_is_raised_not_called_a_race(
-    session_factory, pending, logs, caplog, cursor_exists
-):
-    """A CHECK violation from applying an event is a real fault: it must
-    fail the run loudly, not be mistaken for another run creating the cursor
-    and swallowed (#346 review). The cursor stays put, so nothing is lost."""
-    if cursor_exists:
-        sync_events()  # an empty run creates the cursor at the head
-        logs.ranges.clear()
-    start_cursor = _cursor(session_factory)
-
-    def empty_the_members_account():
-        # The member can no longer cover the contribution's legs, so settling
-        # it breaks accounts_user_balance_nonneg.
-        with session_factory() as session:
-            session.get(Account, pending["accounts"]["member"]).account_balance = 0
-            session.commit()
-
-    empty_the_members_account()
-    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
-    block = (start_cursor or START - 1) + 1
-    logs.events = [_contribution_made(stokvel_id, member_id, block)]
-    logs.head = block
-
-    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
-        with pytest.raises(IntegrityError):
-            sync_events()
-
-    assert "sync_raced" not in caplog.text
-    assert _cursor(session_factory) == start_cursor
-    with session_factory() as session:
-        assert (
-            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
-            == "pending"
-        )
+    assert f"moved the cursor to {head + 3}" in caplog.text
 
 
 def test_a_cursor_another_run_just_created_is_a_quiet_race(
@@ -592,11 +785,7 @@ def test_a_contribution_confirmed_meanwhile_is_reported_as_already_recorded(
     assert "sync_contribution_confirmed" not in caplog.text
 
 
-def test_without_a_contract_address_nothing_is_read(
-    session_factory,
-    logs,
-    monkeypatch,
-):
+def test_without_a_contract_address_nothing_is_read(session_factory, logs, monkeypatch):
     monkeypatch.setenv("STOKVEL_CONTRACT_ADDRESS", "")
 
     assert sync_events() == "skipped"
@@ -606,18 +795,18 @@ def test_without_a_contract_address_nothing_is_read(
 # --- Reading and decoding the chain -----------------------------------------
 
 
-def test_fetch_events_asks_for_the_three_events_and_decodes_them_in_order(
-    monkeypatch,
-):
+def test_fetch_and_decode_the_three_events_in_chain_order(monkeypatch):
     """Offline: a real web3 contract object decodes hand-built logs."""
     from eth_abi import encode
+    from eth_utils import event_abi_to_log_topic
 
     w3 = Web3()
     asked = []
     stokvel_id, member_id = uuid.uuid4(), uuid.uuid4()
     topics = {
-        name: stokvel_contract._EVENT_TOPICS[name]
-        for name in stokvel_contract.SYNCED_EVENTS
+        entry["name"]: event_abi_to_log_topic(entry)
+        for entry in stokvel_contract.VAULT_ABI
+        if entry["type"] == "event" and entry["name"] in stokvel_contract.SYNCED_EVENTS
     }
 
     def log(topic, extra_topics, data, block, index):
@@ -651,7 +840,6 @@ def test_fetch_events_asks_for_the_three_events_and_decodes_them_in_order(
             7,
             0,
         ),
-        log(Web3.keccak(text="Paused(address)"), [], b"", 8, 0),  # not ours
     ]
 
     def get_logs(params):
@@ -665,7 +853,8 @@ def test_fetch_events_asks_for_the_three_events_and_decodes_them_in_order(
         lambda w3_: w3_.eth.contract(address=CONTRACT, abi=stokvel_contract.VAULT_ABI),
     )
 
-    events = stokvel_contract.fetch_events(5, 9, w3)
+    fetched = stokvel_contract.fetch_logs(5, 9, w3)
+    events = [stokvel_contract.decode_log(entry, w3) for entry in fetched]
 
     assert asked[0]["fromBlock"] == 5 and asked[0]["toBlock"] == 9
     assert sorted(asked[0]["topics"][0]) == sorted(topics.values())
@@ -683,6 +872,15 @@ def test_fetch_events_asks_for_the_three_events_and_decodes_them_in_order(
         10**20,
     )
     assert made.tx_hash == "0x" + "07" * 32
+
+    not_ours = log(Web3.keccak(text="Paused(address)"), [], b"", 8, 0)
+    with pytest.raises(ValueError, match="not a synced vault event"):
+        stokvel_contract.decode_log(not_ours, w3)
+
+
+def test_held_event_arguments_round_trip_through_json():
+    args = {"id": b"\x01" * 32, "cycle": 1, "round": 2, "amount": 10**20}
+    assert stokvel_sync.args_from_json(stokvel_sync.args_to_json(args)) == args
 
 
 def test_bytes32_ids_unpack_to_uuids_and_reject_foreign_ones():
@@ -704,34 +902,46 @@ def test_sync_state_timestamps_are_set(session_factory, logs):
 
 
 @pytest.mark.postgres
-def test_no_customer_session_can_see_or_move_the_cursor(postgres_app):
-    """The cursor is the worker's: a customer route's session (bound to a
-    user) reads no row and cannot write one."""
+@pytest.mark.parametrize("table", ["cursor", "held"])
+def test_no_customer_session_can_see_or_change_the_sync_tables(postgres_app, table):
+    """The cursor and the held events are the worker's: a customer route's
+    session (bound to a user) reads no row and cannot write one."""
     key = f"0x{uuid.uuid4().hex}"
+
+    def row(suffix=""):
+        if table == "cursor":
+            return StokvelSyncState(id=key + suffix, last_processed_block=5)
+        return StokvelHeldEvent(
+            contract_address=key + suffix,
+            tx_hash=EVENT_HASH,
+            log_index=0,
+            block_number=5,
+            name="RoundFinalised",
+            args={"round": 0},
+            reason="waiting",
+        )
+
+    model = StokvelSyncState if table == "cursor" else StokvelHeldEvent
+    column = (
+        StokvelSyncState.id if table == "cursor" else StokvelHeldEvent.contract_address
+    )
     token = db.open_session()
     try:
         customer = make_user()
-        db.session.add(StokvelSyncState(id=key, last_processed_block=5))
+        db.session.add(row())
         db.session.commit()  # unbound, like the worker
 
         with bound_row_security_context(customer.id, is_admin_route=False):
-            assert (
-                db.session.scalar(
-                    select(StokvelSyncState).where(StokvelSyncState.id == key)
-                )
-                is None
+            assert db.session.scalar(select(model).where(column == key)) is None
+            changed = db.session.execute(
+                update(model).where(column == key).values(updated_at=datetime.now(UTC))
             )
-            moved = db.session.execute(
-                update(StokvelSyncState)
-                .where(StokvelSyncState.id == key)
-                .values(last_processed_block=999)
-            )
-            assert moved.rowcount == 0
-            db.session.add(StokvelSyncState(id=f"{key}-x", last_processed_block=1))
+            assert changed.rowcount == 0
+            db.session.add(row("-x"))
             with pytest.raises(DBAPIError, match="row-level security"):
                 db.session.flush()
         db.session.rollback()
 
-        assert db.session.get(StokvelSyncState, key).last_processed_block == 5
+        assert db.session.scalar(select(model).where(column == key)) is not None
     finally:
         db.close_session(token)
