@@ -39,7 +39,14 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { useHasPermission } from "~/hooks/use-permissions"
+import {
+  AUDIT_AREAS,
+  auditTxHash,
+  isStokvelEntry,
+  STOKVEL_AUDIT_ACTIONS,
+} from "~/lib/audit-entry"
 import { PERMISSIONS } from "~/lib/permissions"
+import { explorerTxUrl } from "~/lib/stokvels"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/audit"
 
@@ -59,6 +66,14 @@ const ACTION_OPTIONS = [
   { value: "cashout.bank_account.rejected", label: "Bank account rejected" },
   { value: "role.granted", label: "Role granted" },
   { value: "role.revoked", label: "Role revoked" },
+  ...STOKVEL_AUDIT_ACTIONS,
+] as const
+
+const ALL_AREAS = "__all__"
+
+const AREA_OPTIONS = [
+  { value: ALL_AREAS, label: "All areas" },
+  ...AUDIT_AREAS,
 ] as const
 
 const PAGE_SIZE = 50
@@ -79,7 +94,12 @@ export default function AuditLogPage() {
 function actionBadgeVariant(
   action: string
 ): "default" | "secondary" | "destructive" {
-  if (action === "kyc.pii.viewed" || action === "kyc.document.viewed") {
+  if (
+    action === "kyc.pii.viewed" ||
+    action === "kyc.document.viewed" ||
+    action === "stokvel.contract.paused" ||
+    action === "stokvel.round.finalised_manually"
+  ) {
     return "destructive"
   }
   if (action === "role.granted" || action === "audit.log.viewed") {
@@ -98,23 +118,29 @@ function isSelfGrant(entry: AuditLogRead): boolean {
   )
 }
 
-function listQueryOptions(actionFilter: string) {
+/** The list filters as `GET /admin/audit` query params. */
+function filterParams(actionFilter: string, areaFilter: string) {
+  return {
+    ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
+    ...(areaFilter !== ALL_AREAS ? { subject_type: areaFilter } : {}),
+  }
+}
+
+function listQueryOptions(actionFilter: string, areaFilter: string) {
   return api.admin.audit.listAuditLog({
-    query: {
-      limit: PAGE_SIZE,
-      ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
-    },
+    query: { limit: PAGE_SIZE, ...filterParams(actionFilter, areaFilter) },
   })
 }
 
 function AuditLogPageContent() {
   const queryClient = useQueryClient()
   const [actionFilter, setActionFilter] = useState(ALL_ACTIONS)
+  const [areaFilter, setAreaFilter] = useState(ALL_AREAS)
   const [rows, setRows] = useState<AuditLogRead[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  const query = useQuery(listQueryOptions(actionFilter))
+  const query = useQuery(listQueryOptions(actionFilter, areaFilter))
 
   useEffect(() => {
     if (query.data === undefined) return
@@ -124,6 +150,9 @@ function AuditLogPageContent() {
 
   const resetFilters = () => {
     setActionFilter(ALL_ACTIONS)
+    setAreaFilter(ALL_AREAS)
+    setRows([])
+    setHasMore(false)
   }
 
   const loadOlder = async () => {
@@ -136,7 +165,7 @@ function AuditLogPageContent() {
           query: {
             limit: PAGE_SIZE,
             before: last.created_at,
-            ...(actionFilter !== ALL_ACTIONS ? { action: actionFilter } : {}),
+            ...filterParams(actionFilter, areaFilter),
           },
         })
       )
@@ -165,7 +194,9 @@ function AuditLogPageContent() {
           <CardHeader>
             <CardTitle>Filters</CardTitle>
             <CardDescription>
-              Narrow by action. Each refresh or page load writes an audit entry.
+              Narrow by action or area; "Stokvels" and "Stokvel contract" show
+              the stokvel admin actions. Each refresh or page load writes an
+              audit entry.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -184,6 +215,28 @@ function AuditLogPageContent() {
                 </SelectTrigger>
                 <SelectContent>
                   {ACTION_OPTIONS.map((option) => (
+                    <SelectItem key={option.label} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field className="min-w-[180px]">
+              <FieldLabel>Area</FieldLabel>
+              <Select
+                value={areaFilter}
+                onValueChange={(value) => {
+                  setAreaFilter(value ?? ALL_AREAS)
+                  setRows([])
+                  setHasMore(false)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All areas" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AREA_OPTIONS.map((option) => (
                     <SelectItem key={option.label} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -256,9 +309,8 @@ function AuditLogPageContent() {
                             <br />
                             {entry.subject_id}
                           </TableCell>
-                          <TableCell className="max-w-md truncate text-xs text-muted-foreground">
-                            {entry.reason ??
-                              JSON.stringify(entry.after ?? entry.before ?? {})}
+                          <TableCell className="max-w-md text-xs text-muted-foreground">
+                            <AuditDetail entry={entry} />
                           </TableCell>
                         </TableRow>
                       ))
@@ -283,5 +335,31 @@ function AuditLogPageContent() {
         </Card>
       </div>
     </AdminPageFrame>
+  )
+}
+
+/**
+ * The reason, or the recorded change. Stokvel entries (#261) also link their
+ * on-chain transaction to the explorer, so staff can check what happened.
+ */
+function AuditDetail({ entry }: { entry: AuditLogRead }) {
+  const hash = isStokvelEntry(entry) ? auditTxHash(entry) : null
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="truncate">
+        {entry.reason ?? JSON.stringify(entry.after ?? entry.before ?? {})}
+      </span>
+      {hash ? (
+        <a
+          href={explorerTxUrl(hash)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono underline"
+          title={hash}
+        >
+          {hash.slice(0, 6)}…{hash.slice(-4)}
+        </a>
+      ) : null}
+    </div>
   )
 }
