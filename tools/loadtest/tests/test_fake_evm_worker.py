@@ -11,14 +11,14 @@ KNOBS = ("LOADTEST_BURN_P50_S", "LOADTEST_BURN_P95_S", "LOADTEST_BURN_FAILURE_RA
 
 
 def load(monkeypatch, **env):
-    """Import fake_xrpl_worker afresh under exactly these knobs."""
+    """Import fake_evm_worker afresh under exactly these knobs."""
     for name in KNOBS:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    import fake_xrpl_worker
+    import fake_evm_worker
 
-    worker = importlib.reload(fake_xrpl_worker)
+    worker = importlib.reload(fake_evm_worker)
     worker.slept = []
     monkeypatch.setattr(worker.time, "sleep", worker.slept.append)
     return worker

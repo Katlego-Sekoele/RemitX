@@ -1,5 +1,9 @@
 """Creating stokvels and listing the caller's (R2-07).
 
+A new stokvel opens its first cycle as `forming` (R2-09), so the Organiser
+can set the payout order and members can choose their beneficiaries before
+the cycle starts (R2-10).
+
 Every query names the caller: Postgres row-level security would scope them
 anyway, but SQLite (tests) has none, and the two must return the same rows.
 """
@@ -16,10 +20,12 @@ from remitx_api.errors.stokvels import (
     StokvelCurrencyAccountMissingError,
 )
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
+from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_invitation_repository import (
     StokvelInvitationRepository,
 )
@@ -67,6 +73,39 @@ class StokvelListView:
     invitations: list[StokvelInvitationView]
 
 
+def stokvel_view(
+    stokvel: Stokvel, user_id: uuid.UUID, *, member_count: int
+) -> StokvelView:
+    """`stokvel` as `user_id` sees it. Shared with accepting an invitation,
+    which answers with the stokvel just joined."""
+    return StokvelView(
+        stokvel_id=stokvel.id,
+        name=stokvel.name,
+        currency=stokvel.currency,
+        contribution_amount=_amount(stokvel.contribution_amount),
+        is_organiser=stokvel.organiser_user_id == user_id,
+        member_count=member_count,
+        max_members=Config().MAX_STOKVEL_MEMBERS,
+        created_at=stokvel.created_at,
+        deactivated_at=stokvel.deactivated_at,
+    )
+
+
+def open_forming_cycle(stokvel: Stokvel) -> StokvelCycle:
+    """Open the stokvel's first cycle as `forming`, with an empty row for
+    each current member, and make it the stokvel's current cycle. Only the
+    Organiser may insert a cycle under row-level security.
+
+    Cycle 1 only: the next cycle after one closes is #237's.
+    """
+    cycles = StokvelCycleRepository()
+    cycle = cycles.add_forming_cycle(stokvel.id, cycle_number=1)
+    for member in StokvelMemberRepository().list_active(stokvel.id):
+        cycles.add_cycle_member(cycle.id, member.id)
+    stokvel.current_cycle_id = cycle.id
+    return cycle
+
+
 class StokvelController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
@@ -85,10 +124,10 @@ class StokvelController:
     ) -> StokvelView:
         """Create a stokvel with the caller as its Organiser and first Member.
 
-        One transaction: the stokvel, its `STOKVEL` ledger account (D9) and
-        the Organiser's membership, paid from their own fiat account in the
-        Stokvel currency. Nothing goes on-chain yet: `createStokvel` is sent
-        when the first cycle starts.
+        One transaction: the stokvel, its `STOKVEL` ledger account (D9), the
+        Organiser's membership, paid from their own fiat account in the
+        Stokvel currency, and its first cycle, `forming`. Nothing goes
+        on-chain yet: `createStokvel` is sent when the first cycle starts.
         """
         if not self._applications.get_standing(user_id).is_verified:
             raise KycNotApprovedToCreateStokvelError()
@@ -113,14 +152,15 @@ class StokvelController:
                 invitation_id=None,
             )
         )
-        return self._view(stokvel, user_id, member_count=1)
+        open_forming_cycle(stokvel)
+        return stokvel_view(stokvel, user_id, member_count=1)
 
     def list_stokvels(self, user_id: uuid.UUID) -> StokvelListView:
         """The stokvels the caller is a current member of, and their pending
         invitations, each newest first."""
         return StokvelListView(
             stokvels=[
-                self._view(stokvel, user_id, member_count=member_count)
+                stokvel_view(stokvel, user_id, member_count=member_count)
                 for stokvel, member_count in self._stokvels.list_for_member(user_id)
             ],
             invitations=[
@@ -139,19 +179,4 @@ class StokvelController:
                     self._invitations.list_pending_for_invitee(user_id)
                 )
             ],
-        )
-
-    def _view(
-        self, stokvel: Stokvel, user_id: uuid.UUID, *, member_count: int
-    ) -> StokvelView:
-        return StokvelView(
-            stokvel_id=stokvel.id,
-            name=stokvel.name,
-            currency=stokvel.currency,
-            contribution_amount=_amount(stokvel.contribution_amount),
-            is_organiser=stokvel.organiser_user_id == user_id,
-            member_count=member_count,
-            max_members=Config().MAX_STOKVEL_MEMBERS,
-            created_at=stokvel.created_at,
-            deactivated_at=stokvel.deactivated_at,
         )

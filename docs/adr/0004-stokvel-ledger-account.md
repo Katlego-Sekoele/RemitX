@@ -43,3 +43,31 @@ decision D9 in `docs/stokvel_integration.md`.
 - The transfer reads outer-join the sender user, so a stokvel's payout still
   lists for its recipient and in the admin totals, with no counterparty user
   or name.
+
+## Update (2026-10-16, R2-11): what the account holds
+
+Agreed with R3-01's owner when the contribution API was built. Contributions
+book into the account as they are made, and a release books out of it:
+
+| Step | Ledger | On-chain |
+|---|---|---|
+| Contribution | member fiat -> RemitX bank; Treasury Wallet -> `STOKVEL`; member fiat -> RemitX fee revenue (their fee share, paid on top, D6) | Treasury -> contract |
+| Pool release | `STOKVEL` -> Treasury Wallet | contract -> Treasury |
+| Payout | Treasury -> `STOKVEL` -> beneficiary token -> Treasury -> burn (the full pool: no fee, the members paid it) | burn |
+
+- The `STOKVEL` balance is therefore the stokvel's **unreleased pools in the
+  contract**, not a released pool waiting for its payout, as first written.
+  Reconciliation compares it with the contract's pools for that stokvel.
+- A pool is counted once: the release takes it out of the account, and the
+  payout passes it through on the way to the beneficiary. No separate account
+  for "tokens held by the contract" is needed.
+- `accounts_stokvel_balance_nonneg` still holds: a release never takes out
+  more than the contributions put in.
+- Members see and record legs on their stokvel's account through two
+  `transactions` policies beside the unchanged `transactions_by_current_user`
+  (migration `V20261016_1500`), the ledger part of the proposed fix above:
+  current and former members read them, current members record only the
+  contribution's token leg (Treasury Wallet -> the account), and no member
+  may update or delete one. The worker books the release. The quote and
+  remittance parts are still pending.
+

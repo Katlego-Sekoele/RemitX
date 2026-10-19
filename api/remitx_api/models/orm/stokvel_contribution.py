@@ -23,8 +23,23 @@ cannot happen: `contribute` always pulls the full fixed amount.
 The composite foreign keys keep a contribution inside its cycle: the round
 must be one of the cycle's rounds, and the member one of the cycle's members.
 
-`tx_id` points at a ledger leg of the contribution. Which leg, and how the
-legs are grouped, is decided by the contribution API (R2-11, #233).
+The row points at its own ledger legs, so `transactions` needs no grouping
+column (R2-11, #233):
+
+- `fiat_tx_id`: member's fiat account -> RemitX bank account, `amount_fiat`
+- `token_tx_id`: Treasury Wallet -> the stokvel's `STOKVEL` account,
+  `amount_token` (on-chain the Treasury pays the contract, so the `STOKVEL`
+  balance is the stokvel's unreleased pools in the contract; ADR 0004)
+- `fee_tx_id`: member's fiat account -> RemitX fee revenue, the member's share
+  of the payout fee paid on top; null when no fee applies
+
+`amount_zar` is what the contribution counts as against the member's own
+sending limits (D8): `amount_fiat` plus the fee, in rand, locked when it was
+made, as `quotes.sender_amount_zar` is for a remittance.
+
+`tx_id` is the column's first name, unused since R2-11 and kept only until a
+later migration drops it (alembic/README.md rule 5: a rename is an expand and
+a later contract). Nothing reads or writes it.
 """
 
 import uuid
@@ -79,6 +94,10 @@ class StokvelContribution(Base):
         ),
         CheckConstraint(
             "amount_fiat > 0", name="stokvel_contributions_amount_fiat_positive"
+        ),
+        CheckConstraint(
+            "amount_zar IS NULL OR amount_zar > 0",
+            name="stokvel_contributions_amount_zar_positive",
         ),
         CheckConstraint(
             "block_number IS NULL OR block_number >= 0",
@@ -145,8 +164,22 @@ class StokvelContribution(Base):
         default=STATUS_PENDING,
         server_default=STATUS_PENDING,
     )
-    # A ledger leg of this contribution (R2-11 decides which)
+    # The contribution in rand, fee included, for the member's sending limits.
+    # Nullable in the schema only so the column could be added to a live
+    # table (rule 5); the contribution API always sets it.
+    amount_zar: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
+    # Deprecated: the first name of `fiat_tx_id`. Unused; dropped later
     tx_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
+    )
+    # The contribution's ledger legs (see the module docstring)
+    fiat_tx_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
+    )
+    token_tx_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
+    )
+    fee_tx_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
     )
     # The `contribute` transaction, stored before it is sent

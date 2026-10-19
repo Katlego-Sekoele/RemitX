@@ -404,55 +404,48 @@ def synthetic_hash_summary(session) -> Finding:
         )
     )
     return Finding(
-        check="xrpl.synthetic_hashes",
+        check="chain.synthetic_hashes",
         severity="info",
         ok=True,
         summary=f"{synthetic} of {total} burn hashes are synthetic (seeded, "
-        "not on the XRPL; they start 5EED)",
+        "not on chain; they start 5EED)",
         count=synthetic or 0,
     )
 
 
-def check_treasury_on_chain(session) -> Finding:
-    """The treasury's ledger balance against its real on-chain balance. Needs
-    PLATFORM_WALLET_ADDRESS and network access to the XRPL testnet."""
-    import os
+# Why the check differs on every database that predates the EVM switch. The
+# ledger treasury was seeded by V20260924_1352 from the *XRPL* wallet's trust
+# line and debited ever since; nothing has rebased it to the EVM Treasury
+# Wallet's UCTUSD yet, so until a one-off treasury_funding rebase lands the
+# two sides are unrelated numbers.
+PRE_EVM_LEDGER_NOTE = (
+    "expected until the ledger treasury is rebased: it still starts from the "
+    "XRPL wallet's balance, from before the EVM switch"
+)
 
+
+def check_treasury_on_chain(session) -> Finding:
+    """The treasury's ledger balance against the Treasury Wallet's real UCTUSD
+    balance on the XRPL EVM chain. Needs EVM_TREASURY_ADDRESS and network
+    access to EVM_RPC_URL; reads only, never signs. Differs on any database
+    from before the EVM switch (see PRE_EVM_LEDGER_NOTE)."""
     from remitx_api.config import Config
     from remitx_api.repositories.account_repository import AccountRepository
     from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
-    from xrpl.clients import JsonRpcClient
-    from xrpl.models.requests import AccountLines
+    from remitx_worker import evm_service
 
-    address = os.environ.get("PLATFORM_WALLET_ADDRESS", "")
+    address = Config().EVM_TREASURY_ADDRESS
     if not address:
         return Finding(
             "treasury.on_chain",
             "info",
             True,
-            "Skipped: PLATFORM_WALLET_ADDRESS is not set",
+            "Skipped: EVM_TREASURY_ADDRESS is not set",
         )
     treasury = AccountRepository().get_platform_account_by_label(
         REMITX_TREASURY_WALLET_LABEL
     )
-    config = Config()
-    lines = (
-        JsonRpcClient(config.XRPL_TESTNET_URL)
-        .request(
-            AccountLines(
-                account=address, peer=config.UCTUSD_ISSUER, ledger_index="validated"
-            )
-        )
-        .result.get("lines", [])
-    )
-    on_chain = next(
-        (
-            Decimal(line["balance"])
-            for line in lines
-            if line["currency"] == config.UCTUSD_CURRENCY_CODE_HEX
-        ),
-        Decimal("0"),
-    )
+    on_chain = evm_service.get_token_balance(address)
     ledger = Decimal(treasury.account_balance) if treasury else Decimal("0")
     ok = ledger == on_chain
     return Finding(
@@ -460,7 +453,7 @@ def check_treasury_on_chain(session) -> Finding:
         "warning",
         ok,
         f"Treasury ledger {ledger} uctusd, on chain {on_chain}"
-        + ("" if ok else " (differ)"),
+        + ("" if ok else f" (differ; {PRE_EVM_LEDGER_NOTE})"),
     )
 
 

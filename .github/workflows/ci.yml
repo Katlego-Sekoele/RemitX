@@ -105,7 +105,7 @@ jobs:
   # services and worker tasks. Running its tests here means a backend change
   # that breaks the seeder fails the PR that made it, not a developer's seed
   # run weeks later. CI never seeds a real environment: Clerk, storage and the
-  # XRPL are faked, and the database is thrown away.
+  # EVM chain are faked, and the database is thrown away.
   seeder:
     runs-on: ubuntu-latest
     defaults:
