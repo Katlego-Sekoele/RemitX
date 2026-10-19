@@ -16,6 +16,11 @@ celery.conf.beat_schedule = {
         "task": "remitx_worker.tasks.reclaim_stuck_settlements",
         "schedule": schedule(run_every=Config.SETTLEMENT_RECLAIM_INTERVAL_SECONDS),
     },
+    # Reads the stokvel contract's events into the database (R2-13).
+    "stokvel-sync-events": {
+        "task": "stokvel.sync_events",
+        "schedule": schedule(run_every=Config.STOKVEL_SYNC_INTERVAL_SECONDS),
+    },
 }
 celery.autodiscover_tasks(["remitx_worker"])
 # The stokvel tasks (doc section 4) live in their own module.

@@ -1,6 +1,7 @@
 """The worker's wrapper over the StokvelVault contract (doc section 1).
 
-R2-12 (#234) adds `contribute` and the Treasury allowance it needs. R2-10
+R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
+(#235) reads the events the sync applies (`fetch_logs`, `decode_log`). R2-10
 (#232) adds `createStokvel` and `startCycle` here, and R3-04 (#241)
 `finalise`. Every send goes through `evm_service.submit_transaction`, so it
 holds the Treasury send lock and can store its hash before the send.
@@ -15,11 +16,13 @@ IDs: stokvel and member IDs are database UUIDs packed into `bytes32`
 """
 
 import json
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from eth_utils import event_abi_to_log_topic
 from remitx_api.config import Config
 from web3 import Web3
 from web3.contract import Contract
@@ -158,3 +161,61 @@ def contribute(
         ],
     )
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+# The events `stokvel.sync_events` applies (doc section 4, "Contract event →
+# database update"). `StokvelCreated` and `CycleStarted` only confirm what the
+# backend itself sent, so they are not read.
+SYNCED_EVENTS = ("ContributionMade", "RoundFinalised", "CycleClosed")
+
+# topic0 -> event name, built once with eth_utils (web3's own rule, which
+# handles every argument type).
+_TOPIC_EVENTS = {
+    event_abi_to_log_topic(entry): entry["name"]
+    for entry in VAULT_ABI
+    if entry["type"] == "event" and entry["name"] in SYNCED_EVENTS
+}
+
+
+@dataclass(frozen=True)
+class ContractEvent:
+    """One decoded vault event, with where it happened on-chain."""
+
+    name: str
+    args: dict[str, Any]
+    tx_hash: str
+    block_number: int
+    log_index: int
+
+
+def fetch_logs(from_block: int, to_block: int, w3: Web3) -> list:
+    """The vault's raw `SYNCED_EVENTS` logs in blocks `from_block`..`to_block`
+    (inclusive), in chain order (block, then log index). The RPC call only:
+    decode each with `decode_log`, so a log that will not decode is not
+    mistaken for an RPC failure. One `eth_getLogs` call: the caller keeps the
+    range within what the RPC allows."""
+    logs = w3.eth.get_logs(
+        {
+            "address": vault(w3).address,
+            "fromBlock": from_block,
+            "toBlock": to_block,
+            "topics": [list(_TOPIC_EVENTS)],
+        }
+    )
+    return sorted(logs, key=lambda log: (log["blockNumber"], log["logIndex"]))
+
+
+def decode_log(log, w3: Web3) -> ContractEvent:
+    """Decode one raw vault log. Raises for a log that is not a synced event
+    or does not match the ABI (a drifted ABI copy, a malformed log)."""
+    name = _TOPIC_EVENTS.get(bytes(log["topics"][0]))
+    if name is None:
+        raise ValueError(f"not a synced vault event: topic {log['topics'][0]!r}")
+    decoded = vault(w3).events[name]().process_log(log)
+    return ContractEvent(
+        name=name,
+        args=dict(decoded["args"]),
+        tx_hash=Web3.to_hex(decoded["transactionHash"]),
+        block_number=decoded["blockNumber"],
+        log_index=decoded["logIndex"],
+    )
