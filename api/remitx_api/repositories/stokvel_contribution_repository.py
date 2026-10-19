@@ -39,6 +39,21 @@ class StokvelContributionRepository(Repository[StokvelContribution, uuid.UUID]):
             )
         ).one_or_none()
 
+    def list_for_cycle(self, cycle_id: uuid.UUID) -> list[StokvelContribution]:
+        """Every contribution in the cycle, failed attempts included, in
+        round order then oldest first."""
+        return list(
+            db.session.scalars(
+                select(StokvelContribution)
+                .where(StokvelContribution.cycle_id == cycle_id)
+                .order_by(
+                    StokvelContribution.round,
+                    StokvelContribution.created_at,
+                    StokvelContribution.id,
+                )
+            ).all()
+        )
+
     def get_round_contributions(
         self, cycle_id: uuid.UUID, round_: int
     ) -> list[StokvelContribution]:

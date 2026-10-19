@@ -2,11 +2,11 @@
  *
  * Built routes use the generated client and its types (`~/client`):
  * `GET` and `POST /stokvels` (R2-07, #229). `GET /stokvels/{id}` (#236) is
- * not built yet, so the detail read and its types below are the frontend's
- * assumption from docs/stokvel_integration.md §3 and §5, each marked
- * `R4-09`, and read `stokvels.mock.ts`. R4-09 (#258) replaces them and
- * deletes the mock. In development the list also shows the mock's demo
- * stokvels, so every screen state can be opened.
+ * built, and the screen still reads `stokvels.mock.ts` until R4-09 (#258).
+ * The detail types below are the frontend's assumption from
+ * docs/stokvel_integration.md §3 and §5, each marked `R4-09`. R4-09
+ * replaces them and deletes the mock. In development the list also shows
+ * the mock's demo stokvels, so every screen state can be opened.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
@@ -165,9 +165,9 @@ export type StokvelBeneficiaryChoice = {
   payout_currency: string
 }
 
-/** `GET /stokvels/{id}`: everything the member screen shows (#236).
- * R4-09: replace with `~/client` once #236 is built; everything past
- * `StokvelRead` is assumed. */
+/** `GET /stokvels/{id}`: everything the member screen shows (#236, built).
+ * R4-09 (#258): replace with `~/client`. Everything past `StokvelRead`
+ * is still the screen's assumption. */
 export type StokvelDetailRead = StokvelRead & {
   organiser_name: string
   /** Fiat estimate of `contribution_amount` at today's rate, 2 dp. */
@@ -216,8 +216,8 @@ function usesMock(isDemo: boolean): boolean {
 }
 
 /**
- * A stokvel the API has but `GET /stokvels/{id}` can't return yet (#236):
- * its list row as a forming stokvel, priced at today's rate. R4-09: delete.
+ * A real stokvel shown from the list until R4-09 (#258) calls
+ * `GET /stokvels/{id}`: a forming stokvel, priced at today's rate.
  */
 async function detailFromList(
   stokvelId: string,
@@ -278,7 +278,7 @@ export const stokvelQueries = {
         }
       },
     }),
-  /** R4-09: `GET /stokvels/{id}` once #236 is built. */
+  /** R4-09 (#258): `GET /stokvels/{id}`. Real ids still use `detailFromList`. */
   detail: (stokvelId: string) =>
     queryOptions({
       queryKey: ["stokvels", "detail", stokvelId],

@@ -21,6 +21,7 @@ from remitx_api.models.schemas.stokvel import (
     StokvelCreateRequest,
     StokvelCycleRead,
     StokvelCycleStartRequest,
+    StokvelDetailRead,
     StokvelInvitationCreateRequest,
     StokvelListRead,
     StokvelPayoutOrderRead,
@@ -77,6 +78,27 @@ def list_stokvels(user: User = Depends(get_current_user)):
     to join one that they have not answered yet, each newest first. A
     stokvel the caller has left is not listed."""
     return StokvelListRead.from_view(controller.list_stokvels(user.id))
+
+
+@router.get(
+    "/{stokvel_id}",
+    response_model=StokvelDetailRead,
+    summary="Read one stokvel",
+    responses=error_responses(404),
+)
+def get_stokvel(
+    stokvel_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """The member screen for one stokvel: the group, its current cycle,
+    who has paid, and each round's payout once one exists.
+
+    404 for an unknown stokvel or one the caller is not a current member of,
+    the same answer, so an id reveals nothing. `contribution_fiat_estimate`
+    is null when no exchange rate is available. `fee_amount` is set only on
+    the caller's own contributions. `pool_fiat_amount` is null.
+    `remittance_id` is the payout reference."""
+    return StokvelDetailRead.from_view(controller.get_stokvel(user.id, stokvel_id))
 
 
 @router.post(
