@@ -229,3 +229,41 @@ test("contributeMock pays once, confirms, and refuses the doc §6 cases", async 
   })
   resetStokvelMockScenario()
 })
+
+test("myCurrentContribution skips a failed attempt for the live one", async () => {
+  const { myCurrentContribution } = await import("./stokvels")
+  const base = {
+    contribution_id: "c",
+    cycle_id: "cyc",
+    round: 1,
+    member_id: "me",
+    amount_fiat: "500.00",
+    amount_token: "27.40",
+    fee_amount: "7.50",
+    evm_tx_hash: null,
+    created_at: "",
+  }
+  const detail = {
+    my_member_id: "me",
+    cycle: { cycle_id: "cyc", current_round: 1 } as never,
+    contributions: [
+      { ...base, contribution_id: "first", status: "failed" as const },
+      { ...base, contribution_id: "retry", status: "processing" as const },
+      {
+        ...base,
+        contribution_id: "other",
+        member_id: "you",
+        status: "confirmed" as const,
+      },
+    ],
+  }
+  assert.equal(myCurrentContribution(detail)?.contribution_id, "retry")
+  assert.equal(
+    myCurrentContribution({
+      ...detail,
+      contributions: [detail.contributions[0]],
+    }),
+    undefined
+  )
+  assert.equal(myCurrentContribution({ ...detail, cycle: null }), undefined)
+})

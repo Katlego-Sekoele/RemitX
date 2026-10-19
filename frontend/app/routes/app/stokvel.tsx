@@ -38,6 +38,7 @@ import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
   invalidateStokvels,
+  myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
   resetStokvelMockScenario,
@@ -170,14 +171,7 @@ function StokvelDetail({
   const collected = poolAmount(stokvel.contribution_fiat_estimate, paid.size)
   const member = (memberId: string) =>
     stokvel.members.find((m) => m.member_id === memberId)
-  const mine = cycle
-    ? stokvel.contributions.find(
-        (c) =>
-          c.cycle_id === cycle.cycle_id &&
-          c.round === cycle.current_round &&
-          c.member_id === stokvel.my_member_id
-      )
-    : undefined
+  const mine = myCurrentContribution(stokvel)
   const recipient = currentRound
     ? member(currentRound.recipient_member_id)
     : undefined

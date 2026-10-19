@@ -444,6 +444,25 @@ export function payoutProofHash(
     : null
 }
 
+/**
+ * The signed-in member's contribution to the current round, ignoring failed
+ * attempts: after a failed send the member pays again, and the live attempt
+ * is the one the panel follows.
+ */
+export function myCurrentContribution(
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "my_member_id">
+): StokvelRoundContributionRead | undefined {
+  const cycle = detail.cycle
+  if (!cycle) return undefined
+  return detail.contributions.find(
+    (c) =>
+      c.cycle_id === cycle.cycle_id &&
+      c.round === cycle.current_round &&
+      c.member_id === detail.my_member_id &&
+      c.status !== ContributionStatus.failed
+  )
+}
+
 /** Members whose contribution to `round` of the current cycle is confirmed. */
 export function paidMemberIds(
   detail: Pick<StokvelDetailRead, "cycle" | "contributions">,
@@ -473,7 +492,7 @@ export function currentRecipientId(
 }
 
 /** Where a round's payout is, in the words members see (product docx §2):
- * collecting → released → sending → delivered, or failed (retrying). */
+ * collecting → released → sending → delivered, or failed. */
 export type PayoutStage =
   "collecting" | "released" | "sending" | "delivered" | "failed"
 
