@@ -3,9 +3,16 @@ inviting members (R2-08), setting up a cycle (R2-09), starting it (R2-10)
 and contributing (R2-11)."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import AwareDatetime, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AwareDatetime,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 from remitx_api.controllers.stokvel_contribution_controller import (
     StokvelContributionView,
@@ -38,6 +45,8 @@ from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDat
 StokvelCurrency = PayoutCurrency
 
 STOKVEL_NAME_MAX_LENGTH = 80
+
+_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 _CONTRIBUTION_DESCRIPTION = (
     "Fixed UCTUSD (token) amount each member contributes per round, for the "
@@ -336,6 +345,16 @@ class StokvelRoundTimesRequest(Schema):
             "the deadline."
         )
     )
+
+    @field_validator("start_time", "deadline", "payout_time")
+    @classmethod
+    def _not_before_the_epoch(cls, value: datetime) -> datetime:
+        # The contract takes Unix seconds as `uint64`: a time before 1970 is
+        # negative and cannot be sent, so it is refused here, not in the
+        # worker.
+        if value < _UNIX_EPOCH:
+            raise ValueError("must not be before 1970-01-01T00:00:00Z")
+        return value
 
 
 class StokvelCycleStartRequest(Schema):

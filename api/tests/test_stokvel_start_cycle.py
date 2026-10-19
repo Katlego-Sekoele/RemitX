@@ -501,6 +501,17 @@ def test_a_schedule_the_contract_would_refuse_is_refused(
         pytest.param(
             [{**_schedule(2)[0], "extra": 1}, _schedule(2)[1]], id="unknown field"
         ),
+        pytest.param(
+            [
+                {
+                    "start_time": "1969-12-31T23:59:00+00:00",
+                    "deadline": "1969-12-31T23:59:30+00:00",
+                    "payout_time": "1970-01-01T00:00:00+00:00",
+                },
+                _schedule(2)[1],
+            ],
+            id="time before 1970",
+        ),
     ],
 )
 def test_an_invalid_request_body_is_refused(api, rounds):
