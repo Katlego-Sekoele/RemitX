@@ -680,7 +680,7 @@ Admin actions on stokvels are recorded in the **existing** audit log (`audit_log
 
 | Admin action | Audit action | Subject type | Subject id | Recorded in `before` / `after` |
 |---|---|---|---|---|
-| Pause the contract | `stokvel.contract.paused` | `stokvel_contract` | `STOKVEL_CONTRACT_SUBJECT_ID` | paused flag |
+| Pause the contract | `stokvel.contract.paused` | `stokvel_contract` | `STOKVEL_CONTRACT_SUBJECT_ID` | paused flag; `reason` required |
 | Resume the contract | `stokvel.contract.unpaused` | `stokvel_contract` | `STOKVEL_CONTRACT_SUBJECT_ID` | paused flag |
 | Manual finalise (P5) | `stokvel.round.finalised_manually` | `stokvel` | stokvel id | cycle, round, release status, transaction hash if known |
 
