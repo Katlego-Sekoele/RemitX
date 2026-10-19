@@ -19,6 +19,7 @@ class AuditLogRepository:
         *,
         actor_user_id: uuid.UUID | None = None,
         action: str | None = None,
+        action_prefix: str | None = None,
         subject_type: str | None = None,
         subject_id: uuid.UUID | None = None,
         created_after: datetime | None = None,
@@ -36,6 +37,10 @@ class AuditLogRepository:
             stmt = stmt.where(AuditLog.actor_user_id == actor_user_id)
         if action is not None:
             stmt = stmt.where(AuditLog.action == action)
+        if action_prefix:
+            stmt = stmt.where(
+                AuditLog.action.startswith(action_prefix, autoescape=True)
+            )
         if subject_type is not None:
             stmt = stmt.where(AuditLog.subject_type == subject_type)
         if subject_id is not None:
