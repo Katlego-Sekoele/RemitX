@@ -476,13 +476,16 @@ def test_only_the_organiser_invites_as_themselves_and_pending(session):
         ("invitee", StokvelInvitationStatus.REVOKED, False),
         ("invitee", StokvelInvitationStatus.LAPSED, False),
         ("organiser", StokvelInvitationStatus.REVOKED, True),
-        ("organiser", StokvelInvitationStatus.LAPSED, False),
+        # Starting a cycle lapses pending invitations on the Organiser's
+        # route (R2-10, V20261019_1052)
+        ("organiser", StokvelInvitationStatus.LAPSED, True),
     ],
 )
 def test_each_party_gives_only_their_own_answer(session, who, status, allowed):
-    """The invitee accepts or declines, the Organiser revokes; a worker lapses
-    (unbound). The Organiser cannot accept for the invitee: the check
-    constraint needs the invitee as changer, the policy the caller."""
+    """The invitee accepts or declines, the Organiser revokes or lapses (when
+    a cycle starts); a worker can also lapse (unbound). The Organiser cannot
+    accept for the invitee: the check constraint needs the invitee as
+    changer, the policy the caller."""
     organiser, invitee = _customer(), _customer()
     stokvel = _stokvel(organiser)
     invitation_id = _invite(stokvel, invitee).id
