@@ -472,6 +472,12 @@ def confirm_contribution(
     return "failed"
 
 
+class _CursorRaced(Exception):
+    """Another `sync_events` run created the cursor between this run's read
+    and its insert. Raised only from the cursor insert, and the transaction
+    rolls back."""
+
+
 @celery.task(name="stokvel.sync_events")
 def sync_events() -> str:
     """Read the stokvel contract's events since the cursor and apply them
@@ -551,12 +557,17 @@ def sync_events() -> str:
                         break
                 else:
                     session.add(StokvelSyncState(id=key, last_processed_block=to_block))
-                    session.flush()
+                    try:
+                        session.flush()
+                    except IntegrityError as exc:
+                        # Only the cursor's own insert can mean another run
+                        # created it first. Any other integrity error, from
+                        # applying an event, is a real fault and propagates.
+                        raise _CursorRaced() from exc
                 for event in events:
                     outcome = stokvel_sync.apply_event(session, event)
                     outcomes[outcome] = outcomes.get(outcome, 0) + 1
-        except IntegrityError:
-            # Another run created the cursor first.
+        except _CursorRaced:
             logger.info("event=stokvel.sync_raced: the cursor was just created")
             break
         last = to_block

@@ -110,7 +110,12 @@ def _contribution_made(session, event: ContractEvent) -> str:
                 in_flight.amount_token,
                 event.args["amount"],
             )
-        record_mined(session, in_flight.id, event.tx_hash, event.block_number)
+        if (
+            record_mined(session, in_flight.id, event.tx_hash, event.block_number)
+            is None
+        ):
+            # `confirm_contribution` recorded it in the meantime.
+            return ALREADY_RECORDED
         logger.info(
             "event=stokvel.sync_contribution_confirmed contribution_id=%s "
             "tx_hash=%s block=%s",

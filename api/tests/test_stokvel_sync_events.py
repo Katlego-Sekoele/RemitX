@@ -36,7 +36,7 @@ from remitx_worker.stokvel_tasks import (
     sync_events,
 )
 from sqlalchemy import select, update
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from tests.kyc_helpers import make_user
 from tests.test_worker_stokvel_contribution import (
     BLOCK,
@@ -504,6 +504,92 @@ def test_a_run_that_finds_the_cursor_moved_stops_without_applying(
 
     assert _snapshot(session_factory) == before
     assert _cursor(session_factory) == head + 5
+
+
+@pytest.mark.parametrize("cursor_exists", [False, True])
+def test_a_constraint_failure_while_applying_is_raised_not_called_a_race(
+    session_factory, pending, logs, caplog, cursor_exists
+):
+    """A CHECK violation from applying an event is a real fault: it must
+    fail the run loudly, not be mistaken for another run creating the cursor
+    and swallowed (#346 review). The cursor stays put, so nothing is lost."""
+    if cursor_exists:
+        sync_events()  # an empty run creates the cursor at the head
+        logs.ranges.clear()
+    start_cursor = _cursor(session_factory)
+
+    def empty_the_members_account():
+        # The member can no longer cover the contribution's legs, so settling
+        # it breaks accounts_user_balance_nonneg.
+        with session_factory() as session:
+            session.get(Account, pending["accounts"]["member"]).account_balance = 0
+            session.commit()
+
+    empty_the_members_account()
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    block = (start_cursor or START - 1) + 1
+    logs.events = [_contribution_made(stokvel_id, member_id, block)]
+    logs.head = block
+
+    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
+        with pytest.raises(IntegrityError):
+            sync_events()
+
+    assert "sync_raced" not in caplog.text
+    assert _cursor(session_factory) == start_cursor
+    with session_factory() as session:
+        assert (
+            session.get(StokvelContribution, uuid.UUID(pending["id"])).status
+            == "pending"
+        )
+
+
+def test_a_cursor_another_run_just_created_is_a_quiet_race(
+    session_factory, pending, logs, caplog
+):
+    """Two first runs: the other creates the cursor between this run's read
+    and its insert. This one stops and applies nothing."""
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_contribution_made(stokvel_id, member_id, START + 1)]
+
+    def other_run_creates_the_cursor():
+        with session_factory() as session:
+            session.add(
+                StokvelSyncState(id=CONTRACT.lower(), last_processed_block=START + 1)
+            )
+            session.commit()
+
+    logs.before_return = other_run_creates_the_cursor
+    before = _snapshot(session_factory)
+
+    with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
+        sync_events()
+
+    assert "event=stokvel.sync_raced" in caplog.text
+    assert _snapshot(session_factory) == before
+    assert _cursor(session_factory) == START + 1
+
+
+def test_a_contribution_confirmed_meanwhile_is_reported_as_already_recorded(
+    session_factory, pending, monkeypatch, caplog
+):
+    """`confirm_contribution` wins between the sync's read and its guarded
+    update: `record_mined` changes nothing, and the sync must not report it
+    as confirmed by the event."""
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    monkeypatch.setattr(stokvel_sync, "record_mined", lambda *args: None)
+
+    session = session_factory()
+    try:
+        with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_sync"):
+            outcome = stokvel_sync.apply_event(
+                session, _contribution_made(stokvel_id, member_id, START + 1)
+            )
+    finally:
+        session.close()
+
+    assert outcome == stokvel_sync.ALREADY_RECORDED
+    assert "sync_contribution_confirmed" not in caplog.text
 
 
 def test_without_a_contract_address_nothing_is_read(
