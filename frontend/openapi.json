@@ -4872,15 +4872,8 @@
         "description": "An invitation the Organiser has sent.",
         "properties": {
           "account_reference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Account Reference"
+            "title": "Account Reference",
+            "type": "string"
           },
           "created_at": {
             "title": "Created At",
@@ -5141,6 +5134,17 @@
         ],
         "title": "StokvelContributionRead",
         "type": "object"
+      },
+      "StokvelContributionStatus": {
+        "description": "The ledger's states (doc section 3); a contribution moves through them\nlike its legs do.",
+        "enum": [
+          "pending",
+          "processing",
+          "confirmed",
+          "failed"
+        ],
+        "title": "StokvelContributionStatus",
+        "type": "string"
       },
       "StokvelCreateRequest": {
         "additionalProperties": false,
@@ -5420,8 +5424,7 @@
             "title": "Started At"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/StokvelCycleStatus"
           },
           "total_rounds": {
             "anyOf": [
@@ -5448,6 +5451,60 @@
           "rounds"
         ],
         "title": "StokvelDetailCycleRead",
+        "type": "object"
+      },
+      "StokvelDetailInvitationRead": {
+        "description": "A pending invitation on `GET /stokvels/{id}`.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set.",
+        "properties": {
+          "account_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Reference"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "invitation_id": {
+            "format": "uuid",
+            "title": "Invitation Id",
+            "type": "string"
+          },
+          "invitee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitee Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelInvitationStatus"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation_id",
+          "stokvel_id",
+          "invitee_name",
+          "account_reference",
+          "status",
+          "created_at"
+        ],
+        "title": "StokvelDetailInvitationRead",
         "type": "object"
       },
       "StokvelDetailRead": {
@@ -5517,7 +5574,7 @@
           },
           "invitations": {
             "items": {
-              "$ref": "#/components/schemas/SentStokvelInvitationRead"
+              "$ref": "#/components/schemas/StokvelDetailInvitationRead"
             },
             "title": "Invitations",
             "type": "array"
@@ -5554,13 +5611,12 @@
           "my_contribution_status": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/StokvelContributionStatus"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "My Contribution Status"
+            ]
           },
           "my_member_id": {
             "format": "uuid",
@@ -5594,8 +5650,7 @@
             "title": "Organiser Name"
           },
           "phase": {
-            "title": "Phase",
-            "type": "string"
+            "$ref": "#/components/schemas/StokvelCycleStatus"
           },
           "stokvel_id": {
             "format": "uuid",
@@ -5877,6 +5932,16 @@
         "title": "StokvelPayoutPlaceRead",
         "type": "object"
       },
+      "StokvelPayoutReleaseStatus": {
+        "enum": [
+          "pending",
+          "processing",
+          "released",
+          "failed"
+        ],
+        "title": "StokvelPayoutReleaseStatus",
+        "type": "string"
+      },
       "StokvelRead": {
         "description": "A stokvel the caller is a current member of.",
         "properties": {
@@ -5996,8 +6061,7 @@
             "type": "integer"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/StokvelContributionStatus"
           }
         },
         "required": [
@@ -6063,13 +6127,12 @@
           "release_status": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/StokvelPayoutReleaseStatus"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Release Status"
+            ]
           },
           "release_tx_hash": {
             "anyOf": [
@@ -6097,13 +6160,12 @@
           "remittance_status": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/TransactionStatus"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Remittance Status"
+            ]
           },
           "round": {
             "title": "Round",

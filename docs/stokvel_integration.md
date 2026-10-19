@@ -25,6 +25,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 
 | Date | Section | Change | PR |
 |---|---|---|---|
+| 2026-10-19 | 5 | `GET /stokvels/{id}` status fields use the existing enums (`StokvelCycleStatus`, `StokvelContributionStatus`, `StokvelPayoutReleaseStatus`, `TransactionStatus`). Pending invitations on that response are `StokvelDetailInvitationRead`: `account_reference` is null except for the Organiser. `POST /stokvels/{id}/invitations` still returns `SentStokvelInvitationRead`, where `account_reference` is always set. `current_round` stays the stored column; it is not `open_round` | |
 | 2026-10-19 | 5, 8, 13, 14 | R2-14 (#236): `GET /stokvels/{id}` built (section 5). `fee_amount` is set only on the caller's contributions. `remittance_id` is the payout reference. `pool_fiat_amount` stays null until members can read the payout quote. A missing exchange rate leaves `contribution_fiat_estimate` null and the rest of the response still returns. The member screen still reads the mock until R4-09 (#258) | |
 | 2026-10-05 | all | File created with section skeleton | |
 | 2026-10-06 | all | Added Decisions, Proposals, Deviations, EVM switch-over, work breakdown; drafted sections 1–8 and 11–12 from CONTEXT.md, GitHub issues #197–#209 and earlier design sessions | |
@@ -666,9 +667,9 @@ Customer route, tag `stokvels` (client: `api.stokvels.getStokvel`).
 
 - `organiser_name`, `members[].full_name` and a beneficiary's `full_name` are `short_display_name` ("Tendai M."), or null when there is no first name.
 - `contribution_fiat_estimate` is today's rate, to the cent. Null when no rate is available; the rest of the response still returns.
-- `phase` is the current cycle's status, or `forming` when the stokvel has no cycle. `current_round`, `total_rounds` and `next_payout_time` are null while the cycle is forming. Rounds exist only after the cycle starts (#232). `registered_at` is null until that start is mined; `phase` is already `active` by then, and contributions answer 409 `cycle_starting` until it is set.
+- `phase` is the current cycle's status (`StokvelCycleStatus`), or `forming` when the stokvel has no cycle. `current_round` is that cycle's stored column (0 at start). It is not `open_round`, the round a contribution joins once the previous one is full. `total_rounds` and `next_payout_time` follow `current_round`. All three are null while the cycle is forming. Rounds exist only after the cycle starts (#232). `registered_at` is null until that start is mined; `phase` is already `active` by then, and contributions answer 409 `cycle_starting` until it is set. Contribution `status` and `my_contribution_status` are `StokvelContributionStatus`. A round's `release_status` is `StokvelPayoutReleaseStatus` and its `remittance_status` is `TransactionStatus`, null until `remittance_id` is set.
 - `my_member_id` is the caller's `stokvel_members.id`. `payout_order` is those ids from position 0, stopping at the first gap. A round past that gap has no `recipient_member_id`.
-- Pending `invitations[].account_reference` is set only for the Organiser. Other members get null, and `accounts` is not read for them.
+- Pending invitations on this response are `StokvelDetailInvitationRead`. `account_reference` is set only for the Organiser. Other members get null, and `accounts` is not read for them. `POST /stokvels/{id}/invitations` still returns `SentStokvelInvitationRead`, whose `account_reference` is always set.
 - `fee_amount` is set only on the caller's own contributions, from their fee leg. Other rows are null.
 - `remittance_id` is the payout reference. `remittance_status` is null until that id is set, because the column is `pending` from the moment the payout row exists. `pool_fiat_amount` is null until members can read the payout quote (#241).
 - `my_contribution_status` is the caller's contribution to the current round that has not failed, or null.

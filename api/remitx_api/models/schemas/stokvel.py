@@ -44,8 +44,11 @@ from remitx_api.controllers.stokvel_setup_controller import (
     PayoutPlaceView,
 )
 from remitx_api.models.orm.account import PayoutCurrency
+from remitx_api.models.orm.stokvel_contribution import StokvelContributionStatus
 from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
 from remitx_api.models.orm.stokvel_invitation import StokvelInvitationStatus
+from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
 
 # A Stokvel currency is any fiat currency a customer can hold an account in.
@@ -226,9 +229,7 @@ class SentStokvelInvitationRead(Schema):
     stokvel_id: uuid.UUID
     # "Thandi M."; null when the invitee has no name on file.
     invitee_name: str | None
-    # Null on GET /stokvels/{id} for anyone but the Organiser, and when the
-    # invitee no longer holds an account in the stokvel currency.
-    account_reference: str | None
+    account_reference: str
     status: StokvelInvitationStatus
     created_at: UtcDateTime
 
@@ -242,6 +243,18 @@ class SentStokvelInvitationRead(Schema):
             status=view.status,
             created_at=view.created_at,
         )
+
+
+class StokvelDetailInvitationRead(SentStokvelInvitationRead):
+    """A pending invitation on `GET /stokvels/{id}`.
+
+    `account_reference` is set only for the Organiser, and null when the
+    invitee no longer holds an account in the stokvel currency. `POST
+    /stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where
+    the reference is always set.
+    """
+
+    account_reference: str | None
 
 
 class StokvelPayoutOrderRequest(Schema):
@@ -382,8 +395,8 @@ class StokvelRoundRead(Schema):
     deadline: UtcDateTime
     payout_time: UtcDateTime
     recipient_member_id: uuid.UUID | None
-    release_status: str | None
-    remittance_status: str | None
+    release_status: StokvelPayoutReleaseStatus | None
+    remittance_status: TransactionStatus | None
     # The reference the member sees. There is no separate display code.
     remittance_id: uuid.UUID | None
     release_tx_hash: str | None
@@ -417,7 +430,7 @@ class StokvelDetailCycleRead(Schema):
 
     cycle_id: uuid.UUID
     cycle_number: int
-    status: str
+    status: StokvelCycleStatus
     current_round: int | None
     total_rounds: int | None
     started_at: UtcDateTime | None
@@ -455,7 +468,7 @@ class StokvelRoundContributionRead(Schema):
     amount_fiat: LedgerDecimal
     amount_token: LedgerDecimal
     fee_amount: LedgerDecimal | None
-    status: str
+    status: StokvelContributionStatus
     evm_tx_hash: str | None
     created_at: UtcDateTime
 
@@ -482,15 +495,15 @@ class StokvelDetailRead(StokvelRead):
 
     organiser_name: str | None
     contribution_fiat_estimate: LedgerDecimal | None
-    phase: str
+    phase: StokvelCycleStatus
     current_round: int | None
     total_rounds: int | None
     next_payout_time: UtcDateTime | None
-    my_contribution_status: str | None
+    my_contribution_status: StokvelContributionStatus | None
     my_member_id: uuid.UUID
     my_beneficiary: StokvelBeneficiaryChoiceRead | None
     members: list[StokvelMemberRead]
-    invitations: list[SentStokvelInvitationRead]
+    invitations: list[StokvelDetailInvitationRead]
     cycle: StokvelDetailCycleRead | None
     contributions: list[StokvelRoundContributionRead]
 
@@ -526,8 +539,10 @@ class StokvelDetailRead(StokvelRead):
         )
 
 
-def _sent_invitation(view: StokvelDetailInvitationView) -> SentStokvelInvitationRead:
-    return SentStokvelInvitationRead(
+def _sent_invitation(
+    view: StokvelDetailInvitationView,
+) -> StokvelDetailInvitationRead:
+    return StokvelDetailInvitationRead(
         invitation_id=view.invitation_id,
         stokvel_id=view.stokvel_id,
         invitee_name=view.invitee_name,
