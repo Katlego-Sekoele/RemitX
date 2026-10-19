@@ -250,7 +250,7 @@ def seed_section() -> None:
                                 maximum=1 if f.name.endswith("_rate") else None,
                                 fmt="%.2f",
                             )
-            ui.label("Live tail (real settlements through the API and XRPL)").classes(
+            ui.label("Live tail (real settlements through the API and EVM)").classes(
                 "text-md font-medium mt-2"
             )
             with ui.row().classes("gap-4 flex-wrap"):

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import exists, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
@@ -26,6 +26,63 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
                 StokvelCycle.status != StokvelCycleStatus.CLOSED.value,
             )
         ).one_or_none()
+
+    def has_any_cycle(self, stokvel_id: uuid.UUID) -> bool:
+        """Whether the stokvel has ever had a cycle, closed ones included."""
+        return db.session.scalar(
+            select(exists().where(StokvelCycle.stokvel_id == stokvel_id))
+        )
+
+    def add_forming_cycle(
+        self, stokvel_id: uuid.UUID, cycle_number: int = 1
+    ) -> StokvelCycle:
+        """Stage a new `forming` cycle: no rounds, start or schedule yet."""
+        return self.add(
+            StokvelCycle(
+                stokvel_id=stokvel_id,
+                cycle_number=cycle_number,
+                status=StokvelCycleStatus.FORMING.value,
+            )
+        )
+
+    def get_cycle_member(
+        self, cycle_id: uuid.UUID, member_id: uuid.UUID
+    ) -> StokvelCycleMember | None:
+        """The member's row in the cycle, if they have one."""
+        return db.session.get(StokvelCycleMember, (cycle_id, member_id))
+
+    def add_cycle_member(
+        self, cycle_id: uuid.UUID, member_id: uuid.UUID
+    ) -> StokvelCycleMember:
+        """Stage the member's row in the cycle, with no payout position or
+        beneficiary yet."""
+        member = StokvelCycleMember(cycle_id=cycle_id, member_id=member_id)
+        db.session.add(member)
+        db.session.flush()
+        return member
+
+    def pays_beneficiary(self, beneficiary_id: uuid.UUID) -> bool:
+        """Whether any cycle row, of any status, pays this beneficiary. On
+        Postgres the caller sees the rows of every stokvel they are or were a
+        member of, so their own choices are always visible."""
+        return db.session.scalar(
+            select(
+                exists().where(
+                    StokvelCycleMember.payout_beneficiary_id == beneficiary_id
+                )
+            )
+        )
+
+    def clear_payout_positions(self, cycle_id: uuid.UUID) -> None:
+        """Clear every payout position in the cycle, former members' rows
+        included, so a new order can be written row by row without meeting
+        `uq_stokvel_cycle_members_cycle_id_position` halfway."""
+        db.session.execute(
+            update(StokvelCycleMember)
+            .where(StokvelCycleMember.cycle_id == cycle_id)
+            .values(payout_position=None)
+        )
+        db.session.flush()
 
     def get_cycle_rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
         """Get the information about the rounds in a cycle, for a given cycle_id."""

@@ -55,8 +55,37 @@ def test_to_canvas_writes_summary_and_canvas(tmp_path):
 def test_render_canvas_is_deterministic_enough():
     summary = build_summary(FIXTURE)
     text = render_canvas(summary)
-    assert "Calibrated RLUSD burn" in text
+    assert "Calibrated UCTUSD burn" in text
     assert "HTTP-only median" in text
     html = render_html(summary)
     assert "lineChart" in html or "polyline" in html
     assert summary.profile_name in html
+
+
+def test_every_report_says_where_its_burn_timings_were_measured():
+    summary = build_summary(FIXTURE)
+    assert summary.burn_calibrated_on == "XRP Ledger, pre-EVM"
+    assert "(calibrated on XRP Ledger, pre-EVM)" in summary.bottleneck
+    for report in (render_canvas(summary), render_html(summary)):
+        assert '"burnCalibratedOn": "XRP Ledger, pre-EVM"' in report
+        assert "(Testnet)" not in report
+    assert "Calibrated UCTUSD burn p50 (${data.burnCalibratedOn})" in render_canvas(
+        summary
+    )
+    assert "Calibrated UCTUSD burn p50 (${esc(data.burnCalibratedOn)})" in (
+        render_html(summary)
+    )
+
+
+def test_a_run_from_before_calibrated_on_falls_back_to_testnet(tmp_path):
+    import shutil
+
+    run = tmp_path / "run"
+    shutil.copytree(FIXTURE, run)
+    profile = json.loads((run / "profile.json").read_text())
+    del profile["burn"]["calibrated_on"]
+    (run / "profile.json").write_text(json.dumps(profile))
+
+    summary = build_summary(run)
+    assert summary.burn_calibrated_on == "Testnet"
+    assert "(calibrated on Testnet)" in summary.bottleneck

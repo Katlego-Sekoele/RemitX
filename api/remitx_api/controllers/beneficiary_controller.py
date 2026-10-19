@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy.exc import IntegrityError
 
 from remitx_api.errors.beneficiaries import (
+    BeneficiaryInUseError,
     DuplicateBeneficiaryError,
     MissingContactInfoError,
     OwnAccountReferenceError,
@@ -30,6 +31,7 @@ from remitx_api.repositories.beneficiary_repository import (
     BeneficiaryRepository,
     BeneficiaryRow,
 )
+from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.user_repository import UserRepository
 
 SORT_NEWEST = "newest"
@@ -57,6 +59,7 @@ class BeneficiaryController:
         self._beneficiaries = BeneficiaryRepository()
         self._users = UserRepository()
         self._accounts = AccountRepository()
+        self._cycles = StokvelCycleRepository()
 
     def lookup_by_fiat_account_reference(
         self, sender_user_id: uuid.UUID, account_reference: str
@@ -156,11 +159,17 @@ class BeneficiaryController:
     def delete(self, sender_user_id: uuid.UUID, beneficiary_id: uuid.UUID) -> None:
         """Remove a beneficiary for good.
 
-        A hard delete is safe: quotes and remittances point at the
-        recipient's user id, never at this row, so past transfers keep their
-        recipient and a quote already issued still confirms.
+        Quotes and remittances point at the recipient's user id, never at
+        this row, so past transfers keep their recipient and a quote already
+        issued still confirms. A stokvel cycle row does point at it
+        (`stokvel_cycle_members.payout_beneficiary_id`), so a beneficiary
+        any cycle pays, whatever its status, is refused rather than deleted:
+        a locked cycle's payout goes there, and a closed one keeps its
+        record.
         """
         beneficiary = self._require_own(sender_user_id, beneficiary_id)
+        if self._cycles.pays_beneficiary(beneficiary.beneficiary_id):
+            raise BeneficiaryInUseError(beneficiary.beneficiary_id)
         self._beneficiaries.delete(beneficiary.beneficiary_id)
 
     def _payout_currencies(self, user_id: uuid.UUID) -> tuple[str, ...]:

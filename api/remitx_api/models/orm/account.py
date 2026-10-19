@@ -7,10 +7,13 @@ platform accounts (bank accounts, EVM treasury wallet, fee revenue, ...),
 platform accounts are inserted by migration — see `platform_account_seed.py` —
 and are visible to staff holding `platform_account:read`.
 
-A `STOKVEL` row is one stokvel's pool in the token, between the contract
-releasing it and the payout remittance sending it on (D9 in
-docs/stokvel_integration.md). It is linked from `stokvels.account_id`, has no
-reference, and is not a platform account.
+A `STOKVEL` row is one stokvel's money in the token (D9 in
+docs/stokvel_integration.md): contributions book into it (Treasury -> STOKVEL,
+as the Treasury pays the contract) and a released pool books out of it
+(STOKVEL -> Treasury), so its balance is the stokvel's unreleased pools in the
+contract. The payout passes a pool through it as the remittance's sender. It
+is linked from `stokvels.account_id`, has no reference, and is not a platform
+account (ADR 0004).
 
 One row per (user_id, account_currency) for a `USER` row — a user with both
 ZAR and token activity has two rows as they then have a Zar account and a

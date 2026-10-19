@@ -139,6 +139,15 @@ _NONCE_ADVANCE_TIMEOUT = 10.0
 _NONCE_ADVANCE_POLL = 0.5
 
 
+def treasury_address() -> str:
+    """The Treasury Wallet's address (`EVM_TREASURY_ADDRESS`), checksummed,
+    for reads such as its allowance. Does not touch the key."""
+    address = os.environ.get("EVM_TREASURY_ADDRESS", "")
+    if not address:
+        raise RuntimeError("EVM_TREASURY_ADDRESS not configured")
+    return Web3.to_checksum_address(address)
+
+
 def _load_treasury_account() -> LocalAccount:
     """Decrypt the treasury's EVM private key and return its account.
 

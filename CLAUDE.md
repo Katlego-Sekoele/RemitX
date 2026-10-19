@@ -131,8 +131,8 @@ metrics). Locust CSVs/HTML stay gitignored under `compute/<name>/`. Edit
 `tools/loadtest/profiles/*.json` for population, Locust user steps, burn
 timings, CPU/memory, and optional `compute` sweep (`LOADTEST_PROFILE`, default
 `default`; use `compute-sweep` for API 0.1 then 1.0 CPU). Locust tokens use
-`CLERK_JWT_KEY`; the worker's XRPL burn is simulated with a delay calibrated by
-`tools/loadtest/qa_xrpl_timings.sql`.
+`CLERK_JWT_KEY`; the worker's EVM burn is simulated with a delay calibrated by
+`tools/loadtest/qa_burn_timings.sql`.
 
 ### Git hooks
 

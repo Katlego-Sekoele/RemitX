@@ -11,11 +11,10 @@ before Celery forks its pool, so every child process inherits it.
 The simulated burn hands its hash to `on_signed` and returns at once, like a
 real submit. The wait for its receipt takes about as long as a real burn: a
 lognormal delay through the median and 95th percentile of QA's real
-settlements (qa_xrpl_timings.sql, measured on the XRP Ledger). run.sh sets
-LOADTEST_BURN_P50_S / P95_S from the profile's `burn` section. Its hashes
-start 10AD ("load"), so they can never be mistaken for real ones or for the
-seeder's (5EED). The file keeps its old name so the compose stack and run.sh
-need no change.
+settlements (qa_burn_timings.sql). run.sh sets LOADTEST_BURN_P50_S / P95_S
+from the profile's `burn` section. Its hashes start 10AD ("load"), so they
+can never be mistaken for real ones (which start 0x) or for the seeder's
+(5EED).
 """
 
 import math
@@ -37,7 +36,9 @@ def _setting(name: str, default: str) -> float:
     return float(os.environ.get(name) or default)
 
 
-# Calibrated from QA XRPL burns (see qa_xrpl_timings.sql); profiles override.
+# Calibrated from QA's burns while they still ran on the XRP Ledger (see
+# qa_burn_timings.sql); recalibrate once QA has real EVM burns. Profiles
+# override.
 BURN_P50_S = _setting("LOADTEST_BURN_P50_S", "8.61")
 BURN_P95_S = _setting("LOADTEST_BURN_P95_S", "10.24")
 # Share of burns that fail before they are signed (so nothing is sent). Zero

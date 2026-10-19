@@ -51,6 +51,9 @@ from remitx_api.repositories.kyc_status_progression_repository import (
 )
 from remitx_api.repositories.remittance_repository import RemittanceRepository
 from remitx_api.repositories.repository import Repository
+from remitx_api.repositories.stokvel_contribution_repository import (
+    StokvelContributionRepository,
+)
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services.audit_service import record_audit
 from remitx_api.services.kyc_risk_rules import RiskAssessment, allowance_for
@@ -132,6 +135,24 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             .order_by(KycApplication.created_at.desc())
         ).first()
 
+    def is_other_user_verified(self, user_id: uuid.UUID) -> bool:
+        """Whether someone other than the caller is verified, by the same
+        rule as `KycStanding.is_verified`: their latest application.
+
+        Row-level security lets a customer read only their own applications,
+        so on Postgres this asks `kyc_latest_status` (`V20261017_1820`),
+        which returns the status and nothing else. An approval past its
+        review date reads `approved` here and `review_due` through
+        `effective_status`, and both are verified, so the stored status is
+        enough. For the caller's own standing, use `get_standing`.
+        """
+        if db.session.get_bind().dialect.name == "postgresql":
+            status = db.session.scalar(select(func.kyc_latest_status(user_id)))
+        else:
+            latest = self.get_latest_for_user(user_id)
+            status = None if latest is None else latest.status
+        return status is not None and KycStatus(status) in VERIFIED_STATUSES
+
     def get_standing(self, user_id: uuid.UUID) -> KycStanding:
         latest = self.get_latest_for_user(user_id)
         verified = db.session.scalars(
@@ -161,7 +182,10 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limits_from_tier(tier),
             None if rating_record is None else band_from_record(rating_record),
         )
-        sent = RemittanceRepository().sent_zar(user_id, limit_windows(utcnow()))
+        windows = limit_windows(utcnow())
+        sent = RemittanceRepository().sent_zar(user_id, windows)
+        # Stokvel contributions count toward the member's own limits (D8).
+        contributed = StokvelContributionRepository().contributed_zar(user_id, windows)
 
         return KycStanding(
             status=(
@@ -175,8 +199,8 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limit_percent=allowance.limit_percent,
             daily_limit_zar=allowance.daily_limit_zar,
             monthly_limit_zar=allowance.monthly_limit_zar,
-            daily_used_zar=sent.day_zar,
-            monthly_used_zar=sent.month_zar,
+            daily_used_zar=sent.day_zar + contributed.day_zar,
+            monthly_used_zar=sent.month_zar + contributed.month_zar,
         )
 
     def list_for_user(self, user_id: uuid.UUID) -> list[KycApplication]:
