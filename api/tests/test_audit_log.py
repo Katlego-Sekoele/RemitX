@@ -114,25 +114,31 @@ def test_stokvel_audit_shares_the_callers_transaction():
         _record_stokvel(auditor.id, AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY)
         _seed_entry(auditor.id, AuditAction.KYC_PII_VIEWED)
 
-        listed = client.get("/admin/audit", params={"action_prefix": "stokvel."})
-        assert listed.status_code == 200
-        actions = {row["action"] for row in listed.json()}
-        assert actions == {
+        contract = client.get(
+            "/admin/audit",
+            params={"subject_type": AuditSubject.STOKVEL_CONTRACT.value},
+        )
+        assert contract.status_code == 200
+        assert {row["action"] for row in contract.json()} == {
             AuditAction.STOKVEL_CONTRACT_PAUSED.value,
             AuditAction.STOKVEL_CONTRACT_UNPAUSED.value,
-            AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value,
         }
         pause = next(
             row
-            for row in listed.json()
+            for row in contract.json()
             if row["action"] == AuditAction.STOKVEL_CONTRACT_PAUSED.value
         )
         assert pause["reason"] == "rpc outage"
         assert pause["subject_id"] == str(STOKVEL_CONTRACT_SUBJECT_ID)
 
-        missed = client.get("/admin/audit", params={"action_prefix": "stokvel%"})
-        assert missed.status_code == 200
-        assert missed.json() == []
+        stokvels = client.get(
+            "/admin/audit",
+            params={"subject_type": AuditSubject.STOKVEL.value},
+        )
+        assert stokvels.status_code == 200
+        assert {row["action"] for row in stokvels.json()} == {
+            AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value,
+        }
 
 
 def test_list_audit_paginates_with_before_cursor():
