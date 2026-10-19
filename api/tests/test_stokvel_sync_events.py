@@ -222,6 +222,17 @@ def _snapshot(session_factory):
             "cycles": sorted(
                 (str(c.id), c.status, c.closed_at) for c in session.query(StokvelCycle)
             ),
+            "payouts": sorted(
+                (
+                    str(p.cycle_id),
+                    p.round,
+                    p.release_status,
+                    p.release_tx_hash,
+                    p.release_block_number,
+                    str(p.release_tx_id),
+                )
+                for p in session.query(StokvelPayout)
+            ),
             "held": sorted(
                 (h.tx_hash, h.log_index, h.reason, h.resolved_at is not None)
                 for h in session.query(StokvelHeldEvent)
@@ -235,6 +246,59 @@ def _balances(session_factory, accounts):
             name: session.get(Account, account_id).account_balance
             for name, account_id in accounts.items()
         }
+
+
+def _fund_stokvel(session_factory, pending, amount=CONTRIBUTION):
+    """Book `amount` more into the stokvel, as the other members'
+    contributions would have: a release takes the whole pool out of
+    `STOKVEL`, which can never go below zero."""
+    accounts = pending["accounts"]
+    with session_factory() as session:
+        session.execute(
+            update(Account)
+            .where(Account.account_id == accounts["treasury"])
+            .values(account_balance=Account.account_balance - amount)
+        )
+        session.execute(
+            update(Account)
+            .where(Account.account_id == accounts["stokvel"])
+            .values(account_balance=Account.account_balance + amount)
+        )
+        session.commit()
+
+
+def _members_by_round(session_factory, cycle_id):
+    with session_factory() as session:
+        return {
+            row.payout_position: row.member_id
+            for row in session.scalars(
+                select(StokvelCycleMember).where(
+                    StokvelCycleMember.cycle_id == cycle_id
+                )
+            )
+        }
+
+
+def _payouts(session_factory):
+    """(round, status, hash, block, leg amount) for every payout, by round."""
+    with session_factory() as session:
+        return [
+            (
+                p.round,
+                p.release_status,
+                p.release_tx_hash,
+                p.release_block_number,
+                None
+                if p.release_tx_id is None
+                else session.get(Transaction, p.release_tx_id).amount,
+            )
+            for p in session.scalars(
+                select(StokvelPayout).order_by(StokvelPayout.round)
+            )
+        ]
+
+
+POOL = 2 * CONTRIBUTION  # two members
 
 
 def _submit(pending_id, monkeypatch):
@@ -319,6 +383,7 @@ def test_replaying_the_same_events_leaves_the_database_unchanged(
 ):
     """The ticket's "done when". Every event type, read twice: the applied
     one is not applied again, and the held ones are not held twice."""
+    _fund_stokvel(session_factory, pending)  # the other member's contribution
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [
         _contribution_made(stokvel_id, member_id, START + 3),
@@ -327,6 +392,7 @@ def test_replaying_the_same_events_leaves_the_database_unchanged(
     ]
     sync_events()
     after_first = _snapshot(session_factory)
+    assert [p[:3] for p in _payouts(session_factory)] == [(0, "released", EVENT_HASH)]
 
     _set_cursor(session_factory, START - 1)  # read the same blocks again
     with caplog.at_level(logging.INFO, logger="remitx_worker"):
@@ -442,33 +508,153 @@ def test_events_for_stokvels_this_database_lacks_are_skipped(
 # --- RoundFinalised and CycleClosed -----------------------------------------
 
 
-def test_round_finalised_is_held_and_recorded_once_the_release_task_exists(
-    session_factory, pending, logs, monkeypatch, caplog
-):
-    """Until R3-04 builds the release, a RoundFinalised waits. The cursor
-    still moves on, and the first run after the handler can record it
-    resolves it: no round released meanwhile is lost (#346 review)."""
+def test_a_round_finalised_records_the_release_once(session_factory, pending, logs):
+    """R3-04: the payout row is created and released, and the pool moves from
+    `STOKVEL` to the Treasury in one confirmed leg. Replaying it books
+    nothing twice."""
+    _fund_stokvel(session_factory, pending, POOL)
+    before = _balances(session_factory, pending["accounts"])
     stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
     logs.events = [_round_finalised(stokvel_id, member_id, START + 2)]
 
     sync_events()
 
+    assert _payouts(session_factory) == [(0, "released", EVENT_HASH, START + 2, POOL)]
+    with session_factory() as session:
+        payout = session.scalars(select(StokvelPayout)).one()
+        leg = session.get(Transaction, payout.release_tx_id)
+        assert (leg.type, leg.status) == (TYPE_STOKVEL_POOL_RELEASE, STATUS_CONFIRMED)
+        assert (leg.credit_account_id, leg.debit_account_id) == (
+            pending["accounts"]["stokvel"],
+            pending["accounts"]["treasury"],
+        )
+        assert payout.member_id == member_id
+        assert payout.released_at is not None
+        assert payout.remittance_status == "pending"  # R3-05 pays it out
+    after = _balances(session_factory, pending["accounts"])
+    assert after["stokvel"] == before["stokvel"] - POOL
+    assert after["treasury"] == before["treasury"] + POOL
+    assert _held(session_factory) == []
+
+    _set_cursor(session_factory, START - 1)
+    once = _snapshot(session_factory)
+    sync_events()
+    assert _snapshot(session_factory) == once
+
+
+def test_a_round_held_before_the_release_existed_is_recorded_on_the_next_run(
+    session_factory, pending, logs, monkeypatch, caplog
+):
+    """Before R3-04 a RoundFinalised was held as waiting. The first run with
+    the real handler records it: no round released meanwhile is lost."""
+    _fund_stokvel(session_factory, pending, POOL)
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_round_finalised(stokvel_id, member_id, START + 2)]
+    real_handler = stokvel_sync._round_finalised
+    monkeypatch.setattr(
+        stokvel_sync, "_round_finalised", lambda session, event: stokvel_sync.WAITING
+    )
+    sync_events()
     assert _held(session_factory) == [("RoundFinalised", "waiting", False)]
     assert _cursor(session_factory) == logs.head
 
-    recorded = []
-
-    def release_task_exists(session, event):
-        recorded.append((event.args["round"], event.tx_hash))
-        return stokvel_sync.APPLIED
-
-    monkeypatch.setattr(stokvel_sync, "_round_finalised", release_task_exists)
+    monkeypatch.setattr(stokvel_sync, "_round_finalised", real_handler)
     with caplog.at_level(logging.INFO, logger="remitx_worker.stokvel_tasks"):
         sync_events()
 
-    assert recorded == [(0, EVENT_HASH)]
+    assert _payouts(session_factory) == [(0, "released", EVENT_HASH, START + 2, POOL)]
     assert _held(session_factory) == [("RoundFinalised", "waiting", True)]
     assert "event=stokvel.sync_event_resolved" in caplog.text
+
+
+def test_the_last_rounds_and_cycle_closed_in_one_transaction_close_the_cycle_at_once(
+    session_factory, pending, logs
+):
+    """A cycle's final contribution, made after the last round's payout
+    time, releases the last two rounds and closes the cycle in one
+    transaction: both payouts share its hash, and the cycle
+    closes in the same run, because each release is recorded before the
+    CycleClosed that follows it."""
+    _fund_stokvel(session_factory, pending, 2 * POOL)
+    stokvel_id, cycle_id, _member_id = _ids(session_factory, pending)
+    members = _members_by_round(session_factory, cycle_id)
+    logs.events = [
+        _round_finalised(stokvel_id, members[0], START + 2, round_=0, log_index=1),
+        _round_finalised(stokvel_id, members[1], START + 2, round_=1, log_index=2),
+        _event("CycleClosed", START + 2, stokvel_id=stokvel_id, log_index=3),
+    ]
+
+    sync_events()
+
+    assert _payouts(session_factory) == [
+        (0, "released", EVENT_HASH, START + 2, POOL),
+        (1, "released", EVENT_HASH, START + 2, POOL),
+    ]
+    with session_factory() as session:
+        assert session.get(StokvelCycle, cycle_id).status == "closed"
+    assert _held(session_factory) == []
+
+
+def test_a_release_to_a_member_the_round_does_not_pay_is_held_for_a_person(
+    session_factory, pending, logs
+):
+    _fund_stokvel(session_factory, pending, POOL)
+    stokvel_id, cycle_id, _member_id = _ids(session_factory, pending)
+    members = _members_by_round(session_factory, cycle_id)
+    logs.events = [_round_finalised(stokvel_id, members[1], START + 2, round_=0)]
+    before = _snapshot(session_factory)
+
+    sync_events()
+
+    assert _held(session_factory) == [("RoundFinalised", "failed", False)]
+    after = _snapshot(session_factory)
+    assert {k: v for k, v in after.items() if k != "held"} == {
+        k: v for k, v in before.items() if k != "held"
+    }
+
+
+def test_a_round_released_with_another_hash_is_held_for_a_person(
+    session_factory, pending, logs
+):
+    _fund_stokvel(session_factory, pending, POOL)
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_round_finalised(stokvel_id, member_id, START + 2)]
+    sync_events()
+    logs.events = [
+        _round_finalised(
+            stokvel_id, member_id, START + 3, tx_hash="0x" + "e2" * 32, log_index=0
+        )
+    ]
+    recorded = _payouts(session_factory)
+    _set_cursor(session_factory, START - 1)
+
+    sync_events()
+
+    assert _payouts(session_factory) == recorded
+    assert _held(session_factory) == [("RoundFinalised", "failed", False)]
+
+
+def test_a_release_before_its_contributions_are_recorded_waits_for_them(
+    session_factory, pending, logs
+):
+    """`STOKVEL` can never go below zero. A release whose pool is not all
+    recorded yet is held, changes nothing, and is recorded by a later run
+    once the contributions are in."""
+    stokvel_id, _cycle_id, member_id = _ids(session_factory, pending)
+    logs.events = [_round_finalised(stokvel_id, member_id, START + 2)]
+    before = _snapshot(session_factory)
+
+    sync_events()
+
+    assert _held(session_factory) == [("RoundFinalised", "failed", False)]
+    assert _payouts(session_factory) == []
+    assert _snapshot(session_factory)["balances"] == before["balances"]
+
+    _fund_stokvel(session_factory, pending, POOL)
+    sync_events()
+
+    assert _payouts(session_factory) == [(0, "released", EVENT_HASH, START + 2, POOL)]
+    assert _held(session_factory) == [("RoundFinalised", "failed", True)]
 
 
 def test_cycle_closed_waits_until_every_payout_is_released(

@@ -328,7 +328,7 @@ def test_a_failed_release_is_retried_on_the_same_row(app_context):
     assert payout.release_tx_hash == "0xsecond"
 
 
-def test_two_payouts_never_share_a_leg_hash_quote_or_remittance(app_context):
+def test_two_payouts_never_share_a_leg_burn_quote_or_remittance(app_context):
     stokvel, cycle, [first, second] = _cycle(make_user(), make_user())
     leg = _release_leg(stokvel)
     remittance = record_transfer(stokvel, make_user(), sender_amount=Decimal("1000"))
@@ -355,7 +355,6 @@ def test_two_payouts_never_share_a_leg_hash_quote_or_remittance(app_context):
     )
     db.session.commit()
     for name in (
-        "release_tx_hash",
         "release_tx_id",
         "quote_id",
         "remittance_id",
@@ -368,6 +367,22 @@ def test_two_payouts_never_share_a_leg_hash_quote_or_remittance(app_context):
 
     _payout(cycle, 1, second, **fresh)
     db.session.commit()
+    assert _count(cycle.id) == 2
+
+
+def test_two_rounds_released_in_one_transaction_share_its_hash(app_context):
+    """A cycle's final contribution, made after the last round's payout
+    time, releases the last two rounds in one transaction (the contract's
+    `_releaseDue`): both payouts carry its hash (R3-04)."""
+    stokvel, cycle, [first, second] = _cycle(make_user(), make_user())
+    _payout(
+        cycle, 0, first, **_released(_release_leg(stokvel), release_tx_hash="0xboth")
+    )
+    _payout(
+        cycle, 1, second, **_released(_release_leg(stokvel), release_tx_hash="0xboth")
+    )
+    db.session.commit()
+
     assert _count(cycle.id) == 2
 
 

@@ -129,10 +129,10 @@ class StokvelPayout(Base):
         default=StokvelPayoutReleaseStatus.PENDING.value,
         server_default=StokvelPayoutReleaseStatus.PENDING.value,
     )
-    # The on-chain hash of the pool release
-    release_tx_hash: Mapped[str | None] = mapped_column(
-        Text, nullable=True, unique=True
-    )
+    # The on-chain hash of the pool release. Not unique: a cycle's final
+    # contribution, made after the last round's payout time, releases the
+    # last two rounds in one transaction (the contract's `_releaseDue`)
+    release_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The block the pool release (RoundFinalised) was mined in
     release_block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # The `stokvel_pool_release` ledger leg, `STOKVEL` → Treasury Wallet

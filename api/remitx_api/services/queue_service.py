@@ -27,6 +27,8 @@ CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 # `remitx_worker.stokvel_tasks` (R2-12, #234).
 SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
+# Registered in `remitx_worker.stokvel_release` (R3-04, #241).
+RELEASE_POOL = "stokvel.release_pool"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -203,6 +205,19 @@ def enqueue_confirm_contribution(
     producer.send_task(
         CONFIRM_CONTRIBUTION,
         args=[contribution_id, tx_hash, block_number, error],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_release_pool(cycle_id: str, round_: int) -> None:
+    """Ask the worker to send `finalise` for a round that became due with
+    time rather than with a contribution: queued by the scheduled release
+    (R3-11) and the Administrator's manual release (R3-10). Harmless to
+    repeat: a released or claimed round is never sent twice."""
+    producer.send_task(
+        RELEASE_POOL,
+        args=[cycle_id, round_],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()
