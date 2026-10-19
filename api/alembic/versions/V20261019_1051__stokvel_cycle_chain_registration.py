@@ -20,7 +20,7 @@ rule 5). Customers cannot read or write them any differently: the cycle's
 existing row-level security applies.
 
 Revision ID: 9ecf9bd5e4bc
-Revises: e09d8fb367b5
+Revises: d9d228218faf
 Create Date: 2026-10-19 10:51:35.000000+00:00
 
 """
@@ -30,7 +30,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "9ecf9bd5e4bc"
-down_revision: str | None = "e09d8fb367b5"
+down_revision: str | None = "d9d228218faf"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
