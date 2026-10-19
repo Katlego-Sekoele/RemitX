@@ -172,6 +172,8 @@ def _build(app, monkeypatch, *, seed_platform: bool, caller_verified=True) -> Gr
             total_rounds=2,
             current_round=0,
             started_at=now,
+            # Open on-chain, so it takes contributions (R2-10)
+            registered_at=now,
         )
         db.session.add(cycle)
         db.session.flush()
@@ -556,6 +558,7 @@ def test_without_an_active_cycle_there_is_nothing_to_pay(group, status):
             cycle.started_at = None
             cycle.current_round = None
             cycle.total_rounds = None
+            cycle.registered_at = None
         else:
             cycle.closed_at = datetime.now(UTC)
         db.session.commit()
@@ -566,6 +569,54 @@ def test_without_an_active_cycle_there_is_nothing_to_pay(group, status):
 
     assert response.status_code == 409
     assert response.json()["code"] == "cycle_not_open"
+
+
+def test_a_cycle_not_yet_registered_on_chain_takes_no_contributions(group):
+    """Started, but the worker's `startCycle` is not mined yet (R2-10): the
+    contract has no open cycle, so the contribution would revert."""
+
+    def unregister():
+        db.session.get(StokvelCycle, group.cycle_id).registered_at = None
+        db.session.commit()
+
+    _in_session(unregister)
+
+    response = group.contribute()
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "cycle_starting"
+    assert _contributions(group) == []
+    assert group.enqueued == []
+
+
+def test_a_former_members_unlocked_row_is_not_part_of_the_cycle(group):
+    """A member who left before the cycle started keeps an unlocked row with
+    no position (R2-09, R2-10). It must not count toward a full round, or
+    round 0 could never fill."""
+
+    def left_before_the_start():
+        user = _user(f"left_{uuid.uuid4().hex[:6]}")
+        member = StokvelMember(
+            stokvel_id=group.stokvel_id,
+            user_id=user.id,
+            account_id=AccountRepository()
+            .get_user_account(user.id, CURRENCY_ZAR)
+            .account_id,
+            left_at=datetime.now(UTC),
+        )
+        db.session.add(member)
+        db.session.flush()
+        db.session.add(StokvelCycleMember(cycle_id=group.cycle_id, member_id=member.id))
+        db.session.commit()
+
+    _in_session(left_before_the_start)
+    _record(group, group.caller_member_id, 0)
+    _record(group, group.other_member_id, 0)
+
+    response = group.contribute()
+
+    assert response.status_code == 201, response.text
+    assert response.json()["round"] == 1
 
 
 # --- Balance, standing and limits --------------------------------------------
@@ -708,7 +759,9 @@ def test_another_integrity_error_is_not_reported_as_already_paid(group, monkeypa
 def test_a_round_without_a_locked_recipient_is_a_fault(group):
     # The fee depends on the recipient's payout currency, which is fixed
     # only once their row is locked: never priced on a currency that might
-    # still change.
+    # still change. Round 0's recipient row is unlocked, so the cycle (its
+    # locked rows, R2-10) has nobody at position 0; the other, locked member
+    # pays.
     def unlock():
         row = db.session.scalars(
             select(StokvelCycleMember).where(
@@ -720,6 +773,7 @@ def test_a_round_without_a_locked_recipient_is_a_fault(group):
         db.session.commit()
 
     _in_session(unlock)
+    group.client.app.dependency_overrides[get_current_user] = lambda: group.other
 
     with pytest.raises(RuntimeError, match="locked recipient"):
         group.contribute()
