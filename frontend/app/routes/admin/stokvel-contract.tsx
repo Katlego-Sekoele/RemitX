@@ -237,9 +237,7 @@ function PauseDialog({
           {touched && issue ? (
             <FieldError>{issue}</FieldError>
           ) : (
-            <FieldDescription>
-              Recorded in the audit log with your name.
-            </FieldDescription>
+            <FieldDescription>Recorded in the audit log.</FieldDescription>
           )}
         </Field>
         {pause.isError ? (
@@ -296,8 +294,9 @@ function ResumeDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Resume every stokvel?</AlertDialogTitle>
           <AlertDialogDescription>
-            Members can pay again, and rounds that are fully paid and past their
-            payout time are released.
+            Members can pay again, and rounds that are due can be released.
+            Resuming releases nothing by itself: a due round goes out with the
+            next payment or the scheduled release.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {resume.isError ? (
