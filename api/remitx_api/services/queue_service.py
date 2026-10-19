@@ -27,6 +27,8 @@ CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 # `remitx_worker.stokvel_tasks` (R2-12, #234).
 SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
+START_CYCLE = "stokvel.start_cycle"
+CONFIRM_CYCLE_START = "stokvel.confirm_cycle_start"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -203,6 +205,32 @@ def enqueue_confirm_contribution(
     producer.send_task(
         CONFIRM_CONTRIBUTION,
         args=[contribution_id, tx_hash, block_number, error],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_start_cycle(cycle_id: str) -> None:
+    """Enqueued by `POST /stokvels/{id}/cycles` once the cycle is committed
+    `active`: the worker registers it on the contract (`createStokvel` for a
+    new stokvel, then `startCycle`; R2-10, #232). Only ever needs
+    `cycle_id`: the task reads everything else from the database and the
+    chain, so a redelivery repeats nothing.
+    """
+    producer.send_task(START_CYCLE, args=[cycle_id], queue=Config.CELERY_QUEUE)
+    wake_worker()
+
+
+def enqueue_confirm_cycle_start(
+    cycle_id: str, tx_hash: str | None, block_number: int | None
+) -> None:
+    """Enqueued by `start_cycle` once the cycle is open on-chain: its mined
+    `startCycle` (`tx_hash`, `block_number`), or both None when the task found
+    the cycle already open on-chain without a stored hash.
+    """
+    producer.send_task(
+        CONFIRM_CYCLE_START,
+        args=[cycle_id, tx_hash, block_number],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()
