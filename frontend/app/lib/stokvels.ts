@@ -422,15 +422,25 @@ export function contributionProofHash(
     : null
 }
 
-/** A round's payout hash as proof: only once the release is confirmed. */
+/**
+ * A round's payout hash as proof. The burn hash is stored before the burn is
+ * sent (#278), so it is proof only once the payout remittance is confirmed;
+ * until then the release's hash is, once the release is confirmed.
+ */
 export function payoutProofHash(
   round: Pick<
     StokvelRoundRead,
-    "release_status" | "burn_tx_hash" | "release_tx_hash"
+    "release_status" | "remittance_status" | "burn_tx_hash" | "release_tx_hash"
   >
 ): string | null {
+  if (
+    round.remittance_status === RemittanceStatus.confirmed &&
+    round.burn_tx_hash
+  ) {
+    return round.burn_tx_hash
+  }
   return round.release_status === ReleaseStatus.released
-    ? (round.burn_tx_hash ?? round.release_tx_hash)
+    ? round.release_tx_hash
     : null
 }
 

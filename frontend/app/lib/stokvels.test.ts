@@ -153,13 +153,33 @@ test("a hash is proof only once confirmed", async () => {
     contributionProofHash({ status: "confirmed", evm_tx_hash: hash }),
     hash
   )
-  const round = { burn_tx_hash: null, release_tx_hash: hash }
+  const round = {
+    release_tx_hash: hash,
+    burn_tx_hash: null,
+    remittance_status: null,
+  }
   assert.equal(
     payoutProofHash({ ...round, release_status: "processing" }),
     null
   )
   assert.equal(payoutProofHash({ ...round, release_status: "failed" }), null)
   assert.equal(payoutProofHash({ ...round, release_status: "released" }), hash)
+  // A burn hash is stored before the burn is sent: proof only once the
+  // payout is confirmed; until then the release's hash stands.
+  const burn = `0x${"b".repeat(64)}`
+  const burning = {
+    ...round,
+    release_status: "released" as const,
+    burn_tx_hash: burn,
+  }
+  assert.equal(
+    payoutProofHash({ ...burning, remittance_status: "processing" }),
+    hash
+  )
+  assert.equal(
+    payoutProofHash({ ...burning, remittance_status: "confirmed" }),
+    burn
+  )
 })
 
 test("contributeMock pays once, confirms, and refuses the doc §6 cases", async () => {
