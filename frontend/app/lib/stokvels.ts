@@ -1,21 +1,37 @@
 /** Stokvel screen data and helpers (R4-02, #251).
  *
- * The stokvel routes do not exist in `frontend/openapi.json` yet (#229, #230,
- * #236), so the queries here read `stokvels.mock.ts`. R4-09 (#258) swaps each
- * query for `api.stokvels.<operation>()` and deletes the mock. Shapes follow
- * docs/stokvel_integration.md §3 (tables, status values) and §5 (routes), so
- * the swap should be a change to this file only.
+ * Built routes use the generated client and its types (`~/client`):
+ * `GET` and `POST /stokvels` (R2-07, #229). `GET /stokvels/{id}` (#236) is
+ * not built yet, so the detail read and its types below are the frontend's
+ * assumption from docs/stokvel_integration.md §3 and §5, each marked
+ * `R4-09`, and read `stokvels.mock.ts`. R4-09 (#258) replaces them and
+ * deletes the mock. In development the list also shows the mock's demo
+ * stokvels, so every screen state can be opened.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
 
+import {
+  sdk,
+  type SentStokvelInvitationRead,
+  type StokvelInvitationRead,
+  type StokvelListRead,
+  type StokvelRead,
+} from "~/client"
 import { amountToCents, fromCents } from "~/lib/money"
 import {
-  createStokvelMock,
+  demoStokvelsMock,
   getStokvelContractStatusMock,
   getStokvelMock,
-  listStokvelsMock,
 } from "~/lib/stokvels.mock"
+
+export type {
+  SentStokvelInvitationRead,
+  StokvelCreateRequest,
+  StokvelInvitationRead,
+  StokvelListRead,
+  StokvelRead,
+} from "~/client"
 
 // Status values from docs/stokvel_integration.md §3 "Status values and
 // transitions". Objects, not enums, so they can be iterated like the
@@ -65,6 +81,7 @@ export const RemittanceStatus = {
 export type RemittanceStatus =
   (typeof RemittanceStatus)[keyof typeof RemittanceStatus]
 
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelMemberRead = {
   member_id: string
   user_id: string
@@ -74,19 +91,7 @@ export type StokvelMemberRead = {
   joined_at: string
 }
 
-export type StokvelInvitationRead = {
-  invitation_id: string
-  stokvel_id: string
-  stokvel_name: string
-  organiser_name: string
-  currency: string
-  /** Fiat estimate of the contribution at today's rate, 2 dp. */
-  contribution_fiat_estimate: string
-  member_count: number
-  status: InvitationStatus
-  created_at: string
-}
-
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelRoundRead = {
   /** 0-based, like the contract and `stokvel_cycles.current_round`. */
   round: number
@@ -101,6 +106,7 @@ export type StokvelRoundRead = {
   burn_tx_hash: string | null
 }
 
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelCycleRead = {
   cycle_id: string
   cycle_number: number
@@ -114,6 +120,7 @@ export type StokvelCycleRead = {
   rounds: StokvelRoundRead[]
 }
 
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelContributionRead = {
   contribution_id: string
   cycle_id: string
@@ -126,75 +133,36 @@ export type StokvelContributionRead = {
   created_at: string
 }
 
-/** One row of `GET /stokvels`. */
-export type StokvelSummaryRead = {
-  stokvel_id: string
-  name: string
-  goal: string | null
-  /** Stokvel currency (fiat), e.g. "ZAR". */
-  currency: string
-  /** Fixed UCTUSD amount per contribution (D13), as a decimal string. */
-  contribution_amount: string
-  /** Fiat estimate of `contribution_amount` at today's rate, 2 dp. */
-  contribution_fiat_estimate: string
-  organiser_name: string
-  is_organiser: boolean
-  member_count: number
-  /** Derived from the current cycle; `forming` when none has started. */
-  phase: CycleStatus
-  current_round: number | null
-  total_rounds: number | null
-  next_payout_time: string | null
-  my_contribution_status: ContributionStatus | null
-}
-
-/** `GET /stokvels`: the caller's stokvels and pending invitations. */
-export type StokvelListRead = {
-  stokvels: StokvelSummaryRead[]
-  invitations: StokvelInvitationRead[]
-}
-
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelBeneficiaryChoice = {
   beneficiary_id: string
   full_name: string
   payout_currency: string
 }
 
-/** One round of the schedule the Organiser sets (doc §12 step 1), before a
- * cycle exists. ISO datetimes. */
-export type StokvelScheduleRound = {
-  round: number
-  start_time: string
-  deadline: string
-  payout_time: string
-}
-
-/** `GET /stokvels/{id}`: everything the member screen shows (R2-14, #236). */
-export type StokvelDetailRead = StokvelSummaryRead & {
+/** `GET /stokvels/{id}`: everything the member screen shows (#236).
+ * R4-09: replace with `~/client` once #236 is built; everything past
+ * `StokvelRead` is assumed. */
+export type StokvelDetailRead = StokvelRead & {
+  organiser_name: string
+  /** Fiat estimate of `contribution_amount` at today's rate, 2 dp. */
+  contribution_fiat_estimate: string
+  /** Derived from the current cycle; `forming` when none has started. */
+  phase: CycleStatus
+  current_round: number | null
+  total_rounds: number | null
+  next_payout_time: string | null
+  my_contribution_status: ContributionStatus | null
   my_member_id: string
   my_beneficiary: StokvelBeneficiaryChoice | null
   members: StokvelMemberRead[]
-  invitations: StokvelInvitationRead[]
+  invitations: SentStokvelInvitationRead[]
   cycle: StokvelCycleRead | null
   contributions: StokvelContributionRead[]
-  /** The planned rounds while no cycle has started; null once it has. */
-  schedule: StokvelScheduleRound[] | null
-}
-
-/**
- * `POST /stokvels` (R2-07, #229). Shape assumed by the frontend, recorded in
- * doc §5: the Organiser enters the contribution in the Stokvel currency and
- * the API fixes the UCTUSD amount at the live rate (D13).
- */
-export type StokvelCreateRequest = {
-  name: string
-  goal: string | null
-  currency: string
-  contribution_fiat_amount: string
-  rounds: StokvelScheduleRound[]
 }
 
 /** Admin view of the contract (R3-07, #244). */
+/** R4-09: assumed until #236 (or #244 for the contract). */
 export type StokvelContractStatusRead = {
   address: string
   network: string
@@ -202,31 +170,87 @@ export type StokvelContractStatusRead = {
   treasury_token_balance: string
 }
 
-/** Query options in the shape the generated client will give us, so pages
- * spread them into `useQuery` exactly as they will after R4-09. */
+/** Mock ids start `stk_`; the API's are UUIDs. */
+export function isDemoStokvel(stokvelId: string): boolean {
+  return stokvelId.startsWith("stk_")
+}
+
+/**
+ * A stokvel the API has but `GET /stokvels/{id}` can't return yet (#236):
+ * its list row as a forming stokvel, priced at today's rate. R4-09: delete.
+ */
+async function detailFromList(
+  stokvelId: string,
+  signal: AbortSignal
+): Promise<StokvelDetailRead> {
+  const { data } = await sdk.stokvels.listStokvels({
+    signal,
+    throwOnError: true,
+  })
+  const row = data.stokvels.find((s) => s.stokvel_id === stokvelId)
+  if (!row) throw new Error("Stokvel not found")
+  const { data: preview } = await sdk.quotes.previewQuote({
+    body: {
+      sender_amount: "1000.00",
+      sender_currency: row.currency,
+      receiver_payout_currency: row.currency,
+    },
+    signal,
+    throwOnError: true,
+  })
+  return {
+    ...row,
+    organiser_name: row.is_organiser ? "you" : "the organiser",
+    contribution_fiat_estimate: tokenToFiat(
+      row.contribution_amount,
+      preview.fiat_to_token_exchange_rate
+    ),
+    phase: CycleStatus.forming,
+    current_round: null,
+    total_rounds: null,
+    next_payout_time: null,
+    my_contribution_status: null,
+    my_member_id: "",
+    my_beneficiary: null,
+    members: [],
+    invitations: [],
+    cycle: null,
+    contributions: [],
+  }
+}
+
 export const stokvelQueries = {
+  /** `GET /stokvels`, plus the mock's demo stokvels in development. */
   list: () =>
     queryOptions({
       queryKey: ["stokvels", "list"],
-      queryFn: () => listStokvelsMock(),
+      queryFn: async ({ signal }): Promise<StokvelListRead> => {
+        const { data } = await sdk.stokvels.listStokvels({
+          signal,
+          throwOnError: true,
+        })
+        if (!import.meta.env.DEV) return data
+        const demo = await demoStokvelsMock()
+        return {
+          stokvels: [...data.stokvels, ...demo.stokvels],
+          invitations: [...data.invitations, ...demo.invitations],
+        }
+      },
     }),
+  /** R4-09: `GET /stokvels/{id}` once #236 is built. */
   detail: (stokvelId: string) =>
     queryOptions({
       queryKey: ["stokvels", "detail", stokvelId],
-      queryFn: () => getStokvelMock(stokvelId),
+      queryFn: ({ signal }) =>
+        isDemoStokvel(stokvelId)
+          ? getStokvelMock(stokvelId)
+          : detailFromList(stokvelId, signal),
     }),
   contract: () =>
     queryOptions({
       queryKey: ["admin", "stokvel-contract"],
       queryFn: () => getStokvelContractStatusMock(),
     }),
-}
-
-/** Mutations in the shape `useMutation` spreads, like the client's. */
-export const stokvelMutations = {
-  create: () => ({
-    mutationFn: (body: StokvelCreateRequest) => createStokvelMock(body),
-  }),
 }
 
 export async function invalidateStokvels(queryClient: QueryClient) {
@@ -265,6 +289,92 @@ export function roundLabel(round: number, totalRounds: number): string {
 /** The pool for one round: every member pays the same amount. */
 export function poolAmount(amount: string, memberCount: number): string {
   return fromCents(amountToCents(amount) * BigInt(memberCount))
+}
+
+/**
+ * Each member's share of a round's payout fee, paid on top of their
+ * contribution (D6, #340): the fee and margin on the whole pool, split
+ * evenly and rounded up to the cent, as the API's `contribution_fee_share`
+ * does. An estimate until the member pays; the API fixes the real one then.
+ */
+export function feeShare(
+  fee: string,
+  margin: string,
+  memberCount: number
+): string {
+  if (memberCount <= 0) throw new Error("A round needs members")
+  // Ledger decimals can carry 8 places: add them exactly, then round the
+  // share up to the cent.
+  const a = parseDecimal(fee)
+  const b = parseDecimal(margin)
+  const scale = Math.max(a.scale, b.scale)
+  const total =
+    a.digits * 10n ** BigInt(scale - a.scale) +
+    b.digits * 10n ** BigInt(scale - b.scale)
+  const divisor = BigInt(memberCount) * 10n ** BigInt(scale)
+  const cents = (total * 100n + divisor - 1n) / divisor
+  return fromCents(cents)
+}
+
+/** Decimal places of the ledger's token amounts (Numeric(20,8)). */
+export const TOKEN_DP = 8
+
+/** A stokvel's contribution is set in whole cents of UCTUSD. */
+export const CONTRIBUTION_TOKEN_DP = 2
+
+/** "27.4" → { digits: 274n, scale: 1 }. Non-negative plain decimals only. */
+function parseDecimal(value: string): { digits: bigint; scale: number } {
+  const match = /^(\d+)(?:\.(\d*))?$/.exec(value.trim())
+  if (!match) throw new Error(`Not a non-negative decimal: ${value}`)
+  const [, whole, fraction = ""] = match
+  return { digits: BigInt(whole + fraction), scale: fraction.length }
+}
+
+/** `numerator / denominator` to `dp` places, rounded half up, no floats. */
+function divideToPlaces(
+  numerator: bigint,
+  denominator: bigint,
+  dp: number
+): string {
+  if (denominator === 0n) throw new Error("Division by zero")
+  const scaled = numerator * 10n ** BigInt(dp)
+  const quotient = (2n * scaled + denominator) / (2n * denominator)
+  const digits = quotient.toString().padStart(dp + 1, "0")
+  return dp === 0 ? digits : `${digits.slice(0, -dp)}.${digits.slice(-dp)}`
+}
+
+/**
+ * The token amount a fiat amount buys, to `dp` places, rounded half up.
+ * `rate` is the quote preview's `fiat_to_token_exchange_rate`: token units
+ * per 1 unit of fiat. The create wizard sends it as `contribution_amount`
+ * (D13).
+ */
+export function fiatToToken(
+  fiat: string,
+  rate: string,
+  dp: number = TOKEN_DP
+): string {
+  const amount = parseDecimal(fiat)
+  const perUnit = parseDecimal(rate)
+  return divideToPlaces(
+    amount.digits * perUnit.digits,
+    10n ** BigInt(amount.scale + perUnit.scale),
+    dp
+  )
+}
+
+/** What a token amount costs in fiat at `rate`, to the cent: the rand
+ * figure members see ("R500.00 at today's rate"). The token is never named
+ * on screen. */
+export function tokenToFiat(token: string, rate: string): string {
+  const amount = parseDecimal(token)
+  const perUnit = parseDecimal(rate)
+  if (perUnit.digits === 0n) throw new Error("Cannot convert at a zero rate")
+  return divideToPlaces(
+    amount.digits * 10n ** BigInt(perUnit.scale),
+    perUnit.digits * 10n ** BigInt(amount.scale),
+    2
+  )
 }
 
 /** Members whose contribution to `round` of the current cycle is confirmed. */

@@ -3,60 +3,53 @@ import { assert, test } from "vitest"
 import {
   contributionIssue,
   createStokvelRequest,
-  firstPayoutIssue,
-  generateSchedule,
-  membersIssue,
   nameIssue,
   readCreateSearch,
+  resolveCreateCurrency,
   resolveCreateStep,
-  scheduleIssues,
   writeCreateSearch,
   type CreateSearch,
 } from "./stokvel-create"
 
 const BLANK: CreateSearch = {
   name: "",
-  goal: "",
   currency: null,
   amount: "",
-  members: 3,
-  frequency: "monthly",
-  firstPayout: "",
-  time: "14:00",
   step: null,
 }
+
+// R18.25 per token: 0.05479452 token units per rand.
+const RATE = "0.05479452"
 
 test("search params round-trip and drop defaults", () => {
   const params = writeCreateSearch(BLANK, {
     name: "December groceries",
     amount: "500",
-    firstPayout: "2026-10-23",
     step: "amount",
   })
   assert.equal(
     params.toString(),
-    "name=December+groceries&amount=500&payout=2026-10-23&step=amount"
+    "name=December+groceries&amount=500&step=amount"
   )
   const read = readCreateSearch(params)
   assert.equal(read.name, "December groceries")
-  assert.equal(read.members, 3)
-  assert.equal(read.frequency, "monthly")
-  assert.equal(read.time, "14:00")
+  assert.equal(read.amount, "500")
+  assert.equal(read.step, "amount")
   assert.equal(read.currency, null)
 })
 
-test("non-default members, currency and frequency are kept", () => {
-  const params = writeCreateSearch(BLANK, {
-    members: 2,
-    currency: "USD",
-    frequency: "weekly",
-    time: "09:30",
-  })
-  const read = readCreateSearch(params)
-  assert.equal(read.members, 2)
-  assert.equal(read.currency, "USD")
-  assert.equal(read.frequency, "weekly")
-  assert.equal(read.time, "09:30")
+test("a non-default currency is kept in the URL and ZAR is dropped", () => {
+  assert.equal(
+    readCreateSearch(writeCreateSearch(BLANK, { currency: "USD" })).currency,
+    "USD"
+  )
+  assert.equal(writeCreateSearch(BLANK, { currency: "ZAR" }).toString(), "")
+})
+
+test("resolveCreateCurrency only accepts a currency the user holds", () => {
+  assert.equal(resolveCreateCurrency("USD", ["ZAR", "USD"]), "USD")
+  assert.equal(resolveCreateCurrency("XYZ", ["ZAR", "USD"]), "ZAR")
+  assert.equal(resolveCreateCurrency(null, ["ZAR"]), "ZAR")
 })
 
 test("resolveCreateStep never shows a step the data cannot support", () => {
@@ -78,127 +71,45 @@ test("resolveCreateStep never shows a step the data cannot support", () => {
   )
 })
 
-test("name, amount and members validation", () => {
+test("name and amount validation", () => {
   assert.equal(nameIssue("  "), "Give the stokvel a name.")
   assert.equal(nameIssue("Taxi fund"), null)
-  assert.match(nameIssue("x".repeat(61)) ?? "", /60 characters/)
+  assert.equal(nameIssue("x".repeat(80)), null)
+  assert.match(nameIssue("x".repeat(81)) ?? "", /80 characters/)
   assert.equal(contributionIssue(""), "empty")
   assert.equal(contributionIssue("abc"), "invalid")
   assert.equal(contributionIssue("0"), "invalid")
   assert.equal(contributionIssue("5"), "too_small")
   assert.equal(contributionIssue("500"), null)
-  assert.equal(membersIssue(1), "A stokvel needs at least 2 members.")
-  assert.equal(membersIssue(4), "A stokvel can have at most 3 members.")
-  assert.equal(membersIssue(3), null)
 })
 
-test("first payout must be a future datetime", () => {
-  const now = new Date(2026, 9, 15, 12, 0)
-  assert.equal(
-    firstPayoutIssue("", "14:00", now),
-    "Choose the first payout day."
-  )
-  assert.match(firstPayoutIssue("2026-10-15", "11:00", now) ?? "", /future/)
-  assert.equal(firstPayoutIssue("2026-10-15", "14:00", now), null)
-  assert.match(firstPayoutIssue("2026-13-40", "14:00", now) ?? "", /look right/)
-})
-
-test("generateSchedule makes one round per member with a valid order", () => {
-  const now = new Date(2026, 9, 15, 12, 0)
-  const first = new Date(2026, 9, 23, 14, 0)
-  const rounds = generateSchedule({
-    firstPayout: first,
-    frequency: "monthly",
-    rounds: 3,
-    now,
-  })
-  assert.equal(rounds.length, 3)
-  assert.deepEqual(
-    rounds.map((r) => r.round),
-    [0, 1, 2]
-  )
-  assert.equal(rounds[0].start_time, now.toISOString())
-  assert.equal(rounds[0].payout_time, first.toISOString())
-  assert.equal(rounds[0].deadline, rounds[0].payout_time)
-  // Round 2 pays out a month later and opens the morning after round 1.
-  assert.equal(
-    rounds[1].payout_time,
-    new Date(2026, 10, 23, 14, 0).toISOString()
-  )
-  assert.equal(rounds[1].start_time, new Date(2026, 9, 24, 7, 0).toISOString())
-  assert.deepEqual(scheduleIssues(rounds), [])
-
-  const weekly = generateSchedule({
-    firstPayout: first,
-    frequency: "weekly",
-    rounds: 2,
-    now,
-  })
-  assert.equal(
-    weekly[1].payout_time,
-    new Date(2026, 9, 30, 14, 0).toISOString()
-  )
-})
-
-test("scheduleIssues mirrors the contract's _validateSchedule", () => {
-  const ok = generateSchedule({
-    firstPayout: new Date(2026, 9, 23, 14, 0),
-    frequency: "fortnightly",
-    rounds: 2,
-    now: new Date(2026, 9, 15),
-  })
-  assert.deepEqual(scheduleIssues(ok), [])
-
-  const backwards = [
-    ok[0],
-    { ...ok[1], payout_time: ok[0].payout_time, deadline: ok[0].deadline },
-  ]
-  backwards[1].payout_time = new Date(2026, 9, 20, 14, 0).toISOString()
-  backwards[1].deadline = backwards[1].payout_time
-  // It now also opens (the morning after round 1) after its own pay-by date.
-  assert.deepEqual(scheduleIssues(backwards), [
-    "Round 2 opens after its pay-by date.",
-    "Round 2 pays out before round 1.",
-  ])
-
-  // Equal start and pay-by is fine (the contract compares strictly).
-  assert.deepEqual(
-    scheduleIssues([{ ...ok[0], start_time: ok[0].deadline }]),
-    []
-  )
-  const lateOpen = [
-    { ...ok[0], start_time: new Date(2026, 9, 23, 15, 0).toISOString() },
-  ]
-  assert.deepEqual(scheduleIssues(lateOpen), [
-    "Round 1 opens after its pay-by date.",
-  ])
-
-  const latePayBy = [
-    { ...ok[0], deadline: new Date(2026, 9, 24, 14, 0).toISOString() },
-  ]
-  assert.deepEqual(scheduleIssues(latePayBy), [
-    "Round 1's pay-by date is after its payout.",
-  ])
-
-  assert.deepEqual(scheduleIssues([{ ...ok[0], start_time: "nope" }]), [
-    "Round 1 has an invalid date.",
-  ])
-})
-
-test("createStokvelRequest trims and defaults", () => {
-  const rounds = generateSchedule({
-    firstPayout: new Date(2026, 9, 23, 14, 0),
-    frequency: "monthly",
-    rounds: 2,
-    now: new Date(2026, 9, 15),
-  })
+test("the create body is exactly the API's three fields, in UCTUSD to the cent", () => {
   const body = createStokvelRequest(
-    { ...BLANK, name: " Taxi fund ", goal: " ", amount: "300" },
-    rounds
+    { ...BLANK, name: " Taxi fund ", amount: "500" },
+    "ZAR",
+    RATE
   )
-  assert.equal(body.name, "Taxi fund")
-  assert.equal(body.goal, null)
-  assert.equal(body.currency, "ZAR")
-  assert.equal(body.contribution_fiat_amount, "300")
-  assert.equal(body.rounds.length, 2)
+  // 500 × 0.05479452 = 27.39726, rounded half up to the cent.
+  assert.deepEqual(body, {
+    name: "Taxi fund",
+    currency: "ZAR",
+    contribution_amount: "27.40",
+  })
+  assert.deepEqual(Object.keys(body).sort(), [
+    "contribution_amount",
+    "currency",
+    "name",
+  ])
+  // 300 × 0.05479452 = 16.438356 → 16.44.
+  assert.equal(
+    createStokvelRequest({ ...BLANK, name: "x", amount: "300" }, "ZAR", RATE)
+      .contribution_amount,
+    "16.44"
+  )
+})
+
+test("the body sends the resolved currency, never the raw URL value", () => {
+  const search = { ...BLANK, name: "x", currency: "XYZ", amount: "20" }
+  const currency = resolveCreateCurrency(search.currency, ["ZAR"])
+  assert.equal(createStokvelRequest(search, currency, "1").currency, "ZAR")
 })

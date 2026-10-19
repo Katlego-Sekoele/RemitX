@@ -29,21 +29,17 @@ import { MAX_NAME_LENGTH, nameIssue } from "~/lib/stokvel-create"
 
 export function CreateNameStep({
   name,
-  goal,
   currency,
   currencies,
   onNameChange,
-  onGoalChange,
   onCurrencyChange,
   onContinue,
 }: {
   name: string
-  goal: string
   currency: string
   /** The Stokvel currency options: fiat accounts the organiser holds. */
   currencies: readonly string[]
   onNameChange: (name: string) => void
-  onGoalChange: (goal: string) => void
   onCurrencyChange: (currency: string) => void
   onContinue: () => void
 }) {
@@ -69,7 +65,7 @@ export function CreateNameStep({
         <CardHeader>
           <CardTitle>Name your stokvel</CardTitle>
           <CardDescription>
-            Members see the name and goal on their invitation.
+            Members see the name on their invitation.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -87,18 +83,6 @@ export function CreateNameStep({
                 onBlur={() => setTouched(true)}
               />
               {showIssue ? <FieldError>{issue}</FieldError> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="stokvel-goal">
-                Goal <span className="text-muted-foreground">(optional)</span>
-              </FieldLabel>
-              <Input
-                id="stokvel-goal"
-                value={goal}
-                maxLength={120}
-                placeholder="Family support, school fees…"
-                onChange={(event) => onGoalChange(event.target.value)}
-              />
             </Field>
             <Field>
               <FieldLabel htmlFor="stokvel-currency">Currency</FieldLabel>

@@ -12,7 +12,7 @@ import {
 } from "~/lib/stokvel-create"
 
 /**
- * Name, Amount and schedule, Review. `maxStep` is the furthest step the
+ * Name, Amount, Review. `maxStep` is the furthest step the
  * wizard can reach with what has been entered so far. Invitations (#253) and
  * the payout order (#255) add their steps to `CREATE_STEPS`.
  */

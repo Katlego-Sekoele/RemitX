@@ -1,6 +1,5 @@
 import { ArrowClockwiseIcon, UsersFourIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
-import { format } from "date-fns"
 import { Link } from "react-router"
 
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
@@ -34,15 +33,15 @@ import {
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
+import { useTokenRate } from "~/hooks/use-token-rate"
 import { formatMoney } from "~/lib/money"
 import {
-  PHASE_LABELS,
-  roundLabel,
   stokvelNewPath,
   stokvelPath,
   stokvelQueries,
+  tokenToFiat,
   type StokvelInvitationRead,
-  type StokvelSummaryRead,
+  type StokvelRead,
 } from "~/lib/stokvels"
 import type { Route } from "./+types/stokvels"
 
@@ -56,9 +55,10 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * The member's stokvels and pending invitations (R4-02 scaffold, #251).
- * Reads mocked data until the API lands; the create wizard is at
- * app/stokvels/new (#252), invitation actions are R4-04 (#253).
+ * The member's stokvels and pending invitations (R4-02 scaffold, #251), in
+ * the shape of `GET /stokvels` (#229). Reads mocked data until R4-09; the
+ * create wizard is at app/stokvels/new (#252), invitation actions are R4-04
+ * (#253). Round and payout details live on each stokvel's own page.
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
@@ -150,11 +150,28 @@ export default function StokvelsPage() {
   )
 }
 
-function StokvelCard({ stokvel }: { stokvel: StokvelSummaryRead }) {
-  const active =
-    stokvel.phase === "active" &&
-    stokvel.current_round !== null &&
-    stokvel.total_rounds !== null
+/** "R500.00 at today's rate", from the fixed token amount (D13). The token is
+ * never named on screen. */
+function ContributionAtTodaysRate({
+  amount,
+  currency,
+}: {
+  amount: string
+  currency: string
+}) {
+  const rate = useTokenRate(currency)
+  if (rate.isPending) return <Skeleton className="inline-block h-3 w-24" />
+  if (!rate.data) return <>Amount unavailable</>
+  return (
+    <>
+      {formatMoney(tokenToFiat(amount, rate.data), currency)} at today&apos;s
+      rate
+    </>
+  )
+}
+
+function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
+  const closed = stokvel.deactivated_at !== null
   return (
     <Card>
       <CardHeader>
@@ -162,25 +179,23 @@ function StokvelCard({ stokvel }: { stokvel: StokvelSummaryRead }) {
           <CardTitle>
             <Link to={stokvelPath(stokvel.stokvel_id)}>{stokvel.name}</Link>
           </CardTitle>
-          <Badge variant={stokvel.phase === "active" ? "default" : "outline"}>
-            {active
-              ? roundLabel(stokvel.current_round!, stokvel.total_rounds!)
-              : PHASE_LABELS[stokvel.phase]}
-          </Badge>
+          {closed ? (
+            <Badge variant="outline">Closed</Badge>
+          ) : stokvel.is_organiser ? (
+            <Badge variant="secondary">You organise</Badge>
+          ) : null}
         </div>
         <CardDescription>
-          {formatMoney(stokvel.contribution_fiat_estimate, stokvel.currency)}{" "}
-          per member · {stokvel.member_count} members ·{" "}
-          {stokvel.is_organiser ? "you organise" : stokvel.organiser_name}
+          <ContributionAtTodaysRate
+            amount={stokvel.contribution_amount}
+            currency={stokvel.currency}
+          />{" "}
+          per member, per round
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">
-          {stokvel.next_payout_time
-            ? `Payout ${format(new Date(stokvel.next_payout_time), "EEE d MMM")}`
-            : stokvel.phase === "forming"
-              ? "No cycle started yet"
-              : "No upcoming payout"}
+          {stokvel.member_count} of {stokvel.max_members} members
         </span>
         <Button
           variant="outline"
@@ -204,12 +219,12 @@ function InvitationCard({ invitation }: { invitation: StokvelInvitationRead }) {
           <Badge variant="secondary">Invitation</Badge>
         </div>
         <CardDescription>
-          {invitation.organiser_name} invited you ·{" "}
-          {formatMoney(
-            invitation.contribution_fiat_estimate,
-            invitation.currency
-          )}{" "}
-          per round · {invitation.member_count} members
+          {invitation.invited_by_name ?? "A RemitX member"} invited you ·{" "}
+          <ContributionAtTodaysRate
+            amount={invitation.contribution_amount}
+            currency={invitation.currency}
+          />{" "}
+          per round
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">

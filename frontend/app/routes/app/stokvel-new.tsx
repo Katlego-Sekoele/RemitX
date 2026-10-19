@@ -28,14 +28,10 @@ import {
   contributionIssue,
   createStepNumber,
   DEFAULT_STOKVEL_CURRENCY,
-  firstPayoutDate,
-  firstPayoutIssue,
-  generateSchedule,
-  membersIssue,
   nameIssue,
   readCreateSearch,
+  resolveCreateCurrency,
   resolveCreateStep,
-  scheduleIssues,
   writeCreateSearch,
   type CreateSearch,
 } from "~/lib/stokvel-create"
@@ -53,10 +49,10 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * Create a stokvel (R4-03, #252): name, amount and schedule, review. Only a
- * KYC-approved user can create one (`POST /stokvels`, #229). Inviting
- * members is #253 and the payout order is #255; both happen on the stokvel's
- * setup page after creation.
+ * Create a stokvel (R4-03, #252): name, amount, review. Only a KYC-approved
+ * user can create one (`POST /stokvels`, #229), which takes just the name,
+ * currency and amount. Inviting members is #253; the payout days and payout
+ * order are #255. Both happen on the stokvel's page after creation.
  */
 export default function StokvelNewPage() {
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
@@ -72,7 +68,8 @@ export default function StokvelNewPage() {
         <PageHeader>
           <PageHeaderTitle>New stokvel</PageHeaderTitle>
           <PageHeaderDescription>
-            Set the amount and the payout days, then invite the members.
+            Name it and set the amount. You invite members and choose the payout
+            days next.
           </PageHeaderDescription>
         </PageHeader>
         {onboarding.isPending ? (
@@ -136,28 +133,11 @@ function CreateFlow() {
         .map((account) => account.currency) ?? []
     return held.length > 0 ? held : [DEFAULT_STOKVEL_CURRENCY]
   }, [accounts.data])
-  const currency =
-    search.currency && currencies.includes(search.currency)
-      ? search.currency
-      : DEFAULT_STOKVEL_CURRENCY
-
-  const schedule = useMemo(() => {
-    const first = firstPayoutDate(search.firstPayout, search.time)
-    if (!first || membersIssue(search.members)) return null
-    return generateSchedule({
-      firstPayout: first,
-      frequency: search.frequency,
-      rounds: search.members,
-    })
-  }, [search.firstPayout, search.time, search.members, search.frequency])
+  // Shown on every step and sent in the body, so they always agree.
+  const currency = resolveCreateCurrency(search.currency, currencies)
 
   const nameValid = nameIssue(search.name) === null
-  const amountValid =
-    contributionIssue(search.amount) === null &&
-    membersIssue(search.members) === null &&
-    firstPayoutIssue(search.firstPayout, search.time) === null &&
-    schedule !== null &&
-    scheduleIssues(schedule).length === 0
+  const amountValid = contributionIssue(search.amount) === null
   const step = resolveCreateStep(search, nameValid, amountValid)
   const maxStep = !nameValid
     ? createStepNumber("name")
@@ -183,11 +163,9 @@ function CreateFlow() {
       {step === "name" ? (
         <CreateNameStep
           name={search.name}
-          goal={search.goal}
           currency={currency}
           currencies={currencies}
           onNameChange={(name) => update({ name }, true)}
-          onGoalChange={(goal) => update({ goal }, true)}
           onCurrencyChange={(next) => update({ currency: next }, true)}
           onContinue={() => update({ step: "amount" })}
         />
@@ -195,19 +173,17 @@ function CreateFlow() {
         <CreateAmountStep
           search={search}
           currency={currency}
-          schedule={schedule}
           onChange={(patch) => update(patch, true)}
           onBack={() => update({ step: "name" })}
           onContinue={() => update({ step: "review" })}
         />
-      ) : schedule ? (
+      ) : (
         <CreateReviewStep
           search={search}
           currency={currency}
-          schedule={schedule}
           onBack={() => update({ step: "amount" })}
         />
-      ) : null}
+      )}
     </div>
   )
 }

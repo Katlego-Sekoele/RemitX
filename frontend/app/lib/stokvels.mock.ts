@@ -1,15 +1,21 @@
 /** Mocked stokvel API responses (R4-02, #251). Deleted by R4-09 (#258).
  *
- * One ZAR stokvel in each phase, plus one pending invitation, shaped like
- * docs/stokvel_integration.md §3 and §5. Amounts: 3 members × R500 (the
- * product team's worked example). The signed-in user is Sipho Khumalo.
+ * One ZAR stokvel in each phase, plus one pending invitation: demo data
+ * the list shows in development next to the API's own stokvels. List rows use
+ * the generated `StokvelRead`; the detail follows docs/stokvel_integration.md
+ * §3 and §5 until `GET /stokvels/{id}` (#236) exists. Amounts: 3
+ * members × R500 (the product team's worked example). The signed-in user is
+ * Sipho Khumalo.
  */
 
 import type {
-  StokvelContractStatusRead,
-  StokvelCreateRequest,
-  StokvelDetailRead,
+  StokvelInvitationRead,
   StokvelListRead,
+  StokvelRead,
+} from "~/client"
+import type {
+  StokvelContractStatusRead,
+  StokvelDetailRead,
 } from "~/lib/stokvels"
 
 const ME = "usr_sipho"
@@ -17,13 +23,15 @@ const ME = "usr_sipho"
 const GROCERIES: StokvelDetailRead = {
   stokvel_id: "stk_8c21",
   name: "December groceries",
-  goal: "Groceries for the family in December",
   currency: "ZAR",
   contribution_amount: "27.40000000",
   contribution_fiat_estimate: "500.00",
   organiser_name: "Lerato Nkosi",
   is_organiser: false,
   member_count: 3,
+  max_members: 3,
+  created_at: "2026-09-09T18:00:00Z",
+  deactivated_at: null,
   phase: "active",
   current_round: 1,
   total_rounds: 3,
@@ -147,19 +155,20 @@ const GROCERIES: StokvelDetailRead = {
       created_at: "2026-10-14T16:40:00Z",
     },
   ],
-  schedule: null,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
   stokvel_id: "stk_77e0",
   name: "Taxi fund",
-  goal: null,
   currency: "ZAR",
   contribution_amount: "16.44000000",
   contribution_fiat_estimate: "300.00",
   organiser_name: "Sipho Khumalo",
   is_organiser: true,
   member_count: 2,
+  max_members: 3,
+  created_at: "2026-10-12T11:00:00Z",
+  deactivated_at: null,
   phase: "forming",
   current_round: null,
   total_rounds: null,
@@ -189,30 +198,28 @@ const TAXI_FUND: StokvelDetailRead = {
     {
       invitation_id: "inv_bongani",
       stokvel_id: "stk_77e0",
-      stokvel_name: "Taxi fund",
-      organiser_name: "Sipho Khumalo",
-      currency: "ZAR",
-      contribution_fiat_estimate: "300.00",
-      member_count: 2,
+      account_reference: "bongani1-zar",
+      invitee_name: "Bongani Z.",
       status: "pending",
       created_at: "2026-10-14T07:30:00Z",
     },
   ],
   cycle: null,
   contributions: [],
-  schedule: null,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
   stokvel_id: "stk_02bd",
   name: "School fees 2026",
-  goal: "Term fees",
   currency: "ZAR",
   contribution_amount: "27.40000000",
   contribution_fiat_estimate: "500.00",
   organiser_name: "Lerato Nkosi",
   is_organiser: false,
   member_count: 3,
+  max_members: 3,
+  created_at: "2026-06-20T09:00:00Z",
+  deactivated_at: null,
   phase: "closed",
   current_round: 2,
   total_rounds: 3,
@@ -238,7 +245,6 @@ const SCHOOL_FEES: StokvelDetailRead = {
     rounds: [],
   },
   contributions: [],
-  schedule: null,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -247,30 +253,29 @@ const DETAILS: Record<string, StokvelDetailRead> = {
   [SCHOOL_FEES.stokvel_id]: SCHOOL_FEES,
 }
 
-const FAMILY_SUPPORT_INVITATION = {
+const FAMILY_SUPPORT_INVITATION: StokvelInvitationRead = {
   invitation_id: "inv_family",
   stokvel_id: "stk_1a9f",
   stokvel_name: "Family support",
-  organiser_name: "Naledi Mokoena",
   currency: "ZAR",
-  contribution_fiat_estimate: "250.00",
-  member_count: 3,
-  status: "pending" as const,
+  contribution_amount: "13.70000000",
+  invited_by_name: "Naledi M.",
   created_at: "2026-10-14T18:20:00Z",
 }
 
-function summaryOf(detail: StokvelDetailRead) {
-  const {
-    my_member_id: _me,
-    my_beneficiary: _beneficiary,
-    members: _members,
-    invitations: _invitations,
-    cycle: _cycle,
-    contributions: _contributions,
-    schedule: _schedule,
-    ...summary
-  } = detail
-  return summary
+/** The `GET /stokvels` row: exactly the backend's `StokvelRead` fields. */
+function summaryOf(detail: StokvelDetailRead): StokvelRead {
+  return {
+    stokvel_id: detail.stokvel_id,
+    name: detail.name,
+    currency: detail.currency,
+    contribution_amount: detail.contribution_amount,
+    is_organiser: detail.is_organiser,
+    member_count: detail.member_count,
+    max_members: detail.max_members,
+    created_at: detail.created_at,
+    deactivated_at: detail.deactivated_at,
+  }
 }
 
 /** A short pause so loading states show while the screens are built. */
@@ -278,7 +283,8 @@ function settle<T>(value: T): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), 250))
 }
 
-export function listStokvelsMock(): Promise<StokvelListRead> {
+/** Demo rows for the list, in development only. */
+export function demoStokvelsMock(): Promise<StokvelListRead> {
   return settle({
     stokvels: Object.values(DETAILS).map(summaryOf),
     invitations: [FAMILY_SUPPORT_INVITATION],
@@ -302,59 +308,4 @@ export function getStokvelContractStatusMock(): Promise<StokvelContractStatusRea
     paused: false,
     treasury_token_balance: "110000.00000000",
   })
-}
-
-/** The rate the mock fixes the token amount at (D13); the API uses the live
- * one. */
-const MOCK_ZAR_PER_TOKEN = 18.25
-
-/**
- * `POST /stokvels`: the caller becomes Organiser and first Member of a
- * stokvel with no cycle yet. Kept in memory so the list shows it until the
- * page reloads.
- */
-export function createStokvelMock(
-  body: StokvelCreateRequest
-): Promise<StokvelDetailRead> {
-  const id = `stk_${Date.now().toString(36)}`
-  const token = (
-    Number(body.contribution_fiat_amount) / MOCK_ZAR_PER_TOKEN
-  ).toFixed(8)
-  const now = new Date().toISOString()
-  const detail: StokvelDetailRead = {
-    stokvel_id: id,
-    name: body.name,
-    goal: body.goal,
-    currency: body.currency,
-    contribution_amount: token,
-    contribution_fiat_estimate: Number(body.contribution_fiat_amount).toFixed(
-      2
-    ),
-    organiser_name: "Sipho Khumalo",
-    is_organiser: true,
-    member_count: 1,
-    phase: "forming",
-    current_round: null,
-    total_rounds: null,
-    next_payout_time: null,
-    my_contribution_status: null,
-    my_member_id: `mem_sipho_${id}`,
-    my_beneficiary: null,
-    members: [
-      {
-        member_id: `mem_sipho_${id}`,
-        user_id: ME,
-        full_name: "Sipho Khumalo",
-        is_organiser: true,
-        is_me: true,
-        joined_at: now,
-      },
-    ],
-    invitations: [],
-    cycle: null,
-    contributions: [],
-    schedule: body.rounds,
-  }
-  DETAILS[id] = detail
-  return settle(detail)
 }
