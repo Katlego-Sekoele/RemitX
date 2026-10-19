@@ -15,6 +15,7 @@ import {
 import { Button } from "~/components/ui/button"
 import { FieldError } from "~/components/ui/field"
 import {
+  canReleaseByHand,
   finaliseHint,
   finaliseRefusalMessage,
   invalidateAdminRounds,
@@ -47,7 +48,7 @@ export function StokvelFinaliseButton({
   })
   const hint = finaliseHint(round)
 
-  if (round.release_status === "released") return null
+  if (!canReleaseByHand(round)) return null
 
   return (
     <>
@@ -71,6 +72,9 @@ export function StokvelFinaliseButton({
               this only when the automatic release hasn&apos;t happened. The
               contract still checks that everyone has paid and the payout time
               has passed, and your name is recorded in the audit log.
+              {round.release_status === "failed"
+                ? " The automatic release failed for this round."
+                : ""}
               {hint ? ` Note: ${hint}` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

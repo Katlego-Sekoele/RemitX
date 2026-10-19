@@ -136,6 +136,10 @@ export default function StokvelRoundsPage() {
                                 ) : (
                                   <Badge>Released</Badge>
                                 )
+                              ) : round.release_status === "failed" ? (
+                                <Badge variant="destructive">
+                                  Release failed
+                                </Badge>
                               ) : hint ? (
                                 <span className="text-xs text-muted-foreground">
                                   {hint}

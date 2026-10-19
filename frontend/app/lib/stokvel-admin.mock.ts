@@ -1,6 +1,7 @@
 /** Mocked admin stokvel rounds and manual release (R4-11, #260) until
  * R3-10 (#247). Deleted by R4-09 (#258). One round per demo state: ready,
- * waiting for a member, before its payout time, and already released. */
+ * waiting for a member, before its payout time, release failed, release in
+ * progress, and already released. */
 
 import type { AdminStokvelRoundRead } from "~/lib/stokvel-admin"
 
@@ -43,6 +44,32 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       member_count: 2,
       payout_time: new Date(now + 3 * DAY).toISOString(),
       release_status: "pending",
+      release_tx_hash: null,
+    },
+    {
+      stokvel_id: "stk_6b70",
+      stokvel_name: "Holiday club",
+      round: 1,
+      total_rounds: 3,
+      recipient_name: "Bongani Zulu",
+      paid_count: 3,
+      member_count: 3,
+      // The worker's release failed: the case the manual release exists for.
+      payout_time: new Date(now - 3 * DAY).toISOString(),
+      release_status: "failed",
+      release_tx_hash: null,
+    },
+    {
+      stokvel_id: "stk_c5e1",
+      stokvel_name: "Church group",
+      round: 2,
+      total_rounds: 3,
+      recipient_name: "Zola Dube",
+      paid_count: 3,
+      member_count: 3,
+      // The worker's release is in flight.
+      payout_time: new Date(now - 60 * 60 * 1000).toISOString(),
+      release_status: "processing",
       release_tx_hash: null,
     },
     {
@@ -92,6 +119,9 @@ export async function finaliseRoundMock(
     (r) => r.stokvel_id === stokvelId && r.round === round
   )
   if (!row) throw apiError("Stokvel not found.", 404)
+  if (row.release_status === "processing") {
+    throw apiError("This round is already being paid out.", 409)
+  }
   if (row.release_status === "released") {
     throw apiError(
       "This round has already been paid out.",

@@ -71,6 +71,8 @@ export function finaliseHint(
   now: Date = new Date()
 ): string | null {
   if (round.release_status === "released") return "Already paid out."
+  // The worker's own release is in flight: a second one must not be sent.
+  if (round.release_status === "processing") return "Release in progress."
   const waiting = round.member_count - round.paid_count
   if (waiting > 0) {
     return `Waiting for ${waiting} ${waiting === 1 ? "member" : "members"} to pay.`
@@ -79,6 +81,19 @@ export function finaliseHint(
     return "Its payout time hasn't come yet."
   }
   return null
+}
+
+/**
+ * Whether the page offers Release payout for a round: not once it has been
+ * released, and not while the worker's release is in flight. A failed
+ * release keeps the button: that's the case the fallback exists for (P5).
+ */
+export function canReleaseByHand(
+  round: Pick<AdminStokvelRoundRead, "release_status">
+): boolean {
+  return (
+    round.release_status !== "released" && round.release_status !== "processing"
+  )
 }
 
 const ROUNDS_KEY = ["admin", "stokvel-rounds"] as const

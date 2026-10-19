@@ -1,6 +1,10 @@
 import { assert, beforeEach, expect, test } from "vitest"
 
-import { finaliseHint, finaliseRefusalMessage } from "./stokvel-admin"
+import {
+  canReleaseByHand,
+  finaliseHint,
+  finaliseRefusalMessage,
+} from "./stokvel-admin"
 import {
   finaliseRoundMock,
   listAdminRoundsMock,
@@ -87,4 +91,30 @@ test("the mock releases a ready round and refuses the rest like the contract", a
   await expect(finaliseRoundMock("stk_nope", 0)).rejects.toMatchObject({
     status: 404,
   })
+})
+
+test("in-progress and failed releases read differently from a fresh round", () => {
+  // In flight: say so, and offer no second release.
+  assert.equal(
+    finaliseHint({ ...ready, release_status: "processing" }, NOW),
+    "Release in progress."
+  )
+  assert.equal(canReleaseByHand({ release_status: "processing" }), false)
+  assert.equal(canReleaseByHand({ release_status: "released" }), false)
+  // Failed: ready to release by hand, which is what the fallback is for.
+  assert.equal(finaliseHint({ ...ready, release_status: "failed" }, NOW), null)
+  assert.equal(canReleaseByHand({ release_status: "failed" }), true)
+  assert.equal(canReleaseByHand({ release_status: "pending" }), true)
+  assert.equal(canReleaseByHand({ release_status: null }), true)
+})
+
+test("the mock releases a failed round and refuses one in flight", async () => {
+  const rounds = await listAdminRoundsMock()
+  const failed = rounds.find((r) => r.release_status === "failed")!
+  const inFlight = rounds.find((r) => r.release_status === "processing")!
+  const released = await finaliseRoundMock(failed.stokvel_id, failed.round)
+  assert.equal(released.release_status, "released")
+  await expect(
+    finaliseRoundMock(inFlight.stokvel_id, inFlight.round)
+  ).rejects.toMatchObject({ status: 409 })
 })
