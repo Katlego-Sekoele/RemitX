@@ -4981,6 +4981,37 @@
         "title": "SkippedStatementLineReason",
         "type": "string"
       },
+      "StokvelBeneficiaryChoiceRead": {
+        "description": "The beneficiary the caller chose for this cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "payout_currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          }
+        },
+        "required": [
+          "beneficiary_id",
+          "full_name",
+          "payout_currency"
+        ],
+        "title": "StokvelBeneficiaryChoiceRead",
+        "type": "object"
+      },
       "StokvelBeneficiaryRead": {
         "description": "The caller's payout beneficiary for the stokvel's forming cycle.",
         "properties": {
@@ -5310,6 +5341,287 @@
         "title": "StokvelCycleStatus",
         "type": "string"
       },
+      "StokvelDetailCycleRead": {
+        "description": "The stokvel's current cycle on `GET /stokvels/{id}`.\n\nDistinct from `StokvelCycleRead`, which is the body `POST\n/stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.",
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "current_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Round"
+          },
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "payout_order": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Payout Order",
+            "type": "array"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelRoundRead"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rounds"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "cycle_number",
+          "status",
+          "current_round",
+          "total_rounds",
+          "started_at",
+          "closed_at",
+          "payout_order",
+          "rounds"
+        ],
+        "title": "StokvelDetailCycleRead",
+        "type": "object"
+      },
+      "StokvelDetailRead": {
+        "description": "`GET /stokvels/{id}`: the member screen for one stokvel.",
+        "properties": {
+          "contribution_amount": {
+            "description": "Fixed UCTUSD (token) amount each member contributes per round, for the stokvel's life (D13). Members pay it from their account in the Stokvel currency at the live rate when they contribute.",
+            "title": "Contribution Amount",
+            "type": "string"
+          },
+          "contribution_fiat_estimate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution Fiat Estimate"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelRoundContributionRead"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          },
+          "current_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Round"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelDetailCycleRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "invitations": {
+            "items": {
+              "$ref": "#/components/schemas/SentStokvelInvitationRead"
+            },
+            "title": "Invitations",
+            "type": "array"
+          },
+          "is_organiser": {
+            "title": "Is Organiser",
+            "type": "boolean"
+          },
+          "max_members": {
+            "title": "Max Members",
+            "type": "integer"
+          },
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelMemberRead"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "my_beneficiary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelBeneficiaryChoiceRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "my_contribution_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Contribution Status"
+          },
+          "my_member_id": {
+            "format": "uuid",
+            "title": "My Member Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_payout_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Payout Time"
+          },
+          "organiser_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organiser Name"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          },
+          "total_rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rounds"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "name",
+          "currency",
+          "contribution_amount",
+          "is_organiser",
+          "member_count",
+          "max_members",
+          "created_at",
+          "deactivated_at",
+          "organiser_name",
+          "contribution_fiat_estimate",
+          "phase",
+          "current_round",
+          "total_rounds",
+          "next_payout_time",
+          "my_contribution_status",
+          "my_member_id",
+          "my_beneficiary",
+          "members",
+          "invitations",
+          "cycle",
+          "contributions"
+        ],
+        "title": "StokvelDetailRead",
+        "type": "object"
+      },
       "StokvelInvitationCreateRequest": {
         "additionalProperties": false,
         "description": "Invite the owner of an account to the stokvel.",
@@ -5415,6 +5727,54 @@
           "invitations"
         ],
         "title": "StokvelListRead",
+        "type": "object"
+      },
+      "StokvelMemberRead": {
+        "description": "A current member of a stokvel, as another member may see them.",
+        "properties": {
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "is_me": {
+            "title": "Is Me",
+            "type": "boolean"
+          },
+          "is_organiser": {
+            "title": "Is Organiser",
+            "type": "boolean"
+          },
+          "joined_at": {
+            "title": "Joined At",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "user_id",
+          "full_name",
+          "is_organiser",
+          "is_me",
+          "joined_at"
+        ],
+        "title": "StokvelMemberRead",
         "type": "object"
       },
       "StokvelPayoutOrderRead": {
@@ -5558,6 +5918,197 @@
           "deactivated_at"
         ],
         "title": "StokvelRead",
+        "type": "object"
+      },
+      "StokvelRoundContributionRead": {
+        "description": "A contribution in the current cycle. `fee_amount` is set only on the\ncaller's own rows.",
+        "properties": {
+          "amount_fiat": {
+            "title": "Amount Fiat",
+            "type": "string"
+          },
+          "amount_token": {
+            "title": "Amount Token",
+            "type": "string"
+          },
+          "contribution_id": {
+            "format": "uuid",
+            "title": "Contribution Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "evm_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evm Tx Hash"
+          },
+          "fee_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contribution_id",
+          "cycle_id",
+          "round",
+          "member_id",
+          "amount_fiat",
+          "amount_token",
+          "fee_amount",
+          "status",
+          "evm_tx_hash",
+          "created_at"
+        ],
+        "title": "StokvelRoundContributionRead",
+        "type": "object"
+      },
+      "StokvelRoundRead": {
+        "description": "One round of the current cycle, with its payout once one exists.",
+        "properties": {
+          "burn_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burn Tx Hash"
+          },
+          "deadline": {
+            "title": "Deadline",
+            "type": "string"
+          },
+          "payout_time": {
+            "title": "Payout Time",
+            "type": "string"
+          },
+          "pool_fiat_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Fiat Amount"
+          },
+          "recipient_member_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Member Id"
+          },
+          "release_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Status"
+          },
+          "release_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Tx Hash"
+          },
+          "remittance_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remittance Id"
+          },
+          "remittance_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remittance Status"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "round",
+          "start_time",
+          "deadline",
+          "payout_time",
+          "recipient_member_id",
+          "release_status",
+          "remittance_status",
+          "remittance_id",
+          "release_tx_hash",
+          "burn_tx_hash",
+          "pool_fiat_amount"
+        ],
+        "title": "StokvelRoundRead",
         "type": "object"
       },
       "StokvelRoundTimesRequest": {
@@ -12063,6 +12614,75 @@
           }
         ],
         "summary": "Create a stokvel",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}": {
+      "get": {
+        "description": "The member screen for one stokvel: the group, its current cycle,\nwho has paid, and each round's payout once one exists.\n\n404 for an unknown stokvel or one the caller is not a current member of,\nthe same answer, so an id reveals nothing. `contribution_fiat_estimate`\nis null when no exchange rate is available. `fee_amount` is set only on\nthe caller's own contributions. `pool_fiat_amount` is null.\n`remittance_id` is the payout reference.",
+        "operationId": "get_stokvel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read one stokvel",
         "tags": [
           "stokvels"
         ]

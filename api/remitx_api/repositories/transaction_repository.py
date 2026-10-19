@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import or_, select, update
 
@@ -19,6 +20,17 @@ from remitx_api.repositories.repository import Repository
 class TransactionRepository(Repository[Transaction, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Transaction)
+
+    def amounts(self, tx_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """`amount` of each transaction in `tx_ids`. Missing ids are absent."""
+        if not tx_ids:
+            return {}
+        rows = db.session.execute(
+            select(Transaction.tx_id, Transaction.amount).where(
+                Transaction.tx_id.in_(tx_ids)
+            )
+        ).all()
+        return dict(rows)
 
     def add(self, transaction: Transaction) -> Transaction:
         """Insert a transaction. Flushes only — caller commits."""
