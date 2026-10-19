@@ -130,6 +130,8 @@ class StokvelCycleView:
     total_rounds: int | None
     started_at: datetime | None
     closed_at: datetime | None
+    # Null until startCycle is mined. status is already `active` by then.
+    registered_at: datetime | None
     payout_order: list[uuid.UUID]
     rounds: list[StokvelRoundView]
 
@@ -155,7 +157,8 @@ class StokvelDetailInvitationView:
     invitation_id: uuid.UUID
     stokvel_id: uuid.UUID
     invitee_name: str | None
-    account_reference: str
+    # The Organiser sees it. Other members do not: it is an EFT reference.
+    account_reference: str | None
     status: str
     created_at: datetime
 
@@ -346,13 +349,15 @@ class StokvelController:
                     invitation_id=invitation.id,
                     stokvel_id=invitation.stokvel_id,
                     invitee_name=_display(invitee),
-                    account_reference=reference or "",
+                    account_reference=reference,
                     status=invitation.status,
                     created_at=invitation.created_at,
                 )
                 for invitation, invitee, reference in (
                     self._invitations.list_pending_for_stokvel(
-                        stokvel.id, stokvel.currency
+                        stokvel.id,
+                        stokvel.currency,
+                        include_reference=user_id == stokvel.organiser_user_id,
                     )
                 )
             ],
@@ -391,6 +396,7 @@ class StokvelController:
             for row in cycle_members
             if row.payout_position is not None
         }
+        payout_order = _payout_order(by_position)
         contributions = self._contributions.list_for_cycle(cycle.id)
         fees = self._transactions.amounts(
             {
@@ -408,9 +414,16 @@ class StokvelController:
                 total_rounds=cycle.total_rounds,
                 started_at=cycle.started_at,
                 closed_at=cycle.closed_at,
-                payout_order=_payout_order(by_position),
+                registered_at=cycle.registered_at,
+                payout_order=payout_order,
                 rounds=[
-                    _round_view(rnd, by_position.get(rnd.round), payouts.get(rnd.round))
+                    _round_view(
+                        rnd,
+                        by_position.get(rnd.round)
+                        if rnd.round < len(payout_order)
+                        else None,
+                        payouts.get(rnd.round),
+                    )
                     for rnd in rounds
                 ],
             ),
