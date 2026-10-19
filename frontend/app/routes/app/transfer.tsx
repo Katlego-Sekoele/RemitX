@@ -125,7 +125,7 @@ function TransferDetail({ transfer }: { transfer: Transfer }) {
           {transfer.status === "confirmed" && transfer.evm_tx_hash ? (
             <DescriptionList>
               <DescriptionItem>
-                <DescriptionTerm>XRPL transaction</DescriptionTerm>
+                <DescriptionTerm>Transaction</DescriptionTerm>
                 <DescriptionDetails>
                   <ChainTxHash hash={transfer.evm_tx_hash} />
                 </DescriptionDetails>

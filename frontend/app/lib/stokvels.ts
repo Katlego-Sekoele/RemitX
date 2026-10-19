@@ -303,17 +303,13 @@ export function stokvelPath(stokvelId: string): string {
   return `/app/stokvels/${stokvelId}`
 }
 
-/** Explorer for the XRPL EVM Testnet. R4-08 (#257) moves this into the
- * tx-hash component with the API's `EVM_EXPLORER_URL`. */
-export const EVM_EXPLORER_URL = "https://explorer.testnet.xrplevm.org"
-
-export function explorerTxUrl(hash: string): string {
-  return `${EVM_EXPLORER_URL}/tx/${hash}`
-}
-
-export function explorerAddressUrl(address: string): string {
-  return `${EVM_EXPLORER_URL}/address/${address}`
-}
+/** Explorer links come from `lib/chain`, which reads `VITE_EVM_EXPLORER_URL`
+ * (#257), so every page links the same way. */
+export {
+  EVM_EXPLORER_URL,
+  explorerAddressUrl,
+  explorerTxUrl,
+} from "~/lib/chain"
 
 /** "Round 2 of 3" from a 0-based round index. */
 export function roundLabel(round: number, totalRounds: number): string {

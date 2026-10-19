@@ -225,7 +225,7 @@ function History({ account }: { account: AccountRead }) {
             <TableHead>Description</TableHead>
             <TableHead className="text-right">Amount</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>XRPL transaction</TableHead>
+            <TableHead>Transaction</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
