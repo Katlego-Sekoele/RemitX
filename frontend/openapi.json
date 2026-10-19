@@ -9744,7 +9744,7 @@
     },
     "/beneficiaries/{beneficiary_id}": {
       "delete": {
-        "description": "Remove one of the caller's beneficiaries for good. Past transfers keep\ntheir recipient: they point at the person, not this entry.\n\nSomeone else's beneficiary answers 404, the same as an unknown id.",
+        "description": "Remove one of the caller's beneficiaries for good. Past transfers keep\ntheir recipient: they point at the person, not this entry.\n\nSomeone else's beneficiary answers 404, the same as an unknown id. A\nbeneficiary a stokvel cycle pays answers 409\n`beneficiary_in_use_by_stokvel`: the member chooses another for that\nstokvel first.",
         "operationId": "delete_beneficiary",
         "parameters": [
           {
@@ -9781,6 +9781,16 @@
               }
             },
             "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
           },
           "422": {
             "content": {

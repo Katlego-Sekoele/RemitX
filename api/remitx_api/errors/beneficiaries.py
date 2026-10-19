@@ -102,3 +102,18 @@ class UnknownBeneficiaryError(NotFoundError):
     def __init__(self, beneficiary_id: uuid.UUID | str) -> None:
         super().__init__("Beneficiary not found")
         self.beneficiary_id = str(beneficiary_id)
+
+
+class BeneficiaryInUseError(ConflictError):
+    """A stokvel cycle pays this beneficiary, so it can't be removed: the
+    cycle row points at it. Code and wording are in section 6 of
+    `docs/stokvel_integration.md`."""
+
+    code = "beneficiary_in_use_by_stokvel"
+
+    def __init__(self, beneficiary_id: uuid.UUID | str) -> None:
+        super().__init__(
+            "A stokvel pays this beneficiary. Choose a different beneficiary "
+            "for that stokvel before removing this one."
+        )
+        self.beneficiary_id = str(beneficiary_id)

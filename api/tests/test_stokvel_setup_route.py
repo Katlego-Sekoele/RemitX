@@ -222,6 +222,35 @@ def _open_usd_account(person: Person) -> None:
     _in_session(open_account)
 
 
+def _start(stokvel_id) -> None:
+    """Start the open cycle and lock its rows, as R2-10 will. Every row
+    must already have its position and beneficiary."""
+
+    def start():
+        cycle = db.session.scalars(
+            select(StokvelCycle).where(
+                StokvelCycle.stokvel_id == stokvel_id,
+                StokvelCycle.status == StokvelCycleStatus.FORMING.value,
+            )
+        ).one()
+        rows = db.session.scalars(
+            select(StokvelCycleMember).where(StokvelCycleMember.cycle_id == cycle.id)
+        ).all()
+        cycle.status = StokvelCycleStatus.ACTIVE.value
+        cycle.total_rounds = len(rows)
+        cycle.current_round = 0
+        cycle.started_at = datetime.now(UTC)
+        for row in rows:
+            row.locked = True
+        db.session.commit()
+
+    _in_session(start)
+
+
+def _beneficiary_exists(beneficiary_id: uuid.UUID) -> bool:
+    return _in_session(lambda: db.session.get(Beneficiary, beneficiary_id)) is not None
+
+
 def _choices(stokvel_id) -> dict[uuid.UUID, tuple[uuid.UUID | None, str | None]]:
     """Each open-cycle row's (beneficiary, payout currency), by member id."""
     return {
@@ -266,6 +295,11 @@ class Api:
             f"/stokvels/{stokvel_id}/members/me/beneficiary",
             json={"beneficiary_id": str(beneficiary_id)},
             headers={USER_HEADER: str(as_.id)},
+        )
+
+    def delete_beneficiary(self, as_: Person, beneficiary_id):
+        return self.client.delete(
+            f"/beneficiaries/{beneficiary_id}", headers={USER_HEADER: str(as_.id)}
         )
 
 
@@ -705,6 +739,64 @@ def test_choosing_anonymously_is_rejected(anonymous_client):
     assert response.status_code == 401
 
 
+# --- removing a beneficiary a stokvel pays -------------------------------------
+
+
+def test_a_beneficiary_chosen_for_a_forming_cycle_cannot_be_removed(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+    assert api.beneficiary(thandi, group.stokvel_id, beneficiary_id).status_code == 200
+
+    _refused(
+        api.delete_beneficiary(thandi, beneficiary_id),
+        409,
+        "beneficiary_in_use_by_stokvel",
+    )
+    assert _beneficiary_exists(beneficiary_id)
+    assert _choices(group.stokvel_id)[group.member_id(thandi)] == (
+        beneficiary_id,
+        CURRENCY_ZAR,
+    )
+
+
+def test_a_beneficiary_a_locked_cycle_pays_cannot_be_removed(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    order = [group.member_id(organiser), group.member_id(thandi)]
+    assert api.payout_order(organiser, group.stokvel_id, order).status_code == 200
+    chosen = {
+        organiser: _beneficiary(organiser, _person("brother")),
+        thandi: _beneficiary(thandi, _person("mother")),
+    }
+    for person, beneficiary_id in chosen.items():
+        assert (
+            api.beneficiary(person, group.stokvel_id, beneficiary_id).status_code == 200
+        )
+    _start(group.stokvel_id)
+
+    _refused(
+        api.delete_beneficiary(thandi, chosen[thandi]),
+        409,
+        "beneficiary_in_use_by_stokvel",
+    )
+    assert _beneficiary_exists(chosen[thandi])
+
+
+def test_a_beneficiary_no_longer_chosen_can_be_removed(api):
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    first = _beneficiary(thandi, _person("mother"))
+    second = _beneficiary(thandi, _person("brother"))
+    assert api.beneficiary(thandi, group.stokvel_id, first).status_code == 200
+    assert api.beneficiary(thandi, group.stokvel_id, second).status_code == 200
+
+    response = api.delete_beneficiary(thandi, first)
+
+    assert response.status_code == 204, response.text
+    assert not _beneficiary_exists(first)
+
+
 # --- under Postgres row-level security --------------------------------------
 
 
@@ -783,4 +875,42 @@ def test_under_row_security_a_member_adds_their_own_missing_row(pg_api):
     assert _choices(group.stokvel_id)[group.member_id(thandi)] == (
         beneficiary_id,
         CURRENCY_ZAR,
+    )
+
+
+@pytest.mark.postgres
+def test_under_row_security_a_chosen_beneficiary_cannot_be_removed(pg_api):
+    """The member's own cycle row is visible to the check, so the delete is
+    refused with 409, not the foreign key's 500."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+    assert (
+        pg_api.beneficiary(thandi, group.stokvel_id, beneficiary_id).status_code == 200
+    )
+
+    _refused(
+        pg_api.delete_beneficiary(thandi, beneficiary_id),
+        409,
+        "beneficiary_in_use_by_stokvel",
+    )
+    assert _beneficiary_exists(beneficiary_id)
+
+
+@pytest.mark.postgres
+def test_under_row_security_a_former_member_still_cannot_remove_it(pg_api):
+    """A member who has left still sees their cycle row, so the check still
+    finds it."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+    assert (
+        pg_api.beneficiary(thandi, group.stokvel_id, beneficiary_id).status_code == 200
+    )
+    _leave(group.member_id(thandi))
+
+    _refused(
+        pg_api.delete_beneficiary(thandi, beneficiary_id),
+        409,
+        "beneficiary_in_use_by_stokvel",
     )

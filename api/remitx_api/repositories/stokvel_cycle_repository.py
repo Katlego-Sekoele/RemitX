@@ -61,6 +61,18 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
         db.session.flush()
         return member
 
+    def pays_beneficiary(self, beneficiary_id: uuid.UUID) -> bool:
+        """Whether any cycle row, of any status, pays this beneficiary. On
+        Postgres the caller sees the rows of every stokvel they are or were a
+        member of, so their own choices are always visible."""
+        return db.session.scalar(
+            select(
+                exists().where(
+                    StokvelCycleMember.payout_beneficiary_id == beneficiary_id
+                )
+            )
+        )
+
     def clear_payout_positions(self, cycle_id: uuid.UUID) -> None:
         """Clear every payout position in the cycle, former members' rows
         included, so a new order can be written row by row without meeting

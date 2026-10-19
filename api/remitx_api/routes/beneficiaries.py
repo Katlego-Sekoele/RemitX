@@ -135,7 +135,7 @@ def update_beneficiary(
     "/{beneficiary_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove a beneficiary",
-    responses=error_responses(404),
+    responses=error_responses(404, 409),
 )
 def delete_beneficiary(
     beneficiary_id: uuid.UUID,
@@ -144,6 +144,9 @@ def delete_beneficiary(
     """Remove one of the caller's beneficiaries for good. Past transfers keep
     their recipient: they point at the person, not this entry.
 
-    Someone else's beneficiary answers 404, the same as an unknown id.
+    Someone else's beneficiary answers 404, the same as an unknown id. A
+    beneficiary a stokvel cycle pays answers 409
+    `beneficiary_in_use_by_stokvel`: the member chooses another for that
+    stokvel first.
     """
     controller.delete(user.id, beneficiary_id)
