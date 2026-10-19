@@ -291,3 +291,90 @@ class InvalidPayoutOrderError(DomainError):
     @classmethod
     def missing_member(cls) -> InvalidPayoutOrderError:
         return cls("The payout order must include every current member.")
+
+
+# --- Starting a cycle (R2-10). Codes and wording are doc section 6's.
+
+
+class CycleAlreadyStartedError(ConflictError):
+    """The stokvel's open cycle has already started (contract error
+    `CycleInProgress`). The next cycle starts only after this one closes."""
+
+    code = "cycle_in_progress"
+
+    def __init__(self) -> None:
+        super().__init__("This stokvel's cycle has already started.")
+
+
+class TooFewMembersError(ConflictError):
+    """A cycle needs at least `minimum` current members (contract error
+    `TooFewMembers`, `MIN_MEMBERS`). A 409: more members can join first."""
+
+    code = "too_few_members"
+
+    def __init__(self, minimum: int) -> None:
+        super().__init__(f"A cycle needs at least {minimum} members.")
+        self.minimum = minimum
+
+
+class CycleNotReadyError(ConflictError):
+    """The payout order or a beneficiary is missing, so the cycle cannot
+    start: every current member needs a payout position and a beneficiary
+    (CONTEXT.md, Payout beneficiary). `detail` says which."""
+
+    code = "cycle_not_ready"
+
+    @classmethod
+    def order_missing(cls) -> CycleNotReadyError:
+        return cls("Set the payout order for every current member first.")
+
+    @classmethod
+    def order_out_of_date(cls) -> CycleNotReadyError:
+        return cls(
+            "The members have changed since the payout order was set. Set it again."
+        )
+
+    @classmethod
+    def beneficiary_missing(cls) -> CycleNotReadyError:
+        return cls("Every member must choose a payout beneficiary first.")
+
+
+class InvalidCycleScheduleError(DomainError):
+    """The round schedule breaks a rule the contract enforces in
+    `startCycle` (`ScheduleLengthMismatch`, `InvalidSchedule`). `detail` says
+    which; rounds are numbered from 1 for the reader."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "invalid_schedule"
+
+    @classmethod
+    def wrong_length(cls, members: int) -> InvalidCycleScheduleError:
+        return cls(
+            f"Give one round for each of the {members} members, in payout order."
+        )
+
+    @classmethod
+    def out_of_order(cls, round_: int) -> InvalidCycleScheduleError:
+        return cls(
+            f"Round {round_ + 1}: the start time, deadline and payout time must be "
+            "in that order."
+        )
+
+    @classmethod
+    def goes_backwards(cls, round_: int) -> InvalidCycleScheduleError:
+        return cls(
+            f"Round {round_ + 1} can't start or pay out before the round before it."
+        )
+
+
+class CycleStartingError(ConflictError):
+    """The cycle has started but the worker has not yet registered it on the
+    contract, which would refuse a contribution until it has
+    (`CycleNotOpen`). Usually a matter of seconds."""
+
+    code = "cycle_starting"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This stokvel's cycle is still being set up. Try again in a minute."
+        )

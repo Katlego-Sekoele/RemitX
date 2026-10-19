@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import exists, select, update
 
@@ -83,6 +84,27 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
             .values(payout_position=None)
         )
         db.session.flush()
+
+    def set_round(
+        self,
+        cycle_id: uuid.UUID,
+        round_: int,
+        *,
+        start_time: datetime,
+        deadline: datetime,
+        payout_time: datetime,
+    ) -> StokvelRound:
+        """Write one round's times, updating the row in place if the cycle
+        already has it (there is no delete). Flushes only."""
+        row = db.session.get(StokvelRound, (cycle_id, round_))
+        if row is None:
+            row = StokvelRound(cycle_id=cycle_id, round=round_)
+            db.session.add(row)
+        row.start_time = start_time
+        row.deadline = deadline
+        row.payout_time = payout_time
+        db.session.flush()
+        return row
 
     def get_cycle_rounds(self, cycle_id: uuid.UUID) -> list[StokvelRound]:
         """Get the information about the rounds in a cycle, for a given cycle_id."""
