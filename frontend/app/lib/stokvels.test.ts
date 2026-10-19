@@ -100,3 +100,170 @@ test("demo ids are the mock's, real ids are UUIDs", () => {
   assert.equal(isDemoStokvel("stk_8c21"), true)
   assert.equal(isDemoStokvel("4f1c2b7e-0d1a-4c55-9a8e-2b7a1f0c9d33"), false)
 })
+
+test("payoutStage follows release then remittance status", async () => {
+  const { payoutStage } = await import("./stokvels")
+  const none = { release_status: null, remittance_status: null }
+  assert.equal(payoutStage(none, false), "collecting")
+  assert.equal(payoutStage(none, true), "released")
+  assert.equal(
+    payoutStage({ release_status: "released", remittance_status: null }, true),
+    "released"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "processing" },
+      true
+    ),
+    "sending"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "confirmed" },
+      true
+    ),
+    "delivered"
+  )
+  assert.equal(
+    payoutStage(
+      { release_status: "released", remittance_status: "failed" },
+      true
+    ),
+    "failed"
+  )
+  // A failed pool release never reaches a remittance.
+  assert.equal(
+    payoutStage({ release_status: "failed", remittance_status: null }, true),
+    "failed"
+  )
+})
+
+test("a hash is proof only once confirmed", async () => {
+  const { contributionProofHash, payoutProofHash } = await import("./stokvels")
+  const hash = `0x${"a".repeat(64)}`
+  assert.equal(
+    contributionProofHash({ status: "pending", evm_tx_hash: hash }),
+    null
+  )
+  assert.equal(
+    contributionProofHash({ status: "processing", evm_tx_hash: hash }),
+    null
+  )
+  assert.equal(
+    contributionProofHash({ status: "confirmed", evm_tx_hash: hash }),
+    hash
+  )
+  const round = {
+    release_tx_hash: hash,
+    burn_tx_hash: null,
+    remittance_status: null,
+  }
+  assert.equal(
+    payoutProofHash({ ...round, release_status: "processing" }),
+    null
+  )
+  assert.equal(payoutProofHash({ ...round, release_status: "failed" }), null)
+  assert.equal(payoutProofHash({ ...round, release_status: "released" }), hash)
+  // A burn hash is stored before the burn is sent: proof only once the
+  // payout is confirmed; until then the release's hash stands.
+  const burn = `0x${"b".repeat(64)}`
+  const burning = {
+    ...round,
+    release_status: "released" as const,
+    burn_tx_hash: burn,
+  }
+  assert.equal(
+    payoutProofHash({ ...burning, remittance_status: "processing" }),
+    hash
+  )
+  assert.equal(
+    payoutProofHash({ ...burning, remittance_status: "confirmed" }),
+    burn
+  )
+})
+
+test("contributeMock pays once, confirms, and refuses the doc §6 cases", async () => {
+  const { contributeMock, resetStokvelMockScenario, stokvelMockScenario } =
+    await import("./stokvels.mock")
+  const { outstandingMembers } = await import("./stokvels")
+  resetStokvelMockScenario()
+  stokvelMockScenario.confirm_delay_ms = 1
+
+  stokvelMockScenario.paused = true
+  await expect(contributeMock("stk_8c21")).rejects.toMatchObject({
+    status: 503,
+    body: { code: "stokvel_paused" },
+  })
+  stokvelMockScenario.paused = false
+
+  await expect(contributeMock("stk_77e0")).rejects.toMatchObject({
+    body: { code: "cycle_not_open" },
+  })
+
+  // Covers the R500 contribution but not the R7.50 fee share on top.
+  stokvelMockScenario.available_balance = "505.00"
+  await expect(contributeMock("stk_8c21")).rejects.toThrow(
+    /available ZAR balance is 505.00, and this contribution needs 507.50/
+  )
+  stokvelMockScenario.available_balance = "1240.00"
+
+  const before = await getStokvelMock("stk_8c21")
+  assert.equal(outstandingMembers(before).length, 1)
+  const paid = await contributeMock("stk_8c21")
+  assert.equal(paid.status, "confirmed")
+  // R15 + 0.5% of the R1,500 pool = R22.50, split over 3 members.
+  assert.equal(paid.fee_amount, "7.50")
+  assert.equal(paid.amount_zar, "507.50")
+  const after = await getStokvelMock("stk_8c21")
+  assert.equal(outstandingMembers(after).length, 0)
+  assert.equal(after.my_contribution_status, "confirmed")
+  assert.equal(stokvelMockScenario.available_balance, "732.50")
+  const mine = after.contributions.find(
+    (c) => c.member_id === after.my_member_id && c.round === 1
+  )
+  assert.match(mine?.evm_tx_hash ?? "", /^0x[0-9a-z]{64}$/)
+
+  await expect(contributeMock("stk_8c21")).rejects.toMatchObject({
+    status: 409,
+    body: { code: "contribution_already_paid" },
+  })
+  resetStokvelMockScenario()
+})
+
+test("myCurrentContribution skips a failed attempt for the live one", async () => {
+  const { myCurrentContribution } = await import("./stokvels")
+  const base = {
+    contribution_id: "c",
+    cycle_id: "cyc",
+    round: 1,
+    member_id: "me",
+    amount_fiat: "500.00",
+    amount_token: "27.40",
+    fee_amount: "7.50",
+    evm_tx_hash: null,
+    created_at: "",
+  }
+  const detail = {
+    my_member_id: "me",
+    cycle: { cycle_id: "cyc", current_round: 1 } as never,
+    contributions: [
+      { ...base, contribution_id: "first", status: "failed" as const },
+      { ...base, contribution_id: "retry", status: "processing" as const },
+      {
+        ...base,
+        contribution_id: "other",
+        member_id: "you",
+        status: "confirmed" as const,
+      },
+    ],
+  }
+  assert.equal(myCurrentContribution(detail)?.contribution_id, "retry")
+  assert.equal(
+    myCurrentContribution({
+      ...detail,
+      contributions: [detail.contributions[0]],
+    }),
+    undefined
+  )
+  assert.equal(myCurrentContribution({ ...detail, cycle: null }), undefined)
+})

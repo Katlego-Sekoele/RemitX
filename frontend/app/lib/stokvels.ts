@@ -14,6 +14,7 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query"
 import {
   sdk,
   type SentStokvelInvitationRead,
+  type StokvelContributionRead,
   type StokvelInvitationRead,
   type StokvelListRead,
   type StokvelRead,
@@ -21,12 +22,14 @@ import {
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   demoStokvelsMock,
+  contributeMock,
   getStokvelContractStatusMock,
   getStokvelMock,
 } from "~/lib/stokvels.mock"
 
 export type {
   SentStokvelInvitationRead,
+  StokvelContributionRead,
   StokvelCreateRequest,
   StokvelInvitationRead,
   StokvelListRead,
@@ -104,6 +107,10 @@ export type StokvelRoundRead = {
   remittance_id: string | null
   release_tx_hash: string | null
   burn_tx_hash: string | null
+  /** The pool in the Stokvel currency once released; null before. */
+  pool_fiat_amount: string | null
+  /** The payout remittance's reference once it exists. */
+  remittance_reference: string | null
 }
 
 /** R4-09: assumed until #236 (or #244 for the contract). */
@@ -121,13 +128,15 @@ export type StokvelCycleRead = {
 }
 
 /** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelContributionRead = {
+export type StokvelRoundContributionRead = {
   contribution_id: string
   cycle_id: string
   round: number
   member_id: string
   amount_fiat: string
   amount_token: string
+  /** The member's fee share, paid on top (D6), as the API's `fee_amount`. */
+  fee_amount: string
   status: ContributionStatus
   evm_tx_hash: string | null
   created_at: string
@@ -158,7 +167,7 @@ export type StokvelDetailRead = StokvelRead & {
   members: StokvelMemberRead[]
   invitations: SentStokvelInvitationRead[]
   cycle: StokvelCycleRead | null
-  contributions: StokvelContributionRead[]
+  contributions: StokvelRoundContributionRead[]
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -254,6 +263,29 @@ export const stokvelQueries = {
       queryFn: () => getStokvelContractStatusMock(),
     }),
 }
+
+/** Mutations in the shape `useMutation` spreads, like the client's. */
+export const stokvelMutations = {
+  /** `POST /stokvels/{id}/contributions` (#233, built): pays the open round
+   * and returns it `pending`. Demo stokvels pay the mock. */
+  contribute: (stokvelId: string) => ({
+    mutationFn: async (): Promise<StokvelContributionRead> => {
+      if (isDemoStokvel(stokvelId)) return contributeMock(stokvelId)
+      const { data } = await sdk.stokvels.contributeToStokvel({
+        path: { stokvel_id: stokvelId },
+        throwOnError: true,
+      })
+      return data
+    },
+  }),
+}
+
+/** The development-only scenario knobs, re-exported so pages import every
+ * stokvel thing from this file and R4-09 stays a change here. */
+export {
+  resetStokvelMockScenario,
+  stokvelMockScenario,
+} from "~/lib/stokvels.mock"
 
 export async function invalidateStokvels(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: ["stokvels"] })
@@ -379,6 +411,58 @@ export function tokenToFiat(token: string, rate: string): string {
   )
 }
 
+/** A contribution's hash as proof of payment: only once it is confirmed. The
+ * worker stores the hash before sending, so a pending one may never be
+ * mined (doc §3). */
+export function contributionProofHash(
+  contribution: Pick<StokvelRoundContributionRead, "status" | "evm_tx_hash">
+): string | null {
+  return contribution.status === ContributionStatus.confirmed
+    ? contribution.evm_tx_hash
+    : null
+}
+
+/**
+ * A round's payout hash as proof. The burn hash is stored before the burn is
+ * sent (#278), so it is proof only once the payout remittance is confirmed;
+ * until then the release's hash is, once the release is confirmed.
+ */
+export function payoutProofHash(
+  round: Pick<
+    StokvelRoundRead,
+    "release_status" | "remittance_status" | "burn_tx_hash" | "release_tx_hash"
+  >
+): string | null {
+  if (
+    round.remittance_status === RemittanceStatus.confirmed &&
+    round.burn_tx_hash
+  ) {
+    return round.burn_tx_hash
+  }
+  return round.release_status === ReleaseStatus.released
+    ? round.release_tx_hash
+    : null
+}
+
+/**
+ * The signed-in member's contribution to the current round, ignoring failed
+ * attempts: after a failed send the member pays again, and the live attempt
+ * is the one the panel follows.
+ */
+export function myCurrentContribution(
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "my_member_id">
+): StokvelRoundContributionRead | undefined {
+  const cycle = detail.cycle
+  if (!cycle) return undefined
+  return detail.contributions.find(
+    (c) =>
+      c.cycle_id === cycle.cycle_id &&
+      c.round === cycle.current_round &&
+      c.member_id === detail.my_member_id &&
+      c.status !== ContributionStatus.failed
+  )
+}
+
 /** Members whose contribution to `round` of the current cycle is confirmed. */
 export function paidMemberIds(
   detail: Pick<StokvelDetailRead, "cycle" | "contributions">,
@@ -405,6 +489,42 @@ export function currentRecipientId(
 ): string | null {
   if (!cycle || cycle.status !== CycleStatus.active) return null
   return cycle.payout_order[cycle.current_round] ?? null
+}
+
+/** Where a round's payout is, in the words members see (product docx §2):
+ * collecting → released → sending → delivered, or failed. */
+export type PayoutStage =
+  "collecting" | "released" | "sending" | "delivered" | "failed"
+
+export function payoutStage(
+  round: Pick<StokvelRoundRead, "release_status" | "remittance_status">,
+  everyonePaid: boolean
+): PayoutStage {
+  if (round.remittance_status === RemittanceStatus.confirmed) return "delivered"
+  // A failed release never reaches a remittance, so check it first.
+  if (round.release_status === ReleaseStatus.failed) return "failed"
+  if (round.remittance_status === RemittanceStatus.failed) return "failed"
+  if (round.remittance_status) return "sending"
+  if (round.release_status === ReleaseStatus.released) return "released"
+  if (round.release_status === ReleaseStatus.processing) return "released"
+  return everyonePaid ? "released" : "collecting"
+}
+
+export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
+  collecting: "Waiting",
+  released: "Released",
+  sending: "Sending",
+  delivered: "Delivered",
+  failed: "Didn't go through",
+}
+
+/** Members who have not paid `round` of the current cycle. */
+export function outstandingMembers(
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "members">,
+  round: number = detail.cycle?.current_round ?? 0
+): StokvelMemberRead[] {
+  const paid = paidMemberIds(detail, round)
+  return detail.members.filter((member) => !paid.has(member.member_id))
 }
 
 export const PHASE_LABELS: Record<CycleStatus, string> = {
