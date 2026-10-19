@@ -148,11 +148,12 @@ function AuditLogPageContent() {
     setHasMore(query.data.length >= PAGE_SIZE)
   }, [query.data])
 
+  // The effect above repopulates the rows when the query key changes. Don't
+  // clear them here: with both filters already at All the key doesn't change,
+  // and the table would stay empty until a refetch.
   const resetFilters = () => {
     setActionFilter(ALL_ACTIONS)
     setAreaFilter(ALL_AREAS)
-    setRows([])
-    setHasMore(false)
   }
 
   const loadOlder = async () => {
