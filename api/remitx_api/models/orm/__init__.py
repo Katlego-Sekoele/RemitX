@@ -50,6 +50,10 @@ from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitationStatus,
 )
 from remitx_api.models.orm.stokvel_member import StokvelMember
+from remitx_api.models.orm.stokvel_payout import (
+    StokvelPayout,
+    StokvelPayoutReleaseStatus,
+)
 from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.transaction import Transaction
@@ -103,6 +107,8 @@ __all__ = [
     "StokvelInvitation",
     "StokvelInvitationStatus",
     "StokvelMember",
+    "StokvelPayout",
+    "StokvelPayoutReleaseStatus",
     "StokvelRound",
     "ToxicCombination",
     "Transaction",

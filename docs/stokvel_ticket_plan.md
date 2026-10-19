@@ -403,8 +403,8 @@ _Rebalanced 2026-10-07: R3-07, R3-08, R3-10 and R3-12 (admin pause, manual final
 
 #### R3-03. Payout table: `stokvel_payouts`
 **Owner:** Sian · **Milestone:** Settlement and Payout · **Size:** S · **Type:** core · **Depends on:** R2-05 · **Refs:** doc §3
-- [ ] Model and migration with UNIQUE (`cycle_id`, `round`).
-- [ ] Separate columns for release status and remittance status (brief §7.2).
+- [x] Model and migration with UNIQUE (`cycle_id`, `round`).
+- [x] Separate columns for release status and remittance status (brief §7.2).
 **Files:**
 - Create: `api/remitx_api/models/orm/stokvel_payout.py`, `api/remitx_api/repositories/stokvel_payout_repository.py`, `api/alembic/versions/V…__stokvel_payouts.py`, `api/tests/test_stokvel_payout_model.py`
 - Change: `api/remitx_api/models/orm/__init__.py`

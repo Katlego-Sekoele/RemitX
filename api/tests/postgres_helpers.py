@@ -36,8 +36,17 @@ def throwaway_database(server_url: str) -> Iterator[str]:
 
 def migrate(database_url: str, revision: str = "head") -> None:
     """Run the API's Alembic against `database_url`, up to `revision`."""
+    _alembic(database_url, "upgrade", revision)
+
+
+def downgrade(database_url: str, revision: str) -> None:
+    """Run the API's Alembic against `database_url`, down to `revision`."""
+    _alembic(database_url, "downgrade", revision)
+
+
+def _alembic(database_url: str, *args: str) -> None:
     subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", revision],
+        [sys.executable, "-m", "alembic", *args],
         cwd=API_ROOT,
         # No wallet: the treasury-funding migration would otherwise read a real
         # balance off the testnet.

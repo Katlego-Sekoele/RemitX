@@ -1,10 +1,10 @@
-// Stokvel group and cycle tables (R2-04 #226, R2-05 #227). Render (needs graphviz's `dot`):
+// Stokvel group, cycle and payout tables (R2-04 #226, R2-05 #227, R3-03 #240). Render (needs graphviz's `dot`):
 //   npx @softwaretechnik/dbml-renderer@1.0.30 -i stokvel_group_tables.dbml -f dot \
 //     | grep -v 'style=invis' \
 //     | sed 's/rankdir=LR;/rankdir=LR; nodesep=0.6; ranksep=1.4;/; s/"transparent"/"white"/' \
 //     | dot -Tsvg -o stokvel_group_tables.svg
 // (!) in the diagram means NOT NULL.
-// users, accounts and beneficiaries are stubs: only the columns these tables
+// users, accounts, beneficiaries, quotes, remittances and transactions are stubs: only the columns these tables
 // reference. Rounds and payout positions are 0-based, like the contract.
 
 Table users {
@@ -17,6 +17,18 @@ Table accounts {
 
 Table beneficiaries {
   beneficiary_id uuid [pk]
+}
+
+Table quotes {
+  quote_id uuid [pk]
+}
+
+Table remittances {
+  remittance_id uuid [pk]
+}
+
+Table transactions {
+  tx_id uuid [pk]
 }
 
 Table stokvels {
@@ -90,3 +102,26 @@ Table stokvel_cycle_members {
 
   Note: 'unique (cycle_id, payout_position)'
 }
+
+Table stokvel_payouts {
+  id uuid [pk]
+  cycle_id uuid [not null]
+  round int [not null, note: 'the round paid out']
+  member_id uuid [not null, note: 'the member the round pays']
+  release_status text [not null, note: 'pending | processing | released | failed']
+  release_tx_hash text [unique, note: 'stored before the send; required once released']
+  release_block_number bigint [note: 'RoundFinalised block; required once released']
+  release_tx_id uuid [unique, ref: - transactions.tx_id, note: 'stokvel_pool_release ledger leg; required once released']
+  remittance_status text [not null, note: 'pending | processing | confirmed | failed']
+  quote_id uuid [unique, ref: - quotes.quote_id, note: 'stokvel-sender quote']
+  remittance_id uuid [unique, ref: - remittances.remittance_id, note: 'reference shown to members']
+  burn_tx_hash text [unique, note: 'set once burnt']
+  created_at timestamptz [not null]
+  released_at timestamptz [note: 'set exactly when released']
+  updated_at timestamptz [not null]
+
+  Note: 'unique (cycle_id, round); member payout_position = round (trigger)'
+}
+
+Ref: stokvel_payouts.(cycle_id, round) > stokvel_rounds.(cycle_id, round)
+Ref: stokvel_payouts.(cycle_id, member_id) > stokvel_cycle_members.(cycle_id, member_id)

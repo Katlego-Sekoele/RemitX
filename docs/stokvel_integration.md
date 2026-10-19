@@ -79,6 +79,8 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-18 | 3, 8, 14 | R2-08 review (#344, Kerry): `stokvel_invitations` gets one policy per operation and no `DELETE`. Only the Organiser inserts, as inviter and `pending`; the invitee accepts or declines and the Organiser revokes, each recorded as the changer. New trigger `stokvel_invitation_fixed`: an invitation's stokvel, invitee, inviter and creation time are fixed, and an answer is final. Under the old `FOR ALL` policy a customer could forge an accepted invitation to themselves and join any stokvel (reproduced on Postgres). The section 8 member-insert question now covers both tables | #344 |
 | 2026-10-18 | 3, 5, 6, 8, 9, 10, 13, 14 | R2-09 (#231): `PUT /stokvels/{id}/payout-order` and `PUT /stokvels/{id}/members/me/beneficiary` built (section 5). No migration: `stokvel_cycle_members` already had the columns. `POST /stokvels` now also opens cycle 1 as `forming` with a row for the Organiser, and accepting an invitation adds the new member's row while the cycle is forming (section 3). This changes R2-07 and R2-08 code, outside the ticket's file list. A stokvel from before this change gets cycle 1 on demand, from its Organiser only: row-level security lets only the Organiser insert a cycle. The beneficiary request carries only `beneficiary_id`; the payout currency is copied from the beneficiary once the recipient is confirmed to still hold that account. New refusal codes `cycle_locked`, `cycle_not_forming`, `invalid_payout_order`; `not_organiser` reused (section 6). Interface change: routes need Roles 2, 3 and 4 (section 5), codes Roles 1, 2 and 4 (section 6) | |
 | 2026-10-19 | 6, 8, 14 | R2-09 review (#347, Mridula and Marc): `stokvel_cycle_members.payout_beneficiary_id` references `beneficiaries` with no `ON DELETE`, and `DELETE /beneficiaries/{id}` hard-deletes, so removing a beneficiary a stokvel pays gave a 500. It now answers 409 `beneficiary_in_use_by_stokvel` when any cycle row, of any status, pays it; the member chooses another for that stokvel first. `ON DELETE SET NULL` was ruled out: it breaks `stokvel_cycle_members_locked_is_complete` on a locked row. New section 8 row for R3-05: re-check the copied `payout_currency` at payout. Interface change: the code needs Roles 1, 2 and 4 (section 6) | #347 |
+| 2026-10-16 | 3, 8, 9, 13, 14 | R3-03 (#240): `stokvel_payouts` built with row-level security. Release and remittance have separate statuses, both stored (`release_status`, `remittance_status`), so a retry has a row to claim before any quote exists. The release also stores its ledger leg (`release_tx_id`), block (`release_block_number`) and `released_at`, as a contribution stores `tx_id`, `block_number` and `confirmed_at`. Composite foreign keys tie a payout to its round and to a member of the cycle; trigger `stokvel_payout_member_is_scheduled` refuses a member the round does not pay. Members of the stokvel read; only workers and admin routes write; nobody deletes. The `stokvel_pool_release` leg books `STOKVEL` → Treasury Wallet, as agreed in R2-11 (#340) | #342 |
+| 2026-10-19 | 3, 8, 14 | R3-03 review (#342, Marc): new trigger `stokvel_cycle_member_position_is_paid` refuses changing a cycle member's `payout_position` once a payout exists for their round, so the scheduled-member rule holds from both tables (before, the position could move after the payout row was written; reproduced on Postgres). The `remittance_status` CHECK is pinned on purpose rather than built from `TransactionStatus`. The migration now revises `e09d8fb367b5` (R2-08), and the release-direction question in section 8 is closed by R2-11 | #342 |
 
 ---
 
@@ -296,6 +298,143 @@ Keys never appear in the frontend, API responses, logs or git.
 
 ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/stokvel_group_tables.svg) (source: the `.dbml` beside it).
 
+The same tables and the existing tables they link to, from the ORM models. `users`, `accounts`, `beneficiaries`, `quotes`, `remittances` and `transactions` show only the columns involved in these links. `stokvel_contributions` (#228) and `stokvel_sync_state` (not yet built) are left out.
+
+```mermaid
+erDiagram
+    users ||--o{ accounts : "owns (USER accounts)"
+    users ||--o{ beneficiaries : "adds"
+    users ||--o{ quotes : "sends (user sender)"
+    quotes ||--o| remittances : "executed as"
+    transactions |o--o| stokvel_payouts : "release_tx_id"
+
+    users ||--o{ stokvels : "organises"
+    accounts |o--o| stokvels : "STOKVEL pool account"
+    stokvels ||--o{ stokvel_cycles : "runs"
+    stokvels |o--o| stokvel_cycles : "current_cycle_id"
+    stokvels ||--o{ stokvel_invitations : "invites to"
+    users ||--o{ stokvel_invitations : "invitee, inviter, decider"
+    stokvels ||--o{ stokvel_members : "has"
+    users ||--o{ stokvel_members : "is"
+    accounts ||--o{ stokvel_members : "pays contributions from"
+    stokvel_invitations |o--o| stokvel_members : "accepted as"
+
+    stokvel_cycles ||--|{ stokvel_rounds : "has"
+    stokvel_cycles ||--o{ stokvel_cycle_members : "schedules"
+    stokvel_members ||--o{ stokvel_cycle_members : "takes part as"
+    beneficiaries |o--o{ stokvel_cycle_members : "receives payout"
+
+    stokvel_rounds ||--o| stokvel_payouts : "paid out by"
+    stokvel_cycle_members ||--o| stokvel_payouts : "paid by"
+    stokvels |o--o{ quotes : "sends (stokvel sender)"
+    quotes |o--o| stokvel_payouts : "quote_id"
+    remittances |o--o| stokvel_payouts : "remittance_id"
+
+    users {
+        uuid id PK
+    }
+    accounts {
+        uuid account_id PK
+        uuid user_id FK "null for STOKVEL accounts"
+        text type "USER, STOKVEL, ..."
+        text account_currency
+    }
+    beneficiaries {
+        uuid beneficiary_id PK
+        uuid sender_user_id FK
+        uuid linked_user_id FK
+    }
+    quotes {
+        uuid quote_id PK
+        uuid sender_user_id FK "null when a stokvel sends"
+        uuid stokvel_id FK "null when a user sends"
+        uuid beneficiary_user_id FK
+    }
+    remittances {
+        uuid remittance_id PK
+        uuid quote_id FK, UK
+        uuid tx_id FK "transactions"
+    }
+    transactions {
+        uuid tx_id PK
+        text type "stokvel_pool_release, ..."
+    }
+
+    stokvels {
+        uuid id PK "on-chain id (bytes32)"
+        uuid organiser_user_id FK
+        text name
+        text currency "Stokvel currency (fiat)"
+        numeric contribution_amount "UCTUSD, fixed for life"
+        uuid account_id FK, UK "its STOKVEL account"
+        uuid current_cycle_id FK "null until the first cycle"
+        timestamptz created_at
+        timestamptz deactivated_at "null while in service"
+    }
+    stokvel_invitations {
+        uuid id PK
+        uuid stokvel_id FK
+        uuid invitee_user_id FK
+        uuid invited_by_user_id FK
+        text status "pending, accepted, declined, revoked, lapsed"
+        timestamptz created_at
+        timestamptz status_changed_at
+        uuid status_changed_by_user_id FK
+    }
+    stokvel_members {
+        uuid id PK "on-chain memberId"
+        uuid stokvel_id FK
+        uuid user_id FK
+        uuid account_id FK "member USER account"
+        uuid invitation_id FK, UK "null for the Organiser"
+        timestamptz joined_at
+        timestamptz left_at "null while a member"
+    }
+    stokvel_cycles {
+        uuid id PK
+        uuid stokvel_id FK
+        int cycle_number "from 1"
+        text status "forming, active, closed"
+        int total_rounds "set at start, at least 2"
+        int current_round "0-based"
+        timestamptz started_at
+        timestamptz closed_at
+    }
+    stokvel_rounds {
+        uuid cycle_id PK, FK
+        int round PK "0-based, contract uint8"
+        timestamptz start_time
+        timestamptz deadline "informational"
+        timestamptz payout_time "hard gate (D12)"
+    }
+    stokvel_cycle_members {
+        uuid cycle_id PK, FK
+        uuid member_id PK, FK "on-chain memberId"
+        int payout_position "the round that pays them"
+        uuid payout_beneficiary_id FK
+        text payout_currency
+        boolean continued "null until chosen"
+        boolean locked "set when the cycle starts"
+    }
+    stokvel_payouts {
+        uuid id PK
+        uuid cycle_id FK "with round, and with member_id"
+        int round FK "the round paid out"
+        uuid member_id FK "payout_position = round (trigger)"
+        text release_status "pending, processing, released, failed"
+        text release_tx_hash UK "stored before the send"
+        bigint release_block_number "RoundFinalised block"
+        uuid release_tx_id FK, UK "stokvel_pool_release leg"
+        text remittance_status "pending, processing, confirmed, failed"
+        uuid quote_id FK, UK "stokvel-sender quote"
+        uuid remittance_id FK, UK
+        text burn_tx_hash UK
+        timestamptz created_at
+        timestamptz released_at "set exactly when released"
+        timestamptz updated_at
+    }
+```
+
 | Table | Key columns | Migration |
 |---|---|---|
 | `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service), `account_id` (its `STOKVEL` ledger account, R3-01; nullable until the account is created, unique), `current_cycle_id` (its latest cycle, R2-05; null until the first) | `V20261009_1801__stokvel_group_tables`, `V20261011_1000__stokvel_ledger_account_and_types`, `V20261014_1200__stokvel_cycle_tables` |
@@ -305,7 +444,7 @@ ER diagram of the built tables: [diagrams/stokvel_group_tables.svg](diagrams/sto
 | `stokvel_cycle_members` | PK (`cycle_id`, `member_id`); `member_id` → `stokvel_members.id` (the on-chain `memberId`). `payout_position` (0-based: the round that pays them; unique per cycle; null until the order is set), `payout_beneficiary_id` (→ `beneficiaries`) and `payout_currency` (set together; the stokvel pays this beneficiary directly, #293), `continued` (null until chosen, R2-15), `locked` (set when the cycle starts; needs a position and a beneficiary). A row is added for the Organiser when the stokvel is created, and for each member who accepts while the cycle is `forming`; a member who joins during an active cycle gets one in the next cycle (#237). A member who leaves keeps their row, and the next payout order clears its position (R2-09). Trigger `stokvel_cycle_member_same_stokvel`: the member row must belong to the cycle's stokvel (neither foreign key can check this) | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_invitations` | `id`, `stokvel_id`, `invitee_user_id`, `invited_by_user_id`, `status` (`pending`, `accepted`, `declined`, `revoked`, `lapsed`), `created_at`, `status_changed_at`, `status_changed_by_user_id`. Status changes once, so these two columns are its history; inviting again is a new row. One pending invitation per user per stokvel; only the invitee accepts or declines | `V20261009_1801__stokvel_group_tables` |
 | `stokvel_contributions` | `id`, `cycle_id`, `round` (0-based), `member_id` (→ `stokvel_members.id`, the on-chain `memberId`), `amount_token` (UCTUSD sent, the stokvel's `contribution_amount`), `amount_fiat` (debited from the member's Stokvel-currency account), `status` (`pending`, `processing`, `confirmed`, `failed`), `amount_zar` (the contribution plus its fee in rand, locked when it is made: what counts against the member's own limits, D8), `fiat_tx_id`, `token_tx_id`, `fee_tx_id` (→ `transactions`: the contribution's fiat, token and fee legs, each unique; `fee_tx_id` null when no fee applies; R2-11), `tx_id` (deprecated first name of `fiat_tx_id`: unused, kept for a later migration to drop, rule 5 in `api/alembic/README.md`), `evm_tx_hash` (unique; stored before the send, so a processing or failed row may have one), `block_number`, `created_at`, `confirmed_at` (set exactly when confirmed). A pending row has no hash or block; a confirmed row has both. Composite foreign keys: (`cycle_id`, `round`) → `stokvel_rounds` and (`cycle_id`, `member_id`) → `stokvel_cycle_members`, so the round and the member belong to the cycle. Partial unique index `uq_stokvel_contributions_once` on (`cycle_id`, `round`, `member_id`) where status is not `failed`: one live contribution per member per round, and a failed attempt can be retried as a new row | `V20261016_0901__stokvel_contributions`, `V20261016_1352__stokvel_contribution_legs_and_rand_value` |
-| `stokvel_payouts` | `id`, `cycle_id`, `round`, `member_id`, `release_status`, `quote_id`, `remittance_id`, `release_tx_hash`, `burn_tx_hash`; UNIQUE (`cycle_id`, `round`) | |
+| `stokvel_payouts` | `id`, `cycle_id`, `round` (0-based), `member_id`, `release_status`, `release_tx_hash` (stored before the send, so a processing or failed row may have one), `release_block_number`, `release_tx_id` (→ `transactions`, the `stokvel_pool_release` leg), `released_at`, `remittance_status`, `quote_id`, `remittance_id`, `burn_tx_hash`, `created_at`, `updated_at`. UNIQUE (`cycle_id`, `round`); `release_tx_id`, `quote_id`, `remittance_id` and both hashes unique. FK (`cycle_id`, `round`) → `stokvel_rounds` and (`cycle_id`, `member_id`) → `stokvel_cycle_members`. CHECKs: a pending row has no release hash or block; a block needs its hash; a released row has its hash, block and ledger leg, and `released_at` is set exactly when released; no remittance step, quote or remittance until released; a remittance needs its quote, a burn hash its remittance, and `confirmed` its burn hash. A failed release is retried on the same row. Trigger `stokvel_payout_member_is_scheduled`: the member's `payout_position` must be the round; its mirror `stokvel_cycle_member_position_is_paid` on `stokvel_cycle_members` refuses changing the position of a member a payout already pays | `V20261016_1200__stokvel_payouts` |
 | `stokvel_sync_state` | `id`, `last_processed_block`, `updated_at` (cursor for `stokvel.sync_events`; proposed, ticket R2-13) | |
 
 Differences from the first sketch (a `stokvel` table plus a `stokvel_member` table):
@@ -330,8 +469,9 @@ As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `
 | `stokvel_rounds` | Rounds of a stokvel they are a member of | As Organiser (insert and update only) |
 | `stokvel_cycle_members` | Every row of a stokvel they are a member of | As Organiser, or their own row (beneficiary, continuation); insert and update only. Which columns each may change is checked by the controller |
 | `stokvel_contributions` | Every contribution of a stokvel they are a member of | Insert only, for their own member row. No customer updates (the worker writes status, hash and block) and no deletes |
+| `stokvel_payouts` | Payouts of a stokvel they are a member of | Never: only workers and admin routes insert and update (the release and settlement tasks, the admin fallback). No `DELETE` policy |
 
-`stokvels` has one `FOR ALL` policy. `stokvel_members` and `stokvel_invitations` (since R2-08, `V20261017_1820`) and the cycle tables have one policy per operation instead: `FOR SELECT` with the read rule, and `FOR INSERT` and `FOR UPDATE` with the write rule. An `UPDATE` of a row the write rule does not allow matches no rows, rather than raising an error.
+`stokvels` has one `FOR ALL` policy. `stokvel_members` and `stokvel_invitations` (since R2-08, `V20261017_1820`) the cycle tables and `stokvel_payouts` have one policy per operation instead: `FOR SELECT` with the read rule, and `FOR INSERT` and `FOR UPDATE` with the write rule. An `UPDATE` of a row the write rule does not allow matches no rows, rather than raising an error.
 
 **Customers cannot delete cycle rows.** The cycle tables have no `DELETE` policy, so no one connected as `remitx_app` can delete from them, the Organiser included. Because the app always connects as `remitx_app`, that covers workers and admin routes too. A future task that needs deletes must add a `DELETE` policy for exactly who may delete, with a Postgres test. The reason: a single `FOR ALL` policy checks `DELETE` against its read rule only, so any member could delete what they can see. `stokvels` still works that way; a separate ticket is proposed to fix it. `stokvel_members` and `stokvel_invitations` have no `DELETE` policy either (R2-08).
 
@@ -341,7 +481,7 @@ As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `
 
 **Lookups that return a value, not rows (R2-08).** Row-level security hides two things the invitation routes need: the invitee's KYC applications from the Organiser, and the member rows from an invitee who has not joined. `kyc_latest_status(user)` returns the status of the user's latest application (the API decides from it, as `get_standing` does); `stokvel_active_member_count(stokvel)` returns the number of current members. Both are `SECURITY DEFINER`, executable only by `remitx_app`.
 
-The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation` (R2-04), `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser` and `stokvel_member_is_user` (R2-05), and `stokvel_member_can_join` (R2-08), because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Tests: `api/tests/test_stokvel_group_models.py`, `api/tests/test_stokvel_cycle_models.py` and `api/tests/test_stokvel_member_row_security.py` (`postgres` lane).
+The policies look rows up through the functions `stokvel_is_member`, `stokvel_is_organiser` and `stokvel_has_pending_invitation` (R2-04), `stokvel_cycle_is_member`, `stokvel_cycle_is_organiser` and `stokvel_member_is_user` (R2-05), and `stokvel_member_can_join` (R2-08), because a policy that queries its own table (or two that query each other) fails with infinite recursion. Inside a function `app.current_user_id` is empty, so its own lookup sees every row. SQLite (tests) has no RLS, so repositories must still filter by user. Tests: `api/tests/test_stokvel_group_models.py`, `api/tests/test_stokvel_cycle_models.py` `api/tests/test_stokvel_member_row_security.py` and `api/tests/test_stokvel_payout_model.py` (`postgres` lane).
 
 ### Ledger changes
 
@@ -383,7 +523,7 @@ The policies look rows up through the functions `stokvel_is_member`, `stokvel_is
 |---|---|
 | Contribution | `pending → processing → confirmed \| failed` |
 | Pool release | `pending → processing → released \| failed` |
-| Remittance | `pending → processing → confirmed \| failed` (the existing transaction states; `created`, `burning`, `burnt` and `credited` are not separate states) |
+| Remittance | `pending → processing → confirmed \| failed` (the existing transaction states; `created`, `burning`, `burnt` and `credited` are not separate states). Stored on the payout as `stokvel_payouts.remittance_status`, not read through `remittance_id`: `settle_payout` claims `pending → processing` before any quote exists, and a failure before the remittance is created is still recorded. R3-06 sets it `confirmed` or `failed` when the burn confirms or fails |
 | Invitation | `pending → accepted \| declined \| revoked \| lapsed` |
 | Cycle | `forming → active → closed` |
 
@@ -405,6 +545,7 @@ _The brief's wording of the remittance statuses (`created → burning → burnt 
 |---|---|
 | Submit contribution | Partial unique index `uq_stokvel_contributions_once` on (`cycle_id`, `round`, `member_id`) over rows not `failed`; guarded `pending → processing` claim in the worker; contract `AlreadyPaid` |
 | Release pool | UNIQUE (`cycle_id`, `round`) on `stokvel_payouts`; guarded `pending → processing` claim; contract `AlreadyFinalised` |
+| Create payout remittance | Guarded `pending → processing` claim on `stokvel_payouts.remittance_status` (only once `released`); UNIQUE `quote_id` and `remittance_id` on `stokvel_payouts` |
 | Credit remittance | Existing guarded group-confirm on `quote_id` (`confirm_treasury_burn`); a retry must not repeat the release, burn or credit. The burn: only the delivery that claims the group `pending → processing` sends it, and a later delivery waits on the stored burn hash instead of sending another (#278) |
 | Refund | Guarded status transition on the contribution; contract refund-once flag |
 
@@ -631,6 +772,7 @@ Today TrustMeBank exists only in documents; the code reconciles CSV statements i
 | Question | Status | Owner | ADR |
 |---|---|---|---|
 | One Treasury Wallet, or a separate settlement wallet for pool release (#207)? D2 chooses one wallet; the wallet has been created. Confirm | Open | Role 1, Product | |
+| Which way does the `stokvel_pool_release` leg book? | **Resolved (2026-10-16, R2-11, #340):** `STOKVEL` account → Treasury Wallet, as contributions book Treasury → `STOKVEL`, so a `STOKVEL` balance always equals that stokvel's unreleased pools in the contract (section 3, "Ledger changes"; section 11). `stokvel_payouts.release_tx_id` names that leg | Roles 2, 3 | 0004 |
 | Burn method (#206): does UCTUSD have a `burn()` function, or do we transfer to a dead address? Check the token on the explorer | **Confirmed (2026-10-14, #278):** `burn(uint256)` called by the Treasury Wallet. A test burn of 1 base unit, tx [`0xacfd…9cd6`](https://explorer.testnet.xrplevm.org/tx/0xacfd84b642ff7d30b535bf8256fc572657d54894a444e13039c212d4d68f9cd6) (block 9072949), lowered `totalSupply` from 99999990000000000000000000 to 99999989999999999999999999 base units, and the Treasury balance by the same 1. No dead-address transfer, and no `approve` (unlike `burnFrom`). Not a proxy, and no burner role in the bytecode. The worker burns through `evm_service.burn_tokens` | Role 1 | |
 | Contract IDs: pack the database UUID into `bytes32` (current section 1), or give each stokvel and member a separate generated `bytes32` ID (Katlego, #283 review)? The contract accepts either. Packing needs no extra column and lets event sync map an ID straight back to its row; a separate ID keeps on-chain IDs unrelated to the database | Open: asked Marc (@marclevin). Roles 1 and 2 (backend) agree on the packed UUID for the MVP (2026-10-09); the backend ID helper waits for Marc's reply | Roles 1, 2 | |
 | Contribution amount: fixed token amount or fixed fiat amount? If a fixed token amount, live exchange rates must be taken into account (proposal: member debit = token amount × live rate at contribution). Refunds return the original fiat amount entered | **Resolved (product, 2026-10-11): fixed token (D13).** `stokvels.contribution_amount` is the fixed UCTUSD amount set in `createStokvel` for all cycles; a new amount means a new stokvel (MVP). Member fiat debit = token amount × live rate at contribution. #298 (Treasury FX difference under fixed fiat) is closed as not needed | Product, Roles 2, 3 | |
@@ -719,7 +861,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Backend connection to the contract | Not started | #273 (was #201) | |
 | Members create stokvels and invite others | In progress | #229 (was #209), #230, #297 | Create and list done (#229, PR #339); invite, accept and decline done (#230, PR #344); revoke next (#297) |
 | Payout order and beneficiary | In review | #231 | `PUT /stokvels/{id}/payout-order`, `PUT /stokvels/{id}/members/me/beneficiary`; cycle 1 opens at creation. Start cycle (#232) next |
-| DB models and migrations | In progress | #226, #227, #228, #238, #239 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301). cycle tables with row-level security (#227, PR #306). In review: contribution table (#228) |
+| DB models and migrations | In progress | #226, #227, #228, #238, #239, #240 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301); cycle tables with row-level security (#227, PR #306); contribution table (#228, PR #338). In review: payout table (#240, PR #342) |
 | Worker tasks | In progress | #234 | Section 4. Built: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234). Next: the cycle tasks (#232), event sync (#235), release (#241) |
 | API routes | In progress | #229, #230, #231, #233 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `POST /stokvels/{id}/contributions` (#233); invitations (#230); payout order and beneficiary (#231, in review) |
 | Stokvel audit log (admin actions) | Not started | | Section 5, "Audit log of admin actions" |
@@ -835,6 +977,10 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/tests/test_worker_stokvel_contribution.py` | The two tasks with the chain faked: duplicate messages, reverts, refusals, retries, no receipt; the contract wrapper | #234 |
 | `api/alembic/versions/V20261016_0901__stokvel_contributions.py` | Contributions table, partial unique index, composite foreign keys, RLS policies (one per operation, no customer update, no delete) | #228 |
 | `api/tests/test_stokvel_contribution_model.py` | Pay once (retry after failure), stay inside the cycle, status columns (SQLite); RLS reads, own-row inserts, worker-only updates, no deletes (`postgres` lane) | #228 |
+| `api/remitx_api/models/orm/stokvel_payout.py` | Payout table (section 3): `StokvelPayout`, `StokvelPayoutReleaseStatus` (`remittance_status` uses `TransactionStatus`) | #240 |
+| `api/remitx_api/repositories/stokvel_payout_repository.py` | Reads for payouts; R3-04 to R3-06 add the claims | #240 |
+| `api/alembic/versions/V20261016_1200__stokvel_payouts.py` | Payout table, RLS policies (one per operation, customers never write, no delete) and the scheduled-member trigger | #240 |
+| `api/tests/test_stokvel_payout_model.py` | One payout per round, the status and release CHECKs, a retried release, unique legs, hashes and quotes (SQLite); trigger, RLS (customers read, workers and admin routes write, nobody deletes) and migration round trip (`postgres` lane) | #240 |
 | `api/alembic/versions/V20261011_1000__stokvel_ledger_account_and_types.py` | `STOKVEL` account type and balance CHECK, stokvel transaction types, `stokvels.account_id` | #238 |
 | `api/alembic/versions/V20261011_1001__quote_sender_stokvel.py` | Nullable `quotes.sender_user_id`, `quotes.stokvel_id`, `quotes_one_sender` | #239 |
 | `api/alembic/versions/V20261011_1002__add_transactions_evm_tx_hash.py`, `V20261011_1003__backfill_transactions_evm_tx_hash.py` | `evm_tx_hash` added beside `xrpl_tx_hash`, then backfilled | #239 |
@@ -881,6 +1027,9 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `stokvel_cycle_member_same_stokvel` (SQL trigger function) | `api/alembic/versions/V20261014_1200__stokvel_cycle_tables.py` | `BEFORE INSERT OR UPDATE OF cycle_id, member_id` on `stokvel_cycle_members`: refuses a member row from a different stokvel than the cycle (SQLSTATE 23514) | #227 |
 | `StokvelCycleRepository.get_open_cycle`, `.get_cycle_rounds`, `.get_cycle_members` | `api/remitx_api/repositories/stokvel_cycle_repository.py` | A stokvel's open cycle; a cycle's rounds in order and members in payout order | #227 |
 | `StokvelContributionRepository.get_member_contribution`, `.get_round_contributions`, `.get_paid_member_ids` | `api/remitx_api/repositories/stokvel_contribution_repository.py` | A member's live (not failed) contribution to a round; every attempt at a round, oldest first; the members whose contribution to a round is confirmed | #228 |
+| `stokvel_payout_member_is_scheduled` (SQL trigger function) | `api/alembic/versions/V20261016_1200__stokvel_payouts.py` | `BEFORE INSERT OR UPDATE OF cycle_id, round, member_id` on `stokvel_payouts`: refuses a member whose `payout_position` is not the round (SQLSTATE 23514) | #240 |
+| `stokvel_cycle_member_position_is_paid` (SQL trigger function) | `api/alembic/versions/V20261016_1200__stokvel_payouts.py` | `BEFORE UPDATE OF payout_position` on `stokvel_cycle_members`: refuses changing the position of a member who already has a payout for that round (SQLSTATE 23514), the mirror of `stokvel_payout_member_is_scheduled` | #240 |
+| `StokvelPayoutRepository.get_round_payout`, `.get_cycle_payouts` | `api/remitx_api/repositories/stokvel_payout_repository.py` | One round's payout; a cycle's payouts in round order | #240 |
 | `AccountRepository.create_stokvel_account`, `AccountRepository.get_stokvel_account` | `api/remitx_api/repositories/account_repository.py` | Create a stokvel's `STOKVEL` account and link it; find it by stokvel | #238 |
 | `burn_tokens(amount, *, on_signed=None, w3=None)` | `api/remitx_worker/evm_service.py` | Burn exactly `amount` UCTUSD from the Treasury with `burn(uint256)`; returns the tx hash without waiting | #278 |
 | `submit_transaction(tx, w3=None, *, on_signed=None)` | `api/remitx_worker/evm_service.py` | Changed: `on_signed(tx_hash)` runs after signing and before the send, so the caller can store the hash first; the send holds `treasury_send_lock` from the nonce read until the nonce has moved on. Raises `TransactionRejected` when the RPC answers the send with a known refusal (for example insufficient funds for gas); any other error is left uncertain, and "already known" counts as sent. Every Treasury send must go through it | #278 |
