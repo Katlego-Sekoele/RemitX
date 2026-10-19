@@ -226,7 +226,9 @@ class SentStokvelInvitationRead(Schema):
     stokvel_id: uuid.UUID
     # "Thandi M."; null when the invitee has no name on file.
     invitee_name: str | None
-    account_reference: str
+    # Null on GET /stokvels/{id} for anyone but the Organiser, and when the
+    # invitee no longer holds an account in the stokvel currency.
+    account_reference: str | None
     status: StokvelInvitationStatus
     created_at: UtcDateTime
 
@@ -420,6 +422,9 @@ class StokvelDetailCycleRead(Schema):
     total_rounds: int | None
     started_at: UtcDateTime | None
     closed_at: UtcDateTime | None
+    # Null while forming, and after the start until startCycle is mined.
+    # Contributions are refused (409 cycle_starting) until this is set.
+    registered_at: UtcDateTime | None
     payout_order: list[uuid.UUID]
     rounds: list[StokvelRoundRead]
 
@@ -433,6 +438,7 @@ class StokvelDetailCycleRead(Schema):
             total_rounds=view.total_rounds,
             started_at=view.started_at,
             closed_at=view.closed_at,
+            registered_at=view.registered_at,
             payout_order=view.payout_order,
             rounds=[StokvelRoundRead.from_view(rnd) for rnd in view.rounds],
         )

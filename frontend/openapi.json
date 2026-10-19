@@ -4872,8 +4872,15 @@
         "description": "An invitation the Organiser has sent.",
         "properties": {
           "account_reference": {
-            "title": "Account Reference",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Reference"
           },
           "created_at": {
             "title": "Created At",
@@ -5383,6 +5390,17 @@
             "title": "Payout Order",
             "type": "array"
           },
+          "registered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered At"
+          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/StokvelRoundRead"
@@ -5425,6 +5443,7 @@
           "total_rounds",
           "started_at",
           "closed_at",
+          "registered_at",
           "payout_order",
           "rounds"
         ],

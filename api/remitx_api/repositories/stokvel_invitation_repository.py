@@ -45,30 +45,34 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
         return [(invitation, stokvel, inviter) for invitation, stokvel, inviter in rows]
 
     def list_pending_for_stokvel(
-        self, stokvel_id: uuid.UUID, currency: str
+        self, stokvel_id: uuid.UUID, currency: str, *, include_reference: bool
     ) -> list[tuple[StokvelInvitation, User, str | None]]:
         """The stokvel's unanswered invitations, newest first, each with the
-        invitee and the reference of their account in `currency` (None when
-        they no longer hold one). Scoped by `stokvel_id` so SQLite matches
-        Postgres row-level security."""
-        rows = db.session.execute(
-            select(StokvelInvitation, User, Account.reference)
-            .join(User, User.id == StokvelInvitation.invitee_user_id)
-            .outerjoin(
+        invitee. The account reference in `currency` is included only when
+        `include_reference` is set (the Organiser); otherwise it is None and
+        `accounts` is not read. None also when they no longer hold one.
+        Scoped by `stokvel_id` so SQLite matches Postgres row-level security."""
+        stmt = select(StokvelInvitation, User).join(
+            User, User.id == StokvelInvitation.invitee_user_id
+        )
+        if include_reference:
+            stmt = stmt.add_columns(Account.reference).outerjoin(
                 Account,
                 (Account.user_id == User.id)
                 & (Account.type == TYPE_USER)
                 & (Account.account_currency == currency),
             )
-            .where(
-                StokvelInvitation.stokvel_id == stokvel_id,
-                StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
-            )
-            .order_by(StokvelInvitation.created_at.desc(), StokvelInvitation.id)
-        ).all()
-        return [
-            (invitation, invitee, reference) for invitation, invitee, reference in rows
-        ]
+        stmt = stmt.where(
+            StokvelInvitation.stokvel_id == stokvel_id,
+            StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
+        ).order_by(StokvelInvitation.created_at.desc(), StokvelInvitation.id)
+        rows = db.session.execute(stmt).all()
+        if include_reference:
+            return [
+                (invitation, invitee, reference)
+                for invitation, invitee, reference in rows
+            ]
+        return [(invitation, invitee, None) for invitation, invitee in rows]
 
     def set_status_if_pending(
         self,

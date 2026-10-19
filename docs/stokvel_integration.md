@@ -666,8 +666,9 @@ Customer route, tag `stokvels` (client: `api.stokvels.getStokvel`).
 
 - `organiser_name`, `members[].full_name` and a beneficiary's `full_name` are `short_display_name` ("Tendai M."), or null when there is no first name.
 - `contribution_fiat_estimate` is today's rate, to the cent. Null when no rate is available; the rest of the response still returns.
-- `phase` is the current cycle's status, or `forming` when the stokvel has no cycle. `current_round`, `total_rounds` and `next_payout_time` are null while the cycle is forming. Rounds exist only after the cycle starts (#232).
-- `my_member_id` is the caller's `stokvel_members.id`. `payout_order` is those ids from position 0, stopping at the first gap.
+- `phase` is the current cycle's status, or `forming` when the stokvel has no cycle. `current_round`, `total_rounds` and `next_payout_time` are null while the cycle is forming. Rounds exist only after the cycle starts (#232). `registered_at` is null until that start is mined; `phase` is already `active` by then, and contributions answer 409 `cycle_starting` until it is set.
+- `my_member_id` is the caller's `stokvel_members.id`. `payout_order` is those ids from position 0, stopping at the first gap. A round past that gap has no `recipient_member_id`.
+- Pending `invitations[].account_reference` is set only for the Organiser. Other members get null, and `accounts` is not read for them.
 - `fee_amount` is set only on the caller's own contributions, from their fee leg. Other rows are null.
 - `remittance_id` is the payout reference. `remittance_status` is null until that id is set, because the column is `pending` from the moment the payout row exists. `pool_fiat_amount` is null until members can read the payout quote (#241).
 - `my_contribution_status` is the caller's contribution to the current round that has not failed, or null.

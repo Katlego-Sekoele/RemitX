@@ -98,6 +98,7 @@ def test_member_sees_a_forming_stokvel(verified_client, monkeypatch):
     assert cycle["cycle_number"] == 1
     assert cycle["rounds"] == []
     assert cycle["payout_order"] == []
+    assert cycle["registered_at"] is None
     assert "remittance_reference" not in response.text
 
 
@@ -163,6 +164,7 @@ def test_fee_is_only_the_callers_and_a_payout_waits_for_its_remittance(
     assert body["my_contribution_status"] == "pending"
     assert body["next_payout_time"] == "2026-11-03T00:00:00+00:00"
     assert body["cycle"]["payout_order"] == [caller_member_id, other_member_id]
+    assert body["cycle"]["registered_at"] is None
     fees = {row["member_id"]: row["fee_amount"] for row in body["contributions"]}
     assert fees[caller_member_id] == "16.75"
     assert fees[other_member_id] is None
