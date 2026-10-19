@@ -20,6 +20,8 @@ from remitx_api.models.orm.account import (
     Account,
 )
 from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
     StokvelInvitationStatus,
@@ -241,6 +243,39 @@ def test_create_makes_the_caller_organiser_and_first_member(verified_client):
     assert ledger.account_balance == 0
 
 
+def test_create_opens_a_forming_first_cycle_with_the_organiser(verified_client):
+    """So the payout order and beneficiaries can be set before it starts
+    (R2-09). No schedule yet: that is still an open question."""
+    client, _user = verified_client
+
+    response = client.post(STOKVELS, json=_body())
+
+    assert response.status_code == 201
+    stokvel, cycles, cycle_members, members = _in_session(
+        lambda: (
+            db.session.scalars(select(Stokvel)).one(),
+            db.session.scalars(select(StokvelCycle)).all(),
+            db.session.scalars(select(StokvelCycleMember)).all(),
+            db.session.scalars(select(StokvelMember)).all(),
+        )
+    )
+    assert len(cycles) == 1
+    cycle = cycles[0]
+    assert stokvel.current_cycle_id == cycle.id
+    assert (cycle.cycle_number, cycle.status) == (1, "forming")
+    assert cycle.total_rounds is None
+    assert cycle.current_round is None
+    assert cycle.started_at is None
+    assert len(cycle_members) == 1
+    organiser_row = cycle_members[0]
+    assert organiser_row.cycle_id == cycle.id
+    assert organiser_row.member_id == members[0].id
+    assert organiser_row.payout_position is None
+    assert organiser_row.payout_beneficiary_id is None
+    assert organiser_row.payout_currency is None
+    assert organiser_row.locked is False
+
+
 def test_create_reads_back_the_same_through_the_list(verified_client):
     client, _user = verified_client
 
@@ -289,6 +324,7 @@ def test_create_writes_nothing_if_any_step_fails(verified_client, monkeypatch):
         client.post(STOKVELS, json=_body())
 
     assert _rows() == ([], [], [])
+    assert _in_session(lambda: db.session.scalars(select(StokvelCycle)).all()) == []
 
 
 def test_create_strips_the_name(verified_client):

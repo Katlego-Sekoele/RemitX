@@ -112,13 +112,15 @@ class ContributionInsufficientBalanceError(DomainError):
 
 
 class NotStokvelOrganiserError(ForbiddenError):
-    """Only the Organiser invites. A fellow member can see the stokvel, so
-    gets this rather than `StokvelNotFoundError`."""
+    """Only the Organiser invites, or sets the payout order (R2-09). A
+    fellow member can see the stokvel, so gets this rather than
+    `StokvelNotFoundError`. `action` completes "Only the stokvel's organiser
+    can ..."."""
 
     code = "not_organiser"
 
-    def __init__(self) -> None:
-        super().__init__("Only the stokvel's organiser can invite members.")
+    def __init__(self, action: str = "invite members") -> None:
+        super().__init__(f"Only the stokvel's organiser can {action}.")
 
 
 class StokvelDeactivatedError(ConflictError):
@@ -235,3 +237,57 @@ class KycNotApprovedToJoinStokvelError(ForbiddenError):
             "Only verified customers can join a stokvel. Finish verification "
             "to continue."
         )
+
+
+# --- Payout order and beneficiary (R2-09). Codes and wording are doc
+# section 6's.
+
+
+class PayoutSetupLockedError(ConflictError):
+    """The stokvel's cycle has started: its payout order and beneficiaries
+    are fixed until it closes."""
+
+    code = "cycle_locked"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The payout order and beneficiaries are locked while a cycle is running."
+        )
+
+
+class CycleNotFormingError(ConflictError):
+    """The stokvel has no `forming` cycle to set up. Its last cycle has
+    closed and the next has not been opened (#237), or, for a member who is
+    not the Organiser, a stokvel from before cycles opened at creation has
+    none yet: only the Organiser may open one."""
+
+    code = "cycle_not_forming"
+
+    def __init__(self) -> None:
+        super().__init__("This stokvel's next cycle hasn't been opened yet.")
+
+
+class InvalidPayoutOrderError(DomainError):
+    """The payout order is not every current member exactly once. `detail`
+    says which rule it breaks."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "invalid_payout_order"
+
+    @classmethod
+    def duplicate(cls) -> InvalidPayoutOrderError:
+        return cls("Each member can appear only once in the payout order.")
+
+    @classmethod
+    def former_member(cls) -> InvalidPayoutOrderError:
+        return cls("The payout order includes a member who has left the stokvel.")
+
+    @classmethod
+    def unknown_member(cls) -> InvalidPayoutOrderError:
+        return cls(
+            "The payout order includes someone who isn't a member of this stokvel."
+        )
+
+    @classmethod
+    def missing_member(cls) -> InvalidPayoutOrderError:
+        return cls("The payout order must include every current member.")
