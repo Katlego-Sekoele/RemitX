@@ -1,8 +1,8 @@
 """The worker's wrapper over the StokvelVault contract (doc section 1).
 
 R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
-(#235) reads the events the sync applies (`fetch_logs`, `decode_log`). R2-10
-(#232) adds `createStokvel` and `startCycle` here, and R3-04 (#241)
+(#235) reads the events the sync applies (`fetch_logs`, `decode_log`); R2-10
+(#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241) will add
 `finalise`. Every send goes through `evm_service.submit_transaction`, so it
 holds the Treasury send lock and can store its hash before the send.
 
@@ -219,3 +219,87 @@ def decode_log(log, w3: Web3) -> ContractEvent:
         block_number=decoded["blockNumber"],
         log_index=decoded["logIndex"],
     )
+
+
+@dataclass(frozen=True)
+class OnChainStokvel:
+    """`getStokvel(id)`: the stokvel's fixed contribution in UCTUSD base
+    units, its current (latest) cycle (0 before the first) and whether that
+    cycle is open."""
+
+    contribution: int
+    current_cycle: int
+    cycle_open: bool
+
+
+def get_stokvel(stokvel_id: UUID, w3: Web3 | None = None) -> OnChainStokvel | None:
+    """The stokvel as the contract holds it, or None if it is not registered
+    (`getStokvel` reverts `UnknownStokvel`). A read: nothing is sent."""
+    w3 = w3 or evm_service.get_web3()
+    try:
+        contribution, current_cycle, cycle_open = (
+            vault(w3)
+            .functions.getStokvel(evm_service.uuid_to_bytes32(stokvel_id))
+            .call()
+        )
+    except (ContractCustomError, ContractLogicError) as exc:
+        if error_name(exc.data) == "UnknownStokvel":
+            return None
+        raise
+    return OnChainStokvel(int(contribution), int(current_cycle), bool(cycle_open))
+
+
+def create_stokvel(
+    stokvel_id: UUID,
+    contribution: Decimal,
+    *,
+    on_signed=None,
+    w3: Web3 | None = None,
+) -> str:
+    """Send `createStokvel(id, contribution)` from the Treasury Wallet and
+    return its hash: register the stokvel and its fixed UCTUSD contribution
+    for every cycle (D13). Submits only. Raises `ContractRefused` when the
+    gas estimate shows it would revert (`StokvelExists` once it is
+    registered), before anything is signed."""
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi(
+        "createStokvel",
+        args=[
+            evm_service.uuid_to_bytes32(stokvel_id),
+            evm_service.to_base_units(contribution),
+        ],
+    )
+    return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def start_cycle(
+    stokvel_id: UUID,
+    member_ids: list[UUID],
+    round_start_times: list[int],
+    round_deadlines: list[int],
+    payout_times: list[int],
+    *,
+    on_signed=None,
+    w3: Web3 | None = None,
+) -> str:
+    """Send `startCycle(id, memberIds, roundStartTimes, roundDeadlines,
+    payoutTimes)` from the Treasury Wallet and return its hash. Submits only.
+
+    `member_ids` are in payout order (round i pays `member_ids[i]`); the
+    times are Unix seconds, one per round. Raises `ContractRefused` when the
+    gas estimate shows it would revert, before anything is signed.
+    """
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi(
+        "startCycle",
+        args=[
+            evm_service.uuid_to_bytes32(stokvel_id),
+            [evm_service.uuid_to_bytes32(member_id) for member_id in member_ids],
+            round_start_times,
+            round_deadlines,
+            payout_times,
+        ],
+    )
+    return _submit({"to": contract.address, "data": data}, w3, on_signed)
