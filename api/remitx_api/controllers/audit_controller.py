@@ -31,7 +31,6 @@ class AuditController:
         actor_user_id: uuid.UUID,
         actor_user_id_filter: uuid.UUID | None = None,
         action: str | None = None,
-        action_prefix: str | None = None,
         subject_type: str | None = None,
         subject_id: uuid.UUID | None = None,
         created_after: datetime | None = None,
@@ -47,7 +46,6 @@ class AuditController:
             db.session,
             actor_user_id=actor_user_id_filter,
             action=action,
-            action_prefix=action_prefix,
             subject_type=subject_type,
             subject_id=subject_id,
             created_after=created_after,
@@ -58,7 +56,6 @@ class AuditController:
         filters = AuditLogListFilters(
             actor_user_id=actor_user_id_filter,
             action=action,
-            action_prefix=action_prefix,
             subject_type=subject_type,
             subject_id=subject_id,
             created_after=created_after,

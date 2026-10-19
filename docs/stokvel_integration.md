@@ -86,7 +86,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | 2026-10-18 | 2, 3, 4, 8, 9, 13, 14 | R2-13 (#235): `stokvel.sync_events` built. A beat task reads the vault's `ContributionMade`, `RoundFinalised` and `CycleClosed` logs from a cursor (`stokvel_sync_state`, one row per contract address, worker-only row-level security), range by range, staying `STOKVEL_SYNC_CONFIRMATIONS` behind the head. Each range is one transaction: a compare-and-set on the cursor, then the events, so a crash keeps them together and overlapping runs cannot both apply a range. `ContributionMade` confirms through `stokvel_ledger.record_mined`, the guard `confirm_contribution` now shares; `CycleClosed` closes the cycle; `RoundFinalised` is only noted until R3-04 (#241) builds `release_pool` (proposed interface in section 8). Replaying any range changes nothing. Events for stokvels this database lacks are skipped (the contract is shared). New settings `STOKVEL_SYNC_*` | #235 |
 | 2026-10-19 | 4 | R2-13 review (#346, Marc and Mridula): only the cursor's own insert is treated as a race between sync runs; an integrity error from applying an event now fails the run (the cursor stays put) instead of being logged as a race and skipped. A contribution `confirm_contribution` recorded meanwhile is reported as already recorded. Noted: R2-10 must keep `cycle_number` equal to the contract's cycle. Migration `V20261018_1000` now follows #342's payouts table | #346 |
 | 2026-10-19 | 2, 3, 4, 13, 14 | R2-13 second review (#346): new `stokvel_held_events`. Each event is applied in its own savepoint; one that fails, will not decode, or disagrees with the database (a different hash) is held as failed for a person, and `RoundFinalised` (until R3-04) and a `CycleClosed` with payouts still unreleased are held as waiting. The cursor moves on, every run retries held events first, so no event stops the sync and none is lost. Decoding moved out of the RPC call (`fetch_logs`, `decode_log`); topics from `eth_utils`. `STOKVEL_SYNC_START_BLOCK` is required once the contract address is set (no scan from genesis). A run that loses a race reports where the cursor is | #346 |
-| 2026-10-19 | 5, 9, 10, 14 | R3-12 (#249): audit actions `stokvel.contract.paused`, `stokvel.contract.unpaused`, `stokvel.round.finalised_manually` and subjects `stokvel`, `stokvel_contract` (`STOKVEL_CONTRACT_SUBJECT_ID`). `GET /admin/audit` takes optional `action_prefix` (e.g. `stokvel.`). `stokvel.cancelled` is not an action (P4, #208). The pause, resume and manual-finalise routes still write these in R3-07 and R3-10 | |
+| 2026-10-19 | 5, 9, 10, 14 | R3-12 (#249): audit actions `stokvel.contract.paused`, `stokvel.contract.unpaused`, `stokvel.round.finalised_manually` and subjects `stokvel`, `stokvel_contract` (`STOKVEL_CONTRACT_SUBJECT_ID`). List them with the existing `subject_type` filter. No `stokvel.cancelled` (#208). Pause and manual finalise still call `record_audit` in R3-07 and R3-10 | |
 
 ---
 
@@ -687,8 +687,8 @@ Admin actions on stokvels are recorded in the **existing** audit log (`audit_log
 Cancellation is not an action: P4 is not in v1 (#208), so there is no `stokvel.cancelled`.
 
 - Only actions by a real staff member are logged here (`actor_user_id` is never null). The automatic release, event sync and refund tasks are system actions; their trail is the ledger, `stokvel_payouts` and the contract events.
-- `GET /admin/audit` accepts `action_prefix` (for example `stokvel.`) as well as an exact `action` and `subject_type`. `%` and `_` in the prefix match themselves.
-- The admin audit page gets a stokvel filter (R4-12). The pause and manual-finalise routes write these entries (R3-07, R3-10).
+- Filter `GET /admin/audit` by `subject_type=stokvel` or `stokvel_contract`.
+- The admin audit page gets a stokvel filter (R4-12). Pause and manual finalise write these entries (R3-07, R3-10).
 
 The admin finalise route removed from an earlier draft is back as a fallback only (P5). Finalisation is still automatic by default (D5).
 
@@ -876,7 +876,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | DB models and migrations | In progress | #226, #227, #228, #238, #239, #240 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301); cycle tables with row-level security (#227, PR #306); contribution table (#228, PR #338). In review: payout table (#240, PR #342) |
 | Worker tasks | In progress | #234, #235 | Section 4. Built: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234), `stokvel.sync_events` (#235). Next: the cycle tasks (#232), release (#241, #248) |
 | API routes | In progress | #229, #230, #231, #233 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `POST /stokvels/{id}/contributions` (#233); invitations (#230); payout order and beneficiary (#231, in review) |
-| Stokvel audit log (admin actions) | Done (writers still R3-07, R3-10) | #249 | Section 5. Actions, subjects and `action_prefix` on `GET /admin/audit`. Pause and manual finalise still have to call `record_audit` |
+| Stokvel audit log (admin actions) | Done (writers still R3-07, R3-10) | #249 | Section 5. Actions and subjects on the existing audit log. Pause and manual finalise still call `record_audit` |
 | Frontend screens | In progress | #251 | Routes, nav and mocks (#251); screen list on #250; member, Organiser, invitation and admin screens next (#252–#261) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
@@ -927,7 +927,7 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Create and list stokvels | `POST /stokvels`: a KYC-verified user creates a stokvel and becomes its Organiser and first Member, with its `STOKVEL` ledger account, in one transaction. `GET /stokvels`: the caller's current stokvels and pending invitations | Claire (Role 2) | #229 |
 | Stokvel invitations | The Organiser invites a verified user by account reference in the Stokvel currency; the invitee accepts (becoming a Member, within `MAX_STOKVEL_MEMBERS`) or declines. Nobody becomes a Member without accepting, enforced by the API and by row-level security | Claire (Role 2) | #230 |
 | Payout order and beneficiary | Before a cycle starts, the Organiser enters the payout order the members agreed (every current member once) and each member chooses which of their beneficiaries the stokvel pays their pool to, in that beneficiary's payout currency. Both can change until the cycle starts, then are locked. A new stokvel opens its first cycle as `forming`, and members who accept join it | Claire (Role 2) | #231 |
-| Stokvel audit actions | `AuditAction` and `AuditSubject` can record a contract pause, a resume and a manual finalise. `GET /admin/audit?action_prefix=stokvel.` lists them together. The routes that perform those actions are still R3-07 and R3-10 | Katlego (Role 3) | #249 |
+| Stokvel audit actions | `AuditAction` and `AuditSubject` can record a contract pause, a resume and a manual finalise. List them with `subject_type`. The routes are still R3-07 and R3-10 | Katlego (Role 3) | #249 |
 
 ## 11. How things are connected
 
@@ -1104,4 +1104,3 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `PayoutSetupLockedError`, `CycleNotFormingError`, `InvalidPayoutOrderError`; `NotStokvelOrganiserError(action)` (changed) | `api/remitx_api/errors/stokvels.py` | The R2-09 refusals (section 6) | #231 |
 | `BeneficiaryInUseError`; `BeneficiaryController.delete` (changed) | `api/remitx_api/errors/beneficiaries.py`, `api/remitx_api/controllers/beneficiary_controller.py` | Refuse to delete a beneficiary a stokvel cycle pays: 409 `beneficiary_in_use_by_stokvel` (section 6) | #231 |
 | `STOKVEL_CONTRACT_SUBJECT_ID`; `AuditAction.STOKVEL_CONTRACT_PAUSED`, `.STOKVEL_CONTRACT_UNPAUSED`, `.STOKVEL_ROUND_FINALISED_MANUALLY`; `AuditSubject.STOKVEL`, `.STOKVEL_CONTRACT` | `api/remitx_api/models/orm/audit_log.py` | The stokvel admin-action values. The contract id is fixed because one deployment holds every stokvel (section 5) | #249 |
-| `list_audit_log` (changed), `AuditLogRepository.list_entries` (changed) | `api/remitx_api/routes/admin/audit.py`, `api/remitx_api/repositories/audit_log_repository.py` | Optional `action_prefix` query on `GET /admin/audit`. `%` and `_` match themselves | #249 |

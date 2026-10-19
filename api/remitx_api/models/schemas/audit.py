@@ -25,7 +25,6 @@ class AuditLogListFilters(Schema):
 
     actor_user_id: uuid.UUID | None = None
     action: str | None = None
-    action_prefix: str | None = None
     subject_type: str | None = None
     subject_id: uuid.UUID | None = None
     created_after: datetime | None = None
