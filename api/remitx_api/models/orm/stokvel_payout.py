@@ -2,10 +2,11 @@
 Record of what happened when a round's pool was paid out.
 
 - `release_status`: `pending → processing → released | failed`
-  the contract releases the pool to the Treasury Wallet and the stokvel's
-  ledger account is credited. A pending row has sent nothing, so it has no
-  release hash or block; a released row has its hash, block, ledger leg
-  (`release_tx_id`) and `released_at`.
+  the contract releases the pool to the Treasury Wallet, and the ledger books
+  the `stokvel_pool_release` leg `STOKVEL` → Treasury Wallet, so the stokvel's
+  balance keeps equalling its unreleased pools (R2-11). A pending row has
+  sent nothing, so it has no release hash or block; a released row has its
+  hash, block, ledger leg (`release_tx_id`) and `released_at`.
 - `remittance_status`: the ledger's `pending → processing → confirmed | failed`
   the pool's status of remittance to the member's locked beneficiary.
   Stored here, not read through `remittance_id`.
@@ -52,6 +53,8 @@ class StokvelPayout(Base):
             "release_status IN ('pending','processing','released','failed')",
             name="stokvel_payouts_release_status_valid",
         ),
+        # Pinned on purpose, not built from `TransactionStatus`: a status added
+        # there needs a migration here before a payout may use it.
         CheckConstraint(
             "remittance_status IN ('pending','processing','confirmed','failed')",
             name="stokvel_payouts_remittance_status_valid",
@@ -132,7 +135,7 @@ class StokvelPayout(Base):
     )
     # The block the pool release (RoundFinalised) was mined in
     release_block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # The `stokvel_pool_release` ledger leg that books the released pool
+    # The `stokvel_pool_release` ledger leg, `STOKVEL` → Treasury Wallet
     release_tx_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
     )

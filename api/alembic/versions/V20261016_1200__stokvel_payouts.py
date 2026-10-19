@@ -7,12 +7,14 @@ UNIQUE (``cycle_id``, ``round``) stops a second payout for a round.
 ``(cycle_id, round)`` references ``stokvel_rounds`` and ``(cycle_id,
 member_id)`` references ``stokvel_cycle_members``, so the round exists and the
 member is in the cycle. ``release_tx_id`` names the ``stokvel_pool_release``
-ledger leg, and ``release_block_number`` and ``released_at`` are set with the
+ledger leg (``STOKVEL`` → Treasury Wallet, as agreed in R2-11), and ``release_block_number`` and ``released_at`` are set with the
 release, as ``block_number`` and ``confirmed_at`` are on a contribution. The
 trigger ``stokvel_payout_member_is_scheduled``
 also refuses a member whose ``payout_position`` is not the round; no foreign
-key can see that. Like ``stokvel_cycle_member_same_stokvel``, it raises
-SQLSTATE 23514.
+key can see that. Its mirror on ``stokvel_cycle_members``,
+``stokvel_cycle_member_position_is_paid``, refuses moving a member off the
+round a payout already pays them for, so the rule holds from both sides. Like
+``stokvel_cycle_member_same_stokvel``, both raise SQLSTATE 23514.
 
 Row level security, one policy per operation as for the cycle tables
 (``V20261014_1200``). Members of the cycle's stokvel (current or former) read.
@@ -22,7 +24,7 @@ customer. There is no ``DELETE`` policy, so nobody running as ``remitx_app``
 deletes a payout.
 
 Revision ID: d9d228218faf
-Revises: f02a457cc946
+Revises: e09d8fb367b5
 Create Date: 2026-10-16 12:00:00.000000+00:00
 
 """
@@ -32,7 +34,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d9d228218faf"
-down_revision: str | None = "f02a457cc946"
+down_revision: str | None = "e09d8fb367b5"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
@@ -219,8 +221,47 @@ def upgrade() -> None:
         """
     )
 
+    op.execute(
+        """
+        CREATE FUNCTION stokvel_cycle_member_position_is_paid()
+          RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+          SET search_path = pg_catalog, public, pg_temp
+          AS $$
+        BEGIN
+          IF NEW.payout_position IS DISTINCT FROM OLD.payout_position
+             AND EXISTS (
+               SELECT 1 FROM stokvel_payouts
+                WHERE stokvel_payouts.cycle_id = OLD.cycle_id
+                  AND stokvel_payouts.round = OLD.payout_position
+                  AND stokvel_payouts.member_id = OLD.member_id
+             ) THEN
+            RAISE EXCEPTION 'cycle member already has a payout for their round'
+              USING ERRCODE = '23514';
+          END IF;
+          RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        "REVOKE ALL ON FUNCTION stokvel_cycle_member_position_is_paid() FROM PUBLIC"
+    )
+    op.execute(
+        """
+        CREATE TRIGGER stokvel_cycle_member_position_is_paid
+          BEFORE UPDATE OF payout_position
+          ON stokvel_cycle_members
+          FOR EACH ROW EXECUTE FUNCTION stokvel_cycle_member_position_is_paid()
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute(
+        "DROP TRIGGER IF EXISTS stokvel_cycle_member_position_is_paid"
+        " ON stokvel_cycle_members"
+    )
+    op.execute("DROP FUNCTION IF EXISTS stokvel_cycle_member_position_is_paid()")
     op.execute(
         "DROP TRIGGER IF EXISTS stokvel_payout_member_is_scheduled ON stokvel_payouts"
     )

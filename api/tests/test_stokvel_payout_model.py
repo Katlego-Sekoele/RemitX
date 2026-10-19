@@ -8,7 +8,12 @@ from decimal import Decimal
 import pytest
 from remitx_api.db.rls import bound_row_security_context
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
+    Account,
+)
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
@@ -39,7 +44,7 @@ _RELEASED = StokvelPayoutReleaseStatus.RELEASED.value
 _PROCESSING = StokvelPayoutReleaseStatus.PROCESSING.value
 _FAILED = StokvelPayoutReleaseStatus.FAILED.value
 # The migration before this one
-_BEFORE_PAYOUTS = "f02a457cc946"
+_BEFORE_PAYOUTS = "e09d8fb367b5"
 
 
 def _member(stokvel, user, **columns) -> StokvelMember:
@@ -101,20 +106,26 @@ def _payout(cycle, round_, member, **columns) -> StokvelPayout:
 
 
 def _release_leg(stokvel) -> Transaction:
-    """The pool release's ledger leg, on the stokvel's account. Which way it
-    books is still open (doc section 8); these tests only need the row."""
+    """The pool release's ledger leg: `STOKVEL` → Treasury Wallet (R2-11)."""
     accounts = AccountRepository()
     stokvel_account = accounts.get_stokvel_account(
         stokvel.id
     ) or accounts.create_stokvel_account(stokvel)
-    other = make_user()
-    other_token = accounts.get_or_create_user_account(
-        other.id, other.base_reference, CURRENCY_TOKEN
-    )
+    treasury = accounts.get_platform_account(TYPE_EVM_WALLET, CURRENCY_TOKEN)
+    if treasury is None:
+        # Seeded by migration on Postgres; SQLite's schema has no seed rows.
+        treasury = Account(
+            user_id=None,
+            type=TYPE_EVM_WALLET,
+            account_currency=CURRENCY_TOKEN,
+            label="payout-test treasury",
+        )
+        db.session.add(treasury)
+        db.session.flush()
     leg = Transaction(
         type=TYPE_STOKVEL_POOL_RELEASE,
         credit_account_id=stokvel_account.account_id,
-        debit_account_id=other_token.account_id,
+        debit_account_id=treasury.account_id,
         amount=Decimal("1000"),
         currency=CURRENCY_TOKEN,
         status=STATUS_CONFIRMED,
@@ -393,14 +404,16 @@ def test_a_payout_needs_its_round_and_a_member_of_the_cycle(app_context):
 
 
 @pytest.mark.postgres
-def test_the_trigger_function_is_security_definer(postgres_app):
+@pytest.mark.parametrize(
+    "function",
+    ["stokvel_payout_member_is_scheduled", "stokvel_cycle_member_position_is_paid"],
+)
+def test_the_trigger_functions_are_security_definer(postgres_app, function):
     token = db.open_session()
     try:
         security_definer, settings = db.session.execute(
-            text(
-                "SELECT prosecdef, proconfig FROM pg_proc"
-                " WHERE proname = 'stokvel_payout_member_is_scheduled'"
-            )
+            text("SELECT prosecdef, proconfig FROM pg_proc WHERE proname = :name"),
+            {"name": function},
         ).one()
 
         assert security_definer
@@ -454,6 +467,47 @@ def test_a_payout_pays_the_member_the_round_is_for(postgres_app):
             (row.round, row.member_id)
             for row in StokvelPayoutRepository().get_cycle_payouts(params["cycle"])
         ] == [(0, params["first"])]
+    finally:
+        db.close_session(token)
+
+
+@pytest.mark.postgres
+def test_a_paid_members_position_cannot_move(postgres_app):
+    token = db.open_session()
+    try:
+        _, cycle, [first, second] = _cycle(make_user(), make_user())
+        _payout(cycle, 0, first)
+        db.session.commit()
+        params = {"cycle": cycle.id, "first": first.id, "second": second.id}
+        move = (
+            "UPDATE stokvel_cycle_members SET payout_position = :position"
+            " WHERE cycle_id = :cycle AND member_id = :member"
+        )
+
+        for position in (2, None):
+            with pytest.raises(
+                IntegrityError, match="already has a payout for their round"
+            ):
+                db.session.execute(
+                    text(move), {**params, "position": position, "member": first.id}
+                )
+                pytest.fail(f"moving the paid member to {position}: accepted")
+            db.session.rollback()
+
+        # A member with no payout yet can still move.
+        db.session.execute(text(move), {**params, "position": 2, "member": second.id})
+        db.session.commit()
+
+        positions = dict(
+            db.session.execute(
+                text(
+                    "SELECT member_id, payout_position FROM stokvel_cycle_members"
+                    " WHERE cycle_id = :cycle"
+                ),
+                params,
+            ).all()
+        )
+        assert positions == {first.id: 0, second.id: 2}
     finally:
         db.close_session(token)
 
@@ -546,8 +600,9 @@ def test_the_payouts_migration_rolls_back_and_reapplies(empty_postgres_url):
             table = connection.scalar(text("SELECT to_regclass('stokvel_payouts')"))
             trigger = connection.scalar(
                 text(
-                    "SELECT count(*) FROM pg_proc"
-                    " WHERE proname = 'stokvel_payout_member_is_scheduled'"
+                    "SELECT count(*) FROM pg_proc WHERE proname IN"
+                    " ('stokvel_payout_member_is_scheduled',"
+                    " 'stokvel_cycle_member_position_is_paid')"
                 )
             )
     finally:
