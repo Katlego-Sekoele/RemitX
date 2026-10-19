@@ -57,12 +57,15 @@ The moment a **Round** opens for contributions, set by the **Organiser**.
 The time by which **Members** are expected to contribute to a **Round**, set by the **Organiser** and shown to every member. It is informational only: the platform does not enforce it or penalise anyone, and a late contribution is still accepted. Consequences are for the members to handle off-platform.
 _Avoid_: Cut-off, due date
 
+**Payout time**:
+The date and time from which a **Round**'s **Pool** may be released, set by the **Organiser** for each round and no earlier than its **Deadline**. Unlike the deadline it is enforced: a round is never released before it. A member who has not paid by then can still pay; the round waits for them. Whether to merge the deadline and the payout time into one date is an open question (P6 in the stokvel integration doc).
+
 **Pool**:
 The sum of all members' contributions in a **Round**, released as one amount to that round's scheduled member.
 _Avoid_: Pot, kitty, payout amount
 
 **Finalise**:
-To release a **Round**'s **Pool** and record the member it is owed to. A round is finalised once every member has contributed to the next round; the last round of a **Cycle**, having no next round, is finalised once every member has contributed to it. Happens automatically; no person triggers it.
+To release a **Round**'s **Pool** and record the member it is owed to. A round is finalised once its **Payout time** has passed and every member has contributed to the next round; the last round of a **Cycle**, having no next round, is finalised once its payout time has passed and every member has contributed to it. Happens automatically; no person triggers it.
 _Avoid_: Release, close
 
 **Continuation**:
