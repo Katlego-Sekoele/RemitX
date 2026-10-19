@@ -9,7 +9,7 @@ artifact_registry_repository_id = "remitx"
 upstash_primary_region          = "eu-west-1"
 
 frontend_custom_domain = "remitx.tech"
-api_custom_domain      = "api.remitx.tech"
+api_custom_domain      = ""
 
 object_storage_endpoint_url = "https://br-round-wave-b226igl6.storage.c-6.eu-central-1.aws.neon.tech"
 object_storage_bucket       = "remitx-prod-kyc-documents"

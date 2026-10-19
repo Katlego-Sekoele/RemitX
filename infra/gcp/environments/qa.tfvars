@@ -9,7 +9,7 @@ artifact_registry_repository_id = "remitx"
 upstash_primary_region          = "eu-west-1"
 
 frontend_custom_domain  = "qa.remitx.tech"
-api_custom_domain       = "qa-api.remitx.tech"
+api_custom_domain       = ""
 additional_cors_origins = ""
 
 object_storage_endpoint_url = "https://br-divine-union-b2ysf337.storage.c-6.eu-central-1.aws.neon.tech"
