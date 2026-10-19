@@ -50,6 +50,13 @@ class Config:
     STOKVEL_SYNC_INTERVAL_SECONDS = int(
         os.getenv("STOKVEL_SYNC_INTERVAL_SECONDS", "30")
     )
+    # How often the beat runs `stokvel.register_started_cycles`, which
+    # re-queues `stokvel.start_cycle` for active cycles not yet registered
+    # on-chain (R2-10, #232). Only cycles started at least this long ago, so
+    # a start still in its first task is left to it.
+    STOKVEL_START_SWEEP_INTERVAL_SECONDS = int(
+        os.getenv("STOKVEL_START_SWEEP_INTERVAL_SECONDS", "300")
+    )
     # Only remittance groups fully ``pending`` for at least this long are
     # re-enqueued on the beat tick (boot reclaim ignores the age gate).
     SETTLEMENT_RECLAIM_MIN_AGE_SECONDS = int(

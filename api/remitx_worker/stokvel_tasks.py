@@ -21,32 +21,32 @@ R2-13 (#235): `stokvel.sync_events` reads the contract's events into the
 database on the beat (`stokvel_sync` applies them).
 
 R2-10 (#232): `stokvel.start_cycle` registers a started cycle on the contract
-(`createStokvel` for a new stokvel, then `startCycle`), and
-`stokvel.confirm_cycle_start` records it as open on-chain, after which the
-API takes contributions. Duplicate messages: the `startCycle` hash is stored
-before the send, guarded on none being stored yet, so only one delivery
-sends it and a redelivery waits on that hash. Whatever else the task needs
-it reads from the chain (`getStokvel`) before sending, so a repeat finds the
-stokvel or the cycle already there instead of creating it again.
+(`createStokvel` for a new stokvel, then `startCycle`) and, once it is mined,
+records it as open on-chain (`registered_at`), after which the API takes
+contributions. Duplicate messages: the `startCycle` hash is stored before the
+send, guarded on none being stored yet, so only one delivery sends it and a
+redelivery waits on that hash. Whatever else the task needs it reads from
+the chain (`getStokvel`) before sending, so a repeat finds the stokvel or the
+cycle already there instead of creating it again.
+`stokvel.register_started_cycles` re-queues it, on the beat, for any active
+cycle still unregistered, so a lost enqueue cannot strand one.
 """
 
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from hexbytes import HexBytes
 from remitx_api.clock import utcnow
 from remitx_api.config import Config
-from remitx_api.models.orm.account import Account
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
     StokvelContributionStatus,
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
-from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_held_event import (
     HELD_FAILED,
     HELD_WAITING,
@@ -60,6 +60,7 @@ from remitx_api.models.orm.transaction import (
     STATUS_PROCESSING as TX_STATUS_PROCESSING,
     Transaction,
 )
+from remitx_api.repositories.stokvel_cycle_repository import locked_members_query
 from remitx_api.services import queue_service
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -837,16 +838,7 @@ def _seconds(value: datetime) -> int:
 
 def _cycle_plan(session, cycle: StokvelCycle) -> _CyclePlan:
     stokvel = session.get(Stokvel, cycle.stokvel_id)
-    # The cycle's members are its locked rows; a former member's row is not
-    # locked and has no position (R2-09).
-    members = session.scalars(
-        select(StokvelCycleMember)
-        .where(
-            StokvelCycleMember.cycle_id == cycle.id,
-            StokvelCycleMember.locked.is_(True),
-        )
-        .order_by(StokvelCycleMember.payout_position)
-    ).all()
+    members = session.scalars(locked_members_query(cycle.id)).all()
     rounds = session.scalars(
         select(StokvelRound)
         .where(
@@ -873,16 +865,18 @@ def _cycle_plan(session, cycle: StokvelCycle) -> _CyclePlan:
 
 @celery.task(bind=True, name="stokvel.start_cycle", max_retries=MAX_RETRIES)
 def start_cycle(self, cycle_id: str) -> str:
-    """Register a started cycle on the contract, then hand it to
-    `confirm_cycle_start`.
+    """Register a started cycle on the contract, and record it as open
+    on-chain (`registered_at`) once `startCycle` is mined.
 
     Reads the stokvel on-chain first. Not registered yet (its first cycle):
     `createStokvel` with its fixed contribution, waiting for it to be mined.
-    The cycle already open on-chain (an earlier delivery sent `startCycle`
+    This cycle already open on-chain (an earlier delivery sent `startCycle`
     but its hash was lost): nothing is sent, and the cycle is recorded as
-    open. Otherwise `startCycle` is sent with the locked members in payout
-    order and the round schedule, its hash stored first (guarded on none
-    being stored), and waited on.
+    open. The contract one cycle behind: `startCycle` is sent with the locked
+    members in payout order and the round schedule, its hash stored first
+    (guarded on none being stored), and waited on. Anything else (a different
+    contribution, cycle numbers that disagree, this cycle closed on-chain) is
+    left for a person: nothing is sent.
 
     A redelivery that finds a hash stored waits on it instead of sending
     again. A send that could not be made (an RPC error, a refused send, the
@@ -948,8 +942,16 @@ def start_cycle(self, cycle_id: str) -> str:
                 cycle_id,
                 plan.cycle_number,
             )
-            queue_service.enqueue_confirm_cycle_start(cycle_id, None, None)
-            return "registered"
+            # Only while no hash is stored: a delivery that stored one sent
+            # this `startCycle`, and records it with its block.
+            if _record_registered(target_id, None, None):
+                return "registered"
+            logger.info(
+                "cycle %s has a stored startCycle or is already registered; "
+                "left to the delivery that sent it",
+                cycle_id,
+            )
+            return "skipped"
         tx_hash = stokvel_contract.start_cycle(
             plan.stokvel_id,
             plan.member_ids,
@@ -970,6 +972,15 @@ def start_cycle(self, cycle_id: str) -> str:
             exc,
         )
         return "skipped"
+    except _CycleNeedsAPerson as exc:
+        logger.error(
+            "event=stokvel.cycle_start_needs_person cycle_id=%s cycle_number=%s: "
+            "%s; nothing was sent and contributions wait until a person fixes it",
+            cycle_id,
+            plan.cycle_number,
+            exc,
+        )
+        return "needs_person"
     except stokvel_contract.ContractRefused as exc:
         if exc.error in _RETRYABLE_CYCLE_REFUSALS:
             return _retry_cycle_start(self, target_id, cycle_id, exc)
@@ -1005,23 +1016,45 @@ def start_cycle(self, cycle_id: str) -> str:
     return _await_cycle_start(self, cycle_id, tx_hash)
 
 
+class _CycleNeedsAPerson(Exception):
+    """The contract and the database disagree about the stokvel or its
+    cycles, so `startCycle` must not be sent. The message says how."""
+
+
 def _open_on_chain(plan: _CyclePlan, w3) -> bool:
     """Make sure the stokvel is registered on the contract, creating it if
-    not, and say whether this cycle is already open there."""
+    not, and say whether this cycle is already open there (True) or is the
+    next one to start (False).
+
+    `startCycle` opens `currentCycle + 1`, and the event sync matches events
+    to cycles by number (R2-13), so the numbers must agree: anything but
+    this cycle open, or the contract one behind it, raises
+    `_CycleNeedsAPerson`. So does a contribution that differs, which would
+    charge members one amount in the ledger and pull another on-chain."""
     on_chain = stokvel_contract.get_stokvel(plan.stokvel_id, w3=w3)
     if on_chain is None:
+        if plan.cycle_number != 1:
+            raise _CycleNeedsAPerson(
+                f"the stokvel is not on the contract, but this is cycle "
+                f"{plan.cycle_number}"
+            )
         _create_stokvel(plan, w3)
         return False
     if on_chain.contribution != evm_service.to_base_units(plan.contribution):
-        # The stokvel's amount is fixed on both sides (D13): a mismatch means
-        # the IDs or a deployment are crossed, which a person must look at.
-        logger.error(
-            "event=stokvel.contribution_differs stokvel_id=%s on_chain=%s database=%s",
-            plan.stokvel_id,
-            on_chain.contribution,
-            plan.contribution,
+        # Fixed on both sides (D13): a mismatch means the IDs or a deployment
+        # are crossed.
+        raise _CycleNeedsAPerson(
+            f"the contract's contribution is {on_chain.contribution} base "
+            f"units, the database's {plan.contribution} UCTUSD"
         )
-    return on_chain.current_cycle >= plan.cycle_number
+    if on_chain.current_cycle == plan.cycle_number and on_chain.cycle_open:
+        return True
+    if on_chain.current_cycle == plan.cycle_number - 1:
+        return False
+    raise _CycleNeedsAPerson(
+        f"the contract's latest cycle is {on_chain.current_cycle} "
+        f"({'open' if on_chain.cycle_open else 'closed'})"
+    )
 
 
 def _create_stokvel(plan: _CyclePlan, w3) -> None:
@@ -1090,8 +1123,9 @@ def _retry_cycle_start(
 
 
 def _await_cycle_start(task, cycle_id: str, tx_hash: str) -> str:
-    """Wait for the `startCycle` receipt, then hand it to
-    `confirm_cycle_start`."""
+    """Wait for the `startCycle` receipt, then record the cycle as open
+    on-chain. A database error retries the task, which finds the stored hash
+    and waits on it again (at once: it is mined)."""
     try:
         receipt = evm_service.wait_for_receipt(tx_hash, timeout=RECEIPT_TIMEOUT_SECONDS)
     except evm_service.TransactionReverted:
@@ -1123,31 +1157,42 @@ def _await_cycle_start(task, cycle_id: str, tx_hash: str) -> str:
         )
         raise task.retry(countdown=RETRY_SECONDS, exc=exc) from None
 
-    queue_service.enqueue_confirm_cycle_start(cycle_id, tx_hash, receipt["blockNumber"])
-    return "mined"
-
-
-@celery.task(name="stokvel.confirm_cycle_start")
-def confirm_cycle_start(
-    cycle_id: str, tx_hash: str | None, block_number: int | None = None
-) -> str:
-    """Record a started cycle as open on-chain. Database only.
-
-    `tx_hash` and its `block_number` come from the mined `startCycle`; both
-    None when `start_cycle` found the cycle already open on-chain without a
-    stored hash. Sets `registered_at`, after which the API takes
-    contributions. Guarded on the cycle being active and not yet registered,
-    so a replayed message changes nothing.
-    """
-    target_id = _parse(cycle_id, "cycle")
-    if target_id is None:
+    try:
+        recorded = _record_registered(
+            uuid.UUID(cycle_id), tx_hash, receipt["blockNumber"]
+        )
+    except Exception as exc:
+        logger.warning(
+            "event=stokvel.cycle_register_retry cycle_id=%s tx_hash=%s retry=%s "
+            "(%s): startCycle is mined but not yet recorded",
+            cycle_id,
+            tx_hash,
+            task.request.retries + 1,
+            type(exc).__name__,
+        )
+        raise task.retry(countdown=RETRY_SECONDS, exc=exc) from None
+    if not recorded:
+        logger.info("cycle %s is already registered on-chain", cycle_id)
         return "skipped"
-    values: dict = {"registered_at": utcnow()}
-    if tx_hash is not None:
-        if block_number is None:
-            raise ValueError("a registered cycle's startCycle needs its block number")
-        values |= {"start_tx_hash": tx_hash, "start_block_number": block_number}
+    return "registered"
 
+
+def _record_registered(
+    target_id: uuid.UUID, tx_hash: str | None, block_number: int | None
+) -> bool:
+    """Record the cycle as open on-chain: sets `registered_at`, after which
+    the API takes contributions. Whether this call did.
+
+    With `tx_hash`, the mined `startCycle` and its block: guarded on that
+    being the stored hash. Without (the cycle found already open on-chain):
+    guarded on no hash being stored, so a delivery that stored one always
+    records its own block. Either way only an active, unregistered cycle
+    changes, so a repeat changes nothing."""
+    guard = (
+        StokvelCycle.start_tx_hash.is_(None)
+        if tx_hash is None
+        else StokvelCycle.start_tx_hash == tx_hash
+    )
     with session_scope() as session:
         changed = session.execute(
             update(StokvelCycle)
@@ -1155,20 +1200,63 @@ def confirm_cycle_start(
                 StokvelCycle.id == target_id,
                 StokvelCycle.status == ACTIVE,
                 StokvelCycle.registered_at.is_(None),
+                guard,
             )
-            .values(**values)
+            .values(registered_at=utcnow(), start_block_number=block_number)
             .execution_options(synchronize_session=False)
         )
     if changed.rowcount == 0:
-        logger.info(
-            "cycle %s is not an unregistered active cycle; already recorded or unknown",
-            cycle_id,
-        )
-        return "skipped"
+        return False
     logger.info(
         "event=stokvel.cycle_registered cycle_id=%s tx_hash=%s block=%s",
-        cycle_id,
+        target_id,
         tx_hash,
         block_number,
     )
-    return "registered"
+    return True
+
+
+@celery.task(name="stokvel.register_started_cycles")
+def register_started_cycles() -> int:
+    """Queue `stokvel.start_cycle` for every active cycle not yet registered
+    on-chain that started at least `STOKVEL_START_SWEEP_INTERVAL_SECONDS`
+    ago. Run by the beat on that interval.
+
+    Catches a start whose enqueue was lost (the API commits the cycle, then
+    queues it) and a task that gave up. `start_cycle` is safe to repeat: it
+    waits on a stored hash and reads the chain before sending, so a cycle
+    whose task is still running only gets a duplicate that changes nothing.
+    One left for a person is tried again each run and logs again until it is
+    fixed. The number queued."""
+    interval = Config().STOKVEL_START_SWEEP_INTERVAL_SECONDS
+    cutoff = utcnow() - timedelta(seconds=interval)
+    with session_scope() as session:
+        cycle_ids = session.scalars(
+            select(StokvelCycle.id)
+            .where(
+                StokvelCycle.status == ACTIVE,
+                StokvelCycle.registered_at.is_(None),
+                StokvelCycle.started_at <= cutoff,
+            )
+            .order_by(StokvelCycle.started_at)
+        ).all()
+    queued = 0
+    for cycle_id in cycle_ids:
+        try:
+            queue_service.enqueue_start_cycle(str(cycle_id))
+        except Exception:
+            logger.exception(
+                "event=stokvel.cycle_sweep_enqueue_failed cycle_id=%s: will "
+                "retry next run",
+                cycle_id,
+            )
+            continue
+        queued += 1
+    if cycle_ids:
+        logger.warning(
+            "event=stokvel.cycle_sweep cycles=%d queued=%d: active cycles not yet "
+            "registered on-chain",
+            len(cycle_ids),
+            queued,
+        )
+    return queued

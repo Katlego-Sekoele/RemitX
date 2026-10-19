@@ -216,12 +216,9 @@ class StokvelContributionController:
             # Started, but `startCycle` is not mined yet (R2-10): the contract
             # has no open cycle, so the contribution would revert.
             raise CycleStartingError()
-        # The cycle's members are its locked rows (R2-10). A member who left
-        # before it started keeps an unlocked row with no position, and must
-        # count neither toward the round nor as a member of it.
-        cycle_members = [
-            row for row in self._cycles.get_cycle_members(cycle.id) if row.locked
-        ]
+        # A member who left before the cycle started must count neither
+        # toward the round nor as a member of it.
+        cycle_members = self._cycles.get_locked_members(cycle.id)
         cycle_member_ids = {row.member_id for row in cycle_members}
         if member.id not in cycle_member_ids:
             raise NotACycleMemberError()
