@@ -8,7 +8,13 @@ from decimal import Decimal
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
-from remitx_api.models.orm.account import CURRENCY_ZAR
+from remitx_api.models.orm.account import (
+    CURRENCY_TOKEN,
+    CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
+    Account,
+    create_account_reference,
+)
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
@@ -16,18 +22,28 @@ from remitx_api.models.orm.stokvel_contribution import (
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
+from remitx_api.models.orm.stokvel_invitation import StokvelInvitation
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.stokvel_payout import (
     StokvelPayout,
     StokvelPayoutReleaseStatus,
 )
 from remitx_api.models.orm.stokvel_round import StokvelRound
-from remitx_api.models.orm.transaction import TYPE_FEE, Transaction
+from remitx_api.models.orm.transaction import (
+    TYPE_FEE,
+    TYPE_STOKVEL_POOL_RELEASE,
+    Transaction,
+    TransactionStatus,
+)
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.stokvel_contribution_repository import (
+    StokvelContributionRepository,
+)
 from remitx_api.services.exchange_rate_service import RateUnavailableError
 from remitx_api.services.quote_service import TokenRates
 from sqlalchemy import select
+from tests.send_helpers import record_transfer
 
 STOKVELS = "/stokvels"
 PAYOUT_TIME = datetime(2026, 11, 3, tzinfo=UTC)
@@ -177,6 +193,98 @@ def test_fee_is_only_the_callers_and_a_payout_waits_for_its_remittance(
     assert "remittance_reference" not in rnd
 
 
+def test_current_round_stays_the_stored_column_when_the_open_round_moves(
+    verified_client, monkeypatch
+):
+    """`current_round` is the column set at start. `open_round` is the round
+    a contribution goes into, and it moves once a round is full. The contract
+    advances its round cursor on release (`nextToFinalise`), which is not
+    this read."""
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    _activate(stokvel_id, user.id)
+    opened = _in_session(
+        lambda: _open_round(stokvel_id),
+    )
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert opened == 1
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["current_round"] == 0
+    assert body["cycle"]["current_round"] == 0
+    assert body["my_contribution_status"] == "pending"
+    assert body["next_payout_time"] == "2026-11-03T00:00:00+00:00"
+
+
+def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypatch):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    member_id, reference = _pending_invitation(stokvel_id, user.id)
+
+    as_organiser = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert as_organiser.status_code == 200, as_organiser.text
+    invitation = as_organiser.json()["invitations"][0]
+    assert invitation["account_reference"] == reference
+    assert invitation["invitee_name"] == "Thandi"
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=member_id)
+    as_member = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert as_member.status_code == 200, as_member.text
+    hidden = as_member.json()["invitations"][0]
+    assert hidden["invitation_id"] == invitation["invitation_id"]
+    assert hidden["account_reference"] is None
+    assert hidden["invitee_name"] == "Thandi"
+
+
+def test_a_gap_in_the_payout_order_has_no_recipient(verified_client, monkeypatch):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    first = _gap(stokvel_id, user.id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    cycle = response.json()["cycle"]
+    assert cycle["payout_order"] == [first]
+    recipients = {row["round"]: row["recipient_member_id"] for row in cycle["rounds"]}
+    assert recipients == {0: first, 1: None, 2: None}
+
+
+def test_a_sent_payout_returns_its_remittance_status(verified_client, monkeypatch):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    _activate(stokvel_id, user.id)
+    remittance_id = _attach_remittance(stokvel_id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    rnd = response.json()["cycle"]["rounds"][0]
+    assert rnd["remittance_id"] == remittance_id
+    assert rnd["remittance_status"] == "processing"
+    assert rnd["release_status"] == "released"
+
+
+def _open_round(stokvel_id: uuid.UUID) -> int | None:
+    stokvel = db.session.get(Stokvel, stokvel_id)
+    cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+    return StokvelContributionRepository().open_round(
+        cycle.id, member_count=2, total_rounds=cycle.total_rounds
+    )
+
+
 def _activate(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
     """Turn the new forming cycle into an active one-round payout with two
     contributions. The other member's fee leg exists, and must not be returned."""
@@ -268,6 +376,140 @@ def _activate(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
         )
         db.session.commit()
         return str(organiser.id), str(other_member.id)
+
+    return _in_session(write)
+
+
+def _pending_invitation(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
+    """A second current member, and a pending invitation to someone else."""
+
+    def write():
+        member = UserController().ensure_provisioned(
+            "user_stokvel_reader",
+            lambda: "reader@example.com",
+            lambda: "Reader",
+        )
+        invitee = UserController().ensure_provisioned(
+            "user_stokvel_invitee",
+            lambda: "invitee@example.com",
+            lambda: "Thandi",
+        )
+        account = AccountRepository().get_user_account(member.id, CURRENCY_ZAR)
+        db.session.add(
+            StokvelMember(
+                stokvel_id=stokvel_id,
+                user_id=member.id,
+                account_id=account.account_id,
+            )
+        )
+        db.session.add(
+            StokvelInvitation(
+                stokvel_id=stokvel_id,
+                invitee_user_id=invitee.id,
+                invited_by_user_id=organiser_id,
+                status="pending",
+            )
+        )
+        db.session.commit()
+        return member.id, create_account_reference(invitee.base_reference, CURRENCY_ZAR)
+
+    return _in_session(write)
+
+
+def _gap(stokvel_id: uuid.UUID, organiser_id: uuid.UUID) -> str:
+    """Positions 0 and 2, so the order stops before round 1."""
+
+    def write():
+        stokvel = db.session.get(Stokvel, stokvel_id)
+        cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+        organiser = db.session.scalars(
+            select(StokvelMember).where(StokvelMember.user_id == organiser_id)
+        ).one()
+        other = UserController().ensure_provisioned(
+            "user_stokvel_gap",
+            lambda: "gap-member@example.com",
+            lambda: "Gap",
+        )
+        other_account = AccountRepository().get_user_account(other.id, CURRENCY_ZAR)
+        other_member = StokvelMember(
+            stokvel_id=stokvel.id,
+            user_id=other.id,
+            account_id=other_account.account_id,
+        )
+        db.session.add(other_member)
+        db.session.flush()
+        cycle.status = StokvelCycleStatus.ACTIVE.value
+        cycle.started_at = datetime.now(UTC)
+        cycle.total_rounds = 3
+        cycle.current_round = 0
+        organiser_place = db.session.get(StokvelCycleMember, (cycle.id, organiser.id))
+        organiser_place.payout_position = 0
+        db.session.add(
+            StokvelCycleMember(
+                cycle_id=cycle.id,
+                member_id=other_member.id,
+                payout_position=2,
+            )
+        )
+        for number in range(3):
+            day = PAYOUT_TIME + timedelta(weeks=number)
+            db.session.add(
+                StokvelRound(
+                    cycle_id=cycle.id,
+                    round=number,
+                    start_time=day - timedelta(days=2),
+                    deadline=day - timedelta(days=1),
+                    payout_time=day,
+                )
+            )
+        db.session.commit()
+        return str(organiser.id)
+
+    return _in_session(write)
+
+
+def _attach_remittance(stokvel_id: uuid.UUID) -> str:
+    """Release round 0's payout and attach a remittance still sending."""
+
+    def write():
+        stokvel = db.session.get(Stokvel, stokvel_id)
+        cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+        payout = db.session.scalars(
+            select(StokvelPayout).where(StokvelPayout.cycle_id == cycle.id)
+        ).one()
+        organiser = db.session.get(User, stokvel.organiser_user_id)
+        remittance = record_transfer(stokvel, organiser, sender_amount=Decimal("925"))
+        accounts = AccountRepository()
+        treasury = accounts.get_platform_account(TYPE_EVM_WALLET, CURRENCY_TOKEN)
+        if treasury is None:
+            treasury = Account(
+                user_id=None,
+                type=TYPE_EVM_WALLET,
+                account_currency=CURRENCY_TOKEN,
+                label="member-view treasury",
+            )
+            db.session.add(treasury)
+            db.session.flush()
+        leg = Transaction(
+            type=TYPE_STOKVEL_POOL_RELEASE,
+            credit_account_id=accounts.get_stokvel_account(stokvel.id).account_id,
+            debit_account_id=treasury.account_id,
+            amount=Decimal("50"),
+            currency=CURRENCY_TOKEN,
+            status="confirmed",
+        )
+        db.session.add(leg)
+        db.session.flush()
+        payout.release_status = "released"
+        payout.release_tx_hash = "0xrelease"
+        payout.release_block_number = 1
+        payout.release_tx_id = leg.tx_id
+        payout.released_at = datetime.now(UTC)
+        payout.remittance_status = TransactionStatus.PROCESSING.value
+        payout.quote_id = remittance.quote_id
+        payout.remittance_id = remittance.remittance_id
+        db.session.commit()
+        return str(remittance.remittance_id)
 
     return _in_session(write)
 
