@@ -6,7 +6,7 @@ import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { QuoteLines } from "~/components/send/quote-lines"
 import { TransferStatusBadge } from "~/components/transfers/transfer-status-badge"
 import { TransferTimeline } from "~/components/transfers/transfer-timeline"
-import { XrplHash } from "~/components/transfers/xrpl-hash"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
@@ -125,9 +125,9 @@ function TransferDetail({ transfer }: { transfer: Transfer }) {
           {transfer.status === "confirmed" && transfer.evm_tx_hash ? (
             <DescriptionList>
               <DescriptionItem>
-                <DescriptionTerm>XRPL transaction</DescriptionTerm>
+                <DescriptionTerm>Transaction</DescriptionTerm>
                 <DescriptionDetails>
-                  <XrplHash hash={transfer.evm_tx_hash} />
+                  <ChainTxHash hash={transfer.evm_tx_hash} />
                 </DescriptionDetails>
               </DescriptionItem>
               {transfer.settled_at ? (

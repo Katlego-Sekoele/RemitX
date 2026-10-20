@@ -69,14 +69,9 @@ export function isSlowToStart(
   )
 }
 
-/** `A1B2…9F0E`. */
-export function shortHash(hash: string): string {
-  return hash.length <= 10 ? hash : `${hash.slice(0, 4)}…${hash.slice(-4)}`
-}
-
-export function explorerUrl(hash: string): string {
-  return `https://testnet.xrpl.org/transactions/${hash}`
-}
+/** Hash helpers moved to lib/chain (#257), which picks the explorer from
+ * the hash's format, so XRPL and EVM hashes both link correctly. */
+export { explorerTxUrl as explorerUrl, shortHash } from "~/lib/chain"
 
 /** What a list row shows as the amount, and in which currency: what the
  * caller sent, or what they received. */

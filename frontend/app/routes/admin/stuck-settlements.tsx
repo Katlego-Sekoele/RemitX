@@ -10,7 +10,7 @@ import { QueryError } from "~/components/accounts/query-error"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
 import { formatDateTime } from "~/components/admin/kyc-review/format"
-import { XrplHash } from "~/components/transfers/xrpl-hash"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -318,7 +318,11 @@ function StuckSettlementRow({
         </Tooltip>
       </TableCell>
       <TableCell>
-        {row.burn_evm_tx_hash ? <XrplHash hash={row.burn_evm_tx_hash} /> : "—"}
+        {row.burn_evm_tx_hash ? (
+          <ChainTxHash hash={row.burn_evm_tx_hash} />
+        ) : (
+          "—"
+        )}
       </TableCell>
       {canRetry ? (
         <TableCell className="text-right">

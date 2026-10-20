@@ -41,6 +41,7 @@ from remitx_api.errors.stokvels import (
     ContributionAlreadyPaidError,
     ContributionInsufficientBalanceError,
     CycleNotOpenError,
+    CycleStartingError,
     NoOpenRoundError,
     NotACycleMemberError,
     StokvelNotFoundError,
@@ -211,7 +212,13 @@ class StokvelContributionController:
         cycle = self._cycles.get_open_cycle(stokvel.id)
         if cycle is None or cycle.status != StokvelCycleStatus.ACTIVE.value:
             raise CycleNotOpenError()
-        cycle_members = self._cycles.get_cycle_members(cycle.id)
+        if cycle.registered_at is None:
+            # Started, but `startCycle` is not mined yet (R2-10): the contract
+            # has no open cycle, so the contribution would revert.
+            raise CycleStartingError()
+        # A member who left before the cycle started must count neither
+        # toward the round nor as a member of it.
+        cycle_members = self._cycles.get_locked_members(cycle.id)
         cycle_member_ids = {row.member_id for row in cycle_members}
         if member.id not in cycle_member_ids:
             raise NotACycleMemberError()

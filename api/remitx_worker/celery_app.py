@@ -21,6 +21,11 @@ celery.conf.beat_schedule = {
         "task": "stokvel.sync_events",
         "schedule": schedule(run_every=Config.STOKVEL_SYNC_INTERVAL_SECONDS),
     },
+    # Re-queues started cycles not yet registered on-chain (R2-10).
+    "stokvel-register-started-cycles": {
+        "task": "stokvel.register_started_cycles",
+        "schedule": schedule(run_every=Config.STOKVEL_START_SWEEP_INTERVAL_SECONDS),
+    },
 }
 celery.autodiscover_tasks(["remitx_worker"])
 # The stokvel tasks (doc section 4) live in their own module.

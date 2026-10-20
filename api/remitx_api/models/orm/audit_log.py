@@ -54,10 +54,15 @@ class AuditAction(StrEnum):
     ROLE_REVOKED = "role.revoked"
     SETTLEMENT_RETRY_ENQUEUED = "settlement.retry_enqueued"
     SETTLEMENT_RECLAIM_RAN = "settlement.reclaim.ran"
+    STOKVEL_CONTRACT_PAUSED = "stokvel.contract.paused"
+    STOKVEL_CONTRACT_UNPAUSED = "stokvel.contract.unpaused"
+    STOKVEL_ROUND_FINALISED_MANUALLY = "stokvel.round.finalised_manually"
 
 
 # Stable id for entries that describe a look at the audit log itself (not a row).
 AUDIT_LOG_INDEX_SUBJECT_ID = uuid.UUID("00000000-0000-4000-8000-000000000001")
+# One contract holds every stokvel, so pause and resume have no row of their own.
+STOKVEL_CONTRACT_SUBJECT_ID = uuid.UUID("00000000-0000-4000-8000-000000000002")
 
 
 class AuditSubject(StrEnum):
@@ -71,6 +76,8 @@ class AuditSubject(StrEnum):
     USER_ROLE = "user_role"
     AUDIT_LOG = "audit_log"
     SETTLEMENT_QUOTE = "settlement_quote"
+    STOKVEL = "stokvel"
+    STOKVEL_CONTRACT = "stokvel_contract"
 
 
 # JSONB on Postgres for indexable containment queries; plain JSON on the

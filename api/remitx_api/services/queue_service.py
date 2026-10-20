@@ -27,6 +27,7 @@ CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 # `remitx_worker.stokvel_tasks` (R2-12, #234).
 SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
+START_CYCLE = "stokvel.start_cycle"
 # Registered in `remitx_worker.stokvel_release` (R3-04, #241).
 RELEASE_POOL = "stokvel.release_pool"
 # Registered in `remitx_worker.stokvel_payouts` (R3-05, #242).
@@ -209,6 +210,18 @@ def enqueue_confirm_contribution(
         args=[contribution_id, tx_hash, block_number, error],
         queue=Config.CELERY_QUEUE,
     )
+    wake_worker()
+
+
+def enqueue_start_cycle(cycle_id: str) -> None:
+    """Enqueued by `POST /stokvels/{id}/cycles` once the cycle is committed
+    `active`, and by the worker's `stokvel.register_started_cycles` sweep for
+    one still unregistered: the worker registers it on the contract
+    (`createStokvel` for a new stokvel, then `startCycle`; R2-10, #232). Only
+    ever needs `cycle_id`: the task reads everything else from the database
+    and the chain, so a redelivery repeats nothing.
+    """
+    producer.send_task(START_CYCLE, args=[cycle_id], queue=Config.CELERY_QUEUE)
     wake_worker()
 
 

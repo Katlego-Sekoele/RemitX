@@ -7,6 +7,7 @@ from remitx_api.controllers.stokvel_contribution_controller import (
     StokvelContributionController,
 )
 from remitx_api.controllers.stokvel_controller import StokvelController
+from remitx_api.controllers.stokvel_cycle_controller import StokvelCycleController
 from remitx_api.controllers.stokvel_invitation_controller import (
     StokvelInvitationController,
 )
@@ -18,6 +19,8 @@ from remitx_api.models.schemas.stokvel import (
     StokvelBeneficiaryRequest,
     StokvelContributionRead,
     StokvelCreateRequest,
+    StokvelCycleRead,
+    StokvelCycleStartRequest,
     StokvelInvitationCreateRequest,
     StokvelListRead,
     StokvelPayoutOrderRead,
@@ -31,6 +34,7 @@ from remitx_api.services.exchange_rate_service import RateUnavailableError
 router = create_customer_router(prefix="/stokvels", tags=[Tag.STOKVELS])
 controller = StokvelController()
 contributions = StokvelContributionController()
+cycles = StokvelCycleController()
 invitations = StokvelInvitationController()
 setup = StokvelSetupController()
 
@@ -98,8 +102,10 @@ def contribute_to_stokvel(
     one the caller is not a current member of (the same answer, so an id
     reveals nothing); 403 `not_a_member` for a member outside its current
     cycle; 409
-    `cycle_not_open` with no active cycle, `wrong_round` once every round is
-    paid, `contribution_already_paid` for a second payment to the open round.
+    `cycle_not_open` with no active cycle, `cycle_starting` while a started
+    cycle is not yet open on-chain (try again shortly), `wrong_round` once
+    every round is paid, `contribution_already_paid` for a second payment to
+    the open round.
     Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a
     short available balance, a send over the daily or monthly limit, or a
     caller who is not verified. 503 when no exchange rate is available, as
@@ -194,4 +200,40 @@ def set_my_beneficiary(
     `cycle_not_forming` when there is no cycle to set up yet."""
     return StokvelBeneficiaryRead.from_view(
         setup.set_beneficiary(user.id, stokvel_id, payload.beneficiary_id)
+    )
+
+
+@router.post(
+    "/{stokvel_id}/cycles",
+    response_model=StokvelCycleRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Start the stokvel's cycle",
+    responses=error_responses(403, 404, 409, 422),
+)
+def start_stokvel_cycle(
+    stokvel_id: uuid.UUID,
+    payload: StokvelCycleStartRequest,
+    user: User = Depends(get_current_user),
+):
+    """Start the stokvel's forming cycle with the given round schedule, one
+    round per current member in payout order. Every current member needs a
+    place in the payout order and a payout beneficiary first, and there must
+    be at least two. Invitations still pending lapse; the members, payout
+    order and beneficiaries are locked for the cycle.
+
+    The cycle is then registered on the stokvel contract by the worker:
+    `registered_at` stays null until that is mined, and contributions are
+    refused with 409 `cycle_starting` until then.
+
+    Refusals carry a `code` where doc section 6 gives one: 404 for an
+    unknown stokvel or one the caller is not a current member of; 403
+    `not_organiser` for a member who is not the Organiser; 409
+    `stokvel_deactivated`, `cycle_not_forming` when there is no forming
+    cycle, `cycle_in_progress` once it has started, `too_few_members`, or
+    `cycle_not_ready` when a member has no place in the payout order or no
+    beneficiary, or the members changed since the order was set; 422
+    `too_many_members`, or `invalid_schedule` for the wrong number of rounds
+    or times out of order."""
+    return StokvelCycleRead.from_view(
+        cycles.start_cycle(user.id, stokvel_id, payload.schedule())
     )

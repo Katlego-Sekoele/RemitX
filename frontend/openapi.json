@@ -5141,6 +5141,175 @@
         "title": "StokvelCreateRequest",
         "type": "object"
       },
+      "StokvelCyclePlaceRead": {
+        "description": "One member's locked place in a started cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "payout_currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          },
+          "payout_position": {
+            "title": "Payout Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member_id",
+          "payout_position",
+          "beneficiary_id",
+          "payout_currency"
+        ],
+        "title": "StokvelCyclePlaceRead",
+        "type": "object"
+      },
+      "StokvelCycleRead": {
+        "description": "A cycle the Organiser has just started.",
+        "properties": {
+          "current_round": {
+            "title": "Current Round",
+            "type": "integer"
+          },
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "lapsed_invitations": {
+            "description": "Invitations still pending at the start, now lapsed.",
+            "title": "Lapsed Invitations",
+            "type": "integer"
+          },
+          "order": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelCyclePlaceRead"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "registered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the cycle was registered on the stokvel contract. Null until the worker's `startCycle` is mined, usually seconds after the start; contributions are refused (409 `cycle_starting`) until then.",
+            "title": "Registered At"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelCycleRoundRead"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelCycleStatus"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          },
+          "total_rounds": {
+            "title": "Total Rounds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_id",
+          "cycle_number",
+          "status",
+          "total_rounds",
+          "current_round",
+          "started_at",
+          "registered_at",
+          "rounds",
+          "order",
+          "lapsed_invitations"
+        ],
+        "title": "StokvelCycleRead",
+        "type": "object"
+      },
+      "StokvelCycleRoundRead": {
+        "description": "One round of a started cycle.",
+        "properties": {
+          "deadline": {
+            "title": "Deadline",
+            "type": "string"
+          },
+          "payout_time": {
+            "title": "Payout Time",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "round",
+          "start_time",
+          "deadline",
+          "payout_time"
+        ],
+        "title": "StokvelCycleRoundRead",
+        "type": "object"
+      },
+      "StokvelCycleStartRequest": {
+        "additionalProperties": false,
+        "description": "Start the stokvel's forming cycle with this schedule.",
+        "properties": {
+          "rounds": {
+            "description": "One round per current member, in payout order: round 0 pays the member at payout position 0. Within a round, start time <= deadline <= payout time; from one round to the next, start and payout times may not go backwards (equal is allowed).",
+            "items": {
+              "$ref": "#/components/schemas/StokvelRoundTimesRequest"
+            },
+            "maxItems": 255,
+            "minItems": 1,
+            "title": "Rounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rounds"
+        ],
+        "title": "StokvelCycleStartRequest",
+        "type": "object"
+      },
+      "StokvelCycleStatus": {
+        "enum": [
+          "forming",
+          "active",
+          "closed"
+        ],
+        "title": "StokvelCycleStatus",
+        "type": "string"
+      },
       "StokvelInvitationCreateRequest": {
         "additionalProperties": false,
         "description": "Invite the owner of an account to the stokvel.",
@@ -5389,6 +5558,37 @@
           "deactivated_at"
         ],
         "title": "StokvelRead",
+        "type": "object"
+      },
+      "StokvelRoundTimesRequest": {
+        "additionalProperties": false,
+        "description": "One round's schedule. Times need an offset, and are kept to the whole\nsecond (the contract holds seconds).",
+        "properties": {
+          "deadline": {
+            "description": "When members are expected to have paid. Informational only: a late contribution is still accepted (D7).",
+            "format": "date-time",
+            "title": "Deadline",
+            "type": "string"
+          },
+          "payout_time": {
+            "description": "The round's pool is never released before this (D12). Not before the deadline.",
+            "format": "date-time",
+            "title": "Payout Time",
+            "type": "string"
+          },
+          "start_time": {
+            "description": "When the round opens for contributions (informational).",
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_time",
+          "deadline",
+          "payout_time"
+        ],
+        "title": "StokvelRoundTimesRequest",
         "type": "object"
       },
       "StuckSettlementRead": {
@@ -11788,7 +11988,7 @@
     },
     "/stokvels/{stokvel_id}/contributions": {
       "post": {
-        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `wrong_round` once every round is\npaid, `contribution_already_paid` for a second payment to the open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
+        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
         "operationId": "contribute_to_stokvel",
         "parameters": [
           {
@@ -11890,6 +12090,105 @@
           }
         ],
         "summary": "Contribute to the stokvel's current round",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/cycles": {
+      "post": {
+        "description": "Start the stokvel's forming cycle with the given round schedule, one\nround per current member in payout order. Every current member needs a\nplace in the payout order and a payout beneficiary first, and there must\nbe at least two. Invitations still pending lapse; the members, payout\norder and beneficiaries are locked for the cycle.\n\nThe cycle is then registered on the stokvel contract by the worker:\n`registered_at` stays null until that is mined, and contributions are\nrefused with 409 `cycle_starting` until then.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an\nunknown stokvel or one the caller is not a current member of; 403\n`not_organiser` for a member who is not the Organiser; 409\n`stokvel_deactivated`, `cycle_not_forming` when there is no forming\ncycle, `cycle_in_progress` once it has started, `too_few_members`, or\n`cycle_not_ready` when a member has no place in the payout order or no\nbeneficiary, or the members changed since the order was set; 422\n`too_many_members`, or `invalid_schedule` for the wrong number of rounds\nor times out of order.",
+        "operationId": "start_stokvel_cycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelCycleStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelCycleRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Start the stokvel's cycle",
         "tags": [
           "stokvels"
         ]

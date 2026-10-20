@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router"
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContributionPanel } from "~/components/stokvels/contribution-panel"
+import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
 import { PotRing } from "~/components/stokvels/pot-ring"
 import {
@@ -37,10 +38,12 @@ import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
+  canInvite,
   invalidateStokvels,
   myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
+  pendingInvitations,
   resetStokvelMockScenario,
   stokvelMockScenario,
   PHASE_LABELS,
@@ -259,11 +262,18 @@ function StokvelDetail({
           <CardHeader>
             <CardTitle>Setting up</CardTitle>
             <CardDescription>
-              {stokvel.invitations.length} invitation
-              {stokvel.invitations.length === 1 ? "" : "s"} pending ·{" "}
-              {stokvel.my_beneficiary
-                ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
-                : "choose a payout beneficiary to be ready"}
+              {stokvel.member_count} of {stokvel.max_members} members
+              {/* A stokvel built from its list row (`partial`) doesn't know
+                  its invitations or beneficiary yet: say only what's known. */}
+              {stokvel.partial ? null : (
+                <>
+                  {" "}
+                  · {pendingInvitations(stokvel).length} invited ·{" "}
+                  {stokvel.my_beneficiary
+                    ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
+                    : "choose a payout beneficiary to be ready"}
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -274,6 +284,8 @@ function StokvelDetail({
           </CardContent>
         </Card>
       ) : null}
+
+      {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
 
       {cycle ? (
         <PayoutQueue

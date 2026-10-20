@@ -187,6 +187,14 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
         label: "Contract",
         childItems: [],
       },
+      {
+        route: {
+          path: "admin/stokvel-rounds",
+          module: "routes/admin/stokvel-rounds.tsx",
+        },
+        label: "Rounds",
+        childItems: [],
+      },
     ],
   },
   {

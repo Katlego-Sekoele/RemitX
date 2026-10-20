@@ -9,6 +9,7 @@
  */
 
 import type {
+  SentStokvelInvitationRead,
   StokvelContributionRead,
   StokvelInvitationRead,
   StokvelListRead,
@@ -169,6 +170,7 @@ const GROCERIES: StokvelDetailRead = {
       created_at: "2026-10-14T16:40:00Z",
     },
   ],
+  partial: false,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
@@ -220,6 +222,7 @@ const TAXI_FUND: StokvelDetailRead = {
   ],
   cycle: null,
   contributions: [],
+  partial: false,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
@@ -259,6 +262,7 @@ const SCHOOL_FEES: StokvelDetailRead = {
     rounds: [],
   },
   contributions: [],
+  partial: false,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -324,13 +328,19 @@ export function resetStokvelMockScenario() {
   stokvelMockScenario.paused = false
   stokvelMockScenario.available_balance = "1240.00"
   stokvelMockScenario.confirm_delay_ms = 1200
+  // Bring back the demo invitation once it has been accepted or declined.
+  MY_INVITATIONS.splice(0, MY_INVITATIONS.length, FAMILY_SUPPORT_INVITATION)
+  resetInvitees()
 }
+
+/** Demo invitations to the signed-in user that they haven't answered. */
+const MY_INVITATIONS: StokvelInvitationRead[] = [FAMILY_SUPPORT_INVITATION]
 
 /** Demo rows for the list, in development only. */
 export function demoStokvelsMock(): Promise<StokvelListRead> {
   return settle({
     stokvels: Object.values(DETAILS).map(summaryOf),
-    invitations: [FAMILY_SUPPORT_INVITATION],
+    invitations: MY_INVITATIONS,
   })
 }
 
@@ -447,4 +457,228 @@ export async function contributeMock(
     amount_zar: needed,
     created_at: now,
   }
+}
+
+/**
+ * People the demo can find by account reference, one per refusal the invite
+ * form must explain. References follow the app's `<name><n>-<currency>`
+ * format.
+ */
+const DIRECTORY: Record<
+  string,
+  { user_id: string; name: string; currency: string; verified: boolean }
+> = {
+  "sipho1-zar": {
+    user_id: ME,
+    name: "Sipho K.",
+    currency: "ZAR",
+    verified: true,
+  },
+  "thandi2-zar": {
+    user_id: "usr_thandi",
+    name: "Thandi N.",
+    currency: "ZAR",
+    verified: true,
+  },
+  "bongani1-zar": {
+    user_id: "usr_bongani",
+    name: "Bongani Z.",
+    currency: "ZAR",
+    verified: true,
+  },
+  "naledi1-zar": {
+    user_id: "usr_naledi",
+    name: "Naledi M.",
+    currency: "ZAR",
+    verified: true,
+  },
+  "tendai1-zwl": {
+    user_id: "usr_tendai",
+    name: "Tendai M.",
+    currency: "ZWL",
+    verified: true,
+  },
+  "zola1-zar": {
+    user_id: "usr_zola",
+    name: "Zola D.",
+    currency: "ZAR",
+    verified: false,
+  },
+  // Unverified and in another currency: the API reports the currency first.
+  "nomsa1-usd": {
+    user_id: "usr_nomsa",
+    name: "Nomsa K.",
+    currency: "USD",
+    verified: false,
+  },
+}
+
+/** Which demo user each sent invitation is for, to spot a repeat invite. */
+const INVITEE_OF: Record<string, string> = { inv_bongani: "usr_bongani" }
+
+function resetInvitees() {
+  for (const key of Object.keys(INVITEE_OF)) delete INVITEE_OF[key]
+  INVITEE_OF.inv_bongani = "usr_bongani"
+}
+
+/**
+ * `POST /stokvels/{id}/invitations` (#230) on a demo stokvel, refusing as
+ * the API does: the codes and wording of doc §6 "Refusals for invitations".
+ */
+export async function inviteMock(
+  stokvelId: string,
+  body: { account_reference: string }
+): Promise<SentStokvelInvitationRead> {
+  await settle(null)
+  // The controller's order (StokvelInvitationController.invite): the caller
+  // and the stokvel, then the reference, then the invitee.
+  const detail = DETAILS[stokvelId]
+  if (!detail) throw apiError("Stokvel not found.", 404)
+  if (!detail.is_organiser) {
+    throw apiError(
+      "Only the stokvel's organiser can invite members.",
+      403,
+      "not_organiser"
+    )
+  }
+  if (detail.deactivated_at !== null) {
+    throw apiError(
+      "This stokvel is no longer active.",
+      409,
+      "stokvel_deactivated"
+    )
+  }
+  // An exact match, as the API does; the form lower-cases first.
+  const reference = body.account_reference.trim()
+  const person = DIRECTORY[reference]
+  if (!person) {
+    throw apiError(`No account has the reference '${reference}'.`, 404)
+  }
+  if (person.user_id === ME) {
+    throw apiError("You can't invite yourself.", 400)
+  }
+  if (person.currency !== detail.currency) {
+    throw apiError(
+      `The account's currency must match the stokvel's currency (${detail.currency}).`,
+      422,
+      "invitee_currency_mismatch"
+    )
+  }
+  if (!person.verified) {
+    throw apiError(
+      "This person isn't verified yet, so they can't be invited.",
+      403,
+      "invitee_not_verified"
+    )
+  }
+  if (detail.members.some((member) => member.user_id === person.user_id)) {
+    throw apiError(
+      "This person is already a member of the stokvel.",
+      409,
+      "already_a_member"
+    )
+  }
+  if (detail.member_count >= detail.max_members) {
+    throw apiError(
+      `A stokvel can have at most ${detail.max_members} members.`,
+      422,
+      "too_many_members"
+    )
+  }
+  const pending = detail.invitations.filter((i) => i.status === "pending")
+  if (pending.some((i) => INVITEE_OF[i.invitation_id] === person.user_id)) {
+    throw apiError(
+      "This person already has a pending invitation.",
+      409,
+      "invitation_already_pending"
+    )
+  }
+  const invitation: SentStokvelInvitationRead = {
+    invitation_id: `inv_${Date.now().toString(36)}`,
+    stokvel_id: stokvelId,
+    account_reference: reference,
+    invitee_name: person.name,
+    status: "pending",
+    created_at: new Date().toISOString(),
+  }
+  INVITEE_OF[invitation.invitation_id] = person.user_id
+  detail.invitations.push(invitation)
+  return structuredClone(invitation)
+}
+
+function takeMyInvitation(invitationId: string): StokvelInvitationRead {
+  const index = MY_INVITATIONS.findIndex(
+    (invitation) => invitation.invitation_id === invitationId
+  )
+  if (index === -1) {
+    throw apiError(
+      "This invitation has already been answered or has expired.",
+      409,
+      "invitation_not_pending"
+    )
+  }
+  return MY_INVITATIONS.splice(index, 1)[0]
+}
+
+/** `POST /invitations/{id}/accept` (#230) on a demo invitation: the caller
+ * joins and the stokvel is now on their list. */
+export async function acceptInvitationMock(
+  invitationId: string
+): Promise<StokvelRead> {
+  await settle(null)
+  const invitation = takeMyInvitation(invitationId)
+  const now = new Date().toISOString()
+  const myMemberId = `mem_sipho_${invitation.stokvel_id}`
+  const detail: StokvelDetailRead = {
+    stokvel_id: invitation.stokvel_id,
+    name: invitation.stokvel_name,
+    currency: invitation.currency,
+    contribution_amount: invitation.contribution_amount,
+    is_organiser: false,
+    member_count: 2,
+    max_members: 3,
+    created_at: invitation.created_at,
+    deactivated_at: null,
+    contribution_fiat_estimate: "250.00",
+    organiser_name: "Naledi Mokoena",
+    phase: "forming",
+    current_round: null,
+    total_rounds: null,
+    next_payout_time: null,
+    my_contribution_status: null,
+    my_member_id: myMemberId,
+    my_beneficiary: null,
+    members: [
+      {
+        member_id: `mem_naledi_${invitation.stokvel_id}`,
+        user_id: "usr_naledi",
+        full_name: "Naledi Mokoena",
+        is_organiser: true,
+        is_me: false,
+        joined_at: invitation.created_at,
+      },
+      {
+        member_id: myMemberId,
+        user_id: ME,
+        full_name: "Sipho Khumalo",
+        is_organiser: false,
+        is_me: true,
+        joined_at: now,
+      },
+    ],
+    invitations: [],
+    cycle: null,
+    contributions: [],
+    partial: false,
+  }
+  DETAILS[detail.stokvel_id] = detail
+  return structuredClone(summaryOf(detail))
+}
+
+/** `POST /invitations/{id}/decline` (#230) on a demo invitation. */
+export async function declineInvitationMock(
+  invitationId: string
+): Promise<void> {
+  await settle(null)
+  takeMyInvitation(invitationId)
 }
