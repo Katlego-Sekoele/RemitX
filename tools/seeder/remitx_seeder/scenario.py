@@ -13,6 +13,10 @@ from pathlib import Path
 
 from remitx_seeder.settings import SCENARIOS_DIR
 
+# Plain data, no backend import: a scenario is validated in the UI's own
+# process, which must never import remitx_api (settings.py).
+from remitx_seeder.stories.stokvel_plan import DEMO_MEMBERS, MIN_DEMO_DAYS
+
 
 @dataclass
 class KycBehaviour:
@@ -138,10 +142,15 @@ class Scenario:
             raise ValueError("days must be between 1 and 365")
         if self.senders < 0 or any(n < 0 for n in self.recipients.values()):
             raise ValueError("people counts cannot be negative")
-        if self.staff.get("compliance_officer", 0) < 1 and self.senders:
-            raise ValueError("a scenario with senders needs a compliance_officer")
-        if self.staff.get("treasury_operator", 0) < 1 and self.senders:
-            raise ValueError("a scenario with senders needs a treasury_operator")
+        people = self.senders or self.stokvel.enabled
+        if self.staff.get("compliance_officer", 0) < 1 and people:
+            raise ValueError(
+                "a scenario with senders or the stokvel demo needs a compliance_officer"
+            )
+        if self.staff.get("treasury_operator", 0) < 1 and people:
+            raise ValueError(
+                "a scenario with senders or the stokvel demo needs a treasury_operator"
+            )
         for group in (self.kyc, self.money):
             for f in fields(group):
                 value = getattr(group, f.name)
@@ -159,9 +168,6 @@ class Scenario:
             self._validate_stokvel_demo()
 
     def _validate_stokvel_demo(self) -> None:
-        # Imported here: stories/stokvel.py imports this module.
-        from remitx_seeder.stories.stokvel import DEMO_MEMBERS, MIN_DEMO_DAYS
-
         if not 0 < self.stokvel.contribution_uctusd <= 100:
             raise ValueError(
                 "stokvel.contribution_uctusd must be above 0 and at most 100"
@@ -172,9 +178,6 @@ class Scenario:
                 "history, so its members are verified and funded before it is "
                 "set up"
             )
-        for role in ("compliance_officer", "treasury_operator"):
-            if self.staff.get(role, 0) < 1:
-                raise ValueError(f"the stokvel demo needs a {role}")
         for member in DEMO_MEMBERS:
             if self.recipients.get(member.recipient_country, 0) < 1:
                 raise ValueError(

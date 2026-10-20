@@ -1,14 +1,15 @@
 """The stokvel demo (R6-03, #268): the brief's three members, ready to start.
 
-With `stokvel.enabled` in the scenario, three named members join early in the
-window and walk the ordinary KYC path to approval (no chance rating override,
-so it goes the same way every run). Once verified, each deposits enough for
-three rounds of contributions and their fee shares, priced with the backend's
-own `contribution_fee_share` at the replayed rate, with headroom for the live
-rate on the day; the deposit is reconciled like any other and then kept.
+With `stokvel.enabled` in the scenario, three named members (stokvel_plan.py)
+join early in the window and walk the ordinary KYC path to approval. They are
+`scripted`: no edge case, no chance rating override, and no other story picks
+them. Once verified, each deposits enough for every round of every stokvel
+they will be in, with their fee shares, priced with the backend's own
+`contribution_fee_share` at the replayed rate and with headroom for the live
+rate on the day. The deposit is reconciled like any other, then kept.
 
 A few hours before the window closes, through the stokvel controllers as the
-routes call them:
+routes call them, one step per event a few minutes apart:
 
 - **The ready stokvel** (`READY_STOKVEL`): the Organiser creates it and
   invites the other two, who accept; each chooses a cross-border beneficiary
@@ -16,90 +17,48 @@ routes call them:
   `forming`, for the demo to start with a schedule a few minutes apart (brief
   §7.5).
 - **The lapse stokvel** (`LAPSE_STOKVEL`): the second member organises it with
-  the third, both ready, and invites the Organiser of the first, who does not
-  answer. Starting its cycle lapses that invitation. A second stokvel because
-  the member cap (3) counts accepted members: a full stokvel cannot also hold
-  a pending invitation.
+  the third, both ready, and invites the first Organiser, who does not
+  answer. Starting its cycle lapses that invitation.
 
-The run summary's `stokvel_demo` names both stokvels and who to sign in as.
+If any step is refused, or falls past the window, `finish` records it as a
+refusal, so the run cannot report a demo it did not set up. The run summary's
+`stokvel_demo` names both stokvels and who to sign in as.
 """
 
 from __future__ import annotations
 
 import random
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_UP, Decimal
 
+from remitx_seeder.clerk import can_sign_in, test_email
 from remitx_seeder.context import RunContext, SeededPerson
-from remitx_seeder.data import load
 from remitx_seeder.generators.personas import build_sender
 from remitx_seeder.sim import Simulation
 from remitx_seeder.stories.kyc import PATH_APPROVE
 from remitx_seeder.stories.money import MoneyStory
+from remitx_seeder.stories.stokvel_plan import (
+    DEMO_MEMBERS,
+    LAPSE_STOKVEL,
+    READY_STOKVEL,
+    STOKVELS,
+    DemoStokvel,
+)
 
-# Room in the window for KYC review (which waits for office hours) and the
-# deposit's next-working-morning reconciliation before the setup.
-MIN_DEMO_DAYS = 14
+__all__ = ["LAPSE_STOKVEL", "READY_STOKVEL"]
+
 STOKVEL_CURRENCY = "ZAR"
-READY_STOKVEL = "Masakhane Savings Club"
-LAPSE_STOKVEL = "Siyakhula Savings Club"
 # The live rate on the day of the demo may be higher than the replayed one.
 DEPOSIT_HEADROOM = Decimal("1.5")
 MIN_DEPOSIT_ZAR = Decimal("500")
 SETUP_BEFORE_END = timedelta(hours=3)
 
-
-@dataclass(frozen=True)
-class DemoMember:
-    key: str
-    label: str
-    email_local: str
-    # A corridor's name in data/corridors.json: who they are and who their
-    # beneficiary is.
-    corridor_name: str
-
-    @property
-    def corridor(self) -> dict:
-        return next(
-            corridor
-            for corridor in load("corridors")["corridors"]
-            if corridor["name"] == self.corridor_name
-        )
-
-    @property
-    def recipient_country(self) -> str:
-        return self.corridor["recipient_country"]
-
-
-# The ready stokvel pays them in this order. Three corridors, so each payout
-# crosses a different border.
-DEMO_MEMBERS = (
-    DemoMember(
-        "stokvel-organiser",
-        "Organiser",
-        "stokvel.organiser",
-        "Zimbabwean in SA supporting family at home",
-    ),
-    DemoMember(
-        "stokvel-member-2",
-        "second member",
-        "stokvel.member2",
-        "Namibian in SA supporting family at home",
-    ),
-    DemoMember(
-        "stokvel-member-3",
-        "third member",
-        "stokvel.member3",
-        "South African supporting someone in the US",
-    ),
-)
-ROUNDS = len(DEMO_MEMBERS)
+Step = tuple[str, Callable[[], None]]
 
 
 class DemoNotReady(RuntimeError):
-    """A demo member is not verified or not funded when the setup starts."""
+    """The stokvel demo cannot be set up as asked."""
 
 
 def plan_members(ctx: RunContext) -> list[SeededPerson]:
@@ -121,15 +80,31 @@ def plan_members(ctx: RunContext) -> list[SeededPerson]:
         persona.email_local = spec.email_local
         persona.extra["stokvel_demo"] = spec.label
         person = SeededPerson(
-            persona, kyc_path=PATH_APPROVE, kyc_path_fixed=True, never_override=True
+            persona, kyc_path=PATH_APPROVE, kyc_path_fixed=True, scripted=True
         )
         ctx.people[persona.key] = person
         members.append(person)
     return members
 
 
-def is_demo_member(person: SeededPerson) -> bool:
-    return "stokvel_demo" in person.persona.extra
+def refuse_if_already_seeded(ctx: RunContext, members: list[SeededPerson]) -> None:
+    """Refuse before anything is written when a demo member's email is taken:
+    a second demo on the same database would sign its members in under
+    numbered emails (`stokvel.organiser2`), not the ones the demo uses."""
+    from remitx_api.extensions import db
+    from remitx_api.models.orm.user import User
+    from sqlalchemy import select
+
+    emails = [
+        test_email(person.persona.email_local, ctx.scenario.email_domain)
+        for person in members
+    ]
+    taken = db.session.scalars(select(User.email).where(User.email.in_(emails))).all()
+    if taken:
+        raise DemoNotReady(
+            f"The stokvel demo's members already exist ({', '.join(sorted(taken))}): "
+            "Reset the target, then seed the demo again."
+        )
 
 
 class StokvelDemoStory:
@@ -150,6 +125,12 @@ class StokvelDemoStory:
         self.stokvels: dict[str, dict] = {}
         self.summary: dict | None = None
 
+    def owns(self, person: SeededPerson) -> bool:
+        return person.key in self.specs
+
+    def _member(self, index: int) -> SeededPerson:
+        return self.members[index]
+
     # --- before the setup --------------------------------------------------
 
     def signup_at(self, person: SeededPerson) -> datetime:
@@ -158,48 +139,59 @@ class StokvelDemoStory:
         return self.ctx.window_start + timedelta(hours=2 + 3 * index)
 
     def on_verified(self, person: SeededPerson) -> None:
-        self.money.deposit_to_keep(person, self._deposit(person))
+        needed = self._cost(person, self._rates()) * DEPOSIT_HEADROOM
+        rounded = (needed / 50).quantize(Decimal("1"), rounding=ROUND_UP) * 50
+        self.money.deposit_to_keep(person, max(MIN_DEPOSIT_ZAR, rounded))
         self.ctx.count("stokvel_demo.funded")
 
-    def _round_cost(self, person: SeededPerson) -> Decimal:
-        """One round's contribution and fee share, in rand, at today's
-        replayed rate, for the dearest payout currency of their corridor."""
+    def _rates(self):
+        from remitx_api.services.quote_service import token_rates
+
+        return token_rates(STOKVEL_CURRENCY)
+
+    def _cost(self, person: SeededPerson, rates) -> Decimal:
+        """Every round of every stokvel `person` will be in, with their fee
+        share, in rand at `rates`: one round per member, the fee split
+        between that stokvel's members, for the dearest payout currency of
+        the person's corridor."""
         from remitx_api.controllers.stokvel_contribution_controller import (
             contribution_fee_share,
         )
-        from remitx_api.services.quote_service import token_rates, token_to_fiat
+        from remitx_api.services.quote_service import token_to_fiat
 
-        rates = token_rates(STOKVEL_CURRENCY)
         fiat = token_to_fiat(self.contribution, rates)
-        fee = max(
-            contribution_fee_share(
-                fiat, rates, member_count=ROUNDS, payout_currency=currency
+        currencies = self.specs[person.key].corridor["payout_currencies"]
+        total = Decimal("0")
+        for stokvel in self._stokvels_of(person):
+            size = len(stokvel.members)
+            fee = max(
+                contribution_fee_share(
+                    fiat, rates, member_count=size, payout_currency=currency
+                )
+                for currency in currencies
             )
-            for currency in self.specs[person.key].corridor["payout_currencies"]
-        )
-        return fiat + fee
+            total += (fiat + fee) * size
+        return total
 
-    def _deposit(self, person: SeededPerson) -> Decimal:
-        needed = self._round_cost(person) * ROUNDS * DEPOSIT_HEADROOM
-        rounded = (needed / 50).quantize(Decimal("1"), rounding=ROUND_UP) * 50
-        return max(MIN_DEPOSIT_ZAR, rounded)
+    def _stokvels_of(self, person: SeededPerson) -> list[DemoStokvel]:
+        index = list(self.specs).index(person.key)
+        return [stokvel for stokvel in STOKVELS if index in stokvel.members]
 
     # --- the setup -----------------------------------------------------------
 
     def schedule_setup(self) -> None:
-        organiser, second, third = self.members
-        steps = [
+        steps: list[Step] = [
             ("stokvel.demo.check", self._check_ready),
             ("stokvel.demo.beneficiaries", self._add_beneficiaries),
-            *self._stokvel_steps("ready", organiser, [second, third], pending=None),
-            *self._stokvel_steps("lapse", second, [third], pending=organiser),
-            ("stokvel.demo.summary", self._summarise),
         ]
+        for stokvel in STOKVELS:
+            steps += self._stokvel_steps(stokvel)
+        steps.append(("stokvel.demo.summary", self._summarise))
         self._chain(self.ctx.window_end - SETUP_BEFORE_END, steps)
 
-    def _chain(self, at: datetime, steps: list[tuple[str, Callable[[], None]]]):
+    def _chain(self, at: datetime, steps: list[Step]) -> None:
         """Run `steps` as events a few minutes apart. A step the backend
-        refuses is recorded and ends the chain: the demo is not ready."""
+        refuses is recorded and ends the chain; `finish` reports it."""
         if not steps:
             return
         (name, action), rest = steps[0], steps[1:]
@@ -216,6 +208,7 @@ class StokvelDemoStory:
         from remitx_api.repositories.account_repository import AccountRepository
 
         accounts = AccountRepository()
+        rates = self._rates()
         for person in self.members:
             label = self.specs[person.key].label
             if not person.verified:
@@ -224,74 +217,62 @@ class StokvelDemoStory:
                 )
             zar = accounts.get_user_account(person.user_id, CURRENCY_ZAR)
             available = accounts.get_available_balance(zar.account_id)
-            needed = self._round_cost(person) * ROUNDS
+            needed = self._cost(person, rates)
             if available < needed:
                 raise DemoNotReady(
-                    f"the {label} has R{available} available but three rounds "
-                    f"need R{needed}; their deposit has not been reconciled"
+                    f"the {label} has R{available} available but their "
+                    f"stokvels' rounds need R{needed}; their deposit has not "
+                    "been reconciled"
                 )
 
     def _add_beneficiaries(self) -> None:
         used: set = set()
         for person in self.members:
-            country = self.specs[person.key].recipient_country
-            recipient = next(
-                (
-                    p
-                    for p in self.ctx.people_with_role("recipient")
-                    if p.persona.nationality == country
-                    and p.user_id is not None
-                    and p.user_id not in used
-                ),
-                None,
-            )
-            if recipient is None:
+            pool = self.money.recipient_pool(person, exclude=used)
+            if not pool:
+                country = self.specs[person.key].recipient_country
                 raise DemoNotReady(f"no recipient in {country} has signed up")
-            used.add(recipient.user_id)
-            entry = self.money.add_beneficiary(person, recipient)
+            entry = self.money.add_beneficiary(person, pool[0])
+            used.add(pool[0].user_id)
             self.beneficiary_ids[person.key] = entry["beneficiary_id"]
 
-    def _stokvel_steps(
-        self,
-        which: str,
-        organiser: SeededPerson,
-        joiners: list[SeededPerson],
-        *,
-        pending: SeededPerson | None,
-    ) -> list[tuple[str, Callable[[], None]]]:
-        name = READY_STOKVEL if which == "ready" else LAPSE_STOKVEL
-        members = [organiser, *joiners]
-        steps = [
+    def _stokvel_steps(self, stokvel: DemoStokvel) -> list[Step]:
+        which = stokvel.which
+        organiser, *joiners = (self._member(i) for i in stokvel.members)
+        invitees = [*joiners]
+        if stokvel.pending is not None:
+            invitees.append(self._member(stokvel.pending))
+        steps: list[Step] = [
             (
                 f"stokvel.demo.{which}.create",
-                lambda: self._create(which, name, organiser),
+                lambda: self._create(which, stokvel.name, organiser),
             )
         ]
-        for person in [*joiners, *([pending] if pending else [])]:
-            steps.append(
-                (
-                    f"stokvel.demo.{which}.invite",
-                    lambda person=person: self._invite(which, organiser, person),
-                )
+        steps += [
+            (
+                f"stokvel.demo.{which}.invite",
+                lambda person=person: self._invite(which, organiser, person),
             )
-        for person in joiners:
-            steps.append(
-                (
-                    f"stokvel.demo.{which}.accept",
-                    lambda person=person: self._accept(which, person),
-                )
+            for person in invitees
+        ]
+        steps += [
+            (
+                f"stokvel.demo.{which}.accept",
+                lambda person=person: self._accept(which, person),
             )
-        for person in members:
-            steps.append(
-                (
-                    f"stokvel.demo.{which}.beneficiary",
-                    lambda person=person: self._choose_beneficiary(which, person),
-                )
+            for person in joiners
+        ]
+        steps += [
+            (
+                f"stokvel.demo.{which}.beneficiary",
+                lambda person=person: self._choose_beneficiary(which, person),
             )
+            for person in (organiser, *joiners)
+        ]
         steps.append(
             (
                 f"stokvel.demo.{which}.payout_order",
-                lambda: self._set_payout_order(which, organiser, members),
+                lambda: self._set_payout_order(which, organiser, [organiser, *joiners]),
             )
         )
         return steps
@@ -378,38 +359,58 @@ class StokvelDemoStory:
                 "role": self.specs[person.key].label,
                 "name": person.persona.full_name,
                 "email": person.email,
-                "can_sign_in": bool(person.clerk_user_id)
-                and person.clerk_user_id.startswith("user_"),
+                "can_sign_in": can_sign_in(person.clerk_user_id),
                 "beneficiary_country": self.specs[person.key].recipient_country,
             }
 
+        summary: dict = {"contribution_uctusd": str(self.contribution)}
+        for stokvel in STOKVELS:
+            created = self.stokvels[stokvel.which]
+            entry = {
+                "stokvel_id": str(created["stokvel_id"]),
+                "name": created["name"],
+                "payout_order": [who(self._member(i)) for i in stokvel.members],
+            }
+            if stokvel.pending is not None:
+                entry["pending_invitation"] = who(self._member(stokvel.pending))
+            summary[stokvel.which] = entry
+        self.summary = summary
+
         organiser, second, third = self.members
-        ready, lapse = self.stokvels["ready"], self.stokvels["lapse"]
-        self.summary = {
-            "contribution_uctusd": str(self.contribution),
-            "ready": {
-                "stokvel_id": str(ready["stokvel_id"]),
-                "name": ready["name"],
-                "payout_order": [who(p) for p in self.members],
-            },
-            "lapse": {
-                "stokvel_id": str(lapse["stokvel_id"]),
-                "name": lapse["name"],
-                "payout_order": [who(second), who(third)],
-                "pending_invitation": who(organiser),
-            },
-        }
         self.ctx.log(
-            f"Stokvel demo: '{ready['name']}' is ready to start, organised by "
+            f"Stokvel demo: '{READY_STOKVEL}' is ready to start, organised by "
             f"{organiser.email}, with {second.email} and {third.email}. "
-            f"'{lapse['name']}' ({second.email}) has an invitation to "
+            f"'{LAPSE_STOKVEL}' ({second.email}) has an invitation to "
             f"{organiser.email} still pending."
         )
-        if not all(
-            entry["can_sign_in"] for entry in self.summary["ready"]["payout_order"]
-        ):
+        if not all(can_sign_in(p.clerk_user_id) for p in self.members):
             self.ctx.log(
-                "Some stokvel demo members are database-only and cannot sign in: "
-                "set a Clerk key, or raise the Clerk user cap.",
+                "Some stokvel demo members are database-only and cannot sign "
+                "in: set a Clerk key, or raise the Clerk user cap.",
                 level="warning",
             )
+
+    def finish(self) -> None:
+        """After the replay: a setup that did not finish is a refusal, so the
+        run never reports a demo it did not make. The step that was refused
+        is already among the refusals; this names the outcome."""
+        if self.summary is not None:
+            return
+        done = sorted(
+            key for key in self.ctx.counters if key.startswith("events.stokvel.demo.")
+        )
+        message = (
+            "The stokvel demo was not set up: a step was refused (see the "
+            "refusals) or fell past the window. Completed: "
+            + (", ".join(done) or "none")
+        )
+        self.ctx.refusals.append(
+            {
+                "event": "stokvel.demo",
+                "at": self.ctx.window_end.isoformat(),
+                "error": DemoNotReady.__name__,
+                "message": message,
+            }
+        )
+        self.ctx.count("refusals")
+        self.ctx.log(message, level="error")

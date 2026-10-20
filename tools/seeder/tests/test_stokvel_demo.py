@@ -11,20 +11,29 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
 
 from remitx_seeder.clerk import FakeClerkGateway
+from remitx_seeder.context import RunContext
 from remitx_seeder.engine import run_seed
-from remitx_seeder.scenario import load_scenario
+from remitx_seeder.scenario import Scenario, load_scenario
 from remitx_seeder.storage import MemoryStorage
 from remitx_seeder.stories.stokvel import (
-    LAPSE_STOKVEL,
     MIN_DEPOSIT_ZAR,
-    READY_STOKVEL,
-    ROUNDS,
+    DemoNotReady,
+    StokvelDemoStory,
 )
+from remitx_seeder.stories.stokvel_plan import (
+    DEMO_MEMBERS,
+    LAPSE_STOKVEL,
+    READY_STOKVEL,
+)
+
+ROUNDS = len(DEMO_MEMBERS)
 
 
 @pytest.fixture(scope="module")
@@ -167,6 +176,83 @@ def test_the_lapse_stokvel_has_two_ready_members_and_one_pending_invitation(
     assert [i.invitee_user_id for i in pending] == [
         _user_id(session, organiser["email"])
     ]
+
+
+def _story(contribution: float = 20.0) -> StokvelDemoStory:
+    ctx = SimpleNamespace(
+        scenario=SimpleNamespace(
+            stokvel=SimpleNamespace(contribution_uctusd=contribution)
+        )
+    )
+    members = [SimpleNamespace(key=spec.key) for spec in DEMO_MEMBERS]
+    return StokvelDemoStory(ctx, sim=None, money=None, members=members)
+
+
+def test_members_in_both_stokvels_are_funded_for_both(session):
+    """The second and third members pay three rounds in the ready stokvel
+    and two in the lapse stokvel, whose fee is split two ways (#348 review
+    of this PR): five contributions, not three."""
+    from remitx_api.controllers.stokvel_contribution_controller import (
+        contribution_fee_share,
+    )
+    from remitx_api.services.quote_service import TokenRates, token_to_fiat
+
+    rates = TokenRates(
+        currency="ZAR",
+        units_per_token=Decimal("18.5"),
+        token_per_unit=Decimal("0.05405405"),
+        zar_token_per_unit=Decimal("0.05405405"),
+    )
+    story = _story()
+    fiat = token_to_fiat(Decimal("20"), rates)
+
+    def round_cost(spec, size: int) -> Decimal:
+        fee = max(
+            contribution_fee_share(fiat, rates, member_count=size, payout_currency=c)
+            for c in spec.corridor["payout_currencies"]
+        )
+        return (fiat + fee) * size
+
+    organiser, second, third = story.members
+    assert story._cost(organiser, rates) == round_cost(DEMO_MEMBERS[0], 3)
+    for person, spec in ((second, DEMO_MEMBERS[1]), (third, DEMO_MEMBERS[2])):
+        assert story._cost(person, rates) == round_cost(spec, 3) + round_cost(spec, 2)
+        assert story._cost(person, rates) >= fiat * 5
+
+
+def test_a_setup_that_did_not_finish_is_a_refusal():
+    ctx = RunContext(
+        scenario=Scenario(),
+        run_id="test",
+        clock=None,
+        clerk=None,
+        emit=lambda event: None,
+        window_start=datetime.now(UTC) - timedelta(days=14),
+        window_end=datetime.now(UTC),
+    )
+    ctx.count("events.stokvel.demo.check")
+    story = StokvelDemoStory(
+        ctx,
+        sim=None,
+        money=None,
+        members=[SimpleNamespace(key=s.key) for s in DEMO_MEMBERS],
+    )
+
+    story.finish()
+
+    assert [r["event"] for r in ctx.refusals] == ["stokvel.demo"]
+    assert "events.stokvel.demo.check" in ctx.refusals[0]["message"]
+
+
+def test_seeding_the_demo_again_without_a_reset_is_refused(demo):
+    with pytest.raises(DemoNotReady, match="Reset the target"):
+        run_seed(
+            load_scenario("demo"),
+            clerk=FakeClerkGateway(),
+            clerk_enabled=True,
+            storage=MemoryStorage(),
+            emit=lambda event: None,
+        )
 
 
 def _start(demo, which: str, monkeypatch):

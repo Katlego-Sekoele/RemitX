@@ -39,9 +39,12 @@ class SeededPerson:
     kyc_path_fixed: bool = False
     force_override: bool = False
     force_tier_two: bool = False
-    # No chance risk-rating override at approval: the stokvel demo's members
-    # are approved the same way every run.
-    never_override: bool = False
+    # A story owns this person (the stokvel demo's members). The engine gives
+    # them no edge case, no chance override at approval and no long pause
+    # before KYC, signs them up for Clerk right after staff, and no other
+    # story picks them (the live tail, random sends). Who acts on them is up
+    # to the owning story.
+    scripted: bool = False
     beneficiaries: list[dict] = field(default_factory=list)
     # External bank accounts registered after verification, and whether this
     # person will cash out spare balance once one of them is verified.

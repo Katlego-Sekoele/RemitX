@@ -24,6 +24,7 @@ import sys
 import traceback
 from datetime import UTC, datetime
 
+from remitx_seeder.clerk import can_sign_in
 from remitx_seeder.guards import clerk_mode, evaluate, require_safe_target
 from remitx_seeder.settings import (
     REPO_ROOT,
@@ -187,7 +188,7 @@ def cmd_people(target: str, env: dict[str, str], args) -> dict:
         "people": [
             {
                 **dict(row),
-                "can_sign_in": row["clerk_user_id"].startswith("user_"),
+                "can_sign_in": can_sign_in(row["clerk_user_id"]),
             }
             for row in rows
         ]
