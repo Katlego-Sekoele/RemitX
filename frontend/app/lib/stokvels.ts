@@ -172,6 +172,10 @@ export type StokvelDetailRead = StokvelRead & {
   invitations: SentStokvelInvitationRead[]
   cycle: StokvelCycleRead | null
   contributions: StokvelRoundContributionRead[]
+  /** True for a real stokvel built from its list row while
+   * `GET /stokvels/{id}` (#236) isn't wired: its phase, members and
+   * invitations aren't known, so nothing may act on them. R4-09: drop. */
+  partial: boolean
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -240,6 +244,7 @@ async function detailFromList(
     invitations: [],
     cycle: null,
     contributions: [],
+    partial: true,
   }
 }
 
@@ -353,14 +358,29 @@ export function pendingInvitations(
 export function canInvite(
   detail: Pick<
     StokvelDetailRead,
-    "phase" | "is_organiser" | "member_count" | "max_members"
+    | "phase"
+    | "is_organiser"
+    | "member_count"
+    | "max_members"
+    | "deactivated_at"
+    | "partial"
   >
 ): boolean {
   return (
+    !detail.partial &&
+    detail.deactivated_at === null &&
     detail.phase === CycleStatus.forming &&
     detail.is_organiser &&
     detail.member_count < detail.max_members
   )
+}
+
+/** An account reference as the API stores it: trimmed and lower-case. The
+ * invite route matches it exactly (`AccountRepository.
+ * get_user_account_by_reference`), so `Thandi2-ZAR` must go as `thandi2-zar`,
+ * as the beneficiary and deposit lookups already do. */
+export function normaliseReference(reference: string): string {
+  return reference.trim().toLowerCase()
 }
 
 /** The development-only scenario knobs, re-exported so pages import every

@@ -25,7 +25,10 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { FieldError } from "~/components/ui/field"
-import { stokvelErrorMessage } from "~/lib/stokvel-errors"
+import {
+  isGoneInvitationError,
+  stokvelErrorMessage,
+} from "~/lib/stokvel-errors"
 import {
   invalidateStokvels,
   stokvelMutations,
@@ -48,6 +51,11 @@ export function InvitationCard({
   const queryClient = useQueryClient()
   const [confirmDecline, setConfirmDecline] = useState(false)
 
+  // An invitation that has lapsed, been answered, or whose stokvel is gone
+  // can't be answered again: refresh the list so the card disappears.
+  const refreshIfGone = async (error: unknown) => {
+    if (isGoneInvitationError(error)) await invalidateStokvels(queryClient)
+  }
   const accept = useMutation({
     ...stokvelMutations.acceptInvitation(),
     onSuccess: async (stokvel) => {
@@ -55,6 +63,7 @@ export function InvitationCard({
       toast.success(`You've joined ${stokvel.name}`)
       navigate(stokvelPath(stokvel.stokvel_id))
     },
+    onError: refreshIfGone,
   })
   const decline = useMutation({
     ...stokvelMutations.declineInvitation(),
@@ -63,6 +72,7 @@ export function InvitationCard({
       await invalidateStokvels(queryClient)
       toast.success(`Invitation to ${invitation.stokvel_name} declined`)
     },
+    onError: refreshIfGone,
   })
   const busy = accept.isPending || decline.isPending
 
@@ -81,16 +91,16 @@ export function InvitationCard({
           />{" "}
           per round, paid from your {invitation.currency} account
         </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">
+        <CardDescription>
           Answer before the organiser starts the cycle: invitations still open
           then lapse, and you&apos;d wait for the next cycle.
-        </p>
-        {accept.isError ? (
+        </CardDescription>
+      </CardHeader>
+      {accept.isError ? (
+        <CardContent>
           <FieldError>{stokvelErrorMessage(accept.error)}</FieldError>
-        ) : null}
-      </CardContent>
+        </CardContent>
+      ) : null}
       <CardFooter className="flex-wrap gap-2">
         <Button
           size="sm"
@@ -112,6 +122,9 @@ export function InvitationCard({
       <AlertDialog
         open={confirmDecline}
         onOpenChange={(next) => {
+          // Escape or a backdrop click mustn't close it mid-request: that
+          // would re-enable Accept and drop the decline's own error.
+          if (!next && decline.isPending) return
           setConfirmDecline(next)
           if (!next) decline.reset()
         }}
@@ -135,7 +148,11 @@ export function InvitationCard({
             <AlertDialogAction
               variant="destructive"
               disabled={decline.isPending}
-              onClick={() => decline.mutate(invitation.invitation_id)}
+              onClick={(event) => {
+                // Stay open until the decline has gone through or failed.
+                event.preventDefault()
+                decline.mutate(invitation.invitation_id)
+              }}
             >
               {decline.isPending ? "Declining…" : "Decline"}
             </AlertDialogAction>

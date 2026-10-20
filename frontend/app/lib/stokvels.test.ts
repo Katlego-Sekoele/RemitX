@@ -275,8 +275,17 @@ test("canInvite: organiser, being set up, and a free place", async () => {
     is_organiser: true,
     member_count: 2,
     max_members: 3,
+    deactivated_at: null,
+    partial: false,
   }
   assert.equal(canInvite(base), true)
+  // Deactivated: every invite would be refused with stokvel_deactivated.
+  assert.equal(
+    canInvite({ ...base, deactivated_at: "2026-10-19T10:00:00Z" }),
+    false
+  )
+  // Built from the list row: the phase isn't really known.
+  assert.equal(canInvite({ ...base, partial: true }), false)
   assert.equal(canInvite({ ...base, member_count: 3 }), false)
   assert.equal(canInvite({ ...base, is_organiser: false }), false)
   assert.equal(canInvite({ ...base, phase: "active" }), false)
@@ -325,6 +334,13 @@ test("inviteMock refuses with the doc §6 codes, then invites", async () => {
     status: 403,
     body: { code: "invitee_not_verified" },
   })
+  // Unverified and in another currency: currency first, as the controller.
+  await expect(invite("nomsa1-usd")).rejects.toMatchObject({
+    status: 422,
+    body: { code: "invitee_currency_mismatch" },
+  })
+  // The API matches references exactly; the form lower-cases first.
+  await expect(invite("Thandi2-ZAR")).rejects.toMatchObject({ status: 404 })
   await expect(invite("tendai1-zwl")).rejects.toMatchObject({
     status: 422,
     body: { code: "invitee_currency_mismatch" },
@@ -338,7 +354,9 @@ test("inviteMock refuses with the doc §6 codes, then invites", async () => {
     body: { code: "invitation_already_pending" },
   })
 
-  const sent = await invite(" Thandi2-ZAR ")
+  const { normaliseReference } = await import("./stokvels")
+  assert.equal(normaliseReference(" Thandi2-ZAR "), "thandi2-zar")
+  const sent = await invite(normaliseReference(" Thandi2-ZAR "))
   assert.equal(sent.invitee_name, "Thandi N.")
   assert.equal(sent.account_reference, "thandi2-zar")
   assert.equal(sent.status, "pending")
@@ -367,4 +385,9 @@ test("accepting a demo invitation joins; it can't be answered twice", async () =
     status: 409,
     body: { code: "invitation_not_pending" },
   })
+
+  // The dev reset brings the demo invitation back.
+  const { resetStokvelMockScenario } = await import("./stokvels.mock")
+  resetStokvelMockScenario()
+  assert.equal((await demoStokvelsMock()).invitations.length, 1)
 })

@@ -170,6 +170,7 @@ const GROCERIES: StokvelDetailRead = {
       created_at: "2026-10-14T16:40:00Z",
     },
   ],
+  partial: false,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
@@ -221,6 +222,7 @@ const TAXI_FUND: StokvelDetailRead = {
   ],
   cycle: null,
   contributions: [],
+  partial: false,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
@@ -260,6 +262,7 @@ const SCHOOL_FEES: StokvelDetailRead = {
     rounds: [],
   },
   contributions: [],
+  partial: false,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -325,12 +328,15 @@ export function resetStokvelMockScenario() {
   stokvelMockScenario.paused = false
   stokvelMockScenario.available_balance = "1240.00"
   stokvelMockScenario.confirm_delay_ms = 1200
+  // Bring back the demo invitation once it has been accepted or declined.
+  MY_INVITATIONS.splice(0, MY_INVITATIONS.length, FAMILY_SUPPORT_INVITATION)
+  resetInvitees()
 }
 
-/** Demo rows for the list, in development only. */
 /** Demo invitations to the signed-in user that they haven't answered. */
 const MY_INVITATIONS: StokvelInvitationRead[] = [FAMILY_SUPPORT_INVITATION]
 
+/** Demo rows for the list, in development only. */
 export function demoStokvelsMock(): Promise<StokvelListRead> {
   return settle({
     stokvels: Object.values(DETAILS).map(summaryOf),
@@ -498,10 +504,22 @@ const DIRECTORY: Record<
     currency: "ZAR",
     verified: false,
   },
+  // Unverified and in another currency: the API reports the currency first.
+  "nomsa1-usd": {
+    user_id: "usr_nomsa",
+    name: "Nomsa K.",
+    currency: "USD",
+    verified: false,
+  },
 }
 
 /** Which demo user each sent invitation is for, to spot a repeat invite. */
 const INVITEE_OF: Record<string, string> = { inv_bongani: "usr_bongani" }
+
+function resetInvitees() {
+  for (const key of Object.keys(INVITEE_OF)) delete INVITEE_OF[key]
+  INVITEE_OF.inv_bongani = "usr_bongani"
+}
 
 /**
  * `POST /stokvels/{id}/invitations` (#230) on a demo stokvel, refusing as
@@ -512,6 +530,8 @@ export async function inviteMock(
   body: { account_reference: string }
 ): Promise<SentStokvelInvitationRead> {
   await settle(null)
+  // The controller's order (StokvelInvitationController.invite): the caller
+  // and the stokvel, then the reference, then the invitee.
   const detail = DETAILS[stokvelId]
   if (!detail) throw apiError("Stokvel not found.", 404)
   if (!detail.is_organiser) {
@@ -521,7 +541,15 @@ export async function inviteMock(
       "not_organiser"
     )
   }
-  const reference = body.account_reference.trim().toLowerCase()
+  if (detail.deactivated_at !== null) {
+    throw apiError(
+      "This stokvel is no longer active.",
+      409,
+      "stokvel_deactivated"
+    )
+  }
+  // An exact match, as the API does; the form lower-cases first.
+  const reference = body.account_reference.trim()
   const person = DIRECTORY[reference]
   if (!person) {
     throw apiError(`No account has the reference '${reference}'.`, 404)
@@ -529,18 +557,18 @@ export async function inviteMock(
   if (person.user_id === ME) {
     throw apiError("You can't invite yourself.", 400)
   }
-  if (!person.verified) {
-    throw apiError(
-      "This person isn't verified yet, so they can't be invited.",
-      403,
-      "invitee_not_verified"
-    )
-  }
   if (person.currency !== detail.currency) {
     throw apiError(
       `The account's currency must match the stokvel's currency (${detail.currency}).`,
       422,
       "invitee_currency_mismatch"
+    )
+  }
+  if (!person.verified) {
+    throw apiError(
+      "This person isn't verified yet, so they can't be invited.",
+      403,
+      "invitee_not_verified"
     )
   }
   if (detail.members.some((member) => member.user_id === person.user_id)) {
@@ -550,19 +578,19 @@ export async function inviteMock(
       "already_a_member"
     )
   }
+  if (detail.member_count >= detail.max_members) {
+    throw apiError(
+      `A stokvel can have at most ${detail.max_members} members.`,
+      422,
+      "too_many_members"
+    )
+  }
   const pending = detail.invitations.filter((i) => i.status === "pending")
   if (pending.some((i) => INVITEE_OF[i.invitation_id] === person.user_id)) {
     throw apiError(
       "This person already has a pending invitation.",
       409,
       "invitation_already_pending"
-    )
-  }
-  if (detail.member_count >= detail.max_members) {
-    throw apiError(
-      `A stokvel can have at most ${detail.max_members} members.`,
-      422,
-      "too_many_members"
     )
   }
   const invitation: SentStokvelInvitationRead = {
@@ -641,6 +669,7 @@ export async function acceptInvitationMock(
     invitations: [],
     cycle: null,
     contributions: [],
+    partial: false,
   }
   DETAILS[detail.stokvel_id] = detail
   return structuredClone(summaryOf(detail))

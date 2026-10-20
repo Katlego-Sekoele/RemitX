@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns"
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { AccountReference } from "~/components/accounts/reference"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
@@ -21,8 +22,8 @@ import {
 import { Input } from "~/components/ui/input"
 import { stokvelErrorMessage } from "~/lib/stokvel-errors"
 import {
-  canInvite,
   invalidateStokvels,
+  normaliseReference,
   pendingInvitations,
   stokvelMutations,
   type SentStokvelInvitationRead,
@@ -34,8 +35,9 @@ import {
  * e.g. "thandi2-zar" (R4-04, #253), while the stokvel is being set up. The
  * API checks the rules (#230: verified, an account in the Stokvel currency,
  * not already in or invited) and words each refusal. Nobody joins until they
- * accept, and invitations still open when the cycle starts lapse. No Revoke
- * until #297; no WhatsApp share before the MVP (Sian, 16 Oct).
+ * accept, and invitations still open when the cycle starts lapse. The page
+ * shows this card only when `canInvite` holds. No Revoke until #297; no
+ * WhatsApp share before the MVP (Sian, 16 Oct).
  */
 export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   const queryClient = useQueryClient()
@@ -50,9 +52,9 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
       )
     },
   })
-  const trimmed = reference.trim()
+  // References are stored lower-case and matched exactly.
+  const normalised = normaliseReference(reference)
   const pending = pendingInvitations(stokvel)
-  const open = canInvite(stokvel)
   const currency = stokvel.currency.toLowerCase()
 
   return (
@@ -60,10 +62,8 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
       <CardHeader>
         <CardTitle>Invite members</CardTitle>
         <CardDescription>
-          {stokvel.member_count} of {stokvel.max_members} members
-          {pending.length > 0 ? ` · ${pending.length} invited` : ""}. Nobody
-          joins until they accept, and invitations still open when you start the
-          cycle lapse.
+          Nobody joins until they accept, and invitations still open when you
+          start the cycle lapse.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -78,67 +78,68 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
           </ul>
         ) : null}
 
-        {open ? (
-          <form
-            noValidate
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (trimmed) invite.mutate({ account_reference: trimmed })
-            }}
-          >
-            <Field data-invalid={invite.isError}>
-              <FieldLabel htmlFor="invite-reference">
-                Their {stokvel.currency} account reference
-              </FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="invite-reference"
-                  value={reference}
-                  placeholder={`thandi2-${currency}`}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  aria-invalid={invite.isError}
-                  onChange={(event) => {
-                    setReference(event.target.value)
-                    if (invite.isError) invite.reset()
-                  }}
-                />
-                <Button type="submit" disabled={!trimmed || invite.isPending}>
-                  {invite.isPending ? "Inviting…" : "Invite"}
-                </Button>
-              </div>
-              {invite.isError ? (
-                <FieldError>{stokvelErrorMessage(invite.error)}</FieldError>
-              ) : (
-                <FieldDescription>
-                  Ask them for the reference on their Accounts page. They pay
-                  from that account, so it must be in {stokvel.currency}.
-                </FieldDescription>
-              )}
-            </Field>
-          </form>
-        ) : (
-          <p className="text-sm text-muted-foreground">The stokvel is full.</p>
-        )}
+        <form
+          noValidate
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (normalised) invite.mutate({ account_reference: normalised })
+          }}
+        >
+          <Field data-invalid={invite.isError}>
+            <FieldLabel htmlFor="invite-reference">
+              Their {stokvel.currency} account reference
+            </FieldLabel>
+            <div className="flex gap-2">
+              <Input
+                id="invite-reference"
+                value={reference}
+                placeholder={`thandi2-${currency}`}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={invite.isError}
+                onChange={(event) => {
+                  setReference(event.target.value)
+                  if (invite.isError) invite.reset()
+                }}
+              />
+              <Button type="submit" disabled={!normalised || invite.isPending}>
+                {invite.isPending ? "Inviting…" : "Invite"}
+              </Button>
+            </div>
+            {invite.isError ? (
+              <FieldError>{stokvelErrorMessage(invite.error)}</FieldError>
+            ) : (
+              <FieldDescription>
+                Ask them for the reference on their Accounts page. They pay from
+                that account, so it must be in {stokvel.currency}.
+              </FieldDescription>
+            )}
+          </Field>
+        </form>
       </CardContent>
     </Card>
   )
 }
 
+/** One pending invitation. The detail route (#355) leaves the reference null
+ * for anyone but the Organiser, or when the invitee no longer holds the
+ * account, so it is shown only when there is one. */
 function PendingInvitation({
   invitation,
 }: {
-  invitation: SentStokvelInvitationRead
+  invitation: Pick<SentStokvelInvitationRead, "invitee_name" | "created_at"> & {
+    account_reference: string | null
+  }
 }) {
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 text-sm">
-      <span>
-        {invitation.invitee_name ?? "Invited"}{" "}
-        <code className="font-mono text-xs text-muted-foreground">
-          {invitation.account_reference}
-        </code>
+    <li className="flex flex-wrap items-center justify-between gap-2">
+      <span className="flex flex-wrap items-center gap-2">
+        {invitation.invitee_name ?? "Invited"}
+        {invitation.account_reference ? (
+          <AccountReference reference={invitation.account_reference} />
+        ) : null}
       </span>
       <Badge variant="secondary">
         Invited{" "}

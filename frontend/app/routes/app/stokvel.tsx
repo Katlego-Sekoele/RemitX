@@ -38,6 +38,7 @@ import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
+  canInvite,
   invalidateStokvels,
   myCurrentContribution,
   outstandingMembers,
@@ -261,11 +262,18 @@ function StokvelDetail({
           <CardHeader>
             <CardTitle>Setting up</CardTitle>
             <CardDescription>
-              {stokvel.member_count} of {stokvel.max_members} members ·{" "}
-              {pendingInvitations(stokvel).length} invited ·{" "}
-              {stokvel.my_beneficiary
-                ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
-                : "choose a payout beneficiary to be ready"}
+              {stokvel.member_count} of {stokvel.max_members} members
+              {/* A stokvel built from its list row (`partial`) doesn't know
+                  its invitations or beneficiary yet: say only what's known. */}
+              {stokvel.partial ? null : (
+                <>
+                  {" "}
+                  · {pendingInvitations(stokvel).length} invited ·{" "}
+                  {stokvel.my_beneficiary
+                    ? `your payout goes to ${stokvel.my_beneficiary.full_name}`
+                    : "choose a payout beneficiary to be ready"}
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -277,9 +285,7 @@ function StokvelDetail({
         </Card>
       ) : null}
 
-      {stokvel.phase === "forming" && stokvel.is_organiser ? (
-        <InviteMemberForm stokvel={stokvel} />
-      ) : null}
+      {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
 
       {cycle ? (
         <PayoutQueue
