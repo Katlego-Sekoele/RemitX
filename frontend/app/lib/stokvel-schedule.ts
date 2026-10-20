@@ -6,7 +6,15 @@
  * contract's `_validateSchedule`, so a bad schedule is caught before submit.
  */
 
-import { addDays, addMonths, addWeeks, isValid, parse, set } from "date-fns"
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  isValid,
+  max,
+  parse,
+  set,
+} from "date-fns"
 
 import type { StokvelRoundTimesRequest } from "~/client"
 
@@ -85,7 +93,9 @@ const ROUND_OPENS_AT = { hours: 7, minutes: 0, seconds: 0, milliseconds: 0 }
 /**
  * One round per member from a first payout day and a cadence. Round 1 opens
  * now; each later round opens the morning after the previous payout. The
- * pay-by date is `payByDaysBefore` days before each payout.
+ * pay-by date is `payByDaysBefore` days before each payout, but never
+ * before its round opens (a first payout within those days, or a weekly
+ * cycle with a week's notice).
  */
 export function generateSchedule({
   firstPayout,
@@ -109,7 +119,7 @@ export function generateSchedule({
       : now
     schedule.push({
       start_time: start.toISOString(),
-      deadline: addDays(payout, -payByDaysBefore).toISOString(),
+      deadline: max([start, addDays(payout, -payByDaysBefore)]).toISOString(),
       payout_time: payout.toISOString(),
     })
     previousPayout = payout

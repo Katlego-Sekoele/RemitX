@@ -100,7 +100,7 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
     stokvel.members.find((m) => m.member_id === memberId)
   const nameOf = (memberId: string) => {
     const m = member(memberId)
-    return m ? (m.is_me ? "You" : m.full_name) : "A member"
+    return m?.is_me ? "You" : (m?.full_name ?? "A member")
   }
 
   const saveOrder = useMutation({
@@ -137,10 +137,7 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
     })
   }, [firstPayout, time, payoutProblem, frequency, order.length, payByDays])
   const problems = schedule ? scheduleIssues(schedule) : []
-  const blockers = startCycleBlockers({
-    ...stokvel,
-    planned_payout_order: order,
-  })
+  const blockers = startCycleBlockers(stokvel, order)
   const lapsing = pendingInvitations(stokvel).length
   const canStart =
     blockers.length === 0 && schedule !== null && problems.length === 0

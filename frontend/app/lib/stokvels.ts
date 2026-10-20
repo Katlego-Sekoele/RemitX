@@ -99,7 +99,8 @@ export type RemittanceStatus =
 export type StokvelMemberRead = {
   member_id: string
   user_id: string
-  full_name: string
+  /** "Tendai M."; null when the member has no first name (#236). */
+  full_name: string | null
   is_organiser: boolean
   is_me: boolean
   joined_at: string
@@ -136,7 +137,8 @@ export type StokvelCycleRead = {
   total_rounds: number
   started_at: string | null
   closed_at: string | null
-  /** Member ids in payout order; index = round. */
+  /** Member ids in payout order; index = round. While forming, the order
+   * the Organiser has entered so far (D3), empty until then (#236). */
   payout_order: string[]
   rounds: StokvelRoundRead[]
 }
@@ -186,9 +188,6 @@ export type StokvelDetailRead = StokvelRead & {
    * `GET /stokvels/{id}` (#236) isn't wired: its phase, members and
    * invitations aren't known, so nothing may act on them. R4-09: drop. */
   partial: boolean
-  /** Member ids in the payout order the Organiser entered for the next
-   * cycle (D3), or null until entered. Index = round. */
-  planned_payout_order: string[] | null
 }
 
 /** Admin view of the contract (R3-07, #244). */
@@ -258,7 +257,6 @@ async function detailFromList(
     cycle: null,
     contributions: [],
     partial: true,
-    planned_payout_order: null,
   }
 }
 
@@ -438,10 +436,28 @@ export function normaliseReference(reference: string): string {
   return reference.trim().toLowerCase()
 }
 
+/** The order the Organiser has entered for the next cycle (D3): the forming
+ * cycle's `payout_order` (#236), empty until entered. Index = round. */
+export function plannedPayoutOrder(
+  detail: Pick<StokvelDetailRead, "cycle">
+): string[] {
+  return detail.cycle?.status === CycleStatus.forming
+    ? detail.cycle.payout_order
+    : []
+}
+
+/** A member's first name; #236 sends no name when there's no first name. */
+export function firstNameOf(
+  member: Pick<StokvelMemberRead, "full_name">
+): string {
+  return member.full_name?.split(" ")[0] ?? "A member"
+}
+
 /** Why the Organiser can't start the cycle yet, in the order to fix them
  * (#232's `too_few_members` and `cycle_not_ready`); empty when it can. */
 export function startCycleBlockers(
-  detail: Pick<StokvelDetailRead, "members" | "planned_payout_order" | "phase">
+  detail: Pick<StokvelDetailRead, "members" | "cycle" | "phase">,
+  order: readonly string[] = plannedPayoutOrder(detail)
 ): string[] {
   if (detail.phase !== CycleStatus.forming) return []
   const blockers: string[] = []
@@ -453,11 +469,10 @@ export function startCycleBlockers(
       blockers.push(
         member.is_me
           ? "Choose your payout beneficiary."
-          : `${member.full_name.split(" ")[0]} hasn't chosen a payout beneficiary yet.`
+          : `${firstNameOf(member)} hasn't chosen a payout beneficiary yet.`
       )
     }
   }
-  const order = detail.planned_payout_order ?? []
   const everyone = new Set(detail.members.map((m) => m.member_id))
   if (
     order.length !== everyone.size ||
@@ -471,12 +486,10 @@ export function startCycleBlockers(
 /** The planned order, completed with any member not in it yet (a new member
  * joins at the end), so the Organiser always has a full list. */
 export function payoutOrderWithEveryone(
-  detail: Pick<StokvelDetailRead, "members" | "planned_payout_order">
+  detail: Pick<StokvelDetailRead, "members" | "cycle">
 ): string[] {
   const everyone = detail.members.map((m) => m.member_id)
-  const kept = (detail.planned_payout_order ?? []).filter((id) =>
-    everyone.includes(id)
-  )
+  const kept = plannedPayoutOrder(detail).filter((id) => everyone.includes(id))
   return [...kept, ...everyone.filter((id) => !kept.includes(id))]
 }
 

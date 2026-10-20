@@ -406,14 +406,14 @@ test("payoutOrderWithEveryone keeps the saved order and adds newcomers", async (
   assert.deepEqual(
     payoutOrderWithEveryone({
       members: members as never,
-      planned_payout_order: ["c", "gone", "a"],
+      cycle: { status: "forming", payout_order: ["c", "gone", "a"] } as never,
     }),
     ["c", "a", "b"]
   )
   assert.deepEqual(
     payoutOrderWithEveryone({
       members: members as never,
-      planned_payout_order: null,
+      cycle: null,
     }),
     ["a", "b", "c"]
   )
@@ -437,7 +437,7 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
     startCycleBlockers({
       phase: "forming",
       members: [me] as never,
-      planned_payout_order: null,
+      cycle: null,
     }),
     [
       "A cycle needs at least 2 members.",
@@ -449,7 +449,7 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
     startCycleBlockers({
       phase: "forming",
       members: [{ ...me, payout_ready: true }, thandi] as never,
-      planned_payout_order: ["m2", "m1"],
+      cycle: { status: "forming", payout_order: ["m2", "m1"] } as never,
     }),
     ["Thandi hasn't chosen a payout beneficiary yet."]
   )
@@ -457,7 +457,7 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
     startCycleBlockers({
       phase: "active",
       members: [me] as never,
-      planned_payout_order: null,
+      cycle: null,
     }),
     []
   )

@@ -41,11 +41,13 @@ import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
   canInvite,
+  firstNameOf,
   invalidateStokvels,
   myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
   pendingInvitations,
+  plannedPayoutOrder,
   resetStokvelMockScenario,
   simulateInviteesAcceptMock,
   stokvelMockScenario,
@@ -55,6 +57,7 @@ import {
   stokvelQueries,
   stokvelsPath,
   type StokvelDetailRead,
+  type StokvelMemberRead,
 } from "~/lib/stokvels"
 import type { Route } from "./+types/stokvel"
 
@@ -182,8 +185,8 @@ function StokvelDetail({
     ? member(currentRound.recipient_member_id)
     : undefined
   const recipientIsMe = recipient?.member_id === stokvel.my_member_id
-  const firstName = (m: { is_me: boolean; full_name: string }) =>
-    m.is_me ? "you" : m.full_name.split(" ")[0]
+  const firstName = (m: StokvelMemberRead) => (m.is_me ? "you" : firstNameOf(m))
+  const plannedOrder = plannedPayoutOrder(stokvel)
 
   return (
     <div className="flex flex-col gap-6">
@@ -300,15 +303,15 @@ function StokvelDetail({
                   once everyone has chosen a payout beneficiary.
                 </CardDescription>
               </CardHeader>
-              {stokvel.planned_payout_order ? (
+              {plannedOrder.length > 0 ? (
                 <CardContent>
                   <ol className="flex flex-col gap-1">
-                    {stokvel.planned_payout_order.map((memberId, i) => {
+                    {plannedOrder.map((memberId, i) => {
                       const m = member(memberId)
                       return (
                         <li key={memberId}>
                           Round {i + 1}:{" "}
-                          {m ? (m.is_me ? "You" : m.full_name) : "A member"}
+                          {m?.is_me ? "You" : (m?.full_name ?? "A member")}
                         </li>
                       )
                     })}
@@ -320,7 +323,7 @@ function StokvelDetail({
         </>
       ) : null}
 
-      {cycle ? (
+      {cycle && cycle.status !== "forming" ? (
         <PayoutQueue
           cycle={cycle}
           member={member}
@@ -346,7 +349,7 @@ function StokvelDetail({
                   className="flex items-center justify-between gap-2 text-sm"
                 >
                   <span>
-                    {m.is_me ? "You" : m.full_name}
+                    {m.is_me ? "You" : (m.full_name ?? "A member")}
                     {m.is_organiser ? (
                       <span className="text-muted-foreground">
                         {" "}

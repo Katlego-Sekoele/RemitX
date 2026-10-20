@@ -37,6 +37,7 @@ import { stokvelErrorMessage } from "~/lib/stokvel-errors"
 import {
   invalidateStokvels,
   stokvelMutations,
+  type StokvelBeneficiaryChoice,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
@@ -57,7 +58,10 @@ export function PayoutBeneficiaryCard({
 }) {
   const queryClient = useQueryClient()
   const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
-  const current = stokvel.my_beneficiary
+  // A real stokvel is built from its list row (`partial`), which has no
+  // `my_beneficiary`, so the saved choice is kept here. R4-09: drop.
+  const [saved, setSaved] = useState<StokvelBeneficiaryChoice | null>(null)
+  const current = stokvel.my_beneficiary ?? saved
   const [editing, setEditing] = useState(current === null)
   const [adding, setAdding] = useState(false)
   const [beneficiaryId, setBeneficiaryId] = useState(
@@ -67,6 +71,11 @@ export function PayoutBeneficiaryCard({
   const save = useMutation({
     ...stokvelMutations.setMyBeneficiary(stokvel.stokvel_id),
     onSuccess: async (_, beneficiary) => {
+      setSaved({
+        beneficiary_id: beneficiary.beneficiary_id,
+        full_name: beneficiaryName(beneficiary),
+        payout_currency: beneficiary.payout_currency,
+      })
       setEditing(false)
       await invalidateStokvels(queryClient)
       toast.success(`Your payout goes to ${beneficiaryName(beneficiary)}`)

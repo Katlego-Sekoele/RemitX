@@ -21,12 +21,30 @@ import type { StokvelRoundTimes } from "~/lib/stokvel-schedule"
 import {
   feeShare,
   poolAmount,
+  plannedPayoutOrder,
   type StokvelContractStatusRead,
+  type StokvelCycleRead,
   type StokvelDetailRead,
   type StokvelRoundContributionRead,
 } from "~/lib/stokvels"
 
 const ME = "usr_sipho"
+
+/** A stokvel's next cycle before it starts, as #236 returns it: the order
+ * entered so far and no rounds. */
+function formingCycle(cycleId: string): StokvelCycleRead {
+  return {
+    cycle_id: cycleId,
+    cycle_number: 1,
+    status: "forming",
+    current_round: 0,
+    total_rounds: 0,
+    started_at: null,
+    closed_at: null,
+    payout_order: [],
+    rounds: [],
+  }
+}
 
 const GROCERIES: StokvelDetailRead = {
   stokvel_id: "stk_8c21",
@@ -176,7 +194,6 @@ const GROCERIES: StokvelDetailRead = {
     },
   ],
   partial: false,
-  planned_payout_order: null,
 }
 
 const TAXI_FUND: StokvelDetailRead = {
@@ -228,10 +245,9 @@ const TAXI_FUND: StokvelDetailRead = {
       created_at: "2026-10-14T07:30:00Z",
     },
   ],
-  cycle: null,
+  cycle: formingCycle("cyc_taxi_01"),
   contributions: [],
   partial: false,
-  planned_payout_order: null,
 }
 
 const SCHOOL_FEES: StokvelDetailRead = {
@@ -272,7 +288,6 @@ const SCHOOL_FEES: StokvelDetailRead = {
   },
   contributions: [],
   partial: false,
-  planned_payout_order: null,
 }
 
 const DETAILS: Record<string, StokvelDetailRead> = {
@@ -679,10 +694,9 @@ export async function acceptInvitationMock(
       },
     ],
     invitations: [],
-    cycle: null,
+    cycle: formingCycle(`cyc_${invitation.stokvel_id}`),
     contributions: [],
     partial: false,
-    planned_payout_order: null,
   }
   DETAILS[detail.stokvel_id] = detail
   return structuredClone(summaryOf(detail))
@@ -763,7 +777,9 @@ export async function setPayoutOrderMock(
       "invalid_payout_order"
     )
   }
-  detail.planned_payout_order = [...order]
+  // As #231: the first order call opens the cycle if there isn't one yet.
+  detail.cycle ??= formingCycle(`cyc_${stokvelId}`)
+  detail.cycle.payout_order = [...order]
 }
 
 /**
@@ -795,9 +811,9 @@ export async function startCycleMock(
   if (detail.members.length < 2) {
     throw apiError("A cycle needs at least 2 members.", 409, "too_few_members")
   }
-  const order = detail.planned_payout_order
+  const order = plannedPayoutOrder(detail)
   const waiting = detail.members.find((member) => !member.payout_ready)
-  if (waiting || !order || order.length !== detail.members.length) {
+  if (waiting || order.length !== detail.members.length) {
     throw apiError(
       "Every member needs a place in the payout order and a payout beneficiary first.",
       409,
@@ -811,7 +827,7 @@ export async function startCycleMock(
     if (invitation.status === "pending") invitation.status = "lapsed"
   }
   detail.cycle = {
-    cycle_id: `cyc_${Date.now().toString(36)}`,
+    cycle_id: detail.cycle?.cycle_id ?? `cyc_${Date.now().toString(36)}`,
     cycle_number: 1,
     status: "active",
     current_round: 0,
