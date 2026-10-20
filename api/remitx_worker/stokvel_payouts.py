@@ -65,7 +65,7 @@ from remitx_api.models.orm.transaction import (
     Transaction,
 )
 from remitx_api.services import exchange_rate_service, queue_service, quote_service
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
@@ -96,11 +96,13 @@ def queue_released_payouts() -> int:
     by the sync or by `release_pool` is paid out within one sync interval, and
     a lost message is queued again. Returns how many were queued.
 
-    `updated_at` marks when a payout was last queued. A payout is due once,
-    as soon as it is released (`record_pool_release` sets `updated_at` and
-    `released_at` together), then again only `REQUEUE_AFTER` after it was
-    last queued, so a busy worker is not sent a pile of copies. The longest
-    waiting go first, so a few that keep failing cannot keep the rest out.
+    `settle_queued_at` marks when a payout was last queued. A payout is due
+    as soon as it is released (never queued yet), then again only
+    `REQUEUE_AFTER` after it was last queued, so a busy worker is not sent a
+    pile of copies. Its own column rather than `updated_at`, so another write
+    to the row (an Administrator action, say) does not delay it. The longest
+    waiting go first (last queued, or released if never), so a few that keep
+    failing cannot keep the rest out.
     """
     now = datetime.now(UTC)
     due = (
@@ -108,22 +110,24 @@ def queue_released_payouts() -> int:
         StokvelPayout.remittance_status == STATUS_PENDING,
         StokvelPayout.quote_id.is_(None),
         or_(
-            StokvelPayout.updated_at <= StokvelPayout.released_at,
-            StokvelPayout.updated_at < now - REQUEUE_AFTER,
+            StokvelPayout.settle_queued_at.is_(None),
+            StokvelPayout.settle_queued_at < now - REQUEUE_AFTER,
         ),
     )
     with session_scope() as session:
         payout_ids = session.scalars(
             select(StokvelPayout.id)
             .where(*due)
-            .order_by(StokvelPayout.updated_at)
+            .order_by(
+                func.coalesce(StokvelPayout.settle_queued_at, StokvelPayout.released_at)
+            )
             .limit(_QUEUE_LIMIT)
         ).all()
         if payout_ids:
             session.execute(
                 update(StokvelPayout)
                 .where(StokvelPayout.id.in_(payout_ids), *due)
-                .values(updated_at=now)
+                .values(settle_queued_at=now)
                 .execution_options(synchronize_session=False)
             )
     for payout_id in payout_ids:
@@ -204,7 +208,12 @@ def settle_payout(payout_id: str) -> str:
     except _DeploymentFault as exc:
         # Nothing a retry fixes: a person must seed the account. Marked failed
         # so it is not queued again every few minutes.
-        return _fail(target_id, str(exc))
+        logger.error(
+            "event=stokvel.payout_platform_account_missing payout_id=%s (%s)",
+            payout_id,
+            exc,
+        )
+        return _fail(target_id, "platform_account_missing")
 
     logger.info(
         "event=stokvel.payout_remittance_created payout_id=%s quote_id=%s "
@@ -220,26 +229,26 @@ def settle_payout(payout_id: str) -> str:
 
 
 def _beneficiary_problem(session, member, beneficiary) -> str | None:
-    """Why the member's chosen beneficiary cannot be paid now, or None. The
-    payout currency was copied from the beneficiary when it was chosen
-    (R2-09, #231); if they differ now, the member's choice is not what would
-    be paid, so a person decides."""
+    """Why the member's chosen beneficiary cannot be paid now, as a fixed
+    reason code, or None. A code rather than a sentence with the
+    beneficiary's or recipient's ids in it, so nothing about the people is
+    logged: a person looks the payout up by its id. The payout currency was
+    copied from the beneficiary when it was chosen (R2-09, #231); if they
+    differ now, the member's choice is not what would be paid, so a person
+    decides."""
     if member.payout_beneficiary_id is None or member.payout_currency is None:
-        return "the member has no payout beneficiary"
+        return "no_payout_beneficiary"
     if beneficiary is None:
-        return f"beneficiary {member.payout_beneficiary_id} no longer exists"
+        return "beneficiary_deleted"
     if beneficiary.payout_currency != member.payout_currency:
-        return (
-            f"beneficiary {beneficiary.beneficiary_id} is now paid in "
-            f"{beneficiary.payout_currency}, but the member chose it for "
-            f"{member.payout_currency}"
-        )
-    for currency in (CURRENCY_TOKEN, member.payout_currency):
-        if _user_account(session, beneficiary.linked_user_id, currency) is None:
-            return (
-                f"the beneficiary's user {beneficiary.linked_user_id} has no "
-                f"{currency} account to credit"
-            )
+        return "beneficiary_payout_currency_changed"
+    if _user_account(session, beneficiary.linked_user_id, CURRENCY_TOKEN) is None:
+        return "recipient_has_no_token_account"
+    if (
+        _user_account(session, beneficiary.linked_user_id, member.payout_currency)
+        is None
+    ):
+        return "recipient_has_no_payout_currency_account"
     return None
 
 
@@ -375,7 +384,8 @@ def _user_account(session, user_id, currency: str):
 
 
 def _fail(payout_id: uuid.UUID, reason: str) -> str:
-    """`pending -> failed`, with nothing created, for a person to resolve."""
+    """`pending -> failed`, with nothing created, for a person to resolve.
+    `reason` is one of the fixed codes above, never free text."""
     with session_scope() as session:
         session.execute(
             update(StokvelPayout)
@@ -388,8 +398,8 @@ def _fail(payout_id: uuid.UUID, reason: str) -> str:
             .execution_options(synchronize_session=False)
         )
     logger.error(
-        "event=stokvel.payout_needs_a_person payout_id=%s: %s; marked failed "
-        "and nothing created",
+        "event=stokvel.payout_needs_a_person payout_id=%s reason=%s: marked "
+        "failed and nothing created",
         payout_id,
         reason,
     )

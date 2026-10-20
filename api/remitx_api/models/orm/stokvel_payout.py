@@ -163,6 +163,12 @@ class StokvelPayout(Base):
     released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When the event sync last queued `stokvel.settle_payout` for this payout
+    # (R3-05): it queues again only some minutes later. Its own column, so
+    # other writes to the row do not delay the payout
+    settle_queued_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )

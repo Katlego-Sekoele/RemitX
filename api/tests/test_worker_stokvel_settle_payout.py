@@ -432,7 +432,7 @@ def test_a_payout_still_waiting_is_queued_again_later(
             update(StokvelPayout)
             .where(StokvelPayout.id == released)
             .values(
-                updated_at=datetime.now(UTC)
+                settle_queued_at=datetime.now(UTC)
                 - stokvel_payouts.REQUEUE_AFTER
                 - timedelta(seconds=1)
             )
@@ -470,10 +470,29 @@ def test_the_longest_waiting_payouts_go_first(
         session.execute(
             update(StokvelPayout)
             .where(StokvelPayout.id == round_1)
-            .values(updated_at=long_ago)
+            .values(settle_queued_at=long_ago)
         )
         session.commit()
     monkeypatch.setattr(stokvel_payouts, "_QUEUE_LIMIT", 1)
 
     assert queue_released_payouts() == 1
     assert queued == [str(round_1)]
+
+
+def test_another_write_to_the_payout_does_not_delay_it(
+    session_factory, released, queued
+):
+    """Queuing is marked by `settle_queued_at`, not `updated_at`, so an
+    unrelated write to the row (an Administrator action, say) leaves a
+    payout due (#360 review)."""
+    with session_factory() as session:
+        session.execute(
+            update(StokvelPayout)
+            .where(StokvelPayout.id == released)
+            .values(updated_at=datetime.now(UTC) + timedelta(minutes=1))
+        )
+        session.commit()
+
+    assert queue_released_payouts() == 1
+    assert queued == [str(released)]
+    assert _payout(session_factory, released).settle_queued_at is not None
