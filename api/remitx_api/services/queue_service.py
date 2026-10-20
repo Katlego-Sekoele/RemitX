@@ -29,6 +29,8 @@ SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
 # Registered in `remitx_worker.stokvel_release` (R3-04, #241).
 RELEASE_POOL = "stokvel.release_pool"
+# Registered in `remitx_worker.stokvel_payouts` (R3-05, #242).
+SETTLE_PAYOUT = "stokvel.settle_payout"
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -218,6 +220,18 @@ def enqueue_release_pool(cycle_id: str, round_: int) -> None:
     producer.send_task(
         RELEASE_POOL,
         args=[cycle_id, round_],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_settle_payout(payout_id: str) -> None:
+    """Ask the worker to create a released payout's quote and remittance.
+    Queued by the event sync for every released payout not yet started, so
+    repeating it is harmless: only one delivery creates anything."""
+    producer.send_task(
+        SETTLE_PAYOUT,
+        args=[payout_id],
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()

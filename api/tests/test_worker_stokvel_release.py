@@ -1,4 +1,4 @@
-"""The pool release (R3-04, #241): `stokvel_ledger.record_release`, the guard
+"""The pool release (R3-04, #241): `stokvel_ledger.record_pool_release`, the guard
 every release is recorded through, and `stokvel.release_pool`, which sends
 `finalise` for a round that became due with time.
 
@@ -41,7 +41,7 @@ from remitx_worker.stokvel_ledger import (
     RECORDED,
     ReleaseConflict,
     ensure_payout,
-    record_release,
+    record_pool_release,
 )
 from remitx_worker.stokvel_release import release_pool
 from sqlalchemy import select, update
@@ -198,10 +198,10 @@ def _release_legs(session_factory):
 
 
 def _record(session_factory, cycle, round_=0, *, tx_hash=RELEASE_HASH, **kwargs):
-    """`record_release` as the event sync calls it, in its own commit."""
+    """`record_pool_release` as the event sync calls it, in its own commit."""
     args = {"pool": POOL, "member_id": cycle["members"][round_], **kwargs}
     with session_factory() as session:
-        outcome = record_release(
+        outcome = record_pool_release(
             session,
             cycle_id=cycle["id"],
             round_=round_,
@@ -213,7 +213,7 @@ def _record(session_factory, cycle, round_=0, *, tx_hash=RELEASE_HASH, **kwargs)
     return outcome
 
 
-# --- record_release ----------------------------------------------------------
+# --- record_pool_release -----------------------------------------------------
 
 
 def test_a_release_moves_the_pool_from_the_stokvel_to_the_treasury_once(
@@ -340,7 +340,7 @@ def test_a_release_the_stokvel_cannot_cover_changes_nothing(session_factory, cyc
     before = _balances(session_factory, cycle)
 
     with pytest.raises(IntegrityError), session_factory() as session:
-        record_release(
+        record_pool_release(
             session,
             cycle_id=cycle["id"],
             round_=0,

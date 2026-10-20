@@ -370,20 +370,22 @@ def test_two_payouts_never_share_a_leg_burn_quote_or_remittance(app_context):
     assert _count(cycle.id) == 2
 
 
-def test_two_rounds_released_in_one_transaction_share_its_hash(app_context):
-    """A cycle's final contribution, made after the last round's payout
-    time, releases the last two rounds in one transaction (the contract's
-    `_releaseDue`): both payouts carry its hash (R3-04)."""
-    stokvel, cycle, [first, second] = _cycle(make_user(), make_user())
-    _payout(
-        cycle, 0, first, **_released(_release_leg(stokvel), release_tx_hash="0xboth")
-    )
-    _payout(
-        cycle, 1, second, **_released(_release_leg(stokvel), release_tx_hash="0xboth")
-    )
+def test_rounds_released_in_one_transaction_share_its_hash(app_context):
+    """One `contribute` releases every round that has become due (the
+    contract's `_releaseDue`): with rounds left unfinalised after their
+    payout time, a late final payment releases them all in one transaction,
+    and every payout carries its hash (R3-04)."""
+    stokvel, cycle, members = _cycle(make_user(), make_user(), make_user())
+    for round_, member in enumerate(members):
+        _payout(
+            cycle,
+            round_,
+            member,
+            **_released(_release_leg(stokvel), release_tx_hash="0xall"),
+        )
     db.session.commit()
 
-    assert _count(cycle.id) == 2
+    assert _count(cycle.id) == 3
 
 
 def test_a_payouts_references_follow_its_steps(app_context):

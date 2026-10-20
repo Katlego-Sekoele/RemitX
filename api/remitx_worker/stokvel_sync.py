@@ -21,7 +21,7 @@ The events:
 - `ContributionMade`: records the contribution as mined through
   `stokvel_ledger.record_mined`, the same guard `confirm_contribution` uses.
   The safety net for a confirmation that was lost.
-- `RoundFinalised`: records the release through `stokvel_ledger.record_release`
+- `RoundFinalised`: records the release through `stokvel_ledger.record_pool_release`
   (R3-04, #241), the guard `release_pool` shares: the payout becomes
   `released` and the `STOKVEL -> Treasury` leg is booked, once. Rounds held
   as waiting before R3-04 are recorded by the next run.
@@ -50,7 +50,7 @@ from remitx_worker.stokvel_ledger import (
     IN_FLIGHT,
     ReleaseConflict,
     record_mined,
-    record_release,
+    record_pool_release,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,7 +231,7 @@ def _cycle_closed(session, event: ContractEvent) -> str:
 
 def _round_finalised(session, event: ContractEvent) -> str:
     """Record the release in this transaction through
-    `stokvel_ledger.record_release` (R3-04, #241), the guard
+    `stokvel_ledger.record_pool_release` (R3-04, #241), the guard
     `release_pool` shares: the payout row (created if missing) becomes
     `released` and the `STOKVEL -> Treasury` leg is booked, once.
 
@@ -249,7 +249,7 @@ def _round_finalised(session, event: ContractEvent) -> str:
     if cycle is None or member_id is None:
         return _skip_unknown(event)
     try:
-        outcome = record_release(
+        outcome = record_pool_release(
             session,
             cycle_id=cycle.id,
             round_=event.args["round"],

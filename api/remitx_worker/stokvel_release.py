@@ -10,7 +10,7 @@ scheduled release (R3-11, #248) and the Administrator fallback (R3-10, #247),
 never by the sync.
 
 Either way the release is recorded through one guard,
-`stokvel_ledger.record_release` (OI-1, doc section 8), so it is booked once
+`stokvel_ledger.record_pool_release` (OI-1, doc section 8), so it is booked once
 whichever sees it first.
 
 As with contributions (`stokvel_tasks.submit_contribution`):
@@ -41,7 +41,7 @@ from remitx_worker.stokvel_ledger import (
     RELEASED,
     ReleaseConflict,
     ensure_payout,
-    record_release,
+    record_pool_release,
 )
 
 logger = logging.getLogger(__name__)
@@ -305,7 +305,7 @@ def _await(task, payout_id: uuid.UUID, tx_hash: str) -> str:
 
 
 def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
-    """Record the mined release through `record_release`. If that fails (a
+    """Record the mined release through `record_pool_release`. If that fails (a
     contribution in the pool is not recorded yet, so the `STOKVEL` balance
     would go below zero), the payout stays `processing` with its hash and the
     event sync records it from the `RoundFinalised` event."""
@@ -333,7 +333,7 @@ def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
         return "mined_unrecorded"
     try:
         with session_scope() as session:
-            outcome = record_release(
+            outcome = record_pool_release(
                 session,
                 cycle_id=cycle_id,
                 round_=round_,

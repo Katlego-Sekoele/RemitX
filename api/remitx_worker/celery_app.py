@@ -27,6 +27,8 @@ celery.autodiscover_tasks(["remitx_worker"])
 celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_tasks")
 # `stokvel.release_pool` (R3-04), apart from #232's cycle tasks.
 celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_release")
+# `stokvel.settle_payout` (R3-05).
+celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_payouts")
 
 
 @worker_ready.connect

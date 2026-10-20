@@ -36,6 +36,7 @@ from remitx_api.models.orm.transaction import (
     TYPE_STOKVEL_POOL_RELEASE,
     Transaction,
 )
+from remitx_api.services import queue_service
 from remitx_worker import evm_service, stokvel_contract, stokvel_sync
 from remitx_worker.stokvel_contract import ContractEvent
 from remitx_worker.stokvel_tasks import (
@@ -120,7 +121,19 @@ class FakeLogs:
 
 
 @pytest.fixture
-def logs(session_factory, monkeypatch):
+def payouts_queued(monkeypatch):
+    """The payouts the sync queues for R3-05 at the end of a run."""
+    queued = []
+    monkeypatch.setattr(
+        queue_service,
+        "enqueue_settle_payout",
+        lambda payout_id: queued.append(payout_id),
+    )
+    return queued
+
+
+@pytest.fixture
+def logs(session_factory, monkeypatch, payouts_queued):
     fake = FakeLogs()
     monkeypatch.setattr(stokvel_contract, "fetch_logs", fake.fetch_logs)
     monkeypatch.setattr(stokvel_contract, "decode_log", fake.decode_log)
@@ -508,7 +521,9 @@ def test_events_for_stokvels_this_database_lacks_are_skipped(
 # --- RoundFinalised and CycleClosed -----------------------------------------
 
 
-def test_a_round_finalised_records_the_release_once(session_factory, pending, logs):
+def test_a_round_finalised_records_the_release_once(
+    session_factory, pending, logs, payouts_queued
+):
     """R3-04: the payout row is created and released, and the pool moves from
     `STOKVEL` to the Treasury in one confirmed leg. Replaying it books
     nothing twice."""
@@ -535,6 +550,8 @@ def test_a_round_finalised_records_the_release_once(session_factory, pending, lo
     assert after["stokvel"] == before["stokvel"] - POOL
     assert after["treasury"] == before["treasury"] + POOL
     assert _held(session_factory) == []
+    # Then paid out (R3-05): queued once the run has committed the release
+    assert payouts_queued == [str(payout.id)]
 
     _set_cursor(session_factory, START - 1)
     once = _snapshot(session_factory)

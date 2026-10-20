@@ -5,7 +5,7 @@ it first:
 
 - a mined contribution (`record_mined`): `stokvel_tasks.confirm_contribution`
   after a receipt, or the event sync (`stokvel_sync`) from `ContributionMade`
-- a released pool (`record_release`, R3-04): the event sync from
+- a released pool (`record_pool_release`, R3-04): the event sync from
   `RoundFinalised`, or `stokvel_release.release_pool` after the receipt of
   the `finalise` it sent
 """
@@ -51,7 +51,7 @@ RELEASE_PROCESSING = StokvelPayoutReleaseStatus.PROCESSING.value
 RELEASED = StokvelPayoutReleaseStatus.RELEASED.value
 RELEASE_IN_FLIGHT = (RELEASE_PENDING, RELEASE_PROCESSING)
 
-# What `record_release` reports.
+# What `record_pool_release` reports.
 RECORDED = "recorded"
 ALREADY_RECORDED = "already_recorded"
 
@@ -124,7 +124,8 @@ def record_mined(
         ).where(Transaction.tx_id.in_(leg_ids))
     ).all()
     # `debit_account_id` is the destination, `credit_account_id` the source
-    # (transaction.py). Destinations first, as in settlement.
+    # (transaction.py). Destinations first, as in settlement. That takes the
+    # `STOKVEL` row lock before the Treasury's, the order `_move_pool` keeps.
     for _source, destination, amount in legs:
         session.execute(
             update(Account)
@@ -191,7 +192,7 @@ def _payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout | None:
     )
 
 
-def record_release(
+def record_pool_release(
     session,
     *,
     cycle_id: uuid.UUID,
@@ -223,9 +224,9 @@ def record_release(
     anything, if the round pays a different member, is released with another
     hash, or is `failed`. The caller commits.
 
-    The payout itself (quote, remittance, settlement) is R3-05 and R3-06: it
-    pays from the Treasury Wallet to the beneficiary, so the pool does not
-    pass back through `STOKVEL`, and `remittance_status` stays `pending` here.
+    The payout itself (quote, remittance, settlement) is paid from the Treasury Wallet
+    to the beneficiary, so the pool does not pass back through `STOKVEL`, and
+    `remittance_status` stays `pending` here.
     """
     # Checked before the row is created, so a conflict writes nothing.
     scheduled = scheduled_member(session, cycle_id, round_)
@@ -307,20 +308,24 @@ def _release(session, payout, leg, tx_hash, block_number, now) -> str | None:
 
 
 def _move_pool(session, stokvel_account_id, treasury_id, pool: Decimal) -> None:
-    # `debit_account_id` is the destination, `credit_account_id` the source
-    # (transaction.py). Destination first, as in `record_mined`. The
-    # `STOKVEL` balance can never go below zero (accounts_stokvel_balance_
-    # nonneg): if a contribution in this pool is not recorded yet, this
-    # raises and the caller leaves the release to be recorded later.
-    session.execute(
-        update(Account)
-        .where(Account.account_id == treasury_id)
-        .values(account_balance=Account.account_balance + pool)
-    )
+    # `STOKVEL` before the Treasury: the order `record_mined` takes the same
+    # two row locks in (its `STOKVEL` is a destination, updated before its
+    # sources, the Treasury among them). Taking them in the other order
+    # deadlocks on Postgres against a contribution of the same stokvel being
+    # confirmed at the same time.
+    #
+    # The `STOKVEL` balance can never go below zero (accounts_stokvel_
+    # balance_nonneg): if a contribution in this pool is not recorded yet,
+    # this raises and the caller leaves the release to be recorded later.
     session.execute(
         update(Account)
         .where(Account.account_id == stokvel_account_id)
         .values(account_balance=Account.account_balance - pool)
+    )
+    session.execute(
+        update(Account)
+        .where(Account.account_id == treasury_id)
+        .values(account_balance=Account.account_balance + pool)
     )
     session.flush()
 
@@ -350,6 +355,16 @@ def _release_accounts(
     if stokvel.account_id is None:
         # Created with the stokvel (R2-07); never missing once in service.
         raise RuntimeError(f"stokvel {stokvel.id} has no STOKVEL account")
+    treasury_id = treasury_account_id(session)
+    expected = (
+        None if total_rounds is None else stokvel.contribution_amount * total_rounds
+    )
+    return stokvel.account_id, treasury_id, expected
+
+
+def treasury_account_id(session) -> uuid.UUID:
+    """The Treasury Wallet's UCTUSD ledger account: where a released pool goes
+    and where a stokvel's payout is paid from."""
     treasury_id = session.scalar(
         select(Account.account_id).where(
             Account.type == TYPE_EVM_WALLET,
@@ -359,7 +374,4 @@ def _release_accounts(
     if treasury_id is None:
         # Seeded by migration: a missing one is a deployment fault.
         raise RuntimeError(f"no {TYPE_EVM_WALLET} account in {CURRENCY_TOKEN}")
-    expected = (
-        None if total_rounds is None else stokvel.contribution_amount * total_rounds
-    )
-    return stokvel.account_id, treasury_id, expected
+    return treasury_id
