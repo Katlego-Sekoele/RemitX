@@ -267,3 +267,127 @@ test("myCurrentContribution skips a failed attempt for the live one", async () =
   )
   assert.equal(myCurrentContribution({ ...detail, cycle: null }), undefined)
 })
+
+test("canInvite: organiser, being set up, and a free place", async () => {
+  const { canInvite } = await import("./stokvels")
+  const base = {
+    phase: "forming" as const,
+    is_organiser: true,
+    member_count: 2,
+    max_members: 3,
+    deactivated_at: null,
+    partial: false,
+  }
+  assert.equal(canInvite(base), true)
+  // Deactivated: every invite would be refused with stokvel_deactivated.
+  assert.equal(
+    canInvite({ ...base, deactivated_at: "2026-10-19T10:00:00Z" }),
+    false
+  )
+  // Built from the list row: the phase isn't really known.
+  assert.equal(canInvite({ ...base, partial: true }), false)
+  assert.equal(canInvite({ ...base, member_count: 3 }), false)
+  assert.equal(canInvite({ ...base, is_organiser: false }), false)
+  assert.equal(canInvite({ ...base, phase: "active" }), false)
+})
+
+test("pendingInvitations keeps only unanswered ones", async () => {
+  const { pendingInvitations } = await import("./stokvels")
+  const invitation = {
+    invitation_id: "i",
+    stokvel_id: "s",
+    account_reference: "a1-zar",
+    invitee_name: "A",
+    created_at: "",
+  }
+  assert.equal(
+    pendingInvitations({
+      invitations: [
+        { ...invitation, status: "pending" },
+        { ...invitation, status: "declined" },
+        { ...invitation, status: "lapsed" },
+      ],
+    }).length,
+    1
+  )
+})
+
+test("demo invitation ids are the mock's", async () => {
+  const { isDemoInvitation } = await import("./stokvels")
+  assert.equal(isDemoInvitation("inv_family"), true)
+  assert.equal(isDemoInvitation("0b7c9a3e-2f41-4d8e-9c55-1a2b3c4d5e6f"), false)
+})
+
+test("inviteMock refuses with the doc §6 codes, then invites", async () => {
+  const { inviteMock } = await import("./stokvels.mock")
+  const taxi = "stk_77e0"
+  const invite = (reference: string, stokvelId = taxi) =>
+    inviteMock(stokvelId, { account_reference: reference })
+
+  await expect(invite("thandi2-zar", "stk_8c21")).rejects.toMatchObject({
+    status: 403,
+    body: { code: "not_organiser" },
+  })
+  await expect(invite("nobody-zar")).rejects.toMatchObject({ status: 404 })
+  await expect(invite("sipho1-zar")).rejects.toMatchObject({ status: 400 })
+  await expect(invite("zola1-zar")).rejects.toMatchObject({
+    status: 403,
+    body: { code: "invitee_not_verified" },
+  })
+  // Unverified and in another currency: currency first, as the controller.
+  await expect(invite("nomsa1-usd")).rejects.toMatchObject({
+    status: 422,
+    body: { code: "invitee_currency_mismatch" },
+  })
+  // The API matches references exactly; the form lower-cases first.
+  await expect(invite("Thandi2-ZAR")).rejects.toMatchObject({ status: 404 })
+  await expect(invite("tendai1-zwl")).rejects.toMatchObject({
+    status: 422,
+    body: { code: "invitee_currency_mismatch" },
+  })
+  await expect(invite("naledi1-zar")).rejects.toMatchObject({
+    status: 409,
+    body: { code: "already_a_member" },
+  })
+  await expect(invite("bongani1-zar")).rejects.toMatchObject({
+    status: 409,
+    body: { code: "invitation_already_pending" },
+  })
+
+  const { normaliseReference } = await import("./stokvels")
+  assert.equal(normaliseReference(" Thandi2-ZAR "), "thandi2-zar")
+  const sent = await invite(normaliseReference(" Thandi2-ZAR "))
+  assert.equal(sent.invitee_name, "Thandi N.")
+  assert.equal(sent.account_reference, "thandi2-zar")
+  assert.equal(sent.status, "pending")
+  const { pendingInvitations } = await import("./stokvels")
+  assert.equal(pendingInvitations(await getStokvelMock(taxi)).length, 2)
+})
+
+test("accepting a demo invitation joins; it can't be answered twice", async () => {
+  const { acceptInvitationMock, declineInvitationMock } =
+    await import("./stokvels.mock")
+  const before = await demoStokvelsMock()
+  const invitation = before.invitations[0]
+  const joined = await acceptInvitationMock(invitation.invitation_id)
+  assert.equal(joined.stokvel_id, invitation.stokvel_id)
+  assert.equal(joined.is_organiser, false)
+
+  const after = await demoStokvelsMock()
+  assert.equal(after.invitations.length, 0)
+  assert.ok(after.stokvels.some((s) => s.stokvel_id === joined.stokvel_id))
+  const detail = await getStokvelMock(joined.stokvel_id)
+  assert.equal(detail.phase, "forming")
+
+  await expect(
+    declineInvitationMock(invitation.invitation_id)
+  ).rejects.toMatchObject({
+    status: 409,
+    body: { code: "invitation_not_pending" },
+  })
+
+  // The dev reset brings the demo invitation back.
+  const { resetStokvelMockScenario } = await import("./stokvels.mock")
+  resetStokvelMockScenario()
+  assert.equal((await demoStokvelsMock()).invitations.length, 1)
+})

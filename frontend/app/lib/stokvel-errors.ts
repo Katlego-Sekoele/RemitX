@@ -19,6 +19,18 @@ export const STOKVEL_ERROR_MESSAGES = {
   treasury_allowance_missing: "Something went wrong. Please try again.",
   treasury_funds_low:
     "Contributions are temporarily unavailable. Please try again later.",
+  // Invitations (R2-08, #230): doc section 6, "Refusals for invitations".
+  not_organiser: "Only the stokvel's organiser can invite members.",
+  invitee_not_verified:
+    "This person isn't verified yet, so they can't be invited.",
+  invitee_currency_mismatch:
+    "The account's currency must match the stokvel's currency.",
+  already_a_member: "This person is already a member of the stokvel.",
+  invitation_already_pending: "This person already has a pending invitation.",
+  stokvel_deactivated: "This stokvel is no longer active.",
+  not_invitee: "Only the person invited can answer this invitation.",
+  invitation_not_pending:
+    "This invitation has already been answered or has expired.",
   // #232: a cycle has started but is not on-chain yet; worth a retry.
   cycle_starting:
     "This stokvel's cycle is still being set up. Try again in a minute.",
@@ -52,6 +64,18 @@ export function stokvelErrorCode(error: unknown): StokvelErrorCode | null {
 export function stokvelErrorMessage(error: unknown): string {
   const code = stokvelErrorCode(error)
   return code ? STOKVEL_ERROR_MESSAGES[code] : errorMessage(error)
+}
+
+/** An invitation that can't be answered any more: lapsed or answered
+ * (`invitation_not_pending`), its stokvel deactivated, or gone (404). The
+ * card refreshes the list on these so it disappears. */
+export function isGoneInvitationError(error: unknown): boolean {
+  const code = stokvelErrorCode(error)
+  return (
+    code === "invitation_not_pending" ||
+    code === "stokvel_deactivated" ||
+    statusOf(error) === 404
+  )
 }
 
 /** Why a contribution was refused, including the ledger's own refusals that
