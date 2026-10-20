@@ -63,6 +63,18 @@ class MoneyBehaviour:
 
 
 @dataclass
+class StokvelDemo:
+    # Seed the stokvel demo (R6-03, stories/stokvel.py): three named members,
+    # KYC-approved and funded, in a stokvel ready for its Organiser to start,
+    # plus a second stokvel with an invitation still pending.
+    enabled: bool = False
+    # The stokvel's fixed contribution per round, in uctusd. Every
+    # contribution pulls this from the Treasury Wallet on-chain, which the
+    # lecturer funds, so the default is small: 3 members x 3 rounds x 2 = 18.
+    contribution_uctusd: float = 2.0
+
+
+@dataclass
 class Scenario:
     name: str = "default"
     description: str = ""
@@ -94,6 +106,7 @@ class Scenario:
     email_domain: str = "example.com"
     kyc: KycBehaviour = field(default_factory=KycBehaviour)
     money: MoneyBehaviour = field(default_factory=MoneyBehaviour)
+    stokvel: StokvelDemo = field(default_factory=StokvelDemo)
     # Real settlements through the target's API, worker and EVM chain at the
     # end of the run. 0 keeps everything simulated.
     live_settlements: int = 0
@@ -114,6 +127,8 @@ class Scenario:
             values["kyc"] = _nested(KycBehaviour, values["kyc"], "kyc")
         if "money" in values:
             values["money"] = _nested(MoneyBehaviour, values["money"], "money")
+        if "stokvel" in values:
+            values["stokvel"] = _nested(StokvelDemo, values["stokvel"], "stokvel")
         scenario = cls(**values)
         scenario.validate()
         return scenario
@@ -140,6 +155,33 @@ class Scenario:
             )
         if delay[0] > delay[1]:
             raise ValueError("kyc.review_delay_hours low must be <= high")
+        if self.stokvel.enabled:
+            self._validate_stokvel_demo()
+
+    def _validate_stokvel_demo(self) -> None:
+        # Imported here: stories/stokvel.py imports this module.
+        from remitx_seeder.stories.stokvel import DEMO_MEMBERS, MIN_DEMO_DAYS
+
+        if not 0 < self.stokvel.contribution_uctusd <= 100:
+            raise ValueError(
+                "stokvel.contribution_uctusd must be above 0 and at most 100"
+            )
+        if self.days < MIN_DEMO_DAYS:
+            raise ValueError(
+                f"the stokvel demo needs at least {MIN_DEMO_DAYS} days of "
+                "history, so its members are verified and funded before it is "
+                "set up"
+            )
+        for role in ("compliance_officer", "treasury_operator"):
+            if self.staff.get(role, 0) < 1:
+                raise ValueError(f"the stokvel demo needs a {role}")
+        for member in DEMO_MEMBERS:
+            if self.recipients.get(member.recipient_country, 0) < 1:
+                raise ValueError(
+                    "the stokvel demo needs a recipient in "
+                    f"{member.recipient_country} for the {member.label}'s "
+                    "beneficiary"
+                )
 
 
 def _nested(kind, raw: dict, label: str):

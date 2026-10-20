@@ -47,10 +47,12 @@ class LiveSend:
 
 
 def _candidates(ctx: RunContext) -> list[SeededPerson]:
+    # Never a stokvel demo member: their balance is kept for contributions.
     return [
         person
         for person in ctx.people.values()
         if person.persona.role == "sender"
+        and "stokvel_demo" not in person.persona.extra
         and person.verified
         and person.beneficiaries
         and person.clerk_user_id

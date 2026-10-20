@@ -11,7 +11,7 @@ from remitx_seeder.stories.timing import SAST, business_time, paydays
 
 
 def test_committed_scenarios_load():
-    assert {"default", "small"} <= set(list_scenarios())
+    assert {"default", "small", "demo"} <= set(list_scenarios())
     assert "loadtest" not in list_scenarios()
     for name in list_scenarios():
         load_scenario(name)
@@ -44,6 +44,35 @@ def test_a_scenario_with_senders_needs_decision_makers():
 def test_scenarios_round_trip():
     scenario = Scenario(name="x", days=10, senders=3)
     assert Scenario.from_dict(scenario.as_dict()) == scenario
+    demo = load_scenario("demo")
+    assert Scenario.from_dict(demo.as_dict()) == demo
+
+
+def test_the_stokvel_demo_is_off_unless_asked_for():
+    assert not Scenario().stokvel.enabled
+    assert not load_scenario("default").stokvel.enabled
+    assert load_scenario("demo").stokvel.enabled
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        ({"stokvel": {"enabled": True, "contribution_uctusd": 0}}, "contribution"),
+        ({"stokvel": {"enabled": True, "contribution_uctusd": 500}}, "contribution"),
+        ({"days": 7}, "at least 14 days"),
+        ({"recipients": {"ZW": 2, "NA": 0, "ZA": 1, "US": 1}}, "recipient in NA"),
+        (
+            {"staff": {"compliance_officer": 1}, "senders": 0},
+            "treasury_operator",
+        ),
+        ({"stokvel": {"enabled": True, "members": 4}}, "Unknown stokvel keys"),
+    ],
+)
+def test_the_stokvel_demo_needs_what_it_uses(change, message):
+    raw = load_scenario("demo").as_dict()
+    raw.update(change)
+    with pytest.raises(ValueError, match=message):
+        Scenario.from_dict(raw)
 
 
 def test_the_25th_moves_to_the_friday_before_a_weekend():

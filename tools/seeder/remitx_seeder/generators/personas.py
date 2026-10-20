@@ -181,8 +181,12 @@ def build_sender(
     pep_rate: float,
     other_source_rate: float,
     high_volume_rate: float,
+    corridor: dict | None = None,
 ) -> Persona:
-    corridor = weighted_item(rng, data.load("corridors")["corridors"])
+    """A sender resident in South Africa. `corridor` fixes who they send to
+    (the stokvel demo's members); otherwise it is drawn by weight."""
+    if corridor is None:
+        corridor = weighted_item(rng, data.load("corridors")["corridors"])
     nationality = corridor["sender_nationality"]
     culture, first, last, female = _name(rng, nationality)
     dob = _birth_date(rng, today, 21, 58)

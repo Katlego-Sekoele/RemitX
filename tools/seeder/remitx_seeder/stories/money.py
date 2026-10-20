@@ -133,6 +133,12 @@ class MoneyStory:
         for recipient in self.ctx.rng.sample(pool, k=min(wanted, len(pool))):
             self._add_beneficiary(person, recipient)
 
+    def add_beneficiary(self, person: SeededPerson, recipient: SeededPerson) -> dict:
+        """Add `recipient` as `person`'s beneficiary, in a payout currency of
+        their corridor. The new entry in `person.beneficiaries`."""
+        self._add_beneficiary(person, recipient)
+        return person.beneficiaries[-1]
+
     def _add_beneficiary(self, person: SeededPerson, recipient: SeededPerson) -> None:
         from remitx_api.controllers.beneficiary_controller import BeneficiaryController
 
@@ -361,6 +367,24 @@ class MoneyStory:
                 },
             )
 
+    def deposit_to_keep(self, person: SeededPerson, amount: Decimal) -> None:
+        """One correctly referenced deposit of `amount` on tomorrow's
+        statement, reconciled the next working morning like any other, and
+        then kept: nothing is sent from it and it is not cashed out. The
+        stokvel demo funds its members' contributions this way."""
+        day = (self.ctx.clock.now() + timedelta(days=1)).astimezone(SAST).date()
+        self._add_statement_line(
+            waking_time(self.ctx.rng, day),
+            {
+                "reference": person.zar_reference,
+                "amount": amount,
+                "person": person,
+                "sends": [],
+                "mistyped": False,
+                "keep": True,
+            },
+        )
+
     def _split(self, budget: Decimal, parts: int) -> list[Decimal]:
         weights = [self.ctx.rng.uniform(0.6, 1.4) for _ in range(parts)]
         total = sum(weights)
@@ -467,6 +491,9 @@ class MoneyStory:
                 "send.quote",
                 lambda amount=amount: self._quote(person, amount),
             )
+        if line.get("keep"):
+            self.ctx.count("deposits.kept")
+            return
         # Cash out from this deposit while it is still intact. Sends are
         # scheduled over the following days; the amount is capped under the
         # reserve _plan_deposits added.
