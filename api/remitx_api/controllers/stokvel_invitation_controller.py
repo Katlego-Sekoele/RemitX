@@ -1,4 +1,5 @@
-"""Inviting users to a stokvel, and answering an invitation (R2-08).
+"""Inviting users to a stokvel, answering an invitation (R2-08), and the
+Organiser revoking one (R2-16).
 
 Nobody becomes a Member without accepting. The database holds the same line:
 a customer may insert their own member row only with their accepted
@@ -203,6 +204,31 @@ class StokvelInvitationController:
         """Decline the caller's invitation. They do not become a Member."""
         invitation = self._own_invitation(user_id, invitation_id)
         self._answer(invitation, user_id, StokvelInvitationStatus.DECLINED)
+
+    @db_transaction
+    def revoke(self, organiser_id: uuid.UUID, invitation_id: uuid.UUID) -> None:
+        """Take back a pending invitation, as the stokvel's Organiser. The
+        invitee may be invited again: that is a new row.
+
+        The invitee and fellow members can see the invitation but not revoke
+        it; anyone else gets the same 404 as an unknown id. Allowed on a
+        deactivated stokvel, whose invitations otherwise stay pending.
+        """
+        invitation = self._invitations.get_by_id(invitation_id)
+        if invitation is None:
+            raise InvitationNotFoundError()
+        stokvel = self._stokvels.get_by_id(invitation.stokvel_id)
+        if stokvel is None:
+            raise InvitationNotFoundError()
+        if stokvel.organiser_user_id != organiser_id:
+            if invitation.invitee_user_id == organiser_id or (
+                self._members.get_active_member(stokvel.id, organiser_id)
+            ):
+                raise NotStokvelOrganiserError("revoke invitations")
+            raise InvitationNotFoundError()
+        if invitation.status != StokvelInvitationStatus.PENDING.value:
+            raise InvitationNotPendingError()
+        self._answer(invitation, organiser_id, StokvelInvitationStatus.REVOKED)
 
     def _own_invitation(
         self, user_id: uuid.UUID, invitation_id: uuid.UUID

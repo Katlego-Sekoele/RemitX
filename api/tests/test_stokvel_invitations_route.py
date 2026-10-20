@@ -1,5 +1,6 @@
-"""`POST /stokvels/{id}/invitations`, `POST /invitations/{id}/accept` and
-`POST /invitations/{id}/decline` (R2-08).
+"""`POST /stokvels/{id}/invitations`, `POST /invitations/{id}/accept`,
+`POST /invitations/{id}/decline` (R2-08) and `POST /invitations/{id}/revoke`
+(R2-16).
 
 On SQLite, which has no row-level security, except the tests marked
 `postgres`, which run the same routes under it (TEST_DATABASE_URL): the
@@ -261,6 +262,12 @@ class Api:
     def decline(self, as_: Person, invitation_id):
         return self.client.post(
             f"/invitations/{invitation_id}/decline",
+            headers={USER_HEADER: str(as_.id)},
+        )
+
+    def revoke(self, as_: Person, invitation_id):
+        return self.client.post(
+            f"/invitations/{invitation_id}/revoke",
             headers={USER_HEADER: str(as_.id)},
         )
 
@@ -752,9 +759,106 @@ def test_declining_records_who_answered_and_adds_no_member(api):
 
 
 def test_answering_anonymously_is_rejected(anonymous_client):
-    for action in ("accept", "decline"):
+    for action in ("accept", "decline", "revoke"):
         response = anonymous_client.post(f"/invitations/{uuid.uuid4()}/{action}")
         assert response.status_code == 401
+
+
+# --- revoke --------------------------------------------------------------------
+
+
+def test_revoking_records_who_and_when_and_the_invitee_cannot_accept(api):
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    response = api.revoke(organiser, invitation_id)
+
+    assert response.status_code == 204, response.text
+    invitation = _get_invitation(invitation_id)
+    assert invitation.status == "revoked"
+    assert invitation.status_changed_by_user_id == organiser.id
+    assert invitation.status_changed_at is not None
+    _refused(api.accept(invitee, invitation_id), 409, "invitation_not_pending")
+    assert api.list(invitee).json()["invitations"] == []
+    assert _members(stokvel_id) == {organiser.id}
+
+
+def test_a_revoked_invitee_can_be_invited_again(api):
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+    api.revoke(organiser, invitation_id)
+
+    assert api.invite(organiser, stokvel_id, invitee.ref()).status_code == 201
+    assert sorted(i.status for i in _invitations(stokvel_id)) == [
+        "pending",
+        "revoked",
+    ]
+
+
+def test_revoking_twice_is_refused(api):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person())
+
+    assert api.revoke(organiser, invitation_id).status_code == 204
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        StokvelInvitationStatus.ACCEPTED,
+        StokvelInvitationStatus.DECLINED,
+        StokvelInvitationStatus.LAPSED,
+    ],
+)
+def test_an_answered_invitation_cannot_be_revoked(api, status):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person(), status)
+
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
+    assert _get_invitation(invitation_id).status == status.value
+
+
+def test_only_the_organiser_revokes(api):
+    """The invitee and fellow members can see the invitation, so get 403;
+    anyone else gets 404."""
+    organiser, member, invitee = _person("sipho"), _person("member"), _person()
+    stokvel_id = _stokvel(organiser)
+    _member_of(stokvel_id, member)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    _refused(api.revoke(member, invitation_id), 403, "not_organiser")
+    _refused(api.revoke(invitee, invitation_id), 403, "not_organiser")
+    _refused(api.revoke(_person("outsider"), invitation_id), 404)
+    assert _get_invitation(invitation_id).status == "pending"
+
+
+def test_revoking_an_unknown_invitation_is_not_found(api):
+    _refused(api.revoke(_person(), uuid.uuid4()), 404)
+
+
+def test_an_invitation_to_a_deactivated_stokvel_can_be_revoked(api):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser, deactivated=True)
+    invitation_id = _invitation(stokvel_id, _person())
+
+    assert api.revoke(organiser, invitation_id).status_code == 204
+
+
+def test_a_concurrent_answer_beats_the_revoke(api, monkeypatch):
+    """The guarded update refuses a revoke when the invitee answered after
+    the invitation was read."""
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person())
+    repo = invitations_route.controller._invitations
+    monkeypatch.setattr(repo, "set_status_if_pending", lambda *_, **__: False)
+
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
 
 
 # --- under Postgres row-level security --------------------------------------
