@@ -105,6 +105,7 @@ the replayed time with no change to its code.
 | Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the EVM burn and its receipt are simulated |
 | Exchange rates | a replaceable rate provider (`use_rate_provider`) serving a seeded USD/ZAR walk, NAD pegged to ZAR | simulated |
 | Treasury | one `treasury_funding` row per run equal to the simulated burns, so the ledger still matches the chain | direct write |
+| Stokvels (the `demo` scenario) | `StokvelController.create_stokvel`, `StokvelInvitationController.invite` and `accept`, `StokvelSetupController.set_beneficiary` and `set_payout_order`; cycles are left `forming` | real |
 
 Staff act in office hours (SAST, weekdays); customers act mostly in the
 evenings; salaries land on the 25th, at month end or on Fridays, and people
@@ -144,6 +145,41 @@ Who the people are comes from `remitx_seeder/data/*.json`: culture-matched
 names per nationality, cities and suburbs, occupations with income and payday,
 corridors (who sends where, how much, how often) and free-text templates.
 Change those to change the population; no code needed.
+
+## The stokvel demo
+
+One command prepares the stokvel demo (R6-03, #268): **Reset**, then seed the
+`demo` scenario. From a terminal:
+
+```bash
+python -m remitx_seeder reset --target local --confirm "reset local"
+python -m remitx_seeder seed --target local --scenario demo
+```
+
+In the UI, pick **demo** on the Seed tab, or turn on **Stokvel demo** in any
+scenario. It adds three members to the run, approved through the ordinary KYC
+review and funded by a reconciled deposit they keep (three rounds of
+contributions and fee shares, with headroom for the live rate, R500 at
+least). A few hours before the window closes, through the stokvel
+controllers, it sets up:
+
+| Stokvel | State |
+|---|---|
+| **Masakhane Savings Club** | All three members, each with a cross-border beneficiary (Zimbabwe, Namibia, the US), payout order set. Its cycle is `forming`: the demo starts it, with rounds a few minutes apart |
+| **Siyakhula Savings Club** | The second and third members, ready, and an invitation to the Organiser still pending. Starting its cycle lapses that invitation |
+
+A second stokvel because the member cap (3) counts accepted members, so a
+full stokvel cannot also hold a pending invitation.
+
+Sign in as `stokvel.organiser`, `stokvel.member2` or `stokvel.member3`
+`+clerk_test@example.com` (code **424242**). They get Clerk accounts right after
+staff, so they can sign in unless the Clerk cap is already used up. The run
+summary's `stokvel_demo` lists both stokvels, their ids and who is who.
+
+`stokvel.contribution_uctusd` (default 2) is the fixed contribution. Every
+contribution pulls it from the Treasury Wallet on-chain, which the lecturer
+funds: a full demo is 3 members × 3 rounds × 2 = 18 uctusd. The seeder itself
+sends nothing on-chain: the cycle is registered when the demo starts it.
 
 ## Verify, Schema, Runs, Reset
 
@@ -193,7 +229,7 @@ remitx_seeder/
   guards.py       the checks above
   engine.py       preflight, planning, replay, top-up, verify
   sim.py          the event loop;  clock.py  time travel
-  stories/        people.py, kyc.py, money.py, timing.py
+  stories/        people.py, kyc.py, money.py, timing.py, stokvel.py (the demo)
   settlement.py   real worker tasks, simulated chain
   generators/     identity numbers, phones, personas, SPECIMEN documents
   data/           the JSON that makes people realistic

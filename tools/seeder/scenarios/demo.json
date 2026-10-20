@@ -1,0 +1,28 @@
+{
+  "name": "demo",
+  "description": "The stokvel demo (R6-03): three verified, funded members in a stokvel ready to start, and a second stokvel with an invitation pending. Reset first, then seed.",
+  "seed": 20261026,
+  "days": 21,
+  "senders": 4,
+  "recipients": {
+    "ZW": 2,
+    "NA": 2,
+    "ZA": 1,
+    "US": 1
+  },
+  "staff": {
+    "compliance_analyst": 1,
+    "compliance_officer": 1,
+    "treasury_operator": 1,
+    "payout_operator": 1
+  },
+  "clerk_user_cap": 80,
+  "ensure_every_path": false,
+  "email_domain": "example.com",
+  "stokvel": {
+    "enabled": true,
+    "contribution_uctusd": 2.0
+  },
+  "live_settlements": 0,
+  "live_token_budget": 25.0
+}

@@ -5,11 +5,12 @@
    granted as the target's IAM admin if it has one, and with no granter
    otherwise.
 2. **Plan.** Build the people from the scenario and the data files, decide
-   who gets a Clerk account (staff first, then senders who can finish KYC,
-   then other senders, then recipients, up to the cap), and put their
-   sign-ups on the timeline.
+   who gets a Clerk account (staff first, then the stokvel demo's members,
+   then senders who can finish KYC, then other senders, then recipients, up
+   to the cap), and put their sign-ups on the timeline.
 3. **Replay.** Run the timeline over the last `days` days (sim.py). Stories
-   schedule their own follow-ups.
+   schedule their own follow-ups. With the stokvel demo on, its stokvels are
+   set up in the last hours of the window (stories/stokvel.py).
 4. **Top up the treasury** by what simulated burns took (direct.py).
 5. **Verify** the whole database.
 6. **Live tail**, when asked: a few real settlements through the API.
@@ -53,6 +54,11 @@ from remitx_seeder.stories.kyc import (
     plan_path,
 )
 from remitx_seeder.stories.money import MoneyStory
+from remitx_seeder.stories.stokvel import (
+    StokvelDemoStory,
+    is_demo_member,
+    plan_members,
+)
 
 # Recipients who live where RemitX operates verify at this rate.
 RECIPIENT_VERIFY_RATE = 0.5
@@ -137,8 +143,13 @@ def _plan_people(ctx: RunContext) -> None:
 
 
 def _guarantee_edge_cases(ctx: RunContext) -> None:
-    """One sender down each rare path, so a run never lacks them by chance."""
-    senders = [p for p in ctx.people.values() if p.persona.role == "sender"]
+    """One sender down each rare path, so a run never lacks them by chance.
+    Never a stokvel demo member: they always walk the plain path."""
+    senders = [
+        p
+        for p in ctx.people.values()
+        if p.persona.role == "sender" and not is_demo_member(p)
+    ]
     rng = ctx.rng
 
     def pep(relationship: str):
@@ -217,11 +228,17 @@ def _allocate_clerk_accounts(ctx: RunContext, clerk_enabled: bool) -> None:
         existing = ctx.clerk.user_count()
     capacity = max(0, ctx.scenario.clerk_user_cap - existing)
     staff = [p for p in ctx.people.values() if p.persona.role == "staff"]
-    senders = [p for p in ctx.people.values() if p.persona.role == "sender"]
+    # The stokvel demo's members sign in during the demo: right after staff.
+    demo = [p for p in ctx.people.values() if is_demo_member(p)]
+    senders = [
+        p
+        for p in ctx.people.values()
+        if p.persona.role == "sender" and not is_demo_member(p)
+    ]
     recipients = [p for p in ctx.people.values() if p.persona.role == "recipient"]
     preferred_senders = [p for p in senders if _sender_can_finish_kyc(p)]
     other_senders = [p for p in senders if not _sender_can_finish_kyc(p)]
-    order = staff + preferred_senders + other_senders + recipients
+    order = staff + demo + preferred_senders + other_senders + recipients
     for person in order[:capacity]:
         person.wants_clerk_account = True
     ctx.log(
@@ -231,7 +248,12 @@ def _allocate_clerk_accounts(ctx: RunContext, clerk_enabled: bool) -> None:
     )
 
 
-def _schedule(ctx: RunContext, sim: Simulation, kyc: KycStory) -> None:
+def _schedule(
+    ctx: RunContext,
+    sim: Simulation,
+    kyc: KycStory,
+    demo: StokvelDemoStory | None,
+) -> None:
     rng = ctx.rng
     span = ctx.window_end - ctx.window_start
     for person in ctx.people.values():
@@ -239,7 +261,9 @@ def _schedule(ctx: RunContext, sim: Simulation, kyc: KycStory) -> None:
         if role == "staff":
             people_story.schedule_staff(ctx, sim, person)
             continue
-        if role == "recipient":
+        if demo is not None and is_demo_member(person):
+            signup = demo.signup_at(person)
+        elif role == "recipient":
             signup = (
                 ctx.window_start
                 - timedelta(days=20)
@@ -266,7 +290,9 @@ def _schedule(ctx: RunContext, sim: Simulation, kyc: KycStory) -> None:
                 return
             delay = (
                 timedelta(minutes=rng.uniform(2, 50))
-                if rng.random() < 0.6 or person.persona.extra.get("late_signup")
+                if is_demo_member(person)
+                or rng.random() < 0.6
+                or person.persona.extra.get("late_signup")
                 else timedelta(days=rng.uniform(0.5, 6))
             )
             kyc.schedule(person, ctx.clock.now() + delay)
@@ -319,14 +345,25 @@ def run_seed(
         f"seed {scenario.seed}."
     )
     _plan_people(ctx)
+    demo_members = plan_members(ctx) if scenario.stokvel.enabled else []
     if scenario.ensure_every_path:
         _guarantee_edge_cases(ctx)
     _allocate_clerk_accounts(ctx, clerk_enabled)
 
     sim = Simulation(ctx)
     money = MoneyStory(ctx, sim)
-    kyc = KycStory(ctx, sim, on_verified=money.on_verified)
-    _schedule(ctx, sim, kyc)
+    demo = StokvelDemoStory(ctx, sim, money, demo_members) if demo_members else None
+
+    def on_verified(person: SeededPerson) -> None:
+        if demo is not None and is_demo_member(person):
+            demo.on_verified(person)
+        else:
+            money.on_verified(person)
+
+    kyc = KycStory(ctx, sim, on_verified=on_verified)
+    _schedule(ctx, sim, kyc, demo)
+    if demo is not None:
+        demo.schedule_setup()
 
     top_up_id = None
     with ExitStack() as stack:
@@ -385,6 +422,7 @@ def run_seed(
         "simulated_burn_total": str(ctx.simulated_burn_total),
         "treasury_top_up_tx_id": top_up_id,
         "live_tail": live,
+        "stokvel_demo": demo.summary if demo is not None else None,
         "verify": report.as_dict(),
         "duration_seconds": round(time.monotonic() - started, 1),
     }

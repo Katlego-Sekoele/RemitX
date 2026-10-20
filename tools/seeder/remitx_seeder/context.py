@@ -39,6 +39,9 @@ class SeededPerson:
     kyc_path_fixed: bool = False
     force_override: bool = False
     force_tier_two: bool = False
+    # No chance risk-rating override at approval: the stokvel demo's members
+    # are approved the same way every run.
+    never_override: bool = False
     beneficiaries: list[dict] = field(default_factory=list)
     # External bank accounts registered after verification, and whether this
     # person will cash out spare balance once one of them is verified.
