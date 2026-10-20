@@ -114,14 +114,7 @@ class MoneyStory:
     def _add_beneficiaries(self, person: SeededPerson) -> None:
         corridor = person.persona.corridor
         wanted = self.ctx.rng.randint(*corridor["beneficiaries"])
-        pool = [
-            p
-            for p in self.ctx.people_with_role("recipient")
-            if p.persona.nationality == corridor["recipient_country"]
-            and p.user_id is not None
-            and p.user_id != person.user_id
-            and all(b["user_id"] != p.user_id for b in person.beneficiaries)
-        ]
+        pool = self.recipient_pool(person)
         if not pool:
             # Nobody from home has signed up yet; try again tomorrow.
             self.sim.schedule(
@@ -132,6 +125,23 @@ class MoneyStory:
             return
         for recipient in self.ctx.rng.sample(pool, k=min(wanted, len(pool))):
             self._add_beneficiary(person, recipient)
+
+    def recipient_pool(
+        self, person: SeededPerson, exclude: set | frozenset = frozenset()
+    ) -> list[SeededPerson]:
+        """Recipients who may become `person`'s beneficiary: signed up, from
+        their corridor's country, not themselves, not already one of theirs,
+        and not in `exclude` (user ids)."""
+        country = person.persona.corridor["recipient_country"]
+        return [
+            p
+            for p in self.ctx.people_with_role("recipient")
+            if p.persona.nationality == country
+            and p.user_id is not None
+            and p.user_id != person.user_id
+            and p.user_id not in exclude
+            and all(b["user_id"] != p.user_id for b in person.beneficiaries)
+        ]
 
     def add_beneficiary(self, person: SeededPerson, recipient: SeededPerson) -> dict:
         """Add `recipient` as `person`'s beneficiary, in a payout currency of

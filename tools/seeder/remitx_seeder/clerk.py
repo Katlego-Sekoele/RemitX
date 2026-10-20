@@ -29,6 +29,12 @@ def database_only_id() -> str:
     return f"{DATABASE_ONLY_PREFIX}{uuid.uuid4().hex}"
 
 
+def can_sign_in(clerk_user_id: str | None) -> bool:
+    """Whether this `users.clerk_user_id` is a real Clerk account (Clerk's own
+    ids start `user_`), not a database-only one."""
+    return bool(clerk_user_id) and clerk_user_id.startswith("user_")
+
+
 def test_email(local_part: str, domain: str) -> str:
     """Clerk treats any `+clerk_test` address as a test address: no email is
     sent, and the verification code is always 424242."""

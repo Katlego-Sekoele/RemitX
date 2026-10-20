@@ -48,6 +48,22 @@ def test_scenarios_round_trip():
     assert Scenario.from_dict(demo.as_dict()) == demo
 
 
+def test_loading_the_demo_scenario_never_imports_the_backend():
+    """The UI validates scenarios in its own process, which must not import
+    remitx_api: it would load the repo-root .env into the UI's environment,
+    which every later child process (a QA seed) inherits."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from remitx_seeder.scenario import load_scenario\n"
+        "load_scenario('demo').validate()\n"
+        "assert 'remitx_api' not in sys.modules, 'remitx_api was imported'\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 def test_the_stokvel_demo_is_off_unless_asked_for():
     assert not Scenario().stokvel.enabled
     assert not load_scenario("default").stokvel.enabled

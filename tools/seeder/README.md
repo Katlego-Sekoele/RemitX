@@ -171,6 +171,12 @@ controllers, it sets up:
 A second stokvel because the member cap (3) counts accepted members, so a
 full stokvel cannot also hold a pending invitation.
 
+Reset first. A demo seed refuses, before writing anything, when its members
+already exist: a second one would give them numbered emails
+(`stokvel.organiser2`). If any setup step is refused, or falls past the
+window, the run lists it under refusals: a run with no refusals is a demo
+ready to go.
+
 Sign in as `stokvel.organiser`, `stokvel.member2` or `stokvel.member3`
 `+clerk_test@example.com` (code **424242**). They get Clerk accounts right after
 staff, so they can sign in unless the Clerk cap is already used up. The run
@@ -229,7 +235,8 @@ remitx_seeder/
   guards.py       the checks above
   engine.py       preflight, planning, replay, top-up, verify
   sim.py          the event loop;  clock.py  time travel
-  stories/        people.py, kyc.py, money.py, timing.py, stokvel.py (the demo)
+  stories/        people.py, kyc.py, money.py, timing.py,
+                  stokvel.py and stokvel_plan.py (the demo)
   settlement.py   real worker tasks, simulated chain
   generators/     identity numbers, phones, personas, SPECIMEN documents
   data/           the JSON that makes people realistic

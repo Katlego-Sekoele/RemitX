@@ -56,8 +56,8 @@ from remitx_seeder.stories.kyc import (
 from remitx_seeder.stories.money import MoneyStory
 from remitx_seeder.stories.stokvel import (
     StokvelDemoStory,
-    is_demo_member,
     plan_members,
+    refuse_if_already_seeded,
 )
 
 # Recipients who live where RemitX operates verify at this rate.
@@ -144,11 +144,9 @@ def _plan_people(ctx: RunContext) -> None:
 
 def _guarantee_edge_cases(ctx: RunContext) -> None:
     """One sender down each rare path, so a run never lacks them by chance.
-    Never a stokvel demo member: they always walk the plain path."""
+    Never someone a story owns (`scripted`): they walk the plain path."""
     senders = [
-        p
-        for p in ctx.people.values()
-        if p.persona.role == "sender" and not is_demo_member(p)
+        p for p in ctx.people.values() if p.persona.role == "sender" and not p.scripted
     ]
     rng = ctx.rng
 
@@ -228,17 +226,16 @@ def _allocate_clerk_accounts(ctx: RunContext, clerk_enabled: bool) -> None:
         existing = ctx.clerk.user_count()
     capacity = max(0, ctx.scenario.clerk_user_cap - existing)
     staff = [p for p in ctx.people.values() if p.persona.role == "staff"]
-    # The stokvel demo's members sign in during the demo: right after staff.
-    demo = [p for p in ctx.people.values() if is_demo_member(p)]
+    # People a story owns (the stokvel demo's members) sign in during the
+    # demo: right after staff.
+    scripted = [p for p in ctx.people.values() if p.scripted]
     senders = [
-        p
-        for p in ctx.people.values()
-        if p.persona.role == "sender" and not is_demo_member(p)
+        p for p in ctx.people.values() if p.persona.role == "sender" and not p.scripted
     ]
     recipients = [p for p in ctx.people.values() if p.persona.role == "recipient"]
     preferred_senders = [p for p in senders if _sender_can_finish_kyc(p)]
     other_senders = [p for p in senders if not _sender_can_finish_kyc(p)]
-    order = staff + demo + preferred_senders + other_senders + recipients
+    order = staff + scripted + preferred_senders + other_senders + recipients
     for person in order[:capacity]:
         person.wants_clerk_account = True
     ctx.log(
@@ -261,7 +258,7 @@ def _schedule(
         if role == "staff":
             people_story.schedule_staff(ctx, sim, person)
             continue
-        if demo is not None and is_demo_member(person):
+        if demo is not None and demo.owns(person):
             signup = demo.signup_at(person)
         elif role == "recipient":
             signup = (
@@ -290,7 +287,7 @@ def _schedule(
                 return
             delay = (
                 timedelta(minutes=rng.uniform(2, 50))
-                if is_demo_member(person)
+                if person.scripted
                 or rng.random() < 0.6
                 or person.persona.extra.get("late_signup")
                 else timedelta(days=rng.uniform(0.5, 6))
@@ -346,6 +343,14 @@ def run_seed(
     )
     _plan_people(ctx)
     demo_members = plan_members(ctx) if scenario.stokvel.enabled else []
+    if demo_members:
+        # Before anything is written: a second demo on the same database
+        # would sign its members in under numbered emails.
+        token = db.open_session()
+        try:
+            refuse_if_already_seeded(ctx, demo_members)
+        finally:
+            db.close_session(token)
     if scenario.ensure_every_path:
         _guarantee_edge_cases(ctx)
     _allocate_clerk_accounts(ctx, clerk_enabled)
@@ -355,7 +360,7 @@ def run_seed(
     demo = StokvelDemoStory(ctx, sim, money, demo_members) if demo_members else None
 
     def on_verified(person: SeededPerson) -> None:
-        if demo is not None and is_demo_member(person):
+        if demo is not None and demo.owns(person):
             demo.on_verified(person)
         else:
             money.on_verified(person)
@@ -381,6 +386,8 @@ def run_seed(
         stack.callback(clock.stop)
 
         sim.run()
+        if demo is not None:
+            demo.finish()
 
         clock.move_to(window_start)
         token = db.open_session()
