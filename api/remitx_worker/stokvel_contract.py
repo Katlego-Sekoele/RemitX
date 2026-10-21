@@ -3,7 +3,9 @@
 R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
 (#235) reads the events the sync applies (`fetch_logs`, `decode_log`); R2-10
 (#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241)
-`finalise` and `round_finalised`. Every send goes through
+`finalise` and `round_finalised`; R3-07 (#244) `pause`, `unpause` and
+`paused`. Treasury sends go through `evm_service.submit_transaction`; pause
+and unpause use `submit_admin_transaction`. Every send goes through
 `evm_service.submit_transaction`, so it holds the Treasury send lock and can
 store its hash before the send.
 
@@ -106,6 +108,39 @@ def _submit(tx: dict[str, Any], w3: Web3, on_signed) -> str:
         raise ContractRefused(error_name(exc.data), str(exc)) from exc
     except ContractLogicError as exc:
         raise ContractRefused(error_name(exc.data), str(exc)) from exc
+
+
+def _submit_admin(tx: dict[str, Any], w3: Web3, on_signed) -> str:
+    """`evm_service.submit_admin_transaction`, with the same revert handling
+    as `_submit`."""
+    try:
+        return evm_service.submit_admin_transaction(tx, w3=w3, on_signed=on_signed)
+    except ContractCustomError as exc:
+        raise ContractRefused(error_name(exc.data), str(exc)) from exc
+    except ContractLogicError as exc:
+        raise ContractRefused(error_name(exc.data), str(exc)) from exc
+
+
+def paused(w3: Web3 | None = None) -> bool:
+    """OpenZeppelin `paused()` on the vault."""
+    w3 = w3 or evm_service.get_web3()
+    return bool(vault(w3).functions.paused().call())
+
+
+def pause(*, on_signed=None, w3: Web3 | None = None) -> str:
+    """Send `pause()` from the vault admin key and return its hash."""
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi("pause", args=[])
+    return _submit_admin({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def unpause(*, on_signed=None, w3: Web3 | None = None) -> str:
+    """Send `unpause()` from the vault admin key and return its hash."""
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi("unpause", args=[])
+    return _submit_admin({"to": contract.address, "data": data}, w3, on_signed)
 
 
 def ensure_allowance(amount: Decimal, w3: Web3 | None = None) -> str | None:
