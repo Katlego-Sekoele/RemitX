@@ -975,6 +975,27 @@ def test_under_row_security_two_accepts_for_the_last_place_admit_one(
 
 
 @pytest.mark.postgres
+def test_under_row_security_the_organiser_revokes(pg_api):
+    """The Organiser's revoke passes `stokvel_invitations_update`; a member,
+    who can see the invitation, is refused; an outsider cannot see it."""
+    organiser, member, invitee = _person("sipho"), _person("member"), _person()
+    stokvel_id = _stokvel(organiser)
+    _member_of(stokvel_id, member)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    _refused(pg_api.revoke(member, invitation_id), 403, "not_organiser")
+    _refused(pg_api.revoke(_person("outsider"), invitation_id), 404)
+    revoked = pg_api.revoke(organiser, invitation_id)
+    invited_again = pg_api.invite(organiser, stokvel_id, invitee.ref())
+
+    assert revoked.status_code == 204, revoked.text
+    invitation = _get_invitation(invitation_id)
+    assert invitation.status == "revoked"
+    assert invitation.status_changed_by_user_id == organiser.id
+    assert invited_again.status_code == 201, invited_again.text
+
+
+@pytest.mark.postgres
 def test_under_row_security_an_outsider_cannot_see_an_invitation(pg_api):
     stokvel_id = _stokvel(_person("sipho"))
     invitation_id = _invitation(stokvel_id, _person())
