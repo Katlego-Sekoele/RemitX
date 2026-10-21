@@ -5066,6 +5066,37 @@
         "title": "StokvelBeneficiaryRequest",
         "type": "object"
       },
+      "StokvelContractActionResponse": {
+        "description": "On-chain pause or unpause completed.",
+        "properties": {
+          "tx_hash": {
+            "title": "Tx Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx_hash"
+        ],
+        "title": "StokvelContractActionResponse",
+        "type": "object"
+      },
+      "StokvelContractPauseRequest": {
+        "additionalProperties": false,
+        "description": "Why the administrator is pausing; recorded in the audit log.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StokvelContractPauseRequest",
+        "type": "object"
+      },
       "StokvelContributionRead": {
         "description": "A contribution just recorded. It is `pending` until the worker has\nsent `contribute` on-chain and it is mined; then `confirmed`, or `failed`\nif nothing landed (the member may then pay the round again).",
         "properties": {
@@ -9655,6 +9686,160 @@
         ]
       }
     },
+    "/admin/stokvel-contract/pause": {
+      "post": {
+        "description": "Sends `pause()` on the vault and writes `stokvel.contract.paused` to the\naudit log. Needs ``stokvel:contract:pause``.",
+        "operationId": "pause_stokvel_contract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelContractPauseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContractActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upstream call did not finish in time."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Pause every stokvel on the contract",
+        "tags": [
+          "admin.stokvel_contract"
+        ]
+      }
+    },
+    "/admin/stokvel-contract/unpause": {
+      "post": {
+        "description": "Sends `unpause()` on the vault and writes `stokvel.contract.unpaused`.\nNeeds ``stokvel:contract:pause``.",
+        "operationId": "unpause_stokvel_contract",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContractActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upstream call did not finish in time."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Resume every stokvel on the contract",
+        "tags": [
+          "admin.stokvel_contract"
+        ]
+      }
+    },
     "/admin/users/admins": {
       "get": {
         "description": "Everyone with at least one active admin role, with those roles.",
@@ -13493,6 +13678,10 @@
     {
       "description": "Privileged actions and sensitive reads \u2014 who did what, to whom, and when.",
       "name": "admin.audit"
+    },
+    {
+      "description": "Emergency pause and resume for every stokvel on the vault.",
+      "name": "admin.stokvel_contract"
     }
   ]
 }

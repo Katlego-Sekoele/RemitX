@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.config import TestConfig
+from remitx_api.controllers import stokvel_contribution_controller
 from remitx_api.controllers.stokvel_contribution_controller import (
     contribution_fee_share,
 )
@@ -330,6 +331,13 @@ def test_a_contribution_is_a_pending_row_plus_its_pending_legs(group):
         assert member_account.account_balance == Decimal("5000")
 
     _in_session(check)
+
+
+def test_contribution_refused_while_contract_paused(monkeypatch, group):
+    monkeypatch.setattr(stokvel_contribution_controller, "is_paused", lambda: True)
+    response = group.contribute()
+    assert response.status_code == 503
+    assert response.json()["code"] == "stokvel_paused"
 
 
 def test_the_worker_task_is_queued_once_after_the_commit(group):

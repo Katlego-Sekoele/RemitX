@@ -367,6 +367,56 @@ class InvalidCycleScheduleError(DomainError):
         )
 
 
+class StokvelContractUnavailableError(DomainError):
+    """The API could not read the vault's pause state from the chain."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The stokvel contract cannot be reached right now. Try again shortly."
+        )
+
+
+class StokvelPausedError(DomainError):
+    """The vault's emergency pause is active (OpenZeppelin `EnforcedPause`)."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "stokvel_paused"
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels are temporarily paused.")
+
+
+class StokvelContractAlreadyPausedError(ConflictError):
+    """`pause()` was called while the vault is already paused."""
+
+    code = "stokvel_paused"
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels are already paused.")
+
+
+class StokvelContractActionTimedOutError(DomainError):
+    """The worker did not confirm the on-chain send before the API gave up
+    waiting. The transaction may still land; the audit log records the attempt."""
+
+    status_code = status.HTTP_504_GATEWAY_TIMEOUT
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The contract action is still being sent on-chain. Check the audit "
+            "log and the vault's paused state."
+        )
+
+
+class StokvelContractNotPausedError(ConflictError):
+    """`unpause()` was called while the vault is running."""
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels aren't paused.")
+
+
 class CycleStartingError(ConflictError):
     """The cycle has started but the worker has not yet registered it on the
     contract, which would refuse a contribution until it has

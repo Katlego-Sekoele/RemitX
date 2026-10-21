@@ -32,6 +32,11 @@ START_CYCLE = "stokvel.start_cycle"
 RELEASE_POOL = "stokvel.release_pool"
 # Registered in `remitx_worker.stokvel_payouts` (R3-05, #242).
 SETTLE_PAYOUT = "stokvel.settle_payout"
+PAUSE_CONTRACT = "stokvel.pause_contract"
+UNPAUSE_CONTRACT = "stokvel.unpause_contract"
+
+# Admin pause waits on the worker result; long enough for one EVM send.
+CONTRACT_PAUSE_TIMEOUT_SECONDS = 120
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -43,7 +48,7 @@ WAKE_TIMEOUT_SECONDS = 5
 
 logger = logging.getLogger(__name__)
 
-producer = Celery("remitx_api", broker=Config.REDIS_URL)
+producer = Celery("remitx_api", broker=Config.REDIS_URL, backend=Config.REDIS_URL)
 
 # One thread, never more. A wake is a side effect of enqueueing rather than
 # part of it, and the request that triggered it has already been answered.
@@ -248,3 +253,17 @@ def enqueue_settle_payout(payout_id: str) -> None:
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()
+
+
+def run_pause_contract() -> str:
+    """Pause every stokvel on-chain; blocks until mined or the worker fails."""
+    result = producer.send_task(PAUSE_CONTRACT, queue=Config.CELERY_QUEUE)
+    wake_worker()
+    return result.get(timeout=CONTRACT_PAUSE_TIMEOUT_SECONDS)
+
+
+def run_unpause_contract() -> str:
+    """Resume the vault; blocks until mined or the worker fails."""
+    result = producer.send_task(UNPAUSE_CONTRACT, queue=Config.CELERY_QUEUE)
+    wake_worker()
+    return result.get(timeout=CONTRACT_PAUSE_TIMEOUT_SECONDS)
