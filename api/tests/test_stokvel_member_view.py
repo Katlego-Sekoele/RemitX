@@ -244,6 +244,23 @@ def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypat
     assert hidden["invitee_name"] == "Thandi"
 
 
+def test_payout_order_ignores_an_unlocked_former_member(verified_client, monkeypatch):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    caller_member_id, other_member_id = _activate(stokvel_id, user.id)
+    _stale_cycle_row(stokvel_id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle"]["payout_order"] == [
+        caller_member_id,
+        other_member_id,
+    ]
+
+
 def test_a_gap_in_the_payout_order_has_no_recipient(verified_client, monkeypatch):
     _stub_rate(monkeypatch)
     client, user = verified_client
@@ -275,6 +292,39 @@ def test_a_sent_payout_returns_its_remittance_status(verified_client, monkeypatc
     assert rnd["remittance_id"] == remittance_id
     assert rnd["remittance_status"] == "processing"
     assert rnd["release_status"] == "released"
+
+
+def _stale_cycle_row(stokvel_id: uuid.UUID) -> None:
+    """An unlocked cycle row with a position, for someone no longer a member."""
+
+    def write():
+        stokvel = db.session.get(Stokvel, stokvel_id)
+        cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+        former = UserController().ensure_provisioned(
+            "user_stokvel_former",
+            lambda: "former@example.com",
+            lambda: "Former",
+        )
+        account = AccountRepository().get_user_account(former.id, CURRENCY_ZAR)
+        former_member = StokvelMember(
+            stokvel_id=stokvel.id,
+            user_id=former.id,
+            account_id=account.account_id,
+            left_at=datetime.now(UTC),
+        )
+        db.session.add(former_member)
+        db.session.flush()
+        db.session.add(
+            StokvelCycleMember(
+                cycle_id=cycle.id,
+                member_id=former_member.id,
+                payout_position=2,
+                locked=False,
+            )
+        )
+        db.session.commit()
+
+    _in_session(write)
 
 
 def _open_round(stokvel_id: uuid.UUID) -> int | None:
