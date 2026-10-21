@@ -53,7 +53,7 @@ from web3 import Web3
 from web3.contract import Contract
 from web3.exceptions import TransactionNotFound, Web3RPCError
 
-from remitx_worker.db import treasury_send_lock
+from remitx_worker.db import admin_send_lock, treasury_send_lock
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,51 @@ def _load_treasury_account() -> LocalAccount:
         raise RuntimeError(
             f"EVM treasury key derives {account.address}, but "
             f"EVM_TREASURY_ADDRESS is {address}"
+        )
+    return account
+
+
+def admin_address() -> str:
+    """The vault admin's address (`EVM_STOKVEL_ADMIN_ADDRESS`), checksummed."""
+    address = os.environ.get("EVM_STOKVEL_ADMIN_ADDRESS", "")
+    if not address:
+        raise RuntimeError("EVM_STOKVEL_ADMIN_ADDRESS not configured")
+    return Web3.to_checksum_address(address)
+
+
+def _load_admin_account() -> LocalAccount:
+    """Decrypt the vault admin key (`EVM_STOKVEL_ADMIN_KEY_ENCRYPTED`)."""
+    encrypted_key = os.environ.get("EVM_STOKVEL_ADMIN_KEY_ENCRYPTED", "")
+    encryption_key = os.environ.get("EVM_ENCRYPTION_KEY", "")
+    address = os.environ.get("EVM_STOKVEL_ADMIN_ADDRESS", "")
+    if not (encrypted_key and encryption_key and address):
+        raise RuntimeError(
+            "EVM_STOKVEL_ADMIN_KEY_ENCRYPTED / EVM_ENCRYPTION_KEY / "
+            "EVM_STOKVEL_ADMIN_ADDRESS not configured"
+        )
+
+    try:
+        private_key = (
+            Fernet(encryption_key.encode()).decrypt(encrypted_key.encode()).decode()
+        )
+    except (InvalidToken, ValueError):
+        raise RuntimeError(
+            "EVM_STOKVEL_ADMIN_KEY_ENCRYPTED could not be decrypted with "
+            "EVM_ENCRYPTION_KEY"
+        ) from None
+
+    try:
+        account = Account.from_key(private_key)
+    except Exception:
+        raise RuntimeError(
+            "EVM_STOKVEL_ADMIN_KEY_ENCRYPTED does not decrypt to a valid EVM "
+            "private key"
+        ) from None
+
+    if account.address.lower() != address.lower():
+        raise RuntimeError(
+            f"EVM stokvel admin key derives {account.address}, but "
+            f"EVM_STOKVEL_ADMIN_ADDRESS is {address}"
         )
     return account
 
@@ -355,6 +400,53 @@ def submit_transaction(
         if sent_hash.lower() != tx_hash.lower():
             # Cannot happen for a well-behaved node: the hash is the keccak of
             # the signed bytes. Refuse to report a hash nobody stored.
+            raise RuntimeError(
+                f"EVM RPC accepted transaction {tx_hash} but reported {sent_hash}"
+            )
+        _wait_for_nonce_to_advance(w3, account.address, nonce)
+    return tx_hash
+
+
+def submit_admin_transaction(
+    tx: dict[str, Any],
+    w3: Web3 | None = None,
+    *,
+    on_signed: Callable[[str], None] | None = None,
+) -> str:
+    """Sign `tx` as the vault admin and send it. Same rules as
+    `submit_transaction`, but a different key and send lock."""
+    extra = set(tx) - _CALLER_TX_FIELDS
+    if extra:
+        raise ValueError(f"unsupported transaction fields: {sorted(extra)}")
+    w3 = w3 or get_web3()
+    account = _load_admin_account()
+
+    with admin_send_lock():
+        nonce = w3.eth.get_transaction_count(account.address, "pending")
+        full_tx: dict[str, Any] = {
+            "value": 0,
+            **tx,
+            "from": account.address,
+            "nonce": nonce,
+            "chainId": Config().EVM_CHAIN_ID,
+            "gasPrice": w3.eth.gas_price,
+        }
+        full_tx["gas"] = w3.eth.estimate_gas(full_tx)
+
+        signed = account.sign_transaction(full_tx)
+        tx_hash = Web3.to_hex(signed.hash)
+        if on_signed is not None:
+            on_signed(tx_hash)
+
+        try:
+            sent_hash = Web3.to_hex(w3.eth.send_raw_transaction(signed.raw_transaction))
+        except Web3RPCError as exc:
+            if _REFUSED.search(str(exc)):
+                raise TransactionRejected(tx_hash, exc) from exc
+            if not _ALREADY_KNOWN.search(str(exc)):
+                raise
+            sent_hash = tx_hash
+        if sent_hash.lower() != tx_hash.lower():
             raise RuntimeError(
                 f"EVM RPC accepted transaction {tx_hash} but reported {sent_hash}"
             )

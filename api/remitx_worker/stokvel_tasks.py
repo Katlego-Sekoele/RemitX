@@ -1271,3 +1271,21 @@ def register_started_cycles() -> int:
             queued,
         )
     return queued
+
+
+@celery.task(name="stokvel.pause_contract")
+def pause_contract() -> str:
+    """Send `pause()` from the vault admin key and wait for it to mine."""
+    w3 = evm_service.get_web3()
+    tx_hash = stokvel_contract.pause(w3=w3)
+    evm_service.wait_for_receipt(tx_hash, w3=w3)
+    return tx_hash
+
+
+@celery.task(name="stokvel.unpause_contract")
+def unpause_contract() -> str:
+    """Send `unpause()` from the vault admin key and wait for it to mine."""
+    w3 = evm_service.get_web3()
+    tx_hash = stokvel_contract.unpause(w3=w3)
+    evm_service.wait_for_receipt(tx_hash, w3=w3)
+    return tx_hash
