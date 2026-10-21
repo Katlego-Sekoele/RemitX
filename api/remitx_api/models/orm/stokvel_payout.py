@@ -129,10 +129,11 @@ class StokvelPayout(Base):
         default=StokvelPayoutReleaseStatus.PENDING.value,
         server_default=StokvelPayoutReleaseStatus.PENDING.value,
     )
-    # The on-chain hash of the pool release
-    release_tx_hash: Mapped[str | None] = mapped_column(
-        Text, nullable=True, unique=True
-    )
+    # The on-chain hash of the pool release. Not unique: one `contribute`
+    # releases every round that has become due (the contract's
+    # `_releaseDue`), so rounds left unfinalised after their payout time are
+    # released together and share its hash
+    release_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The block the pool release (RoundFinalised) was mined in
     release_block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # The `stokvel_pool_release` ledger leg, `STOKVEL` → Treasury Wallet
@@ -160,6 +161,12 @@ class StokvelPayout(Base):
     )
     # Set exactly when the release is
     released_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # When the event sync last queued `stokvel.settle_payout` for this payout
+    # (R3-05): it queues again only some minutes later. Its own column, so
+    # other writes to the row do not delay the payout
+    settle_queued_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     updated_at: Mapped[datetime] = mapped_column(
