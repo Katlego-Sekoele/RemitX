@@ -42,6 +42,7 @@ class PermissionCode(StrEnum):
     CONFIG_LIMITS_WRITE = "config:limits:write"
     CONFIG_FX_WRITE = "config:fx:write"
     AUDIT_READ = "audit:read"
+    STOKVEL_CONTRACT_PAUSE = "stokvel:contract:pause"
 
 
 _PERMISSION_CHECK_VALUES = ", ".join(f"'{code.value}'" for code in PermissionCode)
