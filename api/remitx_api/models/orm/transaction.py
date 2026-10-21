@@ -32,8 +32,10 @@ TYPE_WITHDRAWAL = "withdrawal"
 TYPE_TOKEN_BURN = "token_burn"
 # The beneficiary's fiat payout from the platform's fiat account.
 TYPE_BENEFICIARY_PAYOUT = "beneficiary_payout"
-# A member's contribution into a stokvel round, and a round's pool released
-# into the stokvel's `STOKVEL` account (docs/stokvel_integration.md §3).
+# A member's contribution into a stokvel round (Treasury -> the stokvel's
+# `STOKVEL` account), and a round's pool released back out of it (`STOKVEL`
+# -> Treasury), so `STOKVEL` holds what the contract holds
+# (docs/stokvel_integration.md §3).
 TYPE_STOKVEL_CONTRIBUTION = "stokvel_contribution"
 TYPE_STOKVEL_POOL_RELEASE = "stokvel_pool_release"
 

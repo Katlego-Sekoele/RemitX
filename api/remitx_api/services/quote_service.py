@@ -323,6 +323,59 @@ def price_remittance(
     )
 
 
+def price_stokvel_payout(
+    pool: Decimal, stokvel_currency: str, receiver_payout_currency: str
+) -> tuple[RemittancePricing, Decimal]:
+    """(pricing, sender_amount) for a stokvel's payout of a released pool
+    (R3-05, #242). `RemittancePricing` has no sender amount, since a user's
+    quote is priced from the amount they chose; here it is worked out.
+
+    The pool is a fixed UCTUSD amount, already released to the Treasury
+    Wallet, so `token_amount` is the pool itself, not derived from a fiat
+    amount: the burn must match the release exactly. The quote's sender is the
+    stokvel, in its own currency: `sender_amount` is the pool at the live
+    rate, as a contribution's fiat debit is worked out (`token_to_fiat`). The
+    beneficiary gets that amount converted directly to their payout
+    currency, as in `price_remittance`.
+
+    No fee and no margin: the members paid the payout's fee on top of their
+    contributions (D6, #340), so the beneficiary gets the full pool. No
+    limits apply to a stokvel sender (D8). Looks up (and may fetch and store)
+    rates, so call it before taking any lock.
+    """
+    if pool <= 0:
+        raise ValueError("pool must be positive")
+    rates = token_rates(stokvel_currency)
+    sender_amount = token_to_fiat(pool, rates)
+    fiat_to_token_exchange_rate, fiat_to_token_exchange_rate_id = _token_rate(
+        stokvel_currency
+    )
+    fiat_exchange_rate, fiat_exchange_rate_id = _direct_fiat_rate(
+        stokvel_currency, receiver_payout_currency
+    )
+    receiver_amount = round_amount(sender_amount * fiat_exchange_rate)
+    payout_fee = max(
+        round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount),
+        Config.MIN_CASH_OUT_FEE,
+    )
+    return RemittancePricing(
+        sender_currency=stokvel_currency,
+        sender_amount_zar=to_zar(sender_amount, stokvel_currency, rates=rates),
+        sender_transaction_fee=Decimal("0.00"),
+        exchange_rate_margin=Decimal("0.00"),
+        token_amount=pool,
+        token_name=CURRENCY_TOKEN,
+        fiat_to_token_exchange_rate_id=fiat_to_token_exchange_rate_id,
+        fiat_to_token_exchange_rate=fiat_to_token_exchange_rate,
+        fiat_exchange_rate_id=fiat_exchange_rate_id,
+        fiat_exchange_rate=fiat_exchange_rate,
+        receiver_payout_currency=receiver_payout_currency,
+        receiver_amount=receiver_amount,
+        receiver_payout_fee=payout_fee,
+        receiver_payout_estimate=receiver_amount - payout_fee,
+    ), sender_amount
+
+
 def create_quote(
     sender_user_id: uuid.UUID,
     beneficiary_id: uuid.UUID,
