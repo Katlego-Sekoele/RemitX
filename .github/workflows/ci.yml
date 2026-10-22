@@ -101,6 +101,26 @@ jobs:
       - name: Lint and typecheck
         run: npm run lint
 
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Install contract dependencies
+        run: npm ci
+
+      - name: Hardhat tests
+        run: npm test
+
   # The QA seeder (tools/seeder) drives the real backend: its controllers,
   # services and worker tasks. Running its tests here means a backend change
   # that breaks the seeder fails the PR that made it, not a developer's seed

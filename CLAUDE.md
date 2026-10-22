@@ -104,7 +104,7 @@ npx hardhat test       # all tests, hand-written and randomised
 npm run export:abi     # after any interface change; commit abi/ (a test fails on drift)
 ```
 
-Neither CI nor pre-commit runs the contract tests, so run them yourself after touching `contracts/`. Deploying is in the [README](contracts/README.md#deploy).
+Pre-commit runs `npm test` in `contracts/` when that tree changes; CI runs the same on every PR. Deploying is in the [README](contracts/README.md#deploy).
 
 ### Seeder (local only)
 
@@ -141,7 +141,7 @@ timings, CPU/memory, and optional `compute` sweep (`LOADTEST_PROFILE`, default
 python3 -m pre_commit run --all-files
 ```
 
-Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
+Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, Hardhat tests when `contracts/` changes, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
 
 ## API architecture
 
