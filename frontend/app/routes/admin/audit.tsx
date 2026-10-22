@@ -6,6 +6,7 @@ import { api, type AuditLogRead } from "~/client"
 import { QueryError } from "~/components/accounts/query-error"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import { formatDateTime } from "~/components/admin/kyc-review/format"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
@@ -46,7 +47,6 @@ import {
   STOKVEL_AUDIT_ACTIONS,
 } from "~/lib/audit-entry"
 import { PERMISSIONS } from "~/lib/permissions"
-import { explorerTxUrl } from "~/lib/stokvels"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/audit"
 
@@ -350,17 +350,7 @@ function AuditDetail({ entry }: { entry: AuditLogRead }) {
       <span className="truncate">
         {entry.reason ?? JSON.stringify(entry.after ?? entry.before ?? {})}
       </span>
-      {hash ? (
-        <a
-          href={explorerTxUrl(hash)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono underline"
-          title={hash}
-        >
-          {hash.slice(0, 6)}…{hash.slice(-4)}
-        </a>
-      ) : null}
+      {hash ? <ChainTxHash hash={hash} /> : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { format } from "date-fns"
 import { QueryError } from "~/components/accounts/query-error"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { StokvelFinaliseButton } from "~/components/admin/stokvel-finalise-button"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import { Badge } from "~/components/ui/badge"
 import {
   Card,
@@ -27,7 +28,6 @@ import {
   TableRow,
 } from "~/components/ui/table"
 import { finaliseHint, stokvelAdminQueries } from "~/lib/stokvel-admin"
-import { explorerTxUrl } from "~/lib/stokvels"
 import { adminRouteContext } from "~/routes/admin/admin.routes"
 import type { Route } from "./+types/stokvel-rounds"
 
@@ -125,17 +125,12 @@ export default function StokvelRoundsPage() {
                             </TableCell>
                             <TableCell>
                               {round.release_status === "released" ? (
-                                round.release_tx_hash ? (
-                                  <a
-                                    href={explorerTxUrl(round.release_tx_hash)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <Badge>Released</Badge>
-                                  </a>
-                                ) : (
+                                <div className="flex flex-col items-start gap-1">
                                   <Badge>Released</Badge>
-                                )
+                                  {round.release_tx_hash ? (
+                                    <ChainTxHash hash={round.release_tx_hash} />
+                                  ) : null}
+                                </div>
                               ) : round.release_status === "failed" ? (
                                 <Badge variant="destructive">
                                   Release failed
