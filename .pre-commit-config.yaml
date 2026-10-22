@@ -38,6 +38,13 @@ repos:
         files: ^api/
         pass_filenames: false
 
+      - id: contracts-tests
+        name: contracts tests (hardhat)
+        entry: scripts/hooks/run-contracts-tests.sh
+        language: script
+        files: ^contracts/
+        pass_filenames: false
+
       - id: frontend-lint
         name: frontend lint (prettier fix all + lint)
         entry: scripts/hooks/run-frontend-lint.sh

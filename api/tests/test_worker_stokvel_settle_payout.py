@@ -169,6 +169,15 @@ def queued(monkeypatch):
     return calls
 
 
+@pytest.fixture(autouse=True)
+def handed_off(monkeypatch):
+    """`settle_payout`'s hand-off to `settle_remittance` (R3-06), captured:
+    CI has no Redis. test_stokvel_payout_retry.py settles it."""
+    calls = []
+    monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
+    return calls
+
+
 def _payout(session_factory, payout_id):
     with session_factory() as session:
         row = session.get(StokvelPayout, payout_id)
