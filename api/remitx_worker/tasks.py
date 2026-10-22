@@ -27,6 +27,7 @@ from sqlalchemy import select, update
 from remitx_worker import evm_service
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
+from remitx_worker.stokvel_payouts import record_settlement
 
 logger = logging.getLogger(__name__)
 
@@ -417,6 +418,11 @@ def confirm_treasury_burn(
     `failed`. Only transaction status changes as no account balances were
     changed.
 
+    A stokvel's payout remittance (R3-06, #243) settles the same way, and
+    its `stokvel_payouts` row is finished in the same commit
+    (`stokvel_payouts.record_settlement`): `confirmed` with the burn hash,
+    or `failed`. Any other remittance has no payout row, and nothing changes.
+
     A failed group sits and needs manual investigation. Groups stuck in
     ``processing`` are only logged by ``reclaim_stuck_settlements``; fully
     ``pending`` groups are re-enqueued by ``reclaim_pending_settlements``.
@@ -449,6 +455,10 @@ def confirm_treasury_burn(
                 # Get transactions with the given quote_id and in-flight
                 # status, and update their status to failed
             )
+            # A stokvel's payout fails with its legs (R3-06), in this commit
+            payout_id = (
+                record_settlement(session, target_id, None) if result.rowcount else None
+            )
         # if no rows were updated, log that the quote has no pending or
         # processing transactions and return "skipped"
         if result.rowcount == 0:
@@ -466,6 +476,14 @@ def confirm_treasury_burn(
             error or "unknown error",
             result.rowcount,
         )
+        if payout_id is not None:
+            logger.error(
+                "event=stokvel.payout_settlement_failed payout_id=%s quote_id=%s: "
+                "the burn failed, so the payout is marked failed for a person; "
+                "its release stands and the pool is still in the Treasury",
+                payout_id,
+                quote_id,
+            )
         return "failed"
 
     # Else if the burn succeeded, confirm and settle all legs in one
@@ -502,6 +520,9 @@ def confirm_treasury_burn(
             # transaction row (already stored before the send; the same
             # value, written again)
         )
+        # A stokvel's payout is finished with its legs (R3-06), before the
+        # balances: a release locks its payout before the accounts too.
+        payout_id = record_settlement(session, target_id, tx_hash)
 
         remittance_transactions = session.execute(
             select(
@@ -544,4 +565,11 @@ def confirm_treasury_burn(
         tx_hash,
         len(remittance_transactions),
     )
+    if payout_id is not None:
+        logger.info(
+            "event=stokvel.payout_settled payout_id=%s quote_id=%s burn_tx_hash=%s",
+            payout_id,
+            quote_id,
+            tx_hash,
+        )
     return "settled"

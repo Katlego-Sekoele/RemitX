@@ -24,8 +24,13 @@ the scheduled member's chosen Payout beneficiary as the recipient:
 - one remittance, and the payout's `remittance_status` `pending ->
   processing` with its `quote_id` and `remittance_id`, in the same commit
 
-Handing the remittance to the settlement chain (`settle_remittance`, the
-burn) and finishing the payout are R3-06 (#243).
+After that commit it hands the remittance to the existing settlement chain
+(R3-06, #243): `settle_remittance` -> `burn_treasury_tokens` ->
+`confirm_treasury_burn`, the chain a user's remittance takes, with its
+guards against a second burn or credit. A lost hand-off leaves the legs
+fully pending, which the reclaim sweep queues again. `confirm_treasury_burn`
+finishes the payout through `record_settlement`, in the commit that settles
+or fails its legs, so the payout can never disagree with them.
 
 Queued by `queue_released_payouts`, which the event sync runs at the end of
 every run, for every released payout not yet started. Repeating it is
@@ -56,6 +61,7 @@ from remitx_api.models.orm.stokvel_cycle import StokvelCycle
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.transaction import (
+    STATUS_CONFIRMED,
     STATUS_FAILED,
     STATUS_PENDING,
     STATUS_PROCESSING,
@@ -225,7 +231,53 @@ def settle_payout(payout_id: str) -> str:
         pricing.receiver_amount,
         pricing.receiver_payout_currency,
     )
+    try:
+        queue_service.enqueue_settle_remittance(str(quote_id))
+    except Exception as exc:
+        # The remittance is committed and its legs are all pending, which is
+        # what the reclaim sweep queues again, so the payout is only late.
+        # The error's type only: a broker error may carry its URL.
+        logger.error(
+            "event=stokvel.payout_hand_off_failed payout_id=%s quote_id=%s (%s): "
+            "settle_remittance was not queued; the reclaim sweep queues it",
+            payout_id,
+            quote_id,
+            type(exc).__name__,
+        )
     return "created"
+
+
+def record_settlement(session, quote_id: uuid.UUID, burn_tx_hash: str | None):
+    """Finish the payout whose remittance `quote_id` is, in `session`, as
+    `confirm_treasury_burn` settles (`burn_tx_hash` given, the burn's receipt
+    confirmed) or fails (None) its legs: `processing -> confirmed`, with the
+    burn hash beside the remittance reference (brief §7.2), or `processing
+    -> failed`, for a person. The release is left as it is.
+
+    Guarded on `processing`, so a replay changes nothing. Returns the
+    payout's id, or None when nothing changed, which is every remittance
+    that is not a stokvel's payout. The caller commits.
+    """
+    payout_id = session.scalar(
+        select(StokvelPayout.id).where(StokvelPayout.quote_id == quote_id)
+    )
+    if payout_id is None:
+        return None
+    values = (
+        {"remittance_status": STATUS_FAILED}
+        if burn_tx_hash is None
+        else {"remittance_status": STATUS_CONFIRMED, "burn_tx_hash": burn_tx_hash}
+    )
+    finished = session.execute(
+        update(StokvelPayout)
+        .where(
+            StokvelPayout.id == payout_id,
+            StokvelPayout.remittance_status == STATUS_PROCESSING,
+        )
+        .values(**values, updated_at=datetime.now(UTC))
+        .execution_options(synchronize_session=False)
+    )
+    return payout_id if finished.rowcount == 1 else None
 
 
 def _beneficiary_problem(session, member, beneficiary) -> str | None:

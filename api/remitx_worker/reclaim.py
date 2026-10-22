@@ -6,9 +6,13 @@ remittance settlement groups back onto the queue.
 
 ``process_integration_message`` and ``settle_remittance`` are idempotent at
 their entry guards, so a message that is already on Redis is safe to send
-again. Only remittance groups whose seven legs are still fully ``pending``
+again. Only remittance groups whose legs are still fully ``pending``
 are re-enqueued — groups in ``processing`` may have an EVM burn in flight
 and are never blindly retried here.
+
+A stokvel's payout remittance is one of these groups: ``stokvel.settle_payout``
+queues ``settle_remittance`` itself (R3-06), and this is the fallback when that
+message is lost. Both may reach the same group; its guards settle it once.
 """
 
 import logging
