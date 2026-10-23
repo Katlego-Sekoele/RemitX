@@ -112,10 +112,10 @@ class ContributionInsufficientBalanceError(DomainError):
 
 
 class NotStokvelOrganiserError(ForbiddenError):
-    """Only the Organiser invites, or sets the payout order (R2-09). A
-    fellow member can see the stokvel, so gets this rather than
-    `StokvelNotFoundError`. `action` completes "Only the stokvel's organiser
-    can ..."."""
+    """Only the Organiser invites, revokes an invitation (R2-16), or sets the
+    payout order (R2-09). A fellow member can see the stokvel, so gets this
+    rather than `StokvelNotFoundError`. `action` completes "Only the
+    stokvel's organiser can ..."."""
 
     code = "not_organiser"
 

@@ -10461,6 +10461,88 @@
         ]
       }
     },
+    "/invitations/{invitation_id}/revoke": {
+      "post": {
+        "description": "Take back a pending invitation, as the stokvel's Organiser. The\ninvitee may be invited again.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_organiser` for the invitee or a fellow member, who can see it\nbut not revoke it; 409 `invitation_not_pending` once it has been\naccepted, declined, revoked or lapsed.",
+        "operationId": "revoke_stokvel_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Revoke a stokvel invitation",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
     "/kyc/application": {
       "get": {
         "description": "Standing, the application the caller is on now if any, and its next\nstep. The whole history is `GET /kyc/applications`.",
