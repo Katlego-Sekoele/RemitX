@@ -94,28 +94,42 @@ A push that only touches the pipeline or docs runs `terraform` but no deploy
 jobs — there is no new application code to roll out. Use a manual run if you
 want the services redeployed as well.
 
-## XRPL EVM Treasury Wallet
+## XRPL EVM
 
-On-chain settlement is moving from the **XRP Ledger Testnet** to the **XRPL EVM
-Testnet** (chain id `1449000`, Testnet only); the XRPL settings stay deployed
-only until that move is done. The Treasury Wallet is an EVM address there,
-holding UCTUSD as an ERC-20 and paying gas in test XRP. It is created by
+Settlement runs on the **XRPL EVM Testnet** (chain id `1449000`, Testnet only).
+The XRPL settings stay on the API and the worker, unused (D11). Do not remove
+them. The Treasury Wallet is an EVM address, holding UCTUSD as an ERC-20 and
+paying gas in test XRP. It is created by
 `platform_wallet/scripts/create_evm_platform_wallet.py`.
 
-| Setting | Secret? | Reaches |
-|---------|---------|---------|
-| `EVM_ENCRYPTION_KEY` | yes | worker only |
-| `EVM_TREASURY_KEY_ENCRYPTED` | yes | worker only |
-| `EVM_TREASURY_ADDRESS` | no | API and worker |
-| `EVM_RPC_URL`, `EVM_CHAIN_ID`, `EVM_EXPLORER_URL` | no | API and worker |
-| `UCTUSD_CONTRACT_ADDRESS`, `UCTUSD_EVM_DECIMALS` | no | API and worker |
+| Setting | Secret? | Reaches | If unset |
+|---------|---------|---------|----------|
+| `EVM_ENCRYPTION_KEY` | yes | worker only | omitted |
+| `EVM_TREASURY_KEY_ENCRYPTED` | yes | worker only | omitted |
+| `EVM_STOKVEL_ADMIN_KEY_ENCRYPTED` | yes | worker only | omitted; pause and unpause cannot sign |
+| `EVM_STOKVEL_ADMIN_ADDRESS` | no | worker only | omitted |
+| `EVM_TREASURY_ADDRESS` | no | API and worker | omitted |
+| `EVM_RPC_URL`, `EVM_CHAIN_ID`, `EVM_EXPLORER_URL` | no | API and worker | omitted; `config.py` uses the testnet defaults |
+| `UCTUSD_CONTRACT_ADDRESS`, `UCTUSD_EVM_DECIMALS` | no | API and worker | omitted; `config.py` defaults |
+| `STOKVEL_CONTRACT_ADDRESS` | no | API and worker | `0x2f240705314BB79780522635eA47d20072CB8Fe1` |
+| `MAX_STOKVEL_MEMBERS` | no | API and worker | `3` (the contract's `maxMembers`) |
+| `STOKVEL_SYNC_START_BLOCK` | no | API and worker | `8995825` (that deployment's block) |
 
-Each is a Terraform input from the matching `TF_VAR_*` GitHub environment
-secret or variable (see [infra/README.md](../infra/README.md)). All are
-optional for now: an unset one is left out of the service's environment, and
-the secrets are added to the worker only once they are set. Only the worker
-decrypts the key and signs (`api/remitx_worker/evm_service.py`); the API's
-`Config` has no setting for either secret.
+Secrets come from `deploy.yml` (`secrets.TF_VAR_*`). The rest come from GitHub
+environment variables (`TF_VAR_*`), which override the defaults above. An empty
+value is left out of the service environment. See
+[infra/README.md](../infra/README.md).
+
+`STOKVEL_SYNC_START_BLOCK` must be set whenever `STOKVEL_CONTRACT_ADDRESS` is.
+With a contract address and no start block, event sync refuses to run
+(`event=stokvel.sync_misconfigured`).
+
+Only the worker decrypts keys and signs (`api/remitx_worker/evm_service.py`).
+The API's `Config` has no setting for those secrets. The vault admin key is
+the deployer key, Fernet-encrypted with `EVM_ENCRYPTION_KEY`, and is used only
+for pause and unpause. The contract address, member cap and start block
+default to `contracts/deployments/xrplEvmTestnet.json`. QA and production both
+use that testnet deployment.
 
 ## Object storage (KYC documents)
 

@@ -25,6 +25,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 
 | Date | Section | Change | PR |
 |---|---|---|---|
+| 2026-10-24 | 2, 9, 10 | R5-02 (#263): GCP Cloud Run gets `STOKVEL_CONTRACT_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `STOKVEL_SYNC_START_BLOCK` (defaults from `contracts/deployments/xrplEvmTestnet.json`; `TF_VAR_*` overrides; empty omits). `EVM_STOKVEL_ADMIN_KEY_ENCRYPTED` is a worker-only secret; `EVM_STOKVEL_ADMIN_ADDRESS` is worker-only and has no default. XRPL settings stay (D11). Legacy Render is not the deploy path and was not changed | |
 | 2026-10-21 | 4, 5, 6, 8, 13, 14 | R3-07 (#244): `POST /admin/stokvel-contract/pause` and `/unpause` (`stokvel:contract:pause`, compliance officer), audit `stokvel.contract.paused` / `unpaused`, worker `stokvel.pause_contract` / `unpause_contract` via Fernet `EVM_STOKVEL_ADMIN_*`, `stokvel_contract.pause` / `unpause` / `paused`, API refuses contributions with 503 `stokvel_paused` when `paused()` is true | |
 | 2026-10-19 | 5 | `GET /stokvels/{id}` status fields use the existing enums (`StokvelCycleStatus`, `StokvelContributionStatus`, `StokvelPayoutReleaseStatus`, `TransactionStatus`). Pending invitations on that response are `StokvelDetailInvitationRead`: `account_reference` is null except for the Organiser. `POST /stokvels/{id}/invitations` still returns `SentStokvelInvitationRead`, where `account_reference` is always set. `current_round` stays the stored column; it is not `open_round` | |
 | 2026-10-19 | 5, 8, 13, 14 | R2-14 (#236): `GET /stokvels/{id}` built (section 5). `fee_amount` is set only on the caller's contributions. `remittance_id` is the payout reference. `pool_fiat_amount` stays null until members can read the payout quote. A missing exchange rate leaves `contribution_fiat_estimate` null and the rest of the response still returns. The member screen still reads the mock until R4-09 (#258) | |
@@ -306,7 +307,8 @@ Added to `.env.example` (and `.env.minimal.example` if local dev needs them). Th
 | `EVM_CHAIN_ID` | 1449000 |
 | `UCTUSD_CONTRACT_ADDRESS` | The ERC-20 token |
 | `STOKVEL_CONTRACT_ADDRESS` | The stokvel contract |
-| `STOKVEL_SYNC_START_BLOCK` | Event sync (#235): first block for a contract with no cursor, its deployment block (8995825). **Required wherever `STOKVEL_CONTRACT_ADDRESS` is set:** with no cursor and no start block the sync refuses to run (`event=stokvel.sync_misconfigured`) rather than scan from genesis. Not yet in `infra/gcp/locals_env.tf`, which sets neither variable |
+| `STOKVEL_SYNC_START_BLOCK` | Event sync (#235): first block for a contract with no cursor, its deployment block (8995825). **Required wherever `STOKVEL_CONTRACT_ADDRESS` is set:** with no cursor and no start block the sync refuses to run (`event=stokvel.sync_misconfigured`) rather than scan from genesis. GCP sets this with the contract address and `MAX_STOKVEL_MEMBERS` on the API and the worker (`infra/gcp/locals_env.tf`), defaulting to `contracts/deployments/xrplEvmTestnet.json`. A `TF_VAR_*` GitHub variable overrides; an empty value omits it |
+| `EVM_STOKVEL_ADMIN_ADDRESS`, `EVM_STOKVEL_ADMIN_KEY_ENCRYPTED` | Vault admin, pause and unpause only. Worker only. The key is a Secret Manager secret, Fernet-encrypted with `EVM_ENCRYPTION_KEY`. No default: unset means pause cannot sign |
 | `STOKVEL_SYNC_CONFIRMATIONS`, `STOKVEL_SYNC_BLOCK_RANGE`, `STOKVEL_SYNC_MAX_RANGES`, `STOKVEL_SYNC_INTERVAL_SECONDS` | Event sync: blocks behind the head (2), blocks per `eth_getLogs` (2000), ranges per run (10), beat interval (30 s) |
 | `STOKVEL_START_SWEEP_INTERVAL_SECONDS` | How often `stokvel.register_started_cycles` runs, and how old an unregistered started cycle must be before it is re-queued (300 s) |
 | `EVM_TREASURY_ADDRESS` | The Treasury Wallet address |
@@ -974,6 +976,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
 | Seeder and load test for EVM | Done | #267 (R6-02) | Builds on #278 |
+| Cloud EVM and contract settings | Done | #263 (R5-02) | GCP API and worker get the testnet contract address, member cap and sync start block. Vault admin key is a worker-only secret. XRPL settings stay (D11). Legacy Render was not changed |
 | Stokvel demo data | In review | #268 (R6-03) | The seeder's `demo` scenario: three verified, funded members in a stokvel ready to start, and a second with an invitation pending (section 13) |
 
 ### Brief timeline
@@ -1022,6 +1025,7 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Stokvel invitations | The Organiser invites a verified user by account reference in the Stokvel currency; the invitee accepts (becoming a Member, within `MAX_STOKVEL_MEMBERS`) or declines; the Organiser may revoke it while it is pending. Nobody becomes a Member without accepting, enforced by the API and by row-level security | Claire (Role 2) | #230, #297 |
 | Payout order and beneficiary | Before a cycle starts, the Organiser enters the payout order the members agreed (every current member once) and each member chooses which of their beneficiaries the stokvel pays their pool to, in that beneficiary's payout currency. Both can change until the cycle starts, then are locked. A new stokvel opens its first cycle as `forming`, and members who accept join it | Claire (Role 2) | #231 |
 | Stokvel audit actions | `AuditAction` and `AuditSubject` can record a contract pause, a resume and a manual finalise. List them with `subject_type`. The routes are still R3-07 and R3-10 | Katlego (Role 3) | #249 |
+| Cloud EVM settings | QA and production Cloud Run get `STOKVEL_CONTRACT_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `STOKVEL_SYNC_START_BLOCK` from Terraform (testnet defaults). The vault admin key is a worker-only secret. XRPL variables stay deployed, unused | Katlego (Role 3) | #263 |
 
 ## 11. How things are connected
 
