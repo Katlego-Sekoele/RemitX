@@ -22,8 +22,9 @@ locals {
     PLATFORM_WALLET_SEED_ENCRYPTED = var.platform_wallet_seed_encrypted
   })
   worker_optional_secret_values = {
-    EVM_ENCRYPTION_KEY         = var.evm_encryption_key
-    EVM_TREASURY_KEY_ENCRYPTED = var.evm_treasury_key_encrypted
+    EVM_ENCRYPTION_KEY              = var.evm_encryption_key
+    EVM_TREASURY_KEY_ENCRYPTED      = var.evm_treasury_key_encrypted
+    EVM_STOKVEL_ADMIN_KEY_ENCRYPTED = var.evm_stokvel_admin_key_encrypted
   }
   worker_secret_values = merge(local.worker_required_secret_values, {
     for name, value in local.worker_optional_secret_values :
