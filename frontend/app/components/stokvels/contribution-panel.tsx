@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
 
+import { api } from "~/client"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
@@ -91,6 +92,9 @@ export function ContributionPanel({
       // A refusal may still have changed what the API knows (e.g. already
       // paid), so the page re-reads either way.
       await invalidateStokvels(queryClient)
+      await queryClient.invalidateQueries({
+        queryKey: api.accounts.getAccounts().queryKey,
+      })
     },
   })
 
@@ -136,6 +140,7 @@ export function ContributionPanel({
 
   // The API refuses unless the balance covers the contribution and the fee.
   const needed = amount == null ? null : fee ? sumMoney([amount, fee]) : amount
+  const paidFigure = amount ?? mine?.amount_fiat ?? null
   const lowBalance =
     needed != null &&
     availableBalance !== undefined &&
@@ -168,7 +173,9 @@ export function ContributionPanel({
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex flex-col">
             <span className="font-heading text-3xl font-bold tabular-nums">
-              {amount ? formatMoney(amount, currency) : "Rate unavailable"}
+              {paidFigure
+                ? formatMoney(paidFigure, currency)
+                : "Rate unavailable"}
             </span>
             {actualFee ? (
               <span className="text-xs text-muted-foreground">
