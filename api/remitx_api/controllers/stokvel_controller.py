@@ -395,7 +395,8 @@ class StokvelController:
         by_position = {
             row.payout_position: row.member_id
             for row in cycle_members
-            if row.payout_position is not None and row.member_id in active_ids
+            if row.payout_position is not None
+            and (row.locked or row.member_id in active_ids)
         }
         payout_order = _payout_order(by_position)
         contributions = self._contributions.list_for_cycle(cycle.id)

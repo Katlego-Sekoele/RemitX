@@ -15,6 +15,7 @@ from remitx_api.models.orm.account import (
     Account,
     create_account_reference,
 )
+from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
@@ -261,6 +262,26 @@ def test_payout_order_ignores_an_unlocked_former_member(verified_client, monkeyp
     ]
 
 
+def test_payout_order_keeps_a_locked_member_who_left_mid_cycle(
+    verified_client, monkeypatch
+):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    caller_member_id, other_member_id = _activate(stokvel_id, user.id)
+    leaver_id = _locked_leaver(stokvel_id, user.id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle"]["payout_order"] == [
+        caller_member_id,
+        other_member_id,
+        leaver_id,
+    ]
+
+
 def test_a_gap_in_the_payout_order_has_no_recipient(verified_client, monkeypatch):
     _stub_rate(monkeypatch)
     client, user = verified_client
@@ -292,6 +313,53 @@ def test_a_sent_payout_returns_its_remittance_status(verified_client, monkeypatc
     assert rnd["remittance_id"] == remittance_id
     assert rnd["remittance_status"] == "processing"
     assert rnd["release_status"] == "released"
+
+
+def _locked_leaver(stokvel_id: uuid.UUID, organiser_id: uuid.UUID) -> str:
+    """A locked cycle row for someone who left mid-cycle; they stay in the order."""
+
+    def write():
+        stokvel = db.session.get(Stokvel, stokvel_id)
+        cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+        organiser = db.session.scalars(
+            select(StokvelMember).where(StokvelMember.user_id == organiser_id)
+        ).one()
+        leaver = UserController().ensure_provisioned(
+            "user_stokvel_leaver",
+            lambda: "leaver@example.com",
+            lambda: "Leaver",
+        )
+        account = AccountRepository().get_user_account(leaver.id, CURRENCY_ZAR)
+        member = StokvelMember(
+            stokvel_id=stokvel.id,
+            user_id=leaver.id,
+            account_id=account.account_id,
+            left_at=datetime.now(UTC),
+        )
+        db.session.add(member)
+        db.session.flush()
+        beneficiary = Beneficiary(
+            sender_user_id=leaver.id,
+            linked_user_id=organiser.user_id,
+            payout_currency=CURRENCY_ZAR,
+            relationship=BeneficiaryRelationship.PARENT.value,
+        )
+        db.session.add(beneficiary)
+        db.session.flush()
+        db.session.add(
+            StokvelCycleMember(
+                cycle_id=cycle.id,
+                member_id=member.id,
+                payout_position=2,
+                payout_beneficiary_id=beneficiary.beneficiary_id,
+                payout_currency=CURRENCY_ZAR,
+                locked=True,
+            )
+        )
+        db.session.commit()
+        return str(member.id)
+
+    return _in_session(write)
 
 
 def _stale_cycle_row(stokvel_id: uuid.UUID) -> None:
