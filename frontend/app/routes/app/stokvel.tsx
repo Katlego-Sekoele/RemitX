@@ -167,6 +167,8 @@ function StokvelDetail({
   const paid = paidMemberIds(stokvel)
   const outstanding = outstandingMembers(stokvel)
   const currentRound =
+    // Stored column, not open_round (docs §5). It stays 0 until something
+    // else advances it.
     active && cycle && roundIndex != null
       ? cycle.rounds.find((round) => round.round === roundIndex)
       : undefined
