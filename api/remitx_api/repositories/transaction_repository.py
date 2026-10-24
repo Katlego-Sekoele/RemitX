@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import case, func, or_, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import TYPE_USER, Account
@@ -20,6 +20,35 @@ from remitx_api.repositories.repository import Repository
 class TransactionRepository(Repository[Transaction, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Transaction)
+
+    def confirmed_net(self, account_id: uuid.UUID, currency: str) -> Decimal:
+        """Confirmed amount into `account_id` minus confirmed amount out, in
+        `currency`. Pending, processing and failed legs are not included: a
+        balance moves only when a leg is confirmed."""
+        net = db.session.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.debit_account_id == account_id,
+                                Transaction.amount,
+                            ),
+                            else_=-Transaction.amount,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                Transaction.currency == currency,
+                Transaction.status == STATUS_CONFIRMED,
+                or_(
+                    Transaction.debit_account_id == account_id,
+                    Transaction.credit_account_id == account_id,
+                ),
+            )
+        )
+        return Decimal(net)
 
     def amounts(self, tx_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
         """`amount` of each transaction in `tx_ids`. Missing ids are absent."""
