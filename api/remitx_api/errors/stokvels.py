@@ -410,6 +410,25 @@ class StokvelContractActionTimedOutError(DomainError):
         )
 
 
+class RoundNotFinalisableError(ConflictError):
+    """The contract would revert `NotYetFinalisable`: the round is not the
+    next to release, it is not fully paid, or its payout time has not passed."""
+
+    code = "round_not_finalisable"
+
+    def __init__(self) -> None:
+        super().__init__("This round can't be paid out yet.")
+
+
+class RoundAlreadyFinalisedError(ConflictError):
+    """The contract would revert `AlreadyFinalised`."""
+
+    code = "round_already_finalised"
+
+    def __init__(self) -> None:
+        super().__init__("This round has already been paid out.")
+
+
 class StokvelContractNotPausedError(ConflictError):
     """`unpause()` was called while the vault is running."""
 

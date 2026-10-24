@@ -1,11 +1,11 @@
 /**
  * The admin's manual release of a stokvel round (R4-11, #260), the fallback
  * when the automatic release fails (D5, P5: approved by product, 19 Oct).
- * The route is R3-10 (#247), not built yet:
- * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which asks the contract to
- * release the round and writes `stokvel.round.finalised_manually` to the
- * audit log. No admin route lists stokvels and their rounds yet either, so
- * the page reads `stokvel-admin.mock.ts` for both.
+ * The route is R3-10 (#247):
+ * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which queues the release
+ * and writes `stokvel.round.finalised_manually` to the audit log. No admin
+ * route lists stokvels and their rounds yet, so the page still reads
+ * `stokvel-admin.mock.ts` for both.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
@@ -15,8 +15,8 @@ import {
   listAdminRoundsMock,
 } from "~/lib/stokvel-admin.mock"
 
-/** One round as the admin page lists it. Assumed until #247; no route
- * returns this shape yet. */
+/** One round as the admin page lists it. Assumed until an admin route
+ * lists rounds; no route returns this shape yet. */
 export type AdminStokvelRoundRead = {
   stokvel_id: string
   stokvel_name: string
@@ -106,7 +106,7 @@ export const stokvelAdminQueries = {
 }
 
 export const stokvelAdminMutations = {
-  /** `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247, assumed). */
+  /** `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247). Still the mock. */
   finalise: () => ({
     mutationFn: (round: { stokvel_id: string; round: number }) =>
       finaliseRoundMock(round.stokvel_id, round.round),

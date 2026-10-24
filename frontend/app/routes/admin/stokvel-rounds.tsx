@@ -43,9 +43,10 @@ export function meta(): Route.MetaDescriptors {
 
 /**
  * Every stokvel's current round, with a manual release for when the
- * automatic one fails (R4-11, #260; P5). On mocks until R3-10 (#247) and a
- * route that lists the rounds exist. No permission gate yet: #247 adds the
- * code on the API, and `lib/permissions.ts` mirrors it then.
+ * automatic one fails (R4-11, #260; P5). The list and the button still use
+ * the mock: no admin route lists rounds yet (R4-09). The API is
+ * `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247), gated by
+ * `stokvel:round:finalise`.
  */
 export default function StokvelRoundsPage() {
   const rounds = useQuery(stokvelAdminQueries.rounds())

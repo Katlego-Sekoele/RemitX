@@ -6122,6 +6122,37 @@
         "title": "StokvelRoundContributionRead",
         "type": "object"
       },
+      "StokvelRoundFinaliseResponse": {
+        "description": "The round's release was queued. The worker sends `finalise`; the\ntransaction hash is not known until that send.",
+        "properties": {
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_id",
+          "cycle_number",
+          "round"
+        ],
+        "title": "StokvelRoundFinaliseResponse",
+        "type": "object"
+      },
       "StokvelRoundRead": {
         "description": "One round of the current cycle, with its payout once one exists.",
         "properties": {
@@ -9849,6 +9880,116 @@
         "summary": "Resume every stokvel on the contract",
         "tags": [
           "admin.stokvel_contract"
+        ]
+      }
+    },
+    "/admin/stokvels/{stokvel_id}/rounds/{round}/finalise": {
+      "post": {
+        "description": "Queue `finalise` for round `round` (0-based) of the stokvel's open\ncycle, and write `stokvel.round.finalised_manually`. The contract still\ndecides: a round that is not ready answers 409 `round_not_finalisable`,\nand one already released answers 409 `round_already_finalised`. Needs\n``stokvel:round:finalise``.",
+        "operationId": "finalise_stokvel_round",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "round",
+            "required": true,
+            "schema": {
+              "maximum": 255,
+              "minimum": 0,
+              "title": "Round",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelRoundFinaliseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Release one stokvel round by hand",
+        "tags": [
+          "admin.stokvels"
         ]
       }
     },
@@ -13694,6 +13835,10 @@
     {
       "description": "Emergency pause and resume for every stokvel on the vault.",
       "name": "admin.stokvel_contract"
+    },
+    {
+      "description": "Administrator actions on one stokvel.",
+      "name": "admin.stokvels"
     }
   ]
 }
