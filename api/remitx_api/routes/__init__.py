@@ -16,6 +16,7 @@ from remitx_api.routes.admin.roles import router as admin_roles_router
 from remitx_api.routes.admin.stokvel_contract import (
     router as admin_stokvel_contract_router,
 )
+from remitx_api.routes.admin.stokvels import router as admin_stokvels_router
 from remitx_api.routes.admin.user_roles import router as admin_user_roles_router
 from remitx_api.routes.admin.withdrawals import router as admin_withdrawals_router
 from remitx_api.routes.bank_accounts import router as bank_accounts_router
@@ -68,3 +69,4 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(admin_kyc_router)
     app.include_router(admin_kyc_documents_router)
     app.include_router(admin_stokvel_contract_router)
+    app.include_router(admin_stokvels_router)

@@ -66,6 +66,7 @@ class Tag:
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
     ADMIN_AUDIT = "admin.audit"
     ADMIN_STOKVEL_CONTRACT = "admin.stokvel_contract"
+    ADMIN_STOKVELS = "admin.stokvels"
 
 
 TAGS: list[dict[str, str]] = [
@@ -160,6 +161,10 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.ADMIN_STOKVEL_CONTRACT,
         "description": "Emergency pause and resume for every stokvel on the vault.",
+    },
+    {
+        "name": Tag.ADMIN_STOKVELS,
+        "description": "Administrator actions on one stokvel.",
     },
 ]
 
