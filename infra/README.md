@@ -138,7 +138,7 @@ Repeat with `remitx-gcp-prod` + `stable` for production. Same GCP project as QA:
 
 ## GitHub environments catalog
 
-**Single source of truth:** non-secret **variables** and **secrets** for cloud deploy live in GitHub Environments `qa` / `prod` only — not in `common.tfvars` or duplicated product defaults in Terraform.
+**Single source of truth:** non-secret **variables** and **secrets** for cloud deploy live in GitHub Environments `qa` / `prod` only — not in `common.tfvars` or duplicated product defaults in Terraform. Exception: `stokvel_contract_address`, `max_stokvel_members` and `stokvel_sync_start_block` default to the XRPL EVM Testnet deployment, so Cloud Run still gets them when the GitHub variable is unset. A `TF_VAR_*` overrides.
 
 | Kind | How Terraform gets it |
 |------|------------------------|
