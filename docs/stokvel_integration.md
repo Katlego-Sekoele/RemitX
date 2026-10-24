@@ -26,6 +26,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 | Date | Section | Change | PR |
 |---|---|---|---|
 | 2026-10-25 | 5, 14 | `GET /stokvels/{id}` adds `open_round`: the round a contribution joins, from `StokvelContributionRepository.open_round` (locked member count, `total_rounds` as the round count). Null while the cycle is not active, and null once every round is full. `current_round` stays the stored column. The member screen reads `open_round` and does not recompute it. It polls while any of the caller's contributions is pending or processing | |
+| 2026-10-24 | 5, 9, 10, 12, 13, 14 | R3-10 (#247): `POST /admin/stokvels/{id}/rounds/{n}/finalise` (`stokvel:round:finalise`, compliance officer). Reads `isFinalisable` and `getCycle` first. A round that is not ready answers 409 `round_not_finalisable`; one already released answers 409 `round_already_finalised`. A ready round queues `stokvel.release_pool` (the worker sends `finalise`) and writes `stokvel.round.finalised_manually`. 202 `StokvelRoundFinaliseResponse`. The admin rounds page stays on its mock until a list route exists | |
 | 2026-10-24 | 5, 9, 10, 13 | R4-09 (#258): member screens call `GET /stokvels` and `GET /stokvels/{id}` through the generated client. `stokvels.mock.ts` is deleted. `fee_amount`, names and `contribution_fiat_estimate` may be null. The payout reference on screen is `remittance_id`. The pool figure is members × `contribution_fiat_estimate` while `pool_fiat_amount` is null. The response has no `payout_ready`: setup only knows the caller's `my_beneficiary`. The admin contract page and the admin rounds page stay on their mocks (pause and unpause return only `tx_hash`; no rounds list, #247) | |
 | 2026-10-24 | 2, 9, 10 | R5-02 (#263): GCP Cloud Run gets `STOKVEL_CONTRACT_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `STOKVEL_SYNC_START_BLOCK` (defaults from `contracts/deployments/xrplEvmTestnet.json`; `TF_VAR_*` overrides; empty omits). `EVM_STOKVEL_ADMIN_KEY_ENCRYPTED` is a worker-only secret; `EVM_STOKVEL_ADMIN_ADDRESS` is worker-only and has no default. XRPL settings stay (D11). Legacy Render is not the deploy path and was not changed | |
 | 2026-10-21 | 4, 5, 6, 8, 13, 14 | R3-07 (#244): `POST /admin/stokvel-contract/pause` and `/unpause` (`stokvel:contract:pause`, compliance officer), audit `stokvel.contract.paused` / `unpaused`, worker `stokvel.pause_contract` / `unpause_contract` via Fernet `EVM_STOKVEL_ADMIN_*`, `stokvel_contract.pause` / `unpause` / `paused`, API refuses contributions with 503 `stokvel_paused` when `paused()` is true | |
@@ -635,7 +636,7 @@ All stokvel tasks are registered as `stokvel.<name>` in `api/remitx_worker/stokv
 | `POST /stokvels/{id}/contributions` | Member | Contribute to the current round. **Built (R2-11, #233).** No body: the API takes the open round (the first round without a contribution from every member, the contract's `openRound` rule) and the stokvel's fixed amount, charges the member at the live rate, and answers 201 with the `pending` contribution (`StokvelContributionRead`: `contribution_id`, `stokvel_id`, `cycle_number`, `round`, `status`, `currency`, `amount_token`, `amount_fiat`, `fee_amount` (the member's fee share, D6), `amount_zar`, `created_at`). The member's account must cover `amount_fiat` + `fee_amount`. Refusals in section 6 |
 | `GET /stokvels/{id}` | Member | Member screen data. **Built (R2-14, #236)** |
 | `POST /admin/stokvel-contract/pause` and `/unpause` | Administrator | Emergency stop and resume. Pause takes a required `reason` in the request body |
-| `POST /admin/stokvels/{id}/rounds/{n}/finalise` | Administrator | Manual fallback if automatic finalisation fails (if P5 is approved). Audit-logged. A round that is not ready returns 409 `round_not_finalisable` |
+| `POST /admin/stokvels/{id}/rounds/{n}/finalise` | `stokvel:round:finalise` (compliance officer) | **Built (R3-10, #247).** Manual fallback (P5). See below |
 | `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel. **Not in v1** (P4). Takes a required `reason` in the request body |
 
 ### Create and list stokvels (R2-07, built)
@@ -745,6 +746,25 @@ In one transaction, holding the `stokvels` row lock as the setup routes and acce
 | 409 | Stokvel deactivated; no `forming` cycle; the cycle has started; fewer than 2 members; a member without a place in the payout order or a beneficiary, or the members changed since the order was set |
 | 422 | More members than `MAX_STOKVEL_MEMBERS`; the wrong number of rounds, or times out of order; invalid request body |
 
+### Manual finalise (R3-10, built)
+
+Admin route, tag `admin.stokvels` (client: `api.admin.stokvels.finaliseStokvelRound`). Permission `stokvel:round:finalise`, granted to the compliance officer. No request body.
+
+**`POST /admin/stokvels/{id}/rounds/{n}/finalise`** → `202 StokvelRoundFinaliseResponse`: `stokvel_id`, `cycle_id`, `cycle_number`, `round` (0-based, the path's `n`). The round is the open cycle's. The API reads the vault first (`isFinalisable`, and `getCycle` when that is false, so an already released round is told apart from one that is not ready). A ready round queues `stokvel.release_pool` (section 4). The worker sends `finalise` and records the release; this route does not wait for the hash. The audit entry `stokvel.round.finalised_manually` is written after the queue, with the cycle, the round, the payout's release status and transaction hash if a payout row already has them, and `enqueued: true`.
+
+A second call while the chain still says the round is ready queues the task again. That does not release twice: `release_pool` claims the payout once, and `record_pool_release` books the leg once (section 4). Once the chain says the round is released, the route answers 409 and queues nothing.
+
+The admin rounds page still uses its mock for the list and the button. No admin route lists rounds yet.
+
+| Status | When |
+|---|---|
+| 401 | Not signed in |
+| 403 | Missing `stokvel:round:finalise` |
+| 404 | Unknown stokvel |
+| 409 | No open cycle (`cycle_not_open`); the cycle is not on the chain yet, or the chain has no open cycle for it (`cycle_starting`); the round is not ready (`round_not_finalisable`); the round is already released (`round_already_finalised`) |
+| 422 | `n` is outside 0..255 |
+| 503 | The vault is paused (`stokvel_paused`), or it cannot be read |
+
 ### Audit log of admin actions
 
 Admin actions on stokvels are recorded in the **existing** audit log (`audit_log`, written only through `audit_service.record_audit`, append-only, read through `GET /admin/audit` with `audit:read`). No new table is needed: action strings are free text in the database, and the `AuditAction` and `AuditSubject` enums in `models/orm/audit_log.py` gain new members. The entry is staged in the same transaction as the action, as for every other audit entry, and never contains PII: ids, round numbers, statuses and transaction hashes only.
@@ -753,13 +773,13 @@ Admin actions on stokvels are recorded in the **existing** audit log (`audit_log
 |---|---|---|---|---|
 | Pause the contract | `stokvel.contract.paused` | `stokvel_contract` | `STOKVEL_CONTRACT_SUBJECT_ID` | paused flag; `reason` required |
 | Resume the contract | `stokvel.contract.unpaused` | `stokvel_contract` | `STOKVEL_CONTRACT_SUBJECT_ID` | paused flag |
-| Manual finalise (P5) | `stokvel.round.finalised_manually` | `stokvel` | stokvel id | cycle, round, release status, transaction hash if known |
+| Manual finalise (P5) | `stokvel.round.finalised_manually` | `stokvel` | stokvel id | cycle number, round, release status, transaction hash if a payout row has one, `enqueued` |
 
 Cancellation is not an action: P4 is not in v1 (#208), so there is no `stokvel.cancelled`.
 
 - Only actions by a real staff member are logged here (`actor_user_id` is never null). The automatic release, event sync and refund tasks are system actions; their trail is the ledger, `stokvel_payouts` and the contract events.
 - Filter `GET /admin/audit` by `subject_type=stokvel` or `stokvel_contract`.
-- The admin audit page gets a stokvel filter (R4-12). Pause and manual finalise write these entries (R3-07, R3-10).
+- The admin audit page gets a stokvel filter (R4-12). Pause (R3-07) and manual finalise (R3-10) write these entries.
 
 The admin finalise route removed from an earlier draft is back as a fallback only (P5). Finalisation is still automatic by default (D5).
 
@@ -972,8 +992,8 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Start a cycle | In review | #232 | `POST /stokvels/{id}/cycles` with the round schedule; `stokvel.start_cycle` registers it on-chain (`createStokvel`, `startCycle`) and records it, `stokvel.register_started_cycles` re-queues any left unregistered; contributions wait for it (`cycle_starting`) |
 | DB models and migrations | In progress | #226, #227, #228, #238, #239, #240, #232 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301); cycle tables with row-level security (#227, PR #306); contribution table (#228, PR #338); payout table (#240, PR #342). In review: cycle on-chain registration columns (#232) |
 | Worker tasks | In progress | #234, #235, #232, #241, #242, #243 | Section 4. Built: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234), `stokvel.sync_events` (#235). In review: `stokvel.start_cycle`, `stokvel.register_started_cycles` (#232); `stokvel.release_pool` and release recording (#241); `stokvel.settle_payout`, the payout remittance (#242); payout settlement through the existing burn chain (#243). Next: scheduled release (#248) |
-| API routes | In progress | #229, #230, #231, #233, #236, #297 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cycles` (#232); `POST /stokvels/{id}/contributions` (#233); invitations (#230); revoking an invitation (#297); payout order and beneficiary (#231, PR #347) |
-| Stokvel audit log (admin actions) | Done (writers still R3-07, R3-10) | #249 | Section 5. Actions and subjects on the existing audit log. Pause and manual finalise still call `record_audit` |
+| API routes | In progress | #229, #230, #231, #233, #236, #297, #247 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cycles` (#232); `POST /stokvels/{id}/contributions` (#233); invitations (#230); revoking an invitation (#297); payout order and beneficiary (#231, PR #347); `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247) |
+| Stokvel audit log (admin actions) | Done | #249, #244, #247 | Section 5. Actions and subjects on the existing audit log. Pause (R3-07) and manual finalise (R3-10) call `record_audit` |
 | Frontend screens | In progress | #251, #258 | Routes and nav (#251). Member list and detail call the API (#258). Admin contract and rounds pages stay on mocks: no contract read, and no rounds list (#247) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
@@ -1027,7 +1047,8 @@ _Add one entry per feature as it lands: what it does, who owns it, PR link._
 | Stokvel invitations | The Organiser invites a verified user by account reference in the Stokvel currency; the invitee accepts (becoming a Member, within `MAX_STOKVEL_MEMBERS`) or declines; the Organiser may revoke it while it is pending. Nobody becomes a Member without accepting, enforced by the API and by row-level security | Claire (Role 2) | #230, #297 |
 | Payout order and beneficiary | Before a cycle starts, the Organiser enters the payout order the members agreed (every current member once) and each member chooses which of their beneficiaries the stokvel pays their pool to, in that beneficiary's payout currency. Both can change until the cycle starts, then are locked. A new stokvel opens its first cycle as `forming`, and members who accept join it | Claire (Role 2) | #231 |
 | Member stokvel screens on the API | List, detail, invite, accept, decline, beneficiary, payout order, start cycle and contribute go through the generated client. Detail is `GET /stokvels/{id}` | Karabo (Role 4) | #258 |
-| Stokvel audit actions | `AuditAction` and `AuditSubject` can record a contract pause, a resume and a manual finalise. List them with `subject_type`. The routes are still R3-07 and R3-10 | Katlego (Role 3) | #249 |
+| Stokvel audit actions | `AuditAction` and `AuditSubject` can record a contract pause, a resume and a manual finalise. List them with `subject_type`. Pause and manual finalise both call `record_audit` | Katlego (Role 3) | #249, #244, #247 |
+| Manual round release | `POST /admin/stokvels/{id}/rounds/{n}/finalise`: an administrator queues `finalise` for one ready round when the automatic release has not. The contract still refuses a round that is not ready, and a round is released and credited once | Katlego (Role 3) | #247 |
 | Cloud EVM settings | QA and production Cloud Run get `STOKVEL_CONTRACT_ADDRESS`, `MAX_STOKVEL_MEMBERS` and `STOKVEL_SYNC_START_BLOCK` from Terraform (testnet defaults). The vault admin key is a worker-only secret. XRPL variables stay deployed, unused | Katlego (Role 3) | #263 |
 
 ## 11. How things are connected
@@ -1050,7 +1071,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 4. Each member chooses a Payout beneficiary and payout currency (the account must already exist).
 5. The Organiser starts the cycle once at least two members are ready. Invitations not yet accepted lapse. Membership, order and beneficiaries are now locked.
 6. Each round, every member contributes before the deadline (informational only).
-7. The contract finalises automatically once the round is fully paid and its payout time has passed (a scheduled task releases it if everyone paid early); the payout remittance goes to the scheduled member's beneficiary; the member sees status, hashes and the remittance reference.
+7. The contract finalises automatically once the round is fully paid and its payout time has passed (a scheduled task releases it if everyone paid early). An administrator can release that same round by hand if the automatic release has not (`POST /admin/stokvels/{id}/rounds/{n}/finalise`, P5). The payout remittance goes to the scheduled member's beneficiary; the member sees status, hashes and the remittance reference.
 8. After the last round the cycle closes. Each member chooses to continue or leave, and may change their beneficiary; a new cycle can then start.
 
 ## 13. Files created
@@ -1086,6 +1107,10 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/alembic/versions/V20261016_1500__transactions_rls_stokvel_account_legs.py` | Two `transactions` policies: members read legs on their stokvel's `STOKVEL` account; current members record only the token leg (Treasury → their stokvel's account); no update or delete | #233 |
 | `api/tests/test_stokvel_contributions_route.py` | The route's rules, legs, fee and daily and monthly limits, and a duplicate that slips past the paid check (SQLite); the token leg, member-only reads and two payments at once under RLS (`postgres` lane) | #233 |
 | `api/remitx_worker/stokvel_tasks.py` | The stokvel worker tasks: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234); `stokvel.start_cycle`, `stokvel.register_started_cycles` (#232) | #234, #232 |
+| `api/remitx_api/routes/admin/stokvels.py` | `POST /admin/stokvels/{id}/rounds/{n}/finalise` | #247 |
+| `api/remitx_api/services/stokvel_contract_read.py` | Read-only vault calls from the API: `paused` (#244); `finalise_readiness` (#247) | #244, #247 |
+| `api/alembic/versions/V20261024_2100__add_stokvel_round_finalise_permission.py` | `stokvel:round:finalise` and the compliance officer grant | #247 |
+| `api/tests/test_admin_stokvel_finalise.py` | Ready, not ready, already released, paused, and the chain read's classification | #247 |
 | `api/remitx_worker/stokvel_contract.py` | Wrapper over the vault: `contribute`, the Treasury allowance, revert decoding (#234); `get_stokvel`, `create_stokvel`, `start_cycle` (#232); R3-04 adds `finalise` | #234, #232 |
 | `api/remitx_worker/abi/StokvelVault.json` | Copy of `contracts/abi/StokvelVault.json` for the worker image (built from `api/` only); a test fails if they differ | #234 |
 | `api/remitx_worker/stokvel_sync.py` | Applies the vault's events to the database (`apply_event`) | #235 |
@@ -1156,7 +1181,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvel-schedule.ts`, `stokvel-schedule.test.ts` | Round schedule from a cadence, first payout and pay-by days, in the start-cycle body's shape, checked like the contract's `_validateSchedule` | #255 |
 | `frontend/app/components/stokvels/payout-beneficiary-card.tsx`, `cycle-setup.tsx` | Member's payout beneficiary choice (reuses `AddBeneficiaryForm`); Organiser's payout order, schedule with pay-by dates, readiness list and Start cycle | #255 |
 | `frontend/app/components/stokvels/pot-ring.tsx`, `contribution-panel.tsx`, `payout-status.tsx`, `round-schedule.tsx` | Member screen pieces: the pot, Pay now with the confirm sheet and refusals, the payout tracker, payout order and round history | #254 |
-| `frontend/app/lib/stokvel-admin.ts`, `stokvel-admin.mock.ts`, `stokvel-admin.test.ts`, `frontend/app/routes/admin/stokvel-rounds.tsx`, `frontend/app/components/admin/stokvel-finalise-button.tsx` | Admin rounds list and manual release: readiness hint, refusal wording, mocked until #247 | #260 |
+| `frontend/app/lib/stokvel-admin.ts`, `stokvel-admin.mock.ts`, `stokvel-admin.test.ts`, `frontend/app/routes/admin/stokvel-rounds.tsx`, `frontend/app/components/admin/stokvel-finalise-button.tsx` | Admin rounds list and manual release: readiness hint and refusal wording. The list and the button stay on the mock until a rounds list route; the finalise API is #247. The sidebar item needs `stokvel:round:finalise` | #260, #247 |
 | `tools/seeder/remitx_seeder/stories/stokvel.py` | The stokvel demo story: three named members, verified and funded, a stokvel ready to start and a second with an invitation pending | #268 |
 | `tools/seeder/remitx_seeder/stories/stokvel_plan.py` | Who the demo's members are and which stokvels they are in. Plain data with no backend import, so scenario validation in the seeder UI stays free of `remitx_api` | #268 |
 | `tools/seeder/scenarios/demo.json` | The `demo` scenario: Reset, then seed it, to prepare the demo | #268 |
@@ -1247,6 +1272,11 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `PayoutSetupLockedError`, `CycleNotFormingError`, `InvalidPayoutOrderError`; `NotStokvelOrganiserError(action)` (changed) | `api/remitx_api/errors/stokvels.py` | The R2-09 refusals (section 6) | #231 |
 | `BeneficiaryInUseError`; `BeneficiaryController.delete` (changed) | `api/remitx_api/errors/beneficiaries.py`, `api/remitx_api/controllers/beneficiary_controller.py` | Refuse to delete a beneficiary a stokvel cycle pays: 409 `beneficiary_in_use_by_stokvel` (section 6) | #231 |
 | `STOKVEL_CONTRACT_SUBJECT_ID`; `AuditAction.STOKVEL_CONTRACT_PAUSED`, `.STOKVEL_CONTRACT_UNPAUSED`, `.STOKVEL_ROUND_FINALISED_MANUALLY`; `AuditSubject.STOKVEL`, `.STOKVEL_CONTRACT` | `api/remitx_api/models/orm/audit_log.py` | The stokvel admin-action values. The contract id is fixed because one deployment holds every stokvel (section 5) | #249 |
+| `StokvelAdminController.finalise_round` | `api/remitx_api/controllers/stokvel_admin_controller.py` | Queue `stokvel.release_pool` for one round of the open cycle after the chain says it is ready, then write `stokvel.round.finalised_manually` | #247 |
+| `finalise_readiness`, `classify_finalise`, `FinaliseReadiness` | `api/remitx_api/services/stokvel_contract_read.py` | Read `isFinalisable` and `getCycle` and say whether `finalise` would release, refuse, or finds no open cycle. Fails closed when the vault cannot be read | #247 |
+| `RoundNotFinalisableError`, `RoundAlreadyFinalisedError` | `api/remitx_api/errors/stokvels.py` | 409 `round_not_finalisable` and `round_already_finalised` (section 6) | #247 |
+| `finalise_stokvel_round` (route) | `api/remitx_api/routes/admin/stokvels.py` | `POST /admin/stokvels/{id}/rounds/{n}/finalise`, response `StokvelRoundFinaliseResponse` | #247 |
+| `PermissionCode.STOKVEL_ROUND_FINALISE` | `api/remitx_api/models/orm/permission.py` | `stokvel:round:finalise`, granted to the compliance officer | #247 |
 | `plan_members`, `refuse_if_already_seeded`, `StokvelDemoStory` | `tools/seeder/remitx_seeder/stories/stokvel.py` | Plan the demo's three members; refuse a second demo on the same database; fund them for every stokvel they are in; set up both stokvels through the stokvel controllers; report an unfinished setup as a refusal | #268 |
 | `MoneyStory.deposit_to_keep`, `MoneyStory.recipient_pool`, `MoneyStory.add_beneficiary` | `tools/seeder/remitx_seeder/stories/money.py` | A reconciled deposit with no sends or cash-out; who may become a sender's beneficiary (shared by the money and demo stories); add one and return it | #268 |
 | `SeededPerson.scripted`; `clerk.can_sign_in` | `tools/seeder/remitx_seeder/context.py`, `clerk.py` | A person a story owns, whom the engine and other stories leave alone; whether a `clerk_user_id` is a real Clerk account | #268 |
