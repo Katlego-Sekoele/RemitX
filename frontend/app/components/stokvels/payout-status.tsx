@@ -71,7 +71,9 @@ export function PayoutStatus({
   beneficiaryName: string | null
   payoutCurrency: string | null
   currency: string
-  pool: string
+  /** Members × today's fiat estimate. Null when the rate is missing.
+   * `round.pool_fiat_amount` stays null until #241. */
+  pool: string | null
   paid: number
   members: number
   outstandingNames: string[]
@@ -81,8 +83,8 @@ export function PayoutStatus({
   const active = stepNumber(stage)
   const to = beneficiaryName ?? `${recipientName}'s beneficiary`
   const sendingTitle = `Sending to ${to}`
-
   const proof = payoutProofHash(round)
+  const poolShown = round.pool_fiat_amount ?? pool
 
   return (
     <Card>
@@ -120,14 +122,16 @@ export function PayoutStatus({
           <DescriptionItem>
             <DescriptionTerm>Pool ({members} × member)</DescriptionTerm>
             <DescriptionDetails>
-              {formatMoney(round.pool_fiat_amount ?? pool, currency)}
+              {poolShown
+                ? formatMoney(poolShown, currency)
+                : "Today's rate is unavailable"}
             </DescriptionDetails>
           </DescriptionItem>
-          {round.remittance_reference ? (
+          {round.remittance_id ? (
             <DescriptionItem>
               <DescriptionTerm>Reference</DescriptionTerm>
               <DescriptionDetails>
-                <code className="font-mono">{round.remittance_reference}</code>
+                <code className="font-mono">{round.remittance_id}</code>
               </DescriptionDetails>
             </DescriptionItem>
           ) : null}

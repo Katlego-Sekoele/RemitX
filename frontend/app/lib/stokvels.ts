@@ -1,12 +1,9 @@
-/** Stokvel screen data and helpers (R4-02, #251).
+/** Stokvel screen data and helpers (R4-02, #251; wired in R4-09, #258).
  *
- * Built routes use the generated client and its types (`~/client`):
- * `GET` and `POST /stokvels` (R2-07, #229). `GET /stokvels/{id}` (#236) is
- * built, and the screen still reads `stokvels.mock.ts` until R4-09 (#258).
- * The detail types below are the frontend's assumption from
- * docs/stokvel_integration.md §3 and §5, each marked `R4-09`. R4-09
- * replaces them and deletes the mock. In development the list also shows
- * the mock's demo stokvels, so every screen state can be opened.
+ * Member screens use the generated client (`~/client`) and its types.
+ * `GET /stokvels/{id}` is `stokvelQueries.detail`. The admin contract page
+ * and the admin rounds page stay on their own mocks: pause and unpause
+ * return only a transaction hash, and there is no rounds list (#247).
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
@@ -18,33 +15,30 @@ import {
   type SentStokvelInvitationRead,
   type StokvelContributionRead,
   type StokvelCycleStartRequest,
-  type StokvelInvitationCreateRequest,
-  type StokvelInvitationRead,
-  type StokvelListRead,
+  type StokvelDetailCycleRead,
+  type StokvelDetailRead,
   type StokvelRead,
+  type StokvelInvitationCreateRequest,
+  type StokvelMemberRead,
+  type StokvelRoundContributionRead,
+  type StokvelRoundRead,
 } from "~/client"
 import { amountToCents, fromCents } from "~/lib/money"
-import type { StokvelRoundTimes } from "~/lib/stokvel-schedule"
-import {
-  demoStokvelsMock,
-  acceptInvitationMock,
-  contributeMock,
-  declineInvitationMock,
-  getStokvelContractStatusMock,
-  getStokvelMock,
-  inviteMock,
-  setMyBeneficiaryMock,
-  setPayoutOrderMock,
-  startCycleMock,
-} from "~/lib/stokvels.mock"
 
 export type {
   SentStokvelInvitationRead,
+  StokvelBeneficiaryChoiceRead,
   StokvelContributionRead,
   StokvelCreateRequest,
+  StokvelDetailCycleRead,
+  StokvelDetailInvitationRead,
+  StokvelDetailRead,
   StokvelInvitationRead,
   StokvelListRead,
+  StokvelMemberRead,
   StokvelRead,
+  StokvelRoundContributionRead,
+  StokvelRoundRead,
 } from "~/client"
 
 // Status values from docs/stokvel_integration.md §3 "Status values and
@@ -95,214 +89,39 @@ export const RemittanceStatus = {
 export type RemittanceStatus =
   (typeof RemittanceStatus)[keyof typeof RemittanceStatus]
 
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelMemberRead = {
-  member_id: string
-  user_id: string
-  /** "Tendai M."; null when the member has no first name (#236). */
-  full_name: string | null
-  is_organiser: boolean
-  is_me: boolean
-  joined_at: string
-  /** Has chosen a payout beneficiary for the next cycle. A cycle starts
-   * only when every member has (#232). */
-  payout_ready: boolean
-}
-
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelRoundRead = {
-  /** 0-based, like the contract and `stokvel_cycles.current_round`. */
-  round: number
-  start_time: string
-  deadline: string
-  payout_time: string
-  recipient_member_id: string
-  release_status: ReleaseStatus | null
-  remittance_status: RemittanceStatus | null
-  remittance_id: string | null
-  release_tx_hash: string | null
-  burn_tx_hash: string | null
-  /** The pool in the Stokvel currency once released; null before. */
-  pool_fiat_amount: string | null
-  /** The payout remittance's reference once it exists. */
-  remittance_reference: string | null
-}
-
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelCycleRead = {
-  cycle_id: string
-  cycle_number: number
-  status: CycleStatus
-  current_round: number
-  total_rounds: number
-  started_at: string | null
-  closed_at: string | null
-  /** Member ids in payout order; index = round. While forming, the order
-   * the Organiser has entered so far (D3), empty until then (#236). */
-  payout_order: string[]
-  rounds: StokvelRoundRead[]
-}
-
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelRoundContributionRead = {
-  contribution_id: string
-  cycle_id: string
-  round: number
-  member_id: string
-  amount_fiat: string
-  amount_token: string
-  /** The member's fee share, paid on top (D6), as the API's `fee_amount`. */
-  fee_amount: string
-  status: ContributionStatus
-  evm_tx_hash: string | null
-  created_at: string
-}
-
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelBeneficiaryChoice = {
-  beneficiary_id: string
-  full_name: string
-  payout_currency: string
-}
-
-/** `GET /stokvels/{id}`: everything the member screen shows (#236, built).
- * R4-09 (#258): replace with `~/client`. Everything past `StokvelRead`
- * is still the screen's assumption. */
-export type StokvelDetailRead = StokvelRead & {
-  organiser_name: string
-  /** Fiat estimate of `contribution_amount` at today's rate, 2 dp. */
-  contribution_fiat_estimate: string
-  /** Derived from the current cycle; `forming` when none has started. */
-  phase: CycleStatus
-  current_round: number | null
-  total_rounds: number | null
-  next_payout_time: string | null
-  my_contribution_status: ContributionStatus | null
-  my_member_id: string
-  my_beneficiary: StokvelBeneficiaryChoice | null
-  members: StokvelMemberRead[]
-  invitations: SentStokvelInvitationRead[]
-  cycle: StokvelCycleRead | null
-  contributions: StokvelRoundContributionRead[]
-  /** True for a real stokvel built from its list row while
-   * `GET /stokvels/{id}` (#236) isn't wired: its phase, members and
-   * invitations aren't known, so nothing may act on them. R4-09: drop. */
-  partial: boolean
-}
-
-/** Admin view of the contract (R3-07, #244). */
-/** R4-09: assumed until #236 (or #244 for the contract). */
-export type StokvelContractStatusRead = {
-  address: string
-  network: string
-  paused: boolean
-  treasury_token_balance: string
-}
-
-/** Mock ids start `stk_`; the API's are UUIDs. */
-export function isDemoStokvel(stokvelId: string): boolean {
-  return stokvelId.startsWith("stk_")
-}
-
-/** The mock's invitation ids start `inv_`; the API's are UUIDs. */
-export function isDemoInvitation(invitationId: string): boolean {
-  return invitationId.startsWith("inv_")
-}
-
-/** Whether a call goes to the mock: a demo id, in development only. In
- * production a demo id goes to the API like any other and is not found. */
-function usesMock(isDemo: boolean): boolean {
-  return import.meta.env.DEV && isDemo
-}
-
-/**
- * A real stokvel shown from the list until R4-09 (#258) calls
- * `GET /stokvels/{id}`: a forming stokvel, priced at today's rate.
- */
-async function detailFromList(
-  stokvelId: string,
-  signal: AbortSignal
-): Promise<StokvelDetailRead> {
-  const { data } = await sdk.stokvels.listStokvels({
-    signal,
-    throwOnError: true,
-  })
-  const row = data.stokvels.find((s) => s.stokvel_id === stokvelId)
-  if (!row) throw new Error("Stokvel not found")
-  const { data: preview } = await sdk.quotes.previewQuote({
-    body: {
-      sender_amount: "1000.00",
-      sender_currency: row.currency,
-      receiver_payout_currency: row.currency,
-    },
-    signal,
-    throwOnError: true,
-  })
-  return {
-    ...row,
-    organiser_name: row.is_organiser ? "you" : "the organiser",
-    contribution_fiat_estimate: tokenToFiat(
-      row.contribution_amount,
-      preview.fiat_to_token_exchange_rate
-    ),
-    phase: CycleStatus.forming,
-    current_round: null,
-    total_rounds: null,
-    next_payout_time: null,
-    my_contribution_status: null,
-    my_member_id: "",
-    my_beneficiary: null,
-    members: [],
-    invitations: [],
-    cycle: null,
-    contributions: [],
-    partial: true,
-  }
-}
-
 export const stokvelQueries = {
-  /** `GET /stokvels`, plus the mock's demo stokvels in development. */
+  /** `GET /stokvels`. */
   list: () =>
     queryOptions({
       queryKey: ["stokvels", "list"],
-      queryFn: async ({ signal }): Promise<StokvelListRead> => {
+      queryFn: async ({ signal }) => {
         const { data } = await sdk.stokvels.listStokvels({
           signal,
           throwOnError: true,
         })
-        if (!import.meta.env.DEV) return data
-        const demo = await demoStokvelsMock()
-        return {
-          stokvels: [...data.stokvels, ...demo.stokvels],
-          invitations: [...data.invitations, ...demo.invitations],
-        }
+        return data
       },
     }),
-  /** R4-09 (#258): `GET /stokvels/{id}`. Real ids still use `detailFromList`. */
+  /** `GET /stokvels/{id}` (#236). */
   detail: (stokvelId: string) =>
     queryOptions({
       queryKey: ["stokvels", "detail", stokvelId],
-      // Demo data only in development, like the list: in production a
-      // `stk_` id is looked up like any other and is not found.
-      queryFn: ({ signal }) =>
-        usesMock(isDemoStokvel(stokvelId))
-          ? getStokvelMock(stokvelId)
-          : detailFromList(stokvelId, signal),
-    }),
-  contract: () =>
-    queryOptions({
-      queryKey: ["admin", "stokvel-contract"],
-      queryFn: () => getStokvelContractStatusMock(),
+      queryFn: async ({ signal }) => {
+        const { data } = await sdk.stokvels.getStokvel({
+          path: { stokvel_id: stokvelId },
+          signal,
+          throwOnError: true,
+        })
+        return data
+      },
     }),
 }
 
 /** Mutations in the shape `useMutation` spreads, like the client's. */
 export const stokvelMutations = {
-  /** `POST /stokvels/{id}/contributions` (#233, built): pays the open round
-   * and returns it `pending`. Demo stokvels pay the mock. */
+  /** `POST /stokvels/{id}/contributions` (#233): pays the open round. */
   contribute: (stokvelId: string) => ({
     mutationFn: async (): Promise<StokvelContributionRead> => {
-      if (usesMock(isDemoStokvel(stokvelId))) return contributeMock(stokvelId)
       const { data } = await sdk.stokvels.contributeToStokvel({
         path: { stokvel_id: stokvelId },
         throwOnError: true,
@@ -310,12 +129,11 @@ export const stokvelMutations = {
       return data
     },
   }),
-  /** `POST /stokvels/{id}/invitations` (#230, built): Organiser only. */
+  /** `POST /stokvels/{id}/invitations` (#230): Organiser only. */
   invite: (stokvelId: string) => ({
     mutationFn: async (
       body: StokvelInvitationCreateRequest
     ): Promise<SentStokvelInvitationRead> => {
-      if (usesMock(isDemoStokvel(stokvelId))) return inviteMock(stokvelId, body)
       const { data } = await sdk.stokvels.inviteToStokvel({
         path: { stokvel_id: stokvelId },
         body,
@@ -324,13 +142,10 @@ export const stokvelMutations = {
       return data
     },
   }),
-  /** `POST /invitations/{id}/accept` (#230, built): the invitee joins and
+  /** `POST /invitations/{id}/accept` (#230): the invitee joins and
    * gets back the stokvel. */
   acceptInvitation: () => ({
     mutationFn: async (invitationId: string): Promise<StokvelRead> => {
-      if (usesMock(isDemoInvitation(invitationId))) {
-        return acceptInvitationMock(invitationId)
-      }
       const { data } = await sdk.stokvels.acceptStokvelInvitation({
         path: { invitation_id: invitationId },
         throwOnError: true,
@@ -338,13 +153,10 @@ export const stokvelMutations = {
       return data
     },
   }),
-  /** `PUT /stokvels/{id}/members/me/beneficiary` (#231, built): the payout
+  /** `PUT /stokvels/{id}/members/me/beneficiary` (#231): the payout
    * goes to this beneficiary in their saved payout currency. */
   setMyBeneficiary: (stokvelId: string) => ({
     mutationFn: async (beneficiary: BeneficiaryRead): Promise<void> => {
-      if (usesMock(isDemoStokvel(stokvelId))) {
-        return setMyBeneficiaryMock(stokvelId, beneficiary)
-      }
       await sdk.stokvels.setMyBeneficiary({
         path: { stokvel_id: stokvelId },
         body: { beneficiary_id: beneficiary.beneficiary_id },
@@ -352,12 +164,9 @@ export const stokvelMutations = {
       })
     },
   }),
-  /** `PUT /stokvels/{id}/payout-order` (#231, built): Organiser only. */
+  /** `PUT /stokvels/{id}/payout-order` (#231): Organiser only. */
   setPayoutOrder: (stokvelId: string) => ({
     mutationFn: async (body: StokvelPayoutOrderRequest): Promise<void> => {
-      if (usesMock(isDemoStokvel(stokvelId))) {
-        return setPayoutOrderMock(stokvelId, body)
-      }
       await sdk.stokvels.setPayoutOrder({
         path: { stokvel_id: stokvelId },
         body,
@@ -365,13 +174,10 @@ export const stokvelMutations = {
       })
     },
   }),
-  /** `POST /stokvels/{id}/cycles` (#232, built in #348): one round per
-   * current member, in payout order. Pending invitations lapse. */
+  /** `POST /stokvels/{id}/cycles` (#232): one round per current member,
+   * in payout order. Pending invitations lapse. */
   startCycle: (stokvelId: string) => ({
     mutationFn: async (body: StokvelCycleStartRequest): Promise<void> => {
-      if (usesMock(isDemoStokvel(stokvelId))) {
-        return startCycleMock(stokvelId, body)
-      }
       await sdk.stokvels.startStokvelCycle({
         path: { stokvel_id: stokvelId },
         body,
@@ -379,13 +185,9 @@ export const stokvelMutations = {
       })
     },
   }),
-  /** `POST /invitations/{id}/decline` (#230, built). Revoking (#297) is not
-   * built yet, so the Organiser has no Revoke button. */
+  /** `POST /invitations/{id}/decline` (#230). */
   declineInvitation: () => ({
     mutationFn: async (invitationId: string): Promise<void> => {
-      if (usesMock(isDemoInvitation(invitationId))) {
-        return declineInvitationMock(invitationId)
-      }
       await sdk.stokvels.declineStokvelInvitation({
         path: { invitation_id: invitationId },
         throwOnError: true,
@@ -397,7 +199,7 @@ export const stokvelMutations = {
 /** Invitations still waiting for an answer. */
 export function pendingInvitations(
   detail: Pick<StokvelDetailRead, "invitations">
-): SentStokvelInvitationRead[] {
+): StokvelDetailRead["invitations"] {
   return detail.invitations.filter(
     (invitation) => invitation.status === InvitationStatus.pending
   )
@@ -411,16 +213,10 @@ export function pendingInvitations(
 export function canInvite(
   detail: Pick<
     StokvelDetailRead,
-    | "phase"
-    | "is_organiser"
-    | "member_count"
-    | "max_members"
-    | "deactivated_at"
-    | "partial"
+    "phase" | "is_organiser" | "member_count" | "max_members" | "deactivated_at"
   >
 ): boolean {
   return (
-    !detail.partial &&
     detail.deactivated_at === null &&
     detail.phase === CycleStatus.forming &&
     detail.is_organiser &&
@@ -456,7 +252,10 @@ export function firstNameOf(
 /** Why the Organiser can't start the cycle yet, in the order to fix them
  * (#232's `too_few_members` and `cycle_not_ready`); empty when it can. */
 export function startCycleBlockers(
-  detail: Pick<StokvelDetailRead, "members" | "cycle" | "phase">,
+  detail: Pick<
+    StokvelDetailRead,
+    "members" | "cycle" | "phase" | "my_beneficiary"
+  >,
   order: readonly string[] = plannedPayoutOrder(detail)
 ): string[] {
   if (detail.phase !== CycleStatus.forming) return []
@@ -464,14 +263,11 @@ export function startCycleBlockers(
   if (detail.members.length < 2) {
     blockers.push("A cycle needs at least 2 members.")
   }
-  for (const member of detail.members) {
-    if (!member.payout_ready) {
-      blockers.push(
-        member.is_me
-          ? "Choose your payout beneficiary."
-          : `${firstNameOf(member)} hasn't chosen a payout beneficiary yet.`
-      )
-    }
+  // Other members' beneficiary choices are not on this response. A missing
+  // one comes back as `cycle_not_ready` when the Organiser starts the cycle.
+  const me = detail.members.find((member) => member.is_me)
+  if (me && detail.my_beneficiary == null) {
+    blockers.push("Choose your payout beneficiary.")
   }
   const everyone = new Set(detail.members.map((m) => m.member_id))
   if (
@@ -507,14 +303,6 @@ export function moveInOrder(
   ;[next[from], next[to]] = [next[to], next[from]]
   return next
 }
-
-/** The development-only scenario knobs, re-exported so pages import every
- * stokvel thing from this file and R4-09 stays a change here. */
-export {
-  resetStokvelMockScenario,
-  simulateInviteesAcceptMock,
-  stokvelMockScenario,
-} from "~/lib/stokvels.mock"
 
 export async function invalidateStokvels(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: ["stokvels"] })
@@ -710,9 +498,15 @@ export function paidMemberIds(
 
 /** The member the current round pays out to, if a cycle is running. */
 export function currentRecipientId(
-  cycle: StokvelCycleRead | null
+  cycle: StokvelDetailCycleRead | null
 ): string | null {
-  if (!cycle || cycle.status !== CycleStatus.active) return null
+  if (
+    !cycle ||
+    cycle.status !== CycleStatus.active ||
+    cycle.current_round == null
+  ) {
+    return null
+  }
   return cycle.payout_order[cycle.current_round] ?? null
 }
 

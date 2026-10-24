@@ -53,11 +53,10 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * The member's stokvels and pending invitations (R4-02 scaffold, #251),
- * from `GET /stokvels` (#229); in development the mock's demo stokvels are
- * added. The create wizard is at app/stokvels/new (#252); invitations are
- * accepted or declined here (#253). Round and payout details live on each stokvel's own
- * page.
+ * The member's stokvels and pending invitations (R4-02, #251), from
+ * `GET /stokvels` (#229). The create wizard is at app/stokvels/new (#252);
+ * invitations are accepted or declined here (#253). Round and payout
+ * details live on each stokvel's own page.
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())

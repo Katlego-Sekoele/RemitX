@@ -1,5 +1,5 @@
 import { ArrowClockwiseIcon, UsersFourIcon } from "@phosphor-icons/react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { Link, useParams } from "react-router"
 
 import { api } from "~/client"
@@ -42,15 +42,11 @@ import { formatMoney } from "~/lib/money"
 import {
   canInvite,
   firstNameOf,
-  invalidateStokvels,
   myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
   pendingInvitations,
   plannedPayoutOrder,
-  resetStokvelMockScenario,
-  simulateInviteesAcceptMock,
-  stokvelMockScenario,
   PHASE_LABELS,
   poolAmount,
   roundLabel,
@@ -71,7 +67,7 @@ export function meta(): Route.MetaDescriptors {
 /**
  * One stokvel, the member screen (R4-05, #254): pot, your contribution and
  * the pay flow, the current round's payout, payout order, members and the
- * round history, all from `GET /stokvels/{id}` (#236, mocked for now).
+ * round history, from `GET /stokvels/{id}` (#236).
  * The organiser's setup (beneficiary, order, start cycle) is R4-06 (#255).
  */
 export default function StokvelPage() {
@@ -137,15 +133,11 @@ export default function StokvelPage() {
     )
   }
 
-  // The member's fiat account in the Stokvel currency; the mock's balance
-  // stands in while the API's stokvel routes do not exist.
   const account = accounts.data?.find(
     (candidate) =>
       candidate.kind === "fiat" && candidate.currency === detail.data.currency
   )
-  const availableBalance = import.meta.env.DEV
-    ? stokvelMockScenario.available_balance
-    : account?.available_balance
+  const availableBalance = account?.available_balance
 
   return (
     <AppPageFrame
@@ -170,20 +162,22 @@ function StokvelDetail({
 }) {
   const cycle = stokvel.cycle
   const active = cycle?.status === "active"
+  const roundIndex = active && cycle ? cycle.current_round : null
+  const totalRounds = active && cycle ? cycle.total_rounds : null
   const paid = paidMemberIds(stokvel)
   const outstanding = outstandingMembers(stokvel)
-  const currentRound = active ? cycle.rounds[cycle.current_round] : undefined
-  const pool = poolAmount(
-    stokvel.contribution_fiat_estimate,
-    stokvel.member_count
-  )
-  const collected = poolAmount(stokvel.contribution_fiat_estimate, paid.size)
+  const currentRound =
+    active && cycle && roundIndex != null
+      ? cycle.rounds.find((round) => round.round === roundIndex)
+      : undefined
+  const estimate = stokvel.contribution_fiat_estimate
+  const pool = estimate ? poolAmount(estimate, stokvel.member_count) : null
+  const collected = estimate ? poolAmount(estimate, paid.size) : null
   const member = (memberId: string) =>
     stokvel.members.find((m) => m.member_id === memberId)
   const mine = myCurrentContribution(stokvel)
-  const recipient = currentRound
-    ? member(currentRound.recipient_member_id)
-    : undefined
+  const recipientId = currentRound?.recipient_member_id
+  const recipient = recipientId ? member(recipientId) : undefined
   const recipientIsMe = recipient?.member_id === stokvel.my_member_id
   const firstName = (m: StokvelMemberRead) => (m.is_me ? "you" : firstNameOf(m))
   const plannedOrder = plannedPayoutOrder(stokvel)
@@ -194,15 +188,19 @@ function StokvelDetail({
         <div className="flex flex-wrap items-center gap-3">
           <PageHeaderTitle>{stokvel.name}</PageHeaderTitle>
           <Badge variant={active ? "default" : "outline"}>
-            {active
-              ? roundLabel(cycle.current_round, cycle.total_rounds)
+            {active && roundIndex != null && totalRounds != null
+              ? roundLabel(roundIndex, totalRounds)
               : PHASE_LABELS[stokvel.phase]}
           </Badge>
         </div>
         <PageHeaderDescription>
-          {formatMoney(stokvel.contribution_fiat_estimate, stokvel.currency)}{" "}
-          per member each round · pool {formatMoney(pool, stokvel.currency)} ·
-          organised by {stokvel.is_organiser ? "you" : stokvel.organiser_name}
+          {estimate && pool
+            ? `${formatMoney(estimate, stokvel.currency)} per member each round · pool ${formatMoney(pool, stokvel.currency)} · `
+            : "Today's exchange rate is unavailable. "}
+          organised by{" "}
+          {stokvel.is_organiser
+            ? "you"
+            : (stokvel.organiser_name ?? "the organiser")}
         </PageHeaderDescription>
       </PageHeader>
 
@@ -210,13 +208,15 @@ function StokvelDetail({
         <>
           <Card>
             <CardContent className="flex flex-col items-center gap-3">
-              <PotRing
-                paid={paid.size}
-                total={stokvel.member_count}
-                collected={collected}
-                pool={pool}
-                currency={stokvel.currency}
-              />
+              {pool && collected ? (
+                <PotRing
+                  paid={paid.size}
+                  total={stokvel.member_count}
+                  collected={collected}
+                  pool={pool}
+                  currency={stokvel.currency}
+                />
+              ) : null}
               <div className="flex flex-wrap justify-center gap-1.5">
                 {stokvel.members.map((m) => (
                   <Badge
@@ -244,7 +244,7 @@ function StokvelDetail({
 
           <PayoutStatus
             round={currentRound}
-            totalRounds={cycle.total_rounds}
+            totalRounds={totalRounds ?? stokvel.member_count}
             recipientName={
               recipientIsMe ? "you" : (recipient?.full_name ?? "a member")
             }
@@ -269,31 +269,15 @@ function StokvelDetail({
             <CardHeader>
               <CardTitle>Setting up</CardTitle>
               <CardDescription>
-                {stokvel.member_count} of {stokvel.max_members} members
-                {/* A stokvel built from its list row (`partial`) doesn't know
-                    its invitations yet: say only what's known. */}
-                {stokvel.partial
-                  ? null
-                  : ` · ${pendingInvitations(stokvel).length} invited`}
+                {stokvel.member_count} of {stokvel.max_members} members ·{" "}
+                {pendingInvitations(stokvel).length} invited
               </CardDescription>
             </CardHeader>
           </Card>
           <PayoutBeneficiaryCard stokvel={stokvel} />
           {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
           {stokvel.is_organiser ? (
-            !stokvel.partial && stokvel.members.length > 0 ? (
-              <CycleSetup stokvel={stokvel} />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Start the cycle</CardTitle>
-                  <CardDescription>
-                    The payout order and Start cycle appear here once the page
-                    can list this stokvel&apos;s members.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            )
+            <CycleSetup stokvel={stokvel} />
           ) : (
             <Card>
               <CardHeader>
@@ -380,70 +364,6 @@ function StokvelDetail({
           memberCount={stokvel.member_count}
         />
       ) : null}
-
-      {import.meta.env.DEV ? (
-        <MockScenarios stokvelId={stokvel.stokvel_id} />
-      ) : null}
     </div>
-  )
-}
-
-/** Development only: the states the screen must show while the API is
- * mocked (doc §6; product docx §7). Removed with the mock in R4-09. */
-function MockScenarios({ stokvelId }: { stokvelId: string }) {
-  const queryClient = useQueryClient()
-  const refresh = () => invalidateStokvels(queryClient)
-  return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <CardTitle>Mock scenarios</CardTitle>
-        <CardDescription>
-          Development only. Change the mocked API&apos;s answer, then pay or
-          start the cycle.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            stokvelMockScenario.paused = !stokvelMockScenario.paused
-            refresh()
-          }}
-        >
-          {stokvelMockScenario.paused ? "Resume stokvels" : "Pause stokvels"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            stokvelMockScenario.available_balance = "100.00"
-            refresh()
-          }}
-        >
-          Low balance
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={async () => {
-            await simulateInviteesAcceptMock(stokvelId)
-            refresh()
-          }}
-        >
-          Invitees accept
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            resetStokvelMockScenario()
-            window.location.reload()
-          }}
-        >
-          Reset
-        </Button>
-      </CardContent>
-    </Card>
   )
 }

@@ -71,8 +71,9 @@ export function meta(): Route.MetaDescriptors {
 /**
  * The stokvel contract and its emergency stop (R4-07, #256): the current
  * state at a glance, Pause (with a required reason for the audit log) and
- * Resume. On mocks until `POST /admin/stokvel-contract/pause|unpause` (#244)
- * exists. The manual finalise button is R4-11 (#260). The page has no
+ * Resume. Pause and unpause exist (#244) but return only a transaction hash,
+ * so the page still reads the mock. The manual finalise button is R4-11 (#260).
+ * The page has no
  * permission gate yet: #244 adds the code on the API, and
  * `lib/permissions.ts` mirrors it then.
  */
