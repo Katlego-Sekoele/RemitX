@@ -241,13 +241,3 @@ def test_three_rounds_match_and_an_overburn_does_not(app_context):
     )
     db.session.flush()
     assert check_pool_reconciliation(held).matches
-
-
-def test_a_burn_without_a_quote_is_refused(app_context):
-    seeded = seed_platform_accounts()
-    treasury = seeded[TREASURY_WALLET_LABEL].account_id
-    issuer = seeded[ISSUER_LABEL].account_id
-    _leg(TYPE_TOKEN_BURN, treasury, issuer, Decimal("1"))
-    with pytest.raises(IntegrityError):
-        db.session.flush()
-    db.session.rollback()

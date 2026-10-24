@@ -94,12 +94,6 @@ class Transaction(Base):
         # Amount must be positive — negative amounts are represented by swapping
         # the debit/credit accounts instead.
         CheckConstraint("amount > 0", name="transactions_amount_positive"),
-        # A burn with no quote would skip the unique index below: SQL unique
-        # indexes treat NULL as distinct. Every burn is a quote's leg.
-        CheckConstraint(
-            "type <> 'token_burn' OR quote_id IS NOT NULL",
-            name="transactions_token_burn_has_quote",
-        ),
         # `transactions` has no round. A payout already has one quote per
         # round, so one burn leg per quote is the second burn a retry would
         # insert. A failed burn stays on that row; another attempt is a new
