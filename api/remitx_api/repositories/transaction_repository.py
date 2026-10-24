@@ -48,7 +48,7 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
                 ),
             )
         )
-        return Decimal(net)
+        return Decimal(str(net))
 
     def amounts(self, tx_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
         """`amount` of each transaction in `tx_ids`. Missing ids are absent."""
