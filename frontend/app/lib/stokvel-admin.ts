@@ -5,8 +5,7 @@
  * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which asks the contract to
  * release the round and writes `stokvel.round.finalised_manually` to the
  * audit log. No admin route lists stokvels and their rounds yet either, so
- * the page reads `stokvel-admin.mock.ts` for both; R4-09 swaps them for the
- * generated client and deletes the mock.
+ * the page reads `stokvel-admin.mock.ts` for both.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
@@ -16,8 +15,8 @@ import {
   listAdminRoundsMock,
 } from "~/lib/stokvel-admin.mock"
 
-/** One round as the admin page lists it. R4-09: replace with `~/client`
- * once #247 (or its list route) is built; the shape is assumed. */
+/** One round as the admin page lists it. Assumed until #247; no route
+ * returns this shape yet. */
 export type AdminStokvelRoundRead = {
   stokvel_id: string
   stokvel_name: string

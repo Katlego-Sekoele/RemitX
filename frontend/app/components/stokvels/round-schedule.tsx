@@ -17,7 +17,7 @@ import {
   payoutProofHash,
   PAYOUT_STAGE_LABELS,
   payoutStage,
-  type StokvelCycleRead,
+  type StokvelDetailCycleRead,
   type StokvelMemberRead,
 } from "~/lib/stokvels"
 
@@ -30,7 +30,7 @@ export function PayoutQueue({
   member,
   myMemberId,
 }: {
-  cycle: StokvelCycleRead
+  cycle: StokvelDetailCycleRead
   member: MemberLookup
   myMemberId: string
 }) {
@@ -41,7 +41,7 @@ export function PayoutQueue({
         <CardTitle>Payout order</CardTitle>
         <CardDescription>
           {cycle.rounds.filter((r) => r.release_status === "released").length}{" "}
-          of {cycle.total_rounds} paid out
+          of {cycle.total_rounds ?? cycle.payout_order.length} paid out
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -50,7 +50,10 @@ export function PayoutQueue({
             const m = member(memberId)
             const name = m?.full_name ?? "Member"
             const isMe = memberId === myMemberId
-            const isNext = active && round === cycle.current_round
+            const isNext =
+              active &&
+              cycle.current_round != null &&
+              round === cycle.current_round
             const released = cycle.rounds[round]?.release_status === "released"
             return (
               <li
@@ -99,7 +102,7 @@ export function RoundSchedule({
   paidByRound,
   memberCount,
 }: {
-  cycle: StokvelCycleRead
+  cycle: StokvelDetailCycleRead
   member: MemberLookup
   myMemberId: string
   /** Confirmed contributions per round index. */
@@ -114,15 +117,22 @@ export function RoundSchedule({
       <CardContent>
         <ul className="flex flex-col divide-y">
           {cycle.rounds.map((round) => {
-            const recipient = member(round.recipient_member_id)
+            const recipient = round.recipient_member_id
+              ? member(round.recipient_member_id)
+              : undefined
             const name =
               round.recipient_member_id === myMemberId
                 ? "you"
                 : (recipient?.full_name ?? "a member")
+            const current = cycle.current_round
             const isCurrent =
-              cycle.status === "active" && round.round === cycle.current_round
+              cycle.status === "active" &&
+              current != null &&
+              round.round === current
             const upcoming =
-              cycle.status === "active" && round.round > cycle.current_round
+              cycle.status === "active" &&
+              current != null &&
+              round.round > current
             const paid = paidByRound(round.round)
             const stage = payoutStage(round, paid >= memberCount)
             const proof = payoutProofHash(round)

@@ -108,20 +108,36 @@ export function ContributionPanel({
   // The recipient's payout currency sets the margin; only their own is known.
   const recipientIsMe = round.recipient_member_id === stokvel.my_member_id
   const estimate = useFeeShareEstimate({
-    contribution: amount,
+    contribution: amount ?? "0",
     currency,
     memberCount: stokvel.member_count,
     payoutCurrency: recipientIsMe
       ? (stokvel.my_beneficiary?.payout_currency ?? null)
       : null,
-    enabled: !mine,
+    enabled: !mine && amount != null,
   })
   const proof = mine ? contributionProofHash(mine) : null
   const actualFee = mine?.fee_amount ?? contribute.data?.fee_amount
   const fee = actualFee ?? estimate.data
+
+  if (!amount && !paid && !confirming) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Your contribution</CardTitle>
+          <CardDescription>
+            Today&apos;s exchange rate is unavailable, so this round can&apos;t
+            be paid yet.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
   // The API refuses unless the balance covers the contribution and the fee.
-  const needed = fee ? sumMoney([amount, fee]) : amount
+  const needed = amount == null ? null : fee ? sumMoney([amount, fee]) : amount
   const lowBalance =
+    needed != null &&
     availableBalance !== undefined &&
     amountToCents(availableBalance) < amountToCents(needed)
 
@@ -152,7 +168,7 @@ export function ContributionPanel({
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex flex-col">
             <span className="font-heading text-3xl font-bold tabular-nums">
-              {formatMoney(amount, currency)}
+              {amount ? formatMoney(amount, currency) : "Rate unavailable"}
             </span>
             {actualFee ? (
               <span className="text-xs text-muted-foreground">
@@ -200,9 +216,9 @@ export function ContributionPanel({
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="font-heading text-3xl font-bold tabular-nums">
-            {formatMoney(amount, currency)}
+            {amount ? formatMoney(amount, currency) : "Rate unavailable"}
           </span>
-          {lowBalance ? (
+          {lowBalance && needed != null && availableBalance !== undefined ? (
             <Button nativeButton={false} render={<Link to={ACCOUNTS_HREF} />}>
               Top up{" "}
               {formatMoney(subtractMoney(needed, availableBalance), currency)}{" "}
@@ -256,13 +272,13 @@ export function ContributionPanel({
           <div className="flex flex-col gap-4 px-4">
             <span className="font-heading text-3xl font-bold tabular-nums">
               {fee ? "about " : ""}
-              {formatMoney(needed, currency)}
+              {needed ? formatMoney(needed, currency) : "Rate unavailable"}
             </span>
             <DescriptionList>
               <DescriptionItem>
                 <DescriptionTerm>Contribution</DescriptionTerm>
                 <DescriptionDetails>
-                  {formatMoney(amount, currency)}
+                  {amount ? formatMoney(amount, currency) : "Rate unavailable"}
                 </DescriptionDetails>
               </DescriptionItem>
               <DescriptionItem>
@@ -279,7 +295,7 @@ export function ContributionPanel({
                   )}
                 </DescriptionDetails>
               </DescriptionItem>
-              {availableBalance !== undefined ? (
+              {availableBalance !== undefined && needed != null ? (
                 <DescriptionItem>
                   <DescriptionTerm>Balance after</DescriptionTerm>
                   <DescriptionDetails>

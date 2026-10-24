@@ -165,7 +165,7 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
                   <span className="flex items-center gap-2">
                     <Badge variant="outline">Round {i + 1}</Badge>
                     {nameOf(memberId)}
-                    {m && !m.payout_ready ? (
+                    {m?.is_me && !stokvel.my_beneficiary ? (
                       <Badge variant="secondary">No beneficiary yet</Badge>
                     ) : null}
                   </span>
