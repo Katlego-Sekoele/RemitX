@@ -8,9 +8,11 @@ double burn a retried payout must not record. A failed burn stays on the
 same row; another attempt is a new quote.
 
 The index is partial: a quote's other legs (two ``remittance`` rows, the
-payout) share ``quote_id``. Adding an index only refuses more rows, so it
-is safe against the code already running (rule 5). It fails if a quote
-already has two ``token_burn`` rows; none should.
+payout) share ``quote_id``. NULL ``quote_id`` values are distinct in a
+unique index, so the CHECK forces every burn to name its quote. Adding
+both only refuses more rows. The code already running writes a quote on
+every burn, so this is safe against it (rule 5). The migration fails if a
+quote already has two burns, or a burn has no quote; neither should.
 
 Revision ID: a91c4e7b2d08
 Revises: f4a8c2e91b03
@@ -37,9 +39,17 @@ def upgrade() -> None:
         postgresql_where=sa.text("type = 'token_burn'"),
         sqlite_where=sa.text("type = 'token_burn'"),
     )
+    op.create_check_constraint(
+        "transactions_token_burn_has_quote",
+        "transactions",
+        "type <> 'token_burn' OR quote_id IS NOT NULL",
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint(
+        "transactions_token_burn_has_quote", "transactions", type_="check"
+    )
     op.drop_index(
         "uq_transactions_one_token_burn_per_quote",
         table_name="transactions",

@@ -8,20 +8,25 @@ treasury still holds float, and the ledger float after three rounds.
 # or redefined when a test asks for them.
 # ruff: noqa: F401, F811
 
+import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
+    CURRENCY_ZAR,
     TYPE_EXTERNAL,
     TYPE_STOKVEL,
     Account,
 )
+from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.platform_account_seed import (
     ISSUER_LABEL,
     TREASURY_WALLET_LABEL,
 )
+from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
@@ -38,6 +43,7 @@ from remitx_api.services.stokvel_reconciliation_service import check_pool_reconc
 from remitx_worker.stokvel_payouts import settle_payout
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
+from tests.kyc_helpers import make_user
 from tests.platform_account_helpers import seed_platform_accounts
 from tests.test_worker_stokvel_contribution import pending, session_factory
 from tests.test_worker_stokvel_release import POOL, cycle
@@ -127,7 +133,45 @@ def test_the_burn_is_the_pool_and_not_the_float(
         assert burn.amount < treasury.account_balance
 
 
-def _leg(type_, source, destination, amount, *, status=STATUS_CONFIRMED) -> None:
+def _quote_id() -> uuid.UUID:
+    """A quote a burn can hang off. One burn per quote."""
+    now = datetime.now(UTC)
+    sender = make_user()
+    rate = ExchangeRate(
+        base_currency=CURRENCY_ZAR,
+        quote_currency=CURRENCY_ZAR,
+        rate=Decimal("1"),
+        fetched_at=now,
+        valid_until=now + timedelta(hours=1),
+    )
+    db.session.add(rate)
+    db.session.flush()
+    quote = Quote(
+        sender_user_id=sender.id,
+        beneficiary_user_id=make_user().id,
+        sender_amount=POOL,
+        sender_currency=CURRENCY_ZAR,
+        sender_transaction_fee=Decimal("0"),
+        token_amount=POOL,
+        token_name=CURRENCY_TOKEN,
+        fiat_to_token_exchange_rate=Decimal("1"),
+        fiat_exchange_rate_id=rate.id,
+        fiat_exchange_rate=Decimal("1"),
+        exchange_rate_margin=Decimal("0"),
+        receiver_amount=POOL,
+        receiver_currency=CURRENCY_ZAR,
+        receiver_payout_fee=Decimal("0"),
+        receiver_payout_estimate=POOL,
+        expires_at=now + timedelta(minutes=15),
+    )
+    db.session.add(quote)
+    db.session.flush()
+    return quote.quote_id
+
+
+def _leg(
+    type_, source, destination, amount, *, status=STATUS_CONFIRMED, quote_id=None
+) -> None:
     db.session.add(
         Transaction(
             type=type_,
@@ -136,6 +180,7 @@ def _leg(type_, source, destination, amount, *, status=STATUS_CONFIRMED) -> None
             amount=amount,
             currency=CURRENCY_TOKEN,
             status=status,
+            quote_id=quote_id,
         )
     )
 
@@ -168,7 +213,7 @@ def test_three_rounds_match_and_an_overburn_does_not(app_context):
         _leg(TYPE_STOKVEL_POOL_RELEASE, stokvel.account_id, treasury, POOL)
         _leg(TYPE_REMITTANCE, treasury, beneficiary.account_id, POOL)
         _leg(TYPE_REMITTANCE, beneficiary.account_id, treasury, POOL)
-        _leg(TYPE_TOKEN_BURN, treasury, issuer, POOL)
+        _leg(TYPE_TOKEN_BURN, treasury, issuer, POOL, quote_id=_quote_id())
     db.session.flush()
 
     done = check_pool_reconciliation(FLOAT - 3 * POOL)
@@ -186,6 +231,23 @@ def test_three_rounds_match_and_an_overburn_does_not(app_context):
     assert open_round.contract_held == CONTRIBUTION
     assert not check_pool_reconciliation(held - 1).matches
 
-    _leg(TYPE_TOKEN_BURN, treasury, issuer, Decimal("50"), status=STATUS_PENDING)
+    _leg(
+        TYPE_TOKEN_BURN,
+        treasury,
+        issuer,
+        Decimal("50"),
+        status=STATUS_PENDING,
+        quote_id=_quote_id(),
+    )
     db.session.flush()
     assert check_pool_reconciliation(held).matches
+
+
+def test_a_burn_without_a_quote_is_refused(app_context):
+    seeded = seed_platform_accounts()
+    treasury = seeded[TREASURY_WALLET_LABEL].account_id
+    issuer = seeded[ISSUER_LABEL].account_id
+    _leg(TYPE_TOKEN_BURN, treasury, issuer, Decimal("1"))
+    with pytest.raises(IntegrityError):
+        db.session.flush()
+    db.session.rollback()

@@ -5,6 +5,11 @@
 Run from ``api/``. Uses the repo-root ``.env``. Exit 0 when they match.
 Read-only: it does not load the treasury key and it sends nothing.
 
+A database from before the EVM switch still opens the treasury from the
+XRPL balance (section 8 of docs/stokvel_integration.md). This command then
+prints FAIL until that balance is rebased. That FAIL is the rebase, not a
+stokvel over-burn.
+
 The chain read lives in ``remitx_worker.evm_service``. This file is a demo
 command, not the API process, which must not import the worker.
 """

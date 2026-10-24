@@ -246,7 +246,7 @@ class AccountRepository(Repository[Account, uuid.UUID]):
                 Account.type == TYPE_STOKVEL,
             )
         )
-        return Decimal(total)
+        return Decimal(str(total))
 
     def sum_user_balances(self, currency: str) -> Decimal:
         """Ledger balances of every customer account in `currency`.
