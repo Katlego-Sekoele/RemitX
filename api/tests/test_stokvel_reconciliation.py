@@ -31,6 +31,7 @@ from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_PENDING,
+    STATUS_PROCESSING,
     TYPE_REMITTANCE,
     TYPE_STOKVEL_CONTRIBUTION,
     TYPE_STOKVEL_POOL_RELEASE,
@@ -170,7 +171,14 @@ def _quote_id() -> uuid.UUID:
 
 
 def _leg(
-    type_, source, destination, amount, *, status=STATUS_CONFIRMED, quote_id=None
+    type_,
+    source,
+    destination,
+    amount,
+    *,
+    status=STATUS_CONFIRMED,
+    quote_id=None,
+    evm_tx_hash=None,
 ) -> None:
     db.session.add(
         Transaction(
@@ -181,6 +189,7 @@ def _leg(
             currency=CURRENCY_TOKEN,
             status=status,
             quote_id=quote_id,
+            evm_tx_hash=evm_tx_hash,
         )
     )
 
@@ -241,3 +250,43 @@ def test_three_rounds_match_and_an_overburn_does_not(app_context):
     )
     db.session.flush()
     assert check_pool_reconciliation(held).matches
+    assert check_pool_reconciliation(held).in_flight == Decimal("0")
+
+
+def test_a_processing_burn_with_a_hash_is_reported_apart(app_context):
+    """The hash is stored before the send, so it is not part of the float.
+
+    If the chain has already moved by that amount, the gap is that leg and
+    nothing else.
+    """
+    seeded = seed_platform_accounts()
+    treasury = seeded[TREASURY_WALLET_LABEL].account_id
+    issuer = seeded[ISSUER_LABEL].account_id
+    _leg(TYPE_TREASURY_FUNDING, issuer, treasury, FLOAT)
+    _leg(
+        TYPE_TOKEN_BURN,
+        treasury,
+        issuer,
+        POOL,
+        status=STATUS_PROCESSING,
+        quote_id=_quote_id(),
+        evm_tx_hash="0x" + "ab" * 32,
+    )
+    _leg(
+        TYPE_TOKEN_BURN,
+        treasury,
+        issuer,
+        Decimal("50"),
+        status=STATUS_PROCESSING,
+        quote_id=_quote_id(),
+    )
+    db.session.flush()
+
+    still_there = check_pool_reconciliation(FLOAT)
+    assert still_there.matches
+    assert still_there.in_flight == -POOL
+    assert not still_there.gap_is_in_flight
+
+    mined = check_pool_reconciliation(FLOAT - POOL)
+    assert not mined.matches
+    assert mined.gap_is_in_flight

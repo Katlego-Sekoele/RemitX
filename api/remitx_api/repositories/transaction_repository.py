@@ -11,6 +11,7 @@ from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_FAILED,
     STATUS_PENDING,
+    STATUS_PROCESSING,
     TYPE_TOKEN_BURN,
     Transaction,
 )
@@ -42,6 +43,40 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
             ).where(
                 Transaction.currency == currency,
                 Transaction.status == STATUS_CONFIRMED,
+                or_(
+                    Transaction.debit_account_id == account_id,
+                    Transaction.credit_account_id == account_id,
+                ),
+            )
+        )
+        return Decimal(str(net))
+
+    def in_flight_net(self, account_id: uuid.UUID, currency: str) -> Decimal:
+        """Net of `processing` legs on `account_id` that already have an
+        `evm_tx_hash`, same sign as `confirmed_net`.
+
+        The hash is stored after signing and before the send, so a row here
+        may not be mined. A mined burn left `processing` (`burn_unconfirmed`)
+        is in this figure too. It is not part of `confirmed_net`.
+        """
+        net = db.session.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.debit_account_id == account_id,
+                                Transaction.amount,
+                            ),
+                            else_=-Transaction.amount,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                Transaction.currency == currency,
+                Transaction.status == STATUS_PROCESSING,
+                Transaction.evm_tx_hash.is_not(None),
                 or_(
                     Transaction.debit_account_id == account_id,
                     Transaction.credit_account_id == account_id,
