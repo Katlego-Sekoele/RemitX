@@ -267,8 +267,9 @@ class CycleNotFormingError(ConflictError):
 
 
 class InvalidPayoutOrderError(DomainError):
-    """The payout order is not every current member exactly once. `detail`
-    says which rule it breaks."""
+    """The payout order is not every member going into the cycle exactly
+    once (every current member for cycle 1). `detail` says which rule it
+    breaks."""
 
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "invalid_payout_order"
@@ -290,6 +291,22 @@ class InvalidPayoutOrderError(DomainError):
     @classmethod
     def missing_member(cls) -> InvalidPayoutOrderError:
         return cls("The payout order must include every current member.")
+
+    @classmethod
+    def missing_continuing_member(cls) -> InvalidPayoutOrderError:
+        """From cycle 2 (R2-15)."""
+        return cls(
+            "The payout order must include every member continuing into the next cycle."
+        )
+
+    @classmethod
+    def not_continuing(cls) -> InvalidPayoutOrderError:
+        """From cycle 2: a member of the closed cycle who has not chosen to
+        continue (R2-15)."""
+        return cls(
+            "The payout order includes a member who hasn't chosen to continue "
+            "into the next cycle."
+        )
 
 
 # --- Continuing after a cycle (R2-15). Codes and wording are doc section 6's.

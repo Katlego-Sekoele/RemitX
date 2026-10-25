@@ -9,7 +9,9 @@ an invitation do, so none of them can interleave with the start:
 2. invitations still pending lapse: their invitee is not in this cycle;
 3. the current members' cycle rows are locked, with their order and
    beneficiaries. A former member's row stays, unlocked: the cycle's members
-   are its locked rows;
+   are its locked rows. From cycle 2, only members who chose to continue (or
+   joined since) are in it; anyone else from the closed cycle leaves now
+   (R2-15, `going_into`);
 4. the cycle becomes `active`, with its number of rounds.
 
 The token contribution is already fixed: it is the stokvel's
@@ -112,6 +114,20 @@ class StartedCycleView:
     rounds: list[CycleRoundView]
     order: list[CyclePlaceView]
     lapsed_invitations: int
+
+
+def going_into(
+    cycle: StokvelCycle, current: list[StokvelMember], cycles: StokvelCycleRepository
+) -> list[StokvelMember]:
+    """The current members who go into the forming `cycle` (R2-15). Cycle 1:
+    all of them. A later cycle: those with a row in it, so the Organiser,
+    each member of the closed cycle who chose to continue, and everyone who
+    joined since. A member of the closed cycle who has not chosen is not in
+    it, and is treated as leaving when it starts."""
+    if cycle.cycle_number == 1:
+        return current
+    with_rows = {row.member_id for row in cycles.get_cycle_members(cycle.id)}
+    return [member for member in current if member.id in with_rows]
 
 
 def open_next_cycle(session, closed: StokvelCycle) -> StokvelCycle | None:
@@ -241,12 +257,13 @@ class StokvelCycleController:
             raise CycleAlreadyStartedError()
 
         current = self._members.list_active(stokvel.id)
+        members = going_into(cycle, current, self._cycles)
         max_members = Config().MAX_STOKVEL_MEMBERS
-        if len(current) < MIN_CYCLE_MEMBERS:
+        if len(members) < MIN_CYCLE_MEMBERS:
             raise TooFewMembersError(MIN_CYCLE_MEMBERS)
-        if len(current) > max_members:
+        if len(members) > max_members:
             raise TooManyMembersError(max_members)
-        rows = self._ready_rows(cycle.id, [member.id for member in current])
+        rows = self._ready_rows(cycle.id, [member.id for member in members])
         times = _checked_schedule(schedule, len(rows))
 
         for round_, round_times in enumerate(times):
@@ -259,6 +276,10 @@ class StokvelCycleController:
             )
         now = utcnow()
         lapsed = self._invitations.lapse_pending(stokvel.id, by_user_id=user_id, at=now)
+        going = {member.id for member in members}
+        self._end_undecided(
+            cycle, [member for member in current if member.id not in going], at=now
+        )
         for row in rows:
             row.locked = True
         cycle.status = StokvelCycleStatus.ACTIVE.value
@@ -296,6 +317,25 @@ class StokvelCycleController:
             ],
             lapsed_invitations=lapsed,
         )
+
+    def _end_undecided(
+        self, cycle: StokvelCycle, undecided: list[StokvelMember], *, at: datetime
+    ) -> None:
+        """Members of the closed cycle who never chose to continue or leave
+        are treated as leaving now (R2-15): their membership ends and their
+        row in the closed cycle records `continued` as false. Row-level
+        security lets the Organiser make only this change to another
+        member's membership (`V20261022_1000`)."""
+        if not undecided:
+            return
+        closed = self._cycles.get_cycle_by_number(
+            cycle.stokvel_id, cycle.cycle_number - 1
+        )
+        for member in undecided:
+            member.left_at = at
+            before = self._cycles.get_cycle_member(closed.id, member.id)
+            if before is not None and before.locked:
+                before.continued = False
 
     def _ready_rows(
         self, cycle_id: uuid.UUID, member_ids: list[uuid.UUID]

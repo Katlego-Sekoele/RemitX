@@ -22,7 +22,10 @@ from enum import StrEnum
 
 from remitx_api.clock import utcnow
 from remitx_api.controllers.stokvel_controller import open_forming_cycle
-from remitx_api.controllers.stokvel_cycle_controller import open_next_cycle
+from remitx_api.controllers.stokvel_cycle_controller import (
+    going_into,
+    open_next_cycle,
+)
 from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.beneficiaries import (
     PayoutAccountMissingError,
@@ -106,7 +109,9 @@ class StokvelSetupController:
         self, user_id: uuid.UUID, stokvel_id: uuid.UUID, member_ids: list[uuid.UUID]
     ) -> PayoutOrderView:
         """Replace the forming cycle's payout order: `member_ids[i]` is paid
-        in round i. It must name every current member exactly once.
+        in round i. It must name every member going into the cycle exactly
+        once: every current member for cycle 1, and from cycle 2 those who
+        chose to continue or joined since (`going_into`, R2-15).
 
         Re-ordering updates rows in place (there is no delete). A former
         member keeps their cycle row but loses its position, so it neither
@@ -121,11 +126,18 @@ class StokvelSetupController:
         cycle = self._forming_cycle(stokvel, is_organiser=True)
 
         current = self._members.list_active(stokvel.id)
-        self._check_order(stokvel.id, member_ids, {m.id for m in current})
+        members = going_into(cycle, current, self._cycles)
+        self._check_order(
+            stokvel.id,
+            member_ids,
+            {m.id for m in members},
+            undecided={m.id for m in current} - {m.id for m in members},
+            first_cycle=cycle.cycle_number == 1,
+        )
         rows = {
             member.id: self._cycles.get_cycle_member(cycle.id, member.id)
             or self._cycles.add_cycle_member(cycle.id, member.id)
-            for member in current
+            for member in members
         }
         self._cycles.clear_payout_positions(cycle.id)
         for position, member_id in enumerate(member_ids):
@@ -306,18 +318,28 @@ class StokvelSetupController:
         stokvel_id: uuid.UUID,
         member_ids: list[uuid.UUID],
         current_ids: set[uuid.UUID],
+        *,
+        undecided: set[uuid.UUID],
+        first_cycle: bool,
     ) -> None:
+        """`member_ids` is `current_ids` (the members going into the cycle)
+        exactly once. `undecided` are current members of the closed cycle
+        who have not chosen to continue, so are not in it."""
         if len(set(member_ids)) != len(member_ids):
             raise InvalidPayoutOrderError.duplicate()
         for member_id in member_ids:
             if member_id in current_ids:
                 continue
+            if member_id in undecided:
+                raise InvalidPayoutOrderError.not_continuing()
             member: StokvelMember | None = self._members.get_by_id(member_id)
             if member is not None and member.stokvel_id == stokvel_id:
                 raise InvalidPayoutOrderError.former_member()
             raise InvalidPayoutOrderError.unknown_member()
         if set(member_ids) != current_ids:
-            raise InvalidPayoutOrderError.missing_member()
+            if first_cycle:
+                raise InvalidPayoutOrderError.missing_member()
+            raise InvalidPayoutOrderError.missing_continuing_member()
 
 
 def _name(user) -> str | None:

@@ -29,6 +29,7 @@ from tests.test_stokvel_setup_route import (
     Api,
     Group,
     Person,
+    _add_member,
     _beneficiary,
     _choices,
     _continued,
@@ -40,9 +41,17 @@ from tests.test_stokvel_setup_route import (
     api,
     pg_api,
 )
+from tests.test_stokvel_start_cycle import _schedule, enqueued
 
 
 class ContinuationApi(Api):
+    def start(self, as_: Person, stokvel_id, rounds):
+        return self.client.post(
+            f"/stokvels/{stokvel_id}/cycles",
+            json={"rounds": rounds},
+            headers={USER_HEADER: str(as_.id)},
+        )
+
     def continuation(self, as_: Person, stokvel_id, choice, beneficiary_id=None):
         body = {"choice": choice}
         if beneficiary_id is not None:
@@ -71,15 +80,29 @@ class AfterCycle:
     paid: dict[Person, uuid.UUID]
 
 
-def _after_first_cycle(organiser: Person, *others: Person, next_open=True):
+def _after_first_cycle(
+    organiser: Person,
+    *others: Person,
+    next_open=True,
+    joined: tuple[Person, ...] = (),
+):
     """A stokvel whose cycle 1 ran with `organiser` and `others` and closed,
-    and, with `next_open`, cycle 2 opened as the worker opens it."""
+    and, with `next_open`, cycle 2 opened as the worker opens it. `joined`
+    accepted an invitation while cycle 1 ran, so were not in it."""
     group = _stokvel(organiser, *others, cycle=StokvelCycleStatus.CLOSED)
     paid = {
         person: _beneficiary(person, _person("mother"))
         for person in (organiser, *others)
     }
     _lock_closed_rows(group, paid)
+    for person in joined:
+
+        def join(person=person):
+            stokvel = db.session.get(Stokvel, group.stokvel_id)
+            group.member_ids[person] = _add_member(stokvel, person, invited=True)
+            db.session.commit()
+
+        _in_session(join)
     if next_open:
 
         def open_next():
@@ -343,6 +366,122 @@ def test_an_invalid_body_is_refused(capi, body):
     assert response.status_code == 422, response.text
 
 
+# --- the next cycle's payout order and start --------------------------------
+
+
+def _member(group: Group, person: Person) -> str:
+    return str(group.member_id(person))
+
+
+def test_the_order_names_only_members_going_into_the_next_cycle(capi):
+    organiser, thandi, lerato = _person("sipho"), _person(), _person("lerato")
+    group = _after_first_cycle(organiser, thandi, lerato).group
+    capi.continuation(thandi, group.stokvel_id, "continue")
+
+    response = capi.payout_order(
+        organiser,
+        group.stokvel_id,
+        [group.member_id(thandi), group.member_id(organiser)],
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle_number"] == 2
+    assert [place["member_id"] for place in response.json()["order"]] == [
+        _member(group, thandi),
+        _member(group, organiser),
+    ]
+
+
+def test_the_order_cannot_name_a_member_who_has_not_chosen(capi):
+    organiser, thandi = _person("sipho"), _person()
+    group = _after_first_cycle(organiser, thandi).group
+
+    response = capi.payout_order(
+        organiser,
+        group.stokvel_id,
+        [group.member_id(organiser), group.member_id(thandi)],
+    )
+
+    _refused(response, 422, "invalid_payout_order")
+    assert "hasn't chosen to continue" in response.json()["detail"]
+
+
+def test_the_order_must_name_every_member_who_continued(capi):
+    organiser, thandi = _person("sipho"), _person()
+    group = _after_first_cycle(organiser, thandi).group
+    capi.continuation(thandi, group.stokvel_id, "continue")
+
+    response = capi.payout_order(
+        organiser, group.stokvel_id, [group.member_id(organiser)]
+    )
+
+    _refused(response, 422, "invalid_payout_order")
+    assert "every member continuing" in response.json()["detail"]
+
+
+def test_someone_who_joined_during_the_cycle_goes_into_the_next(capi):
+    organiser, thandi, lerato = _person("sipho"), _person(), _person("lerato")
+    group = _after_first_cycle(organiser, thandi, joined=(lerato,)).group
+    capi.beneficiary(lerato, group.stokvel_id, _beneficiary(lerato, organiser))
+
+    response = capi.payout_order(
+        organiser,
+        group.stokvel_id,
+        [group.member_id(lerato), group.member_id(organiser)],
+    )
+
+    assert response.status_code == 200, response.text
+
+
+def test_a_second_cycle_starts_with_the_members_who_continued(capi, enqueued):
+    """The ticket's "done when": a closed cycle is followed by a second one.
+    Thandi continues, Lerato leaves and Musa never chooses, so is treated as
+    leaving when it starts."""
+    organiser = _person("sipho")
+    thandi, lerato, musa = _person(), _person("lerato"), _person("musa")
+    after = _after_first_cycle(organiser, thandi, lerato, musa)
+    group = after.group
+    assert capi.continuation(thandi, group.stokvel_id, "continue").status_code == 200
+    assert capi.continuation(lerato, group.stokvel_id, "leave").status_code == 200
+    order = [group.member_id(thandi), group.member_id(organiser)]
+    assert capi.payout_order(organiser, group.stokvel_id, order).status_code == 200
+
+    response = capi.start(organiser, group.stokvel_id, _schedule(2))
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["cycle_number"] == 2
+    assert body["total_rounds"] == 2
+    assert [place["member_id"] for place in body["order"]] == [
+        str(member_id) for member_id in order
+    ]
+    assert [place["beneficiary_id"] for place in body["order"]] == [
+        str(after.paid[thandi]),
+        str(after.paid[organiser]),
+    ]
+    assert enqueued == [body["cycle_id"]]
+    assert _left_at(group.member_id(musa)) is not None
+    assert _left_at(group.member_id(thandi)) is None
+    assert _continued(group.stokvel_id, 1) == {
+        group.member_id(organiser): True,
+        group.member_id(thandi): True,
+        group.member_id(lerato): False,
+        group.member_id(musa): False,
+    }
+
+
+def test_a_second_cycle_needs_two_members_who_continued(capi, enqueued):
+    organiser, thandi = _person("sipho"), _person()
+    group = _after_first_cycle(organiser, thandi).group
+    capi.payout_order(organiser, group.stokvel_id, [group.member_id(organiser)])
+
+    _refused(
+        capi.start(organiser, group.stokvel_id, _schedule(1)), 409, "too_few_members"
+    )
+    assert _left_at(group.member_id(thandi)) is None
+    assert enqueued == []
+
+
 # --- under Postgres row-level security --------------------------------------
 
 
@@ -375,3 +514,26 @@ def test_under_row_security_a_member_leaves(pg_capi):
     assert response.status_code == 200, response.text
     assert _left_at(group.member_id(thandi)) is not None
     assert _continued(group.stokvel_id, 1)[group.member_id(thandi)] is False
+
+
+@pytest.mark.postgres
+def test_under_row_security_starting_the_next_cycle_ends_undecided_members(
+    pg_capi, enqueued
+):
+    """The Organiser ends another member's membership, the one change
+    row-level security allows them on it (`V20261022_1000`)."""
+    organiser = _person("sipho")
+    thandi, musa = _person(), _person("musa")
+    group = _after_first_cycle(organiser, thandi, musa).group
+    pg_capi.continuation(thandi, group.stokvel_id, "continue")
+    pg_capi.payout_order(
+        organiser,
+        group.stokvel_id,
+        [group.member_id(organiser), group.member_id(thandi)],
+    )
+
+    response = pg_capi.start(organiser, group.stokvel_id, _schedule(2))
+
+    assert response.status_code == 201, response.text
+    assert _left_at(group.member_id(musa)) is not None
+    assert _continued(group.stokvel_id, 1)[group.member_id(musa)] is False
