@@ -23,7 +23,8 @@ test("poolAmount multiplies the contribution by the member count", () => {
 test("paidMemberIds counts only confirmed contributions to the round", async () => {
   const { paidMemberIds } = await import("./stokvels")
   const detail = {
-    cycle: { cycle_id: "c", current_round: 1 },
+    cycle: { cycle_id: "c", current_round: 0 },
+    open_round: 1,
     contributions: [
       { cycle_id: "c", round: 1, member_id: "a", status: "confirmed" as const },
       { cycle_id: "c", round: 1, member_id: "b", status: "pending" as const },
@@ -179,49 +180,6 @@ test("a hash is proof only once confirmed", async () => {
   )
 })
 
-test("openRound is the first round that is not full of non-failed rows", async () => {
-  const { openRound } = await import("./stokvels")
-  const cycle = {
-    cycle_id: "cyc",
-    status: "active" as const,
-    total_rounds: 3,
-    current_round: 0,
-  }
-  const row = (round: number, status: "confirmed" | "pending" | "failed") => ({
-    cycle_id: "cyc",
-    round,
-    status,
-  })
-  const full = [0, 1, 2].map((i) => row(0, i === 2 ? "pending" : "confirmed"))
-  assert.equal(openRound({ cycle, contributions: full }), 1)
-  assert.equal(
-    openRound({ cycle, contributions: [...full, row(0, "failed")] }),
-    1
-  )
-  assert.equal(openRound({ cycle, contributions: [] }), 0)
-  assert.equal(
-    openRound({
-      cycle,
-      contributions: [0, 1, 2].flatMap((round) =>
-        [0, 1, 2].map(() => row(round, "confirmed"))
-      ),
-    }),
-    null
-  )
-  assert.equal(
-    openRound({ cycle: { ...cycle, status: "forming" }, contributions: [] }),
-    null
-  )
-  assert.equal(openRound({ cycle: null, contributions: [] }), null)
-  assert.equal(
-    openRound({
-      cycle,
-      contributions: [{ ...row(0, "confirmed"), cycle_id: "other" }],
-    }),
-    0
-  )
-})
-
 test("myCurrentContribution skips a failed attempt for the live one", async () => {
   const { myCurrentContribution } = await import("./stokvels")
   const base = {
@@ -237,34 +195,9 @@ test("myCurrentContribution skips a failed attempt for the live one", async () =
   }
   const detail = {
     my_member_id: "me",
-    cycle: {
-      cycle_id: "cyc",
-      status: "active",
-      total_rounds: 3,
-      current_round: 0,
-    } as never,
+    open_round: 1,
+    cycle: { cycle_id: "cyc", current_round: 0 } as never,
     contributions: [
-      {
-        ...base,
-        round: 0,
-        contribution_id: "r0a",
-        member_id: "a",
-        status: "confirmed" as const,
-      },
-      {
-        ...base,
-        round: 0,
-        contribution_id: "r0b",
-        member_id: "b",
-        status: "confirmed" as const,
-      },
-      {
-        ...base,
-        round: 0,
-        contribution_id: "r0c",
-        member_id: "c",
-        status: "confirmed" as const,
-      },
       { ...base, contribution_id: "first", status: "failed" as const },
       { ...base, contribution_id: "retry", status: "processing" as const },
       {
@@ -279,7 +212,7 @@ test("myCurrentContribution skips a failed attempt for the live one", async () =
   assert.equal(
     myCurrentContribution({
       ...detail,
-      contributions: [detail.contributions[3]],
+      contributions: [detail.contributions[0]],
     }),
     undefined
   )

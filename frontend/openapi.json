@@ -5669,6 +5669,17 @@
             ],
             "title": "Next Payout Time"
           },
+          "open_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Round"
+          },
           "organiser_name": {
             "anyOf": [
               {
@@ -5714,6 +5725,7 @@
           "contribution_fiat_estimate",
           "phase",
           "current_round",
+          "open_round",
           "total_rounds",
           "next_payout_time",
           "my_contribution_status",
