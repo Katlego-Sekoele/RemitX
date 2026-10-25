@@ -855,6 +855,14 @@
         "title": "BeneficiaryUpdateRequest",
         "type": "object"
       },
+      "ContinuationChoice": {
+        "enum": [
+          "continue",
+          "leave"
+        ],
+        "title": "ContinuationChoice",
+        "type": "string"
+      },
       "CountRead": {
         "properties": {
           "count": {
@@ -5064,6 +5072,89 @@
           "beneficiary_id"
         ],
         "title": "StokvelBeneficiaryRequest",
+        "type": "object"
+      },
+      "StokvelContinuationRead": {
+        "description": "The caller's recorded choice for the stokvel's next cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The beneficiary paid in the next cycle. Null on leaving, or until the member chooses one.",
+            "title": "Beneficiary Id"
+          },
+          "choice": {
+            "$ref": "#/components/schemas/ContinuationChoice"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "payout_currency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoutCurrency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_number",
+          "member_id",
+          "choice",
+          "beneficiary_id",
+          "payout_currency"
+        ],
+        "title": "StokvelContinuationRead",
+        "type": "object"
+      },
+      "StokvelContinuationRequest": {
+        "additionalProperties": false,
+        "description": "The caller's choice after a cycle closes: continue into the next\ncycle, optionally paying a new beneficiary, or leave the stokvel.",
+        "properties": {
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When continuing: one of the caller's own beneficiaries (`GET /beneficiaries`) to pay in the next cycle. Leave it out to keep the current choice. Not allowed when leaving.",
+            "title": "Beneficiary Id"
+          },
+          "choice": {
+            "$ref": "#/components/schemas/ContinuationChoice",
+            "description": "`continue` into the next cycle, or `leave` the stokvel. Leaving is final: coming back needs a new invitation."
+          }
+        },
+        "required": [
+          "choice"
+        ],
+        "title": "StokvelContinuationRequest",
         "type": "object"
       },
       "StokvelContractActionResponse": {
@@ -13535,6 +13626,105 @@
           }
         ],
         "summary": "Choose my payout beneficiary",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/members/me/continuation": {
+      "post": {
+        "description": "After a cycle closes, continue into the stokvel's next cycle or leave\nit. Allowed until the Organiser starts the next cycle; a member who has\nnot chosen by then is treated as leaving.\n\nContinuing can name a new beneficiary (checked as for `PUT\n/members/me/beneficiary`); without one, the current choice is kept or\ncarried over from the closed cycle. It can be repeated. Leaving is\nfinal. The Organiser is always continued and cannot leave.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an\nunknown stokvel or one the caller is not a current member of, and for a\nbeneficiary that is unknown or not the caller's; 400 if the recipient\nno longer holds an account in the beneficiary's payout currency; 409\n`stokvel_deactivated`, `nothing_to_continue` before any cycle has\nfinished, `cycle_locked` once the next cycle has started,\n`cycle_not_forming` while the Organiser has not opened it, or\n`organiser_cannot_leave`; 422 for an invalid request body.",
+        "operationId": "continue_or_leave_stokvel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelContinuationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContinuationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Continue or leave after a cycle",
         "tags": [
           "stokvels"
         ]

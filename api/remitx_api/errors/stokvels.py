@@ -256,10 +256,9 @@ class PayoutSetupLockedError(ConflictError):
 
 
 class CycleNotFormingError(ConflictError):
-    """The stokvel has no `forming` cycle to set up. Its last cycle has
-    closed and the next has not been opened (#237), or, for a member who is
-    not the Organiser, a stokvel from before cycles opened at creation has
-    none yet: only the Organiser may open one."""
+    """The stokvel has no `forming` cycle to set up, and only the Organiser
+    may open one: a stokvel from before cycles opened at creation, or one
+    whose last cycle closed before the worker opened the next (R2-15)."""
 
     code = "cycle_not_forming"
 
@@ -291,6 +290,31 @@ class InvalidPayoutOrderError(DomainError):
     @classmethod
     def missing_member(cls) -> InvalidPayoutOrderError:
         return cls("The payout order must include every current member.")
+
+
+# --- Continuing after a cycle (R2-15). Codes and wording are doc section 6's.
+
+
+class NothingToContinueError(ConflictError):
+    """The stokvel's forming cycle is its first: no cycle has finished for
+    the caller to continue from or leave after."""
+
+    code = "nothing_to_continue"
+
+    def __init__(self) -> None:
+        super().__init__("There's no finished cycle to continue from yet.")
+
+
+class OrganiserCannotLeaveError(ConflictError):
+    """The Organiser continues into every cycle; getting out means closing
+    the stokvel for everyone."""
+
+    code = "organiser_cannot_leave"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "As Organiser you can't leave. Closing the stokvel ends it for everyone."
+        )
 
 
 # --- Starting a cycle (R2-10). Codes and wording are doc section 6's.
