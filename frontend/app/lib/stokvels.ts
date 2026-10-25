@@ -194,6 +194,16 @@ export const stokvelMutations = {
       })
     },
   }),
+  /** `POST /invitations/{id}/revoke` (#297): the Organiser takes back a
+   * pending invitation; the person can be invited again. */
+  revokeInvitation: () => ({
+    mutationFn: async (invitationId: string): Promise<void> => {
+      await sdk.stokvels.revokeStokvelInvitation({
+        path: { invitation_id: invitationId },
+        throwOnError: true,
+      })
+    },
+  }),
 }
 
 /** Invitations still waiting for an answer. */

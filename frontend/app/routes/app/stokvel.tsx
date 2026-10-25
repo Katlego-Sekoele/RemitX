@@ -10,6 +10,7 @@ import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
 import { PayoutBeneficiaryCard } from "~/components/stokvels/payout-beneficiary-card"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
 import { PotRing } from "~/components/stokvels/pot-ring"
+import { StokvelInvitations } from "~/components/stokvels/stokvel-invitations"
 import {
   PayoutQueue,
   RoundSchedule,
@@ -289,6 +290,7 @@ function StokvelDetail({
           </Card>
           <PayoutBeneficiaryCard stokvel={stokvel} />
           {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
+          <StokvelInvitations stokvel={stokvel} />
           {stokvel.is_organiser ? (
             <CycleSetup stokvel={stokvel} />
           ) : (
