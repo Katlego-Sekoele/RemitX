@@ -78,6 +78,14 @@ export function stokvelErrorMessage(error: unknown): string {
   return code ? STOKVEL_ERROR_MESSAGES[code] : errorMessage(error)
 }
 
+/** A refused revoke (#297). `not_organiser` is shared with the invite
+ * route, whose wording says "invite", so this one says what was refused. */
+export function revokeErrorMessage(error: unknown): string {
+  return stokvelErrorCode(error) === "not_organiser"
+    ? "Only the stokvel's organiser can revoke invitations."
+    : stokvelErrorMessage(error)
+}
+
 /** An invitation that can't be answered any more: lapsed or answered
  * (`invitation_not_pending`), its stokvel deactivated, or gone (404). The
  * card refreshes the list on these so it disappears. */

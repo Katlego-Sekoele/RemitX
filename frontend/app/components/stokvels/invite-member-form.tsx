@@ -1,10 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { formatDistanceToNow } from "date-fns"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { AccountReference } from "~/components/accounts/reference"
-import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -24,9 +21,7 @@ import { stokvelErrorMessage } from "~/lib/stokvel-errors"
 import {
   invalidateStokvels,
   normaliseReference,
-  pendingInvitations,
   stokvelMutations,
-  type SentStokvelInvitationRead,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
@@ -36,8 +31,9 @@ import {
  * API checks the rules (#230: verified, an account in the Stokvel currency,
  * not already in or invited) and words each refusal. Nobody joins until they
  * accept, and invitations still open when the cycle starts lapse. The page
- * shows this card only when `canInvite` holds. No Revoke until #297; no
- * WhatsApp share before the MVP (Sian, 16 Oct).
+ * shows this card only when `canInvite` holds; who is invited, and Revoke,
+ * are on `StokvelInvitations` (#299). No WhatsApp share before the MVP
+ * (Sian, 16 Oct).
  */
 export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   const queryClient = useQueryClient()
@@ -54,7 +50,6 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   })
   // References are stored lower-case and matched exactly.
   const normalised = normaliseReference(reference)
-  const pending = pendingInvitations(stokvel)
   const currency = stokvel.currency.toLowerCase()
 
   return (
@@ -67,17 +62,6 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {pending.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {pending.map((invitation) => (
-              <PendingInvitation
-                key={invitation.invitation_id}
-                invitation={invitation}
-              />
-            ))}
-          </ul>
-        ) : null}
-
         <form
           noValidate
           className="flex flex-col gap-2"
@@ -120,33 +104,5 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
         </form>
       </CardContent>
     </Card>
-  )
-}
-
-/** One pending invitation. The detail route (#355) leaves the reference null
- * for anyone but the Organiser, or when the invitee no longer holds the
- * account, so it is shown only when there is one. */
-function PendingInvitation({
-  invitation,
-}: {
-  invitation: Pick<SentStokvelInvitationRead, "invitee_name" | "created_at"> & {
-    account_reference: string | null
-  }
-}) {
-  return (
-    <li className="flex flex-wrap items-center justify-between gap-2">
-      <span className="flex flex-wrap items-center gap-2">
-        {invitation.invitee_name ?? "Invited"}
-        {invitation.account_reference ? (
-          <AccountReference reference={invitation.account_reference} />
-        ) : null}
-      </span>
-      <Badge variant="secondary">
-        Invited{" "}
-        {formatDistanceToNow(new Date(invitation.created_at), {
-          addSuffix: true,
-        })}
-      </Badge>
-    </li>
   )
 }

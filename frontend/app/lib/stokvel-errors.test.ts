@@ -6,6 +6,7 @@ import {
   STOKVEL_ERROR_MESSAGES,
   contributeRefusalMessage,
   isFinalRefusal,
+  revokeErrorMessage,
   stokvelErrorCode,
   stokvelErrorMessage,
 } from "./stokvel-errors"
@@ -126,4 +127,20 @@ test("an invitation that can't be answered any more is spotted", () => {
   assert.ok(isGoneInvitationError(apiError("Invitation not found.", 404)))
   assert.ok(!isGoneInvitationError(apiError("x", 403, { code: "not_invitee" })))
   assert.ok(!isGoneInvitationError(apiError("Server error", 500)))
+})
+
+test("revoke refusals say what was refused", () => {
+  assert.equal(
+    revokeErrorMessage(apiError("x", 403, { code: "not_organiser" })),
+    "Only the stokvel's organiser can revoke invitations."
+  )
+  // Answered or lapsed meanwhile: the shared wording, and the list refreshes.
+  const answered = apiError("x", 409, { code: "invitation_not_pending" })
+  assert.equal(
+    revokeErrorMessage(answered),
+    STOKVEL_ERROR_MESSAGES.invitation_not_pending
+  )
+  assert.equal(isGoneInvitationError(answered), true)
+  assert.equal(revokeErrorMessage(apiError("Not found", 404)), "Not found")
+  assert.equal(isGoneInvitationError(apiError("Not found", 404)), true)
 })
