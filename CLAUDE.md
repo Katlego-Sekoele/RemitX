@@ -214,7 +214,7 @@ Rules:
 
 **Do not edit [docs/Transaction_Flow_Context.md](docs/Transaction_Flow_Context.md).** It records the original RemitX project from before the Stokvel work and is kept unchanged for reference. It can be read for context (fees, ledger model), but Stokvel changes, including the EVM switch-over, go in the stokvel docs below.
 
-[docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. **Update it before opening a PR** that touches stokvel work: add the changelog row, record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
+[docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. Its database model (section 3) lives in [docs/stokvel_database_model.md](docs/stokvel_database_model.md) and its changelog in [docs/stokvel_changelog.md](docs/stokvel_changelog.md). **Update them before opening a PR** that touches stokvel work: add the changelog row (at the bottom; rows run oldest first), record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
 
 ## Agent skills
 
