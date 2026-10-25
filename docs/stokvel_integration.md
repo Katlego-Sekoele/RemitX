@@ -25,6 +25,7 @@ Terminology follows [CONTEXT.md](../CONTEXT.md). Architectural decisions are rec
 
 | Date | Section | Change | PR |
 |---|---|---|---|
+| 2026-10-25 | 5, 6, 14 | R3-10 review: a payout that is not `pending` answers 409 `round_release_not_pending` and is not queued. A round of a closed cycle answers 409 `round_already_finalised`. A registered cycle the vault does not have open answers 503 `stokvel_chain_mismatch` (logged `stokvel.finalise_chain_mismatch`), not the retryable `cycle_starting`. The audit and `enqueue_release_pool` commit in one transaction, enqueue last | |
 | 2026-10-25 | 5, 14 | `GET /stokvels/{id}` adds `open_round`: the round a contribution joins, from `StokvelContributionRepository.open_round` (locked member count, `total_rounds` as the round count). Null while the cycle is not active, and null once every round is full. `current_round` stays the stored column. The member screen reads `open_round` and does not recompute it. It polls while any of the caller's contributions is pending or processing | |
 | 2026-10-24 | 5, 9, 10, 12, 13, 14 | R3-10 (#247): `POST /admin/stokvels/{id}/rounds/{n}/finalise` (`stokvel:round:finalise`, compliance officer). Reads `isFinalisable` and `getCycle` first. A round that is not ready answers 409 `round_not_finalisable`; one already released answers 409 `round_already_finalised`. A ready round queues `stokvel.release_pool` (the worker sends `finalise`) and writes `stokvel.round.finalised_manually`. 202 `StokvelRoundFinaliseResponse`. The admin rounds page stays on its mock until a list route exists | |
 | 2026-10-24 | 5, 9, 10, 13 | R4-09 (#258): member screens call `GET /stokvels` and `GET /stokvels/{id}` through the generated client. `stokvels.mock.ts` is deleted. `fee_amount`, names and `contribution_fiat_estimate` may be null. The payout reference on screen is `remittance_id`. The pool figure is members × `contribution_fiat_estimate` while `pool_fiat_amount` is null. The response has no `payout_ready`: setup only knows the caller's `my_beneficiary`. The admin contract page and the admin rounds page stay on their mocks (pause and unpause return only `tx_hash`; no rounds list, #247) | |
@@ -750,9 +751,11 @@ In one transaction, holding the `stokvels` row lock as the setup routes and acce
 
 Admin route, tag `admin.stokvels` (client: `api.admin.stokvels.finaliseStokvelRound`). Permission `stokvel:round:finalise`, granted to the compliance officer. No request body.
 
-**`POST /admin/stokvels/{id}/rounds/{n}/finalise`** → `202 StokvelRoundFinaliseResponse`: `stokvel_id`, `cycle_id`, `cycle_number`, `round` (0-based, the path's `n`). The round is the open cycle's. The API reads the vault first (`isFinalisable`, and `getCycle` when that is false, so an already released round is told apart from one that is not ready). A ready round queues `stokvel.release_pool` (section 4). The worker sends `finalise` and records the release; this route does not wait for the hash. The audit entry `stokvel.round.finalised_manually` is written after the queue, with the cycle, the round, the payout's release status and transaction hash if a payout row already has them, and `enqueued: true`.
+**`POST /admin/stokvels/{id}/rounds/{n}/finalise`** → `202 StokvelRoundFinaliseResponse`: `stokvel_id`, `cycle_id`, `cycle_number`, `round` (0-based, the path's `n`). The round is the open cycle's. When that cycle has closed, the route does not read the vault: a round the closed cycle had answers 409 `round_already_finalised` (the contract closes a cycle only after its last round is released), and a round past `total_rounds` answers 409 `round_not_finalisable`. Otherwise the API reads the vault first (`isFinalisable`, and `getCycle` when that is false, so an already released round is told apart from one that is not ready). A ready round whose payout is `pending` or missing records `stokvel.round.finalised_manually` and then queues `stokvel.release_pool` (section 4) in that same transaction, enqueue last, so a failed enqueue rolls the audit back. A crash after the queue is sent and before the commit can still release with no audit row. The worker sends `finalise` and records the release; this route does not wait for the hash. The audit records the cycle, the round, the payout's release status and transaction hash if a payout row already has them, and `enqueued: true`.
 
-A second call while the chain still says the round is ready queues the task again. That does not release twice: `release_pool` claims the payout once, and `record_pool_release` books the leg once (section 4). Once the chain says the round is released, the route answers 409 and queues nothing.
+A payout left `processing` or `failed` answers 409 `round_release_not_pending` and queues nothing. `release_pool` only claims `pending`, and handing a `processing` claim back could pay the round twice. A registered cycle the vault does not have open (or a vault that does not know the stokvel) answers 503 `stokvel_chain_mismatch` and is logged as `stokvel.finalise_chain_mismatch`. That is not `cycle_starting`: `cycle_starting` is only while `registered_at` is null.
+
+A second call while the chain still says the round is ready, and the payout is still `pending`, queues the task again. That does not release twice: `release_pool` claims the payout once, and `record_pool_release` books the leg once (section 4). Once the chain says the round is released, the route answers 409 and queues nothing.
 
 The admin rounds page still uses its mock for the list and the button. No admin route lists rounds yet.
 
@@ -761,9 +764,9 @@ The admin rounds page still uses its mock for the list and the button. No admin 
 | 401 | Not signed in |
 | 403 | Missing `stokvel:round:finalise` |
 | 404 | Unknown stokvel |
-| 409 | No open cycle (`cycle_not_open`); the cycle is not on the chain yet, or the chain has no open cycle for it (`cycle_starting`); the round is not ready (`round_not_finalisable`); the round is already released (`round_already_finalised`) |
+| 409 | No cycle, or the open one is not active (`cycle_not_open`); the cycle is not on the chain yet (`cycle_starting`); the round is not ready, or is past a closed cycle (`round_not_finalisable`); the round is already released, including a round of a closed cycle (`round_already_finalised`); the payout is `processing` or `failed` (`round_release_not_pending`) |
 | 422 | `n` is outside 0..255 |
-| 503 | The vault is paused (`stokvel_paused`), or it cannot be read |
+| 503 | The vault is paused (`stokvel_paused`); a registered cycle does not match the vault (`stokvel_chain_mismatch`); the vault cannot be read |
 
 ### Audit log of admin actions
 
@@ -802,6 +805,13 @@ _TBD per endpoint: request and response shape, errors._
 | OpenZeppelin `EnforcedPause` | 503 `stokvel_paused` | "Stokvels are temporarily paused." |
 | Token `ERC20InsufficientAllowance` (from UCTUSD, not the vault) | 500 `treasury_allowance_missing` | "Something went wrong. Please try again." (backend fault: re-approve, see section 1 "Treasury allowance") |
 | Token `ERC20InsufficientBalance` (from UCTUSD: the Treasury Wallet has run out of UCTUSD) | 503 `treasury_funds_low` | "Contributions are temporarily unavailable. Please try again later." (operations fault: top up the Treasury; alert the operator. The likeliest failure on testnet. Confirmed on the live token, 2026-10-09) |
+
+**Refusals for manual finalise (R3-10)** that are not a contract revert. `NotYetFinalisable` and `AlreadyFinalised` above still apply. `cycle_starting` is only while `registered_at` is null.
+
+| Case | API status and code | Message shown to the user |
+|---|---|---|
+| The payout is `processing` or `failed` | 409 `round_release_not_pending` | "This round's payout is already in progress or has failed, so it can't be queued again." |
+| The cycle is registered, but the vault has no open cycle for it or does not know the stokvel | 503 `stokvel_chain_mismatch` | "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out." |
 
 **Refusals the API raises before anything goes on-chain (R2-11, `POST /stokvels/{id}/contributions`):** the API checks the contract's `NotMember`, `CycleNotOpen`, `WrongRound` and `AlreadyPaid` rules itself and answers with the codes above. It also answers:
 
@@ -1272,9 +1282,10 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `PayoutSetupLockedError`, `CycleNotFormingError`, `InvalidPayoutOrderError`; `NotStokvelOrganiserError(action)` (changed) | `api/remitx_api/errors/stokvels.py` | The R2-09 refusals (section 6) | #231 |
 | `BeneficiaryInUseError`; `BeneficiaryController.delete` (changed) | `api/remitx_api/errors/beneficiaries.py`, `api/remitx_api/controllers/beneficiary_controller.py` | Refuse to delete a beneficiary a stokvel cycle pays: 409 `beneficiary_in_use_by_stokvel` (section 6) | #231 |
 | `STOKVEL_CONTRACT_SUBJECT_ID`; `AuditAction.STOKVEL_CONTRACT_PAUSED`, `.STOKVEL_CONTRACT_UNPAUSED`, `.STOKVEL_ROUND_FINALISED_MANUALLY`; `AuditSubject.STOKVEL`, `.STOKVEL_CONTRACT` | `api/remitx_api/models/orm/audit_log.py` | The stokvel admin-action values. The contract id is fixed because one deployment holds every stokvel (section 5) | #249 |
-| `StokvelAdminController.finalise_round` | `api/remitx_api/controllers/stokvel_admin_controller.py` | Queue `stokvel.release_pool` for one round of the open cycle after the chain says it is ready, then write `stokvel.round.finalised_manually` | #247 |
+| `StokvelAdminController.finalise_round` | `api/remitx_api/controllers/stokvel_admin_controller.py` | Queue `stokvel.release_pool` for one round of the open cycle after the chain says it is ready and the payout is `pending` or missing. Writes `stokvel.round.finalised_manually` in that same transaction, enqueue last. A closed cycle's round is `round_already_finalised` without a chain read | #247 |
+| `StokvelCycleRepository.get_latest_cycle` | `api/remitx_api/repositories/stokvel_cycle_repository.py` | The stokvel's highest-numbered cycle, closed ones included | #247 |
 | `finalise_readiness`, `classify_finalise`, `FinaliseReadiness` | `api/remitx_api/services/stokvel_contract_read.py` | Read `isFinalisable` and `getCycle` and say whether `finalise` would release, refuse, or finds no open cycle. Fails closed when the vault cannot be read | #247 |
-| `RoundNotFinalisableError`, `RoundAlreadyFinalisedError` | `api/remitx_api/errors/stokvels.py` | 409 `round_not_finalisable` and `round_already_finalised` (section 6) | #247 |
+| `RoundNotFinalisableError`, `RoundAlreadyFinalisedError`, `RoundReleaseNotPendingError`, `StokvelChainMismatchError` | `api/remitx_api/errors/stokvels.py` | 409 `round_not_finalisable`, `round_already_finalised`, `round_release_not_pending`; 503 `stokvel_chain_mismatch` (section 6) | #247 |
 | `finalise_stokvel_round` (route) | `api/remitx_api/routes/admin/stokvels.py` | `POST /admin/stokvels/{id}/rounds/{n}/finalise`, response `StokvelRoundFinaliseResponse` | #247 |
 | `PermissionCode.STOKVEL_ROUND_FINALISE` | `api/remitx_api/models/orm/permission.py` | `stokvel:round:finalise`, granted to the compliance officer | #247 |
 | `plan_members`, `refuse_if_already_seeded`, `StokvelDemoStory` | `tools/seeder/remitx_seeder/stories/stokvel.py` | Plan the demo's three members; refuse a second demo on the same database; fund them for every stokvel they are in; set up both stokvels through the stokvel controllers; report an unfinished setup as a refusal | #268 |

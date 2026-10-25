@@ -33,8 +33,11 @@ def finalise_stokvel_round(
     user: User = Depends(get_current_user),
 ):
     """Queue `finalise` for round `round` (0-based) of the stokvel's open
-    cycle, and write `stokvel.round.finalised_manually`. The contract still
-    decides: a round that is not ready answers 409 `round_not_finalisable`,
-    and one already released answers 409 `round_already_finalised`. Needs
+    cycle, and write `stokvel.round.finalised_manually` in that same
+    transaction. The contract still decides: a round that is not ready
+    answers 409 `round_not_finalisable`, and one already released answers
+    409 `round_already_finalised`. A payout left `processing` or `failed`
+    answers 409 `round_release_not_pending`. A registered cycle the vault
+    does not have open answers 503 `stokvel_chain_mismatch`. Needs
     ``stokvel:round:finalise``."""
     return controller.finalise_round(user.id, stokvel_id, round)
