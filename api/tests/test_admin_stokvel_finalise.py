@@ -1,8 +1,10 @@
 """Admin manual finalise (R3-10, #247)."""
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from remitx_api.extensions import db
@@ -10,6 +12,7 @@ from remitx_api.models.orm.audit_log import AuditAction, AuditLog, AuditSubject
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
 from remitx_api.services import queue_service
 from remitx_api.services.stokvel_contract_read import (
     FinaliseReadiness,
@@ -36,6 +39,7 @@ def _seed(organiser_id, *, status="active", registered=True, rounds=2):
     db.session.add(stokvel)
     db.session.flush()
     forming = status == StokvelCycleStatus.FORMING.value
+    closed = status == StokvelCycleStatus.CLOSED.value
     cycle = StokvelCycle(
         stokvel_id=stokvel.id,
         cycle_number=1,
@@ -44,12 +48,22 @@ def _seed(organiser_id, *, status="active", registered=True, rounds=2):
         current_round=None if forming else 0,
         started_at=None if forming else now,
         registered_at=None if forming or not registered else now,
+        closed_at=now if closed else None,
     )
     db.session.add(cycle)
     db.session.flush()
     stokvel.current_cycle_id = cycle.id
     db.session.commit()
     return stokvel, cycle
+
+
+def _hold_payout(monkeypatch, status, tx_hash=None):
+    found = SimpleNamespace(release_status=status, release_tx_hash=tx_hash)
+    monkeypatch.setattr(
+        "remitx_api.controllers.stokvel_admin_controller"
+        ".StokvelPayoutRepository.get_round_payout",
+        lambda self, cycle_id, round_: found,
+    )
 
 
 def _patch(monkeypatch, readiness, paused=False):
@@ -161,23 +175,144 @@ def test_a_round_the_chain_has_released_is_not_queued_again(monkeypatch):
         assert queued == [(cycle_id, 0)]
 
 
-@pytest.mark.parametrize(
-    ("readiness", "code"),
-    [
-        (FinaliseReadiness.ALREADY, "round_already_finalised"),
-        (FinaliseReadiness.NO_OPEN_CYCLE, "cycle_starting"),
-        (FinaliseReadiness.UNKNOWN_STOKVEL, "cycle_starting"),
-    ],
-)
-def test_chain_refusals(monkeypatch, readiness, code):
-    queued = _patch(monkeypatch, readiness)
-    user = make_user(f"finalise-{readiness.value}")
+def test_chain_refusals(monkeypatch):
+    queued = _patch(monkeypatch, FinaliseReadiness.ALREADY)
+    user = make_user("finalise-already")
     with rbac_client(user, permissions=(PERMISSION,)) as client:
         stokvel, _cycle = _seed(user.id)
         response = client.post(_url(stokvel.id))
     assert response.status_code == 409
-    assert response.json()["code"] == code
+    assert response.json()["code"] == "round_already_finalised"
     assert queued == []
+
+
+@pytest.mark.parametrize(
+    "readiness",
+    [FinaliseReadiness.NO_OPEN_CYCLE, FinaliseReadiness.UNKNOWN_STOKVEL],
+)
+def test_a_registered_cycle_missing_on_chain_is_not_a_retry(
+    monkeypatch, caplog, readiness
+):
+    queued = _patch(monkeypatch, readiness)
+    user = make_user(f"finalise-mismatch-{readiness.value}")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        with caplog.at_level(logging.ERROR):
+            response = client.post(_url(stokvel.id))
+        assert response.status_code == 503
+        assert response.json()["code"] == "stokvel_chain_mismatch"
+        assert "try again" not in response.json()["detail"].lower()
+        assert queued == []
+        assert (
+            db.session.scalar(
+                select(AuditLog).where(
+                    AuditLog.action
+                    == AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value
+                )
+            )
+            is None
+        )
+    assert "stokvel.finalise_chain_mismatch" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        StokvelPayoutReleaseStatus.PROCESSING.value,
+        StokvelPayoutReleaseStatus.FAILED.value,
+    ],
+)
+def test_a_payout_that_is_not_pending_is_not_queued(monkeypatch, status):
+    queued = _patch(monkeypatch, FinaliseReadiness.READY)
+    _hold_payout(monkeypatch, status)
+    user = make_user(f"finalise-payout-{status}")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        response = client.post(_url(stokvel.id))
+        assert response.status_code == 409
+        assert response.json()["code"] == "round_release_not_pending"
+        assert queued == []
+        assert (
+            db.session.scalar(
+                select(AuditLog).where(
+                    AuditLog.action
+                    == AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value
+                )
+            )
+            is None
+        )
+
+
+def test_a_released_payout_row_is_already_finalised(monkeypatch):
+    queued = _patch(monkeypatch, FinaliseReadiness.READY)
+    _hold_payout(monkeypatch, StokvelPayoutReleaseStatus.RELEASED.value, "0xabc")
+    user = make_user("finalise-payout-released")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        response = client.post(_url(stokvel.id))
+    assert response.status_code == 409
+    assert response.json()["code"] == "round_already_finalised"
+    assert queued == []
+
+
+def test_a_pending_payout_is_still_queued(monkeypatch):
+    queued = _patch(monkeypatch, FinaliseReadiness.READY)
+    _hold_payout(monkeypatch, StokvelPayoutReleaseStatus.PENDING.value)
+    user = make_user("finalise-payout-pending")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, cycle = _seed(user.id)
+        response = client.post(_url(stokvel.id))
+        assert response.status_code == 202
+        assert queued == [(str(cycle.id), 0)]
+        entry = db.session.scalar(
+            select(AuditLog).where(
+                AuditLog.action == AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value
+            )
+        )
+        assert entry is not None
+        assert entry.after["release_status"] == "pending"
+        assert entry.after["enqueued"] is True
+
+
+def test_a_failed_enqueue_writes_no_audit(monkeypatch):
+    _patch(monkeypatch, FinaliseReadiness.READY)
+
+    def boom(cycle_id, round_):
+        raise RuntimeError("redis down")
+
+    monkeypatch.setattr(queue_service, "enqueue_release_pool", boom)
+    user = make_user("finalise-enqueue-down")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        with pytest.raises(RuntimeError, match="redis down"):
+            client.post(_url(stokvel.id))
+        assert (
+            db.session.scalar(
+                select(AuditLog).where(
+                    AuditLog.action
+                    == AuditAction.STOKVEL_ROUND_FINALISED_MANUALLY.value
+                )
+            )
+            is None
+        )
+
+
+def test_a_closed_cycles_round_is_already_finalised(monkeypatch):
+    def readiness(*_args):
+        raise AssertionError("a closed cycle is answered from the database")
+
+    queued = _patch(monkeypatch, readiness)
+    user = make_user("finalise-closed")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id, status=StokvelCycleStatus.CLOSED.value)
+        response = client.post(_url(stokvel.id))
+        assert response.status_code == 409
+        assert response.json()["code"] == "round_already_finalised"
+        assert response.json()["detail"] == "This round has already been paid out."
+        past = client.post(_url(stokvel.id, 2))
+        assert past.status_code == 409
+        assert past.json()["code"] == "round_not_finalisable"
+        assert queued == []
 
 
 def test_a_paused_vault_is_refused_before_the_chain_read(monkeypatch):

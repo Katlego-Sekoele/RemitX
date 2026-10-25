@@ -429,6 +429,35 @@ class RoundAlreadyFinalisedError(ConflictError):
         super().__init__("This round has already been paid out.")
 
 
+class RoundReleaseNotPendingError(ConflictError):
+    """The payout is `processing` or `failed`. `release_pool` only claims a
+    `pending` row, so queueing again would record a send that never happens.
+    Handing a `processing` claim back could pay the round twice."""
+
+    code = "round_release_not_pending"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This round's payout is already in progress or has failed, so it "
+            "can't be queued again."
+        )
+
+
+class StokvelChainMismatchError(DomainError):
+    """The database says this cycle is registered, but the vault has no open
+    cycle for it, or does not know the stokvel. Retrying will not fix a
+    redeployed vault or a wrong contract address."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "stokvel_chain_mismatch"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This stokvel's records don't match the contract. An operator "
+            "needs to check the vault before this round can be paid out."
+        )
+
+
 class StokvelContractNotPausedError(ConflictError):
     """`unpause()` was called while the vault is running."""
 

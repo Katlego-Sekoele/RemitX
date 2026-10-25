@@ -13,6 +13,10 @@ export const STOKVEL_ERROR_MESSAGES = {
   contribution_amount_mismatch: "Something went wrong. Please try again.",
   round_not_finalisable: "This round can't be paid out yet.",
   round_already_finalised: "This round has already been paid out.",
+  round_release_not_pending:
+    "This round's payout is already in progress or has failed, so it can't be queued again.",
+  stokvel_chain_mismatch:
+    "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out.",
   cycle_not_open: "This stokvel has no active cycle right now.",
   too_many_members: "This stokvel already has as many members as it can.",
   stokvel_paused: "Stokvels are temporarily paused.",

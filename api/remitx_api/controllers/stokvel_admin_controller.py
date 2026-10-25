@@ -1,6 +1,8 @@
 """Administrator actions on the shared stokvel vault (R3-07, #244; R3-10, #247)."""
 
+import logging
 import uuid
+from typing import NoReturn
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
 
@@ -10,6 +12,8 @@ from remitx_api.errors.stokvels import (
     CycleStartingError,
     RoundAlreadyFinalisedError,
     RoundNotFinalisableError,
+    RoundReleaseNotPendingError,
+    StokvelChainMismatchError,
     StokvelContractActionTimedOutError,
     StokvelContractAlreadyPausedError,
     StokvelContractNotPausedError,
@@ -22,6 +26,7 @@ from remitx_api.models.orm.audit_log import (
     AuditSubject,
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
+from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
 from remitx_api.models.schemas.stokvel_contract import (
     StokvelContractActionResponse,
     StokvelRoundFinaliseResponse,
@@ -37,14 +42,20 @@ from remitx_api.services.stokvel_contract_read import (
     is_paused,
 )
 
+logger = logging.getLogger(__name__)
+
 # The chain said the round cannot be sent. `release_pool` would learn the
 # same thing and send nothing; the route answers before queueing.
+# `NO_OPEN_CYCLE` and `UNKNOWN_STOKVEL` are not here: this route only reads
+# the chain after `registered_at` is set, so those are a permanent mismatch.
 _NOT_READY = {
     FinaliseReadiness.NOT_YET: RoundNotFinalisableError,
     FinaliseReadiness.ALREADY: RoundAlreadyFinalisedError,
-    FinaliseReadiness.NO_OPEN_CYCLE: CycleStartingError,
-    FinaliseReadiness.UNKNOWN_STOKVEL: CycleStartingError,
 }
+
+_CHAIN_MISMATCH = frozenset(
+    {FinaliseReadiness.NO_OPEN_CYCLE, FinaliseReadiness.UNKNOWN_STOKVEL}
+)
 
 
 class StokvelAdminController:
@@ -78,13 +89,17 @@ class StokvelAdminController:
         """Queue `stokvel.release_pool` for one round of the stokvel's open
         cycle. The worker sends `finalise`; this does not. The chain is read
         first, so a round that is not ready or already released is refused
-        and nothing is queued. A second queue for a round the chain still
-        calls ready is harmless: `release_pool` claims the payout once."""
+        and nothing is queued. A payout that is not `pending` is refused too:
+        the worker only claims `pending`. A second queue for a round the
+        chain still calls ready, whose payout is still `pending`, is
+        harmless: `release_pool` claims the payout once."""
         stokvel = StokvelRepository().get_by_id(stokvel_id)
         if stokvel is None:
             raise StokvelNotFoundError()
         cycle = StokvelCycleRepository().get_open_cycle(stokvel_id)
-        if cycle is None or cycle.status != StokvelCycleStatus.ACTIVE.value:
+        if cycle is None:
+            self._refuse_without_open_cycle(stokvel_id, round_)
+        if cycle.status != StokvelCycleStatus.ACTIVE.value:
             raise CycleNotOpenError()
         if cycle.registered_at is None:
             raise CycleStartingError()
@@ -94,14 +109,19 @@ class StokvelAdminController:
             raise StokvelPausedError()
         readiness = finalise_readiness(stokvel_id, cycle.cycle_number, round_)
         if readiness is not FinaliseReadiness.READY:
-            raise _NOT_READY[readiness]()
+            self._refuse_chain(stokvel_id, cycle.cycle_number, round_, readiness)
         payout = StokvelPayoutRepository().get_round_payout(cycle.id, round_)
-        # shortcut: release_pool only claims a pending payout. One left
-        # `failed` is not retried by queueing it again.
-        queue_service.enqueue_release_pool(str(cycle.id), round_)
-        self._write_finalise_audit(
+        if (
+            payout is not None
+            and payout.release_status != StokvelPayoutReleaseStatus.PENDING.value
+        ):
+            if payout.release_status == StokvelPayoutReleaseStatus.RELEASED.value:
+                raise RoundAlreadyFinalisedError()
+            raise RoundReleaseNotPendingError()
+        self._enqueue_and_audit(
             actor_user_id,
             stokvel_id,
+            cycle.id,
             cycle.cycle_number,
             round_,
             None if payout is None else payout.release_status,
@@ -141,16 +161,56 @@ class StokvelAdminController:
             after={"paused": False, "tx_hash": tx_hash},
         )
 
+    def _refuse_without_open_cycle(
+        self, stokvel_id: uuid.UUID, round_: int
+    ) -> NoReturn:
+        """A closed cycle has already released every round it had. The
+        contract sets `closed` only after the last round is released."""
+        latest = StokvelCycleRepository().get_latest_cycle(stokvel_id)
+        if (
+            latest is not None
+            and latest.status == StokvelCycleStatus.CLOSED.value
+            and latest.total_rounds is not None
+            and round_ < latest.total_rounds
+        ):
+            raise RoundAlreadyFinalisedError()
+        if latest is not None and latest.status == StokvelCycleStatus.CLOSED.value:
+            raise RoundNotFinalisableError()
+        raise CycleNotOpenError()
+
+    def _refuse_chain(
+        self,
+        stokvel_id: uuid.UUID,
+        cycle_number: int,
+        round_: int,
+        readiness: FinaliseReadiness,
+    ) -> NoReturn:
+        if readiness in _CHAIN_MISMATCH:
+            logger.error(
+                "event=stokvel.finalise_chain_mismatch stokvel_id=%s "
+                "cycle_number=%s round=%s readiness=%s",
+                stokvel_id,
+                cycle_number,
+                round_,
+                readiness.value,
+            )
+            raise StokvelChainMismatchError()
+        raise _NOT_READY[readiness]()
+
     @db_transaction
-    def _write_finalise_audit(
+    def _enqueue_and_audit(
         self,
         actor_user_id: uuid.UUID,
         stokvel_id: uuid.UUID,
+        cycle_id: uuid.UUID,
         cycle_number: int,
         round_: int,
         release_status: str | None,
         tx_hash: str | None,
     ) -> None:
+        """Stage the audit, then queue. A failed enqueue rolls the audit
+        back. A crash after the queue is sent and before this commits can
+        still release with no audit row."""
         recorded = {
             "cycle_number": cycle_number,
             "round": round_,
@@ -165,3 +225,4 @@ class StokvelAdminController:
             before=recorded,
             after={**recorded, "enqueued": True},
         )
+        queue_service.enqueue_release_pool(str(cycle_id), round_)

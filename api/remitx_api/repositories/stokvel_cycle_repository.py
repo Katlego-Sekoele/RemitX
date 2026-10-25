@@ -43,6 +43,15 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
             )
         ).one_or_none()
 
+    def get_latest_cycle(self, stokvel_id: uuid.UUID) -> StokvelCycle | None:
+        """The stokvel's highest-numbered cycle, closed ones included."""
+        return db.session.scalars(
+            select(StokvelCycle)
+            .where(StokvelCycle.stokvel_id == stokvel_id)
+            .order_by(StokvelCycle.cycle_number.desc())
+            .limit(1)
+        ).one_or_none()
+
     def has_any_cycle(self, stokvel_id: uuid.UUID) -> bool:
         """Whether the stokvel has ever had a cycle, closed ones included."""
         return db.session.scalar(

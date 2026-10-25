@@ -9885,7 +9885,7 @@
     },
     "/admin/stokvels/{stokvel_id}/rounds/{round}/finalise": {
       "post": {
-        "description": "Queue `finalise` for round `round` (0-based) of the stokvel's open\ncycle, and write `stokvel.round.finalised_manually`. The contract still\ndecides: a round that is not ready answers 409 `round_not_finalisable`,\nand one already released answers 409 `round_already_finalised`. Needs\n``stokvel:round:finalise``.",
+        "description": "Queue `finalise` for round `round` (0-based) of the stokvel's open\ncycle, and write `stokvel.round.finalised_manually` in that same\ntransaction. The contract still decides: a round that is not ready\nanswers 409 `round_not_finalisable`, and one already released answers\n409 `round_already_finalised`. A payout left `processing` or `failed`\nanswers 409 `round_release_not_pending`. A registered cycle the vault\ndoes not have open answers 503 `stokvel_chain_mismatch`. Needs\n``stokvel:round:finalise``.",
         "operationId": "finalise_stokvel_round",
         "parameters": [
           {

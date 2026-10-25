@@ -53,6 +53,14 @@ test("refusals show the doc §6 wording, others the API's message", () => {
     "This round has already been paid out."
   )
   assert.equal(
+    finaliseRefusalMessage(refused("round_release_not_pending")),
+    "This round's payout is already in progress or has failed, so it can't be queued again."
+  )
+  assert.equal(
+    finaliseRefusalMessage(refused("stokvel_chain_mismatch")),
+    "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out."
+  )
+  assert.equal(
     finaliseRefusalMessage(
       Object.assign(new Error("Server error"), { body: { detail: "x" } })
     ),

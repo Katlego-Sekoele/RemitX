@@ -35,6 +35,10 @@ export type AdminStokvelRoundRead = {
 export const FINALISE_REFUSALS = {
   round_not_finalisable: "This round can't be paid out yet.",
   round_already_finalised: "This round has already been paid out.",
+  round_release_not_pending:
+    "This round's payout is already in progress or has failed, so it can't be queued again.",
+  stokvel_chain_mismatch:
+    "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out.",
   stokvel_paused: "Stokvels are temporarily paused.",
 } as const
 
@@ -85,7 +89,8 @@ export function finaliseHint(
 /**
  * Whether the page offers Release payout for a round: not once it has been
  * released, and not while the worker's release is in flight. A failed
- * release keeps the button: that's the case the fallback exists for (P5).
+ * release keeps the button on this mock. The live route refuses both
+ * `processing` and `failed` with 409 `round_release_not_pending`.
  */
 export function canReleaseByHand(
   round: Pick<AdminStokvelRoundRead, "release_status">
