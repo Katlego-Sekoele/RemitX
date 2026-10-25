@@ -8,6 +8,7 @@
 
 import {
   addDays,
+  addMinutes,
   addMonths,
   addWeeks,
   isValid,
@@ -28,6 +29,9 @@ export const FREQUENCIES = [
   { key: "weekly", label: "Weekly" },
   { key: "fortnightly", label: "Every 2 weeks" },
   { key: "monthly", label: "Monthly" },
+  // Rounds a few minutes apart, so a whole cycle runs during the demo (brief
+  // §7.5, R4-14 #370). A round still can't release before its payout time.
+  { key: "demo", label: "Every 5 minutes (demo)" },
 ] as const
 
 export type Frequency = (typeof FREQUENCIES)[number]["key"]
@@ -46,6 +50,42 @@ export const DEFAULT_PAY_BY_DAYS = 2
 export function payByLabel(days: number): string {
   if (days === 0) return "On the payout day"
   return days === 1 ? "1 day before the payout" : `${days} days before`
+}
+
+/** Minutes between payouts, and from Start cycle to the first, in demo mode. */
+export const DEMO_INTERVAL_MINUTES = 5
+
+/** Demo pay-by options, in minutes before each payout. */
+export const PAY_BY_DEMO_OPTIONS = [0, 1, 2, 3] as const
+export const DEFAULT_PAY_BY_DEMO_MINUTES = 2
+
+export function payByDemoLabel(minutes: number): string {
+  if (minutes === 0) return "On the payout time"
+  return minutes === 1 ? "1 minute before" : `${minutes} minutes before`
+}
+
+/** The pay-by choices for a frequency: days, or minutes in demo mode. */
+export function payByChoices(frequency: Frequency): {
+  options: readonly number[]
+  fallback: number
+  label: (value: number) => string
+} {
+  return frequency === "demo"
+    ? {
+        options: PAY_BY_DEMO_OPTIONS,
+        fallback: DEFAULT_PAY_BY_DEMO_MINUTES,
+        label: payByDemoLabel,
+      }
+    : {
+        options: PAY_BY_OPTIONS,
+        fallback: DEFAULT_PAY_BY_DAYS,
+        label: payByLabel,
+      }
+}
+
+/** The demo's first payout: a few minutes after Start cycle is pressed. */
+export function demoFirstPayout(now: Date = new Date()): Date {
+  return addMinutes(now, DEMO_INTERVAL_MINUTES)
 }
 
 const ISO_DATE = "yyyy-MM-dd"
@@ -84,6 +124,8 @@ function stepPayout(first: Date, frequency: Frequency, round: number): Date {
       return addWeeks(first, 2 * round)
     case "monthly":
       return addMonths(first, round)
+    case "demo":
+      return addMinutes(first, DEMO_INTERVAL_MINUTES * round)
   }
 }
 
@@ -91,35 +133,42 @@ function stepPayout(first: Date, frequency: Frequency, round: number): Date {
 const ROUND_OPENS_AT = { hours: 7, minutes: 0, seconds: 0, milliseconds: 0 }
 
 /**
- * One round per member from a first payout day and a cadence. Round 1 opens
- * now; each later round opens the morning after the previous payout. The
- * pay-by date is `payByDaysBefore` days before each payout, but never
- * before its round opens (a first payout within those days, or a weekly
- * cycle with a week's notice).
+ * One round per member from a first payout and a cadence. Round 1 opens now.
+ * Each later round opens the morning after the previous payout, or, in demo
+ * mode, at the previous payout itself (the next morning would be after its
+ * own payout). The pay-by is `payByBefore` days before each payout (minutes
+ * in demo mode), but never before its round opens (a first payout within
+ * those days, or a weekly cycle with a week's notice).
  */
 export function generateSchedule({
   firstPayout,
   frequency,
   rounds,
-  payByDaysBefore = 0,
+  payByBefore = 0,
   now = new Date(),
 }: {
   firstPayout: Date
   frequency: Frequency
   rounds: number
-  payByDaysBefore?: number
+  payByBefore?: number
   now?: Date
 }): StokvelRoundTimes[] {
+  const demo = frequency === "demo"
   const schedule: StokvelRoundTimes[] = []
   let previousPayout: Date | null = null
   for (let round = 0; round < rounds; round++) {
     const payout = stepPayout(firstPayout, frequency, round)
-    const start = previousPayout
-      ? set(addDays(previousPayout, 1), ROUND_OPENS_AT)
-      : now
+    const start = !previousPayout
+      ? now
+      : demo
+        ? previousPayout
+        : set(addDays(previousPayout, 1), ROUND_OPENS_AT)
+    const payBy = demo
+      ? addMinutes(payout, -payByBefore)
+      : addDays(payout, -payByBefore)
     schedule.push({
       start_time: start.toISOString(),
-      deadline: max([start, addDays(payout, -payByDaysBefore)]).toISOString(),
+      deadline: max([start, payBy]).toISOString(),
       payout_time: payout.toISOString(),
     })
     previousPayout = payout
