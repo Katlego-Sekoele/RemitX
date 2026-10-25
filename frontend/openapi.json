@@ -5485,7 +5485,7 @@
         "type": "object"
       },
       "StokvelDetailInvitationRead": {
-        "description": "A pending invitation on `GET /stokvels/{id}`.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set.",
+        "description": "An invitation on `GET /stokvels/{id}`, of any status.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set.",
         "properties": {
           "account_reference": {
             "anyOf": [
@@ -13040,7 +13040,7 @@
     },
     "/stokvels/{stokvel_id}": {
       "get": {
-        "description": "The member screen for one stokvel: the group, its current cycle,\nwho has paid, and each round's payout once one exists.\n\n404 for an unknown stokvel or one the caller is not a current member of,\nthe same answer, so an id reveals nothing. `contribution_fiat_estimate`\nis null when no exchange rate is available. `fee_amount` is set only on\nthe caller's own contributions. `pool_fiat_amount` is null.\n`remittance_id` is the payout reference.",
+        "description": "The member screen for one stokvel: the group, its current cycle,\nwho has paid, and each round's payout once one exists. `invitations`\nholds every invitation of the stokvel, whatever its status, newest first.\n\n404 for an unknown stokvel or one the caller is not a current member of,\nthe same answer, so an id reveals nothing. `contribution_fiat_estimate`\nis null when no exchange rate is available. `fee_amount` is set only on\nthe caller's own contributions. `pool_fiat_amount` is null.\n`remittance_id` is the payout reference.",
         "operationId": "get_stokvel",
         "parameters": [
           {

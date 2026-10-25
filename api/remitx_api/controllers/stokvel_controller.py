@@ -371,7 +371,7 @@ class StokvelController:
                     created_at=invitation.created_at,
                 )
                 for invitation, invitee, reference in (
-                    self._invitations.list_pending_for_stokvel(
+                    self._invitations.list_for_stokvel(
                         stokvel.id,
                         stokvel.currency,
                         include_reference=user_id == stokvel.organiser_user_id,

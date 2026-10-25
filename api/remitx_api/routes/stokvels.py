@@ -91,7 +91,8 @@ def get_stokvel(
     user: User = Depends(get_current_user),
 ):
     """The member screen for one stokvel: the group, its current cycle,
-    who has paid, and each round's payout once one exists.
+    who has paid, and each round's payout once one exists. `invitations`
+    holds every invitation of the stokvel, whatever its status, newest first.
 
     404 for an unknown stokvel or one the caller is not a current member of,
     the same answer, so an id reveals nothing. `contribution_fiat_estimate`

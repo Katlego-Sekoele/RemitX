@@ -42,6 +42,7 @@ from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.routes import stokvel_invitations as invitations_route
+from remitx_api.services.exchange_rate_service import RateUnavailableError
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
@@ -136,7 +137,8 @@ def _invitation_row(stokvel_id, invitee: Person, status, organiser_id):
             None
             if not answered
             else organiser_id
-            if status == StokvelInvitationStatus.REVOKED
+            if status
+            in (StokvelInvitationStatus.REVOKED, StokvelInvitationStatus.LAPSED)
             else invitee.id
         ),
     )
@@ -273,6 +275,11 @@ class Api:
 
     def list(self, as_: Person):
         return self.client.get("/stokvels", headers={USER_HEADER: str(as_.id)})
+
+    def detail(self, as_: Person, stokvel_id):
+        return self.client.get(
+            f"/stokvels/{stokvel_id}", headers={USER_HEADER: str(as_.id)}
+        )
 
 
 @pytest.fixture
@@ -901,6 +908,43 @@ def test_under_row_security_an_invitee_accepts_and_declines(pg_api):
     assert accepted.json()["member_count"] == 2
     assert declined.status_code == 204, declined.text
     assert _members(stokvel_id) == {organiser.id, joiner.id}
+
+
+@pytest.mark.postgres
+def test_under_row_security_members_see_every_invitation(pg_api, monkeypatch):
+    """`GET /stokvels/{id}` returns answered invitations too (R2-17, #375),
+    with the reference for the Organiser only."""
+
+    def unavailable(currency):
+        raise RateUnavailableError(currency)
+
+    monkeypatch.setattr(
+        "remitx_api.controllers.stokvel_controller.token_rates", unavailable
+    )
+    organiser, joiner = _person("sipho"), _person()
+    decliner, revoked, waiting = _person("decliner"), _person("revoked"), _person()
+    stokvel_id = _stokvel(organiser)
+    _invitation(stokvel_id, _person("lapsed"), StokvelInvitationStatus.LAPSED)
+    to_join = _invitation(stokvel_id, joiner)
+    to_decline = _invitation(stokvel_id, decliner)
+    to_revoke = _invitation(stokvel_id, revoked)
+    _invitation(stokvel_id, waiting)
+    assert pg_api.accept(joiner, to_join).status_code == 200
+    assert pg_api.decline(decliner, to_decline).status_code == 204
+    assert pg_api.revoke(organiser, to_revoke).status_code == 204
+
+    as_organiser = pg_api.detail(organiser, stokvel_id)
+    as_member = pg_api.detail(joiner, stokvel_id)
+
+    statuses = {"pending", "accepted", "declined", "revoked", "lapsed"}
+    assert as_organiser.status_code == 200, as_organiser.text
+    assert as_member.status_code == 200, as_member.text
+    seen = as_organiser.json()["invitations"]
+    assert {row["status"] for row in seen} == statuses
+    assert all(row["account_reference"] for row in seen)
+    hidden = as_member.json()["invitations"]
+    assert {row["status"] for row in hidden} == statuses
+    assert all(row["account_reference"] is None for row in hidden)
 
 
 @pytest.mark.postgres
