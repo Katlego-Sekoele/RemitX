@@ -9,13 +9,16 @@ invitation does, so a join or a second setup call cannot interleave.
 A stokvel created before cycles opened at creation has none. The Organiser's
 first setup call opens cycle 1 for it; row-level security lets only the
 Organiser insert a cycle. Members from before then get their cycle row the
-same way. Cycle 2 onwards is opened by #237, not here.
+same way. Cycle 2 onwards is opened by the worker when the previous cycle
+closes (`open_next_cycle`, R2-15); the Organiser's first setup call opens it
+for a cycle that closed before that existed.
 """
 
 import uuid
 from dataclasses import dataclass
 
 from remitx_api.controllers.stokvel_controller import open_forming_cycle
+from remitx_api.controllers.stokvel_cycle_controller import open_next_cycle
 from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.beneficiaries import (
     PayoutAccountMissingError,
@@ -29,6 +32,7 @@ from remitx_api.errors.stokvels import (
     StokvelDeactivatedError,
     StokvelNotFoundError,
 )
+from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_member import StokvelMember
@@ -172,13 +176,21 @@ class StokvelSetupController:
         return stokvel, member
 
     def _forming_cycle(self, stokvel: Stokvel, *, is_organiser: bool) -> StokvelCycle:
-        """The stokvel's open cycle, if it is still `forming`. A stokvel that
-        has never had a cycle gets cycle 1, but only from its Organiser."""
+        """The stokvel's open cycle, if it is still `forming`. When there is
+        none, the Organiser opens one: cycle 1 for a stokvel that has never
+        had a cycle, or the next after a closed one the worker did not open
+        a successor for."""
         cycle = self._cycles.get_open_cycle(stokvel.id)
         if cycle is None:
-            if not is_organiser or self._cycles.has_any_cycle(stokvel.id):
+            if not is_organiser:
                 raise CycleNotFormingError()
-            return open_forming_cycle(stokvel)
+            latest = self._cycles.get_latest_cycle(stokvel.id)
+            if latest is None:
+                return open_forming_cycle(stokvel)
+            following = open_next_cycle(db.session, latest)
+            if following is None:
+                raise CycleNotFormingError()
+            return following
         if cycle.status != StokvelCycleStatus.FORMING.value:
             raise PayoutSetupLockedError()
         return cycle
