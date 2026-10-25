@@ -43,6 +43,7 @@ import {
   canInvite,
   firstNameOf,
   myCurrentContribution,
+  openRound,
   outstandingMembers,
   paidMemberIds,
   pendingInvitations,
@@ -78,8 +79,15 @@ export default function StokvelPage() {
     // A contribution confirms on chain a few seconds after it is sent.
     refetchInterval: (query) => {
       if (query.state.status === "error") return false
-      const status = query.state.data?.my_contribution_status
-      return status === "pending" || status === "processing" ? 1500 : false
+      const data = query.state.data
+      if (!data) return false
+      const inflight = data.contributions.some(
+        (contribution) =>
+          contribution.member_id === data.my_member_id &&
+          (contribution.status === "pending" ||
+            contribution.status === "processing")
+      )
+      return inflight ? 1500 : false
     },
   })
   const accounts = useQuery(api.accounts.getAccounts())
@@ -162,22 +170,26 @@ function StokvelDetail({
 }) {
   const cycle = stokvel.cycle
   const active = cycle?.status === "active"
-  const roundIndex = active && cycle ? cycle.current_round : null
   const totalRounds = active && cycle ? cycle.total_rounds : null
-  const paid = paidMemberIds(stokvel)
-  const outstanding = outstandingMembers(stokvel)
+  // Collecting round. Stored current_round stays 0 (docs §5).
+  const open = openRound(stokvel)
+  const roundIndex =
+    open ??
+    (active && totalRounds != null && totalRounds > 0 ? totalRounds - 1 : null)
+  const fillCount =
+    active && totalRounds != null ? totalRounds : stokvel.member_count
+  const paid = paidMemberIds(stokvel, roundIndex ?? 0)
+  const outstanding = outstandingMembers(stokvel, roundIndex ?? 0)
   const currentRound =
-    // Stored column, not open_round (docs §5). It stays 0 until something
-    // else advances it.
     active && cycle && roundIndex != null
       ? cycle.rounds.find((round) => round.round === roundIndex)
       : undefined
   const estimate = stokvel.contribution_fiat_estimate
-  const pool = estimate ? poolAmount(estimate, stokvel.member_count) : null
+  const pool = estimate ? poolAmount(estimate, fillCount) : null
   const collected = estimate ? poolAmount(estimate, paid.size) : null
   const member = (memberId: string) =>
     stokvel.members.find((m) => m.member_id === memberId)
-  const mine = myCurrentContribution(stokvel)
+  const mine = myCurrentContribution(stokvel, roundIndex)
   const recipientId = currentRound?.recipient_member_id
   const recipient = recipientId ? member(recipientId) : undefined
   const recipientIsMe = recipient?.member_id === stokvel.my_member_id
@@ -213,7 +225,7 @@ function StokvelDetail({
               {pool && collected ? (
                 <PotRing
                   paid={paid.size}
-                  total={stokvel.member_count}
+                  total={fillCount}
                   collected={collected}
                   pool={pool}
                   currency={stokvel.currency}
@@ -261,7 +273,7 @@ function StokvelDetail({
             currency={stokvel.currency}
             pool={pool}
             paid={paid.size}
-            members={stokvel.member_count}
+            members={fillCount}
             outstandingNames={outstanding.map(firstName)}
           />
         </>
@@ -312,6 +324,7 @@ function StokvelDetail({
       {cycle && cycle.status !== "forming" ? (
         <PayoutQueue
           cycle={cycle}
+          openRound={open}
           member={member}
           myMemberId={stokvel.my_member_id}
         />
@@ -360,10 +373,11 @@ function StokvelDetail({
       {cycle && cycle.rounds.length > 0 ? (
         <RoundSchedule
           cycle={cycle}
+          openRound={open}
           member={member}
           myMemberId={stokvel.my_member_id}
           paidByRound={(round) => paidMemberIds(stokvel, round).size}
-          memberCount={stokvel.member_count}
+          memberCount={fillCount}
         />
       ) : null}
     </div>

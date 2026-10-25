@@ -458,19 +458,50 @@ export function payoutProofHash(
 }
 
 /**
- * The signed-in member's contribution to the current round, ignoring failed
- * attempts: after a failed send the member pays again, and the live attempt
- * is the one the panel follows.
+ * The round a contribution joins. `current_round` is a stored column and
+ * stays 0; this is `StokvelContributionRepository.open_round`, with
+ * `total_rounds` as the locked member count. Null once every round is full,
+ * or when the cycle is not active.
+ */
+export function openRound(
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions">
+): number | null {
+  const cycle = detail.cycle
+  if (!cycle || cycle.status !== "active" || cycle.total_rounds == null) {
+    return null
+  }
+  const members = cycle.total_rounds
+  const counts = new Map<number, number>()
+  for (const contribution of detail.contributions) {
+    if (
+      contribution.cycle_id !== cycle.cycle_id ||
+      contribution.status === ContributionStatus.failed
+    ) {
+      continue
+    }
+    counts.set(contribution.round, (counts.get(contribution.round) ?? 0) + 1)
+  }
+  for (let round = 0; round < members; round++) {
+    if ((counts.get(round) ?? 0) < members) return round
+  }
+  return null
+}
+
+/**
+ * The signed-in member's contribution to `round` (the open round when
+ * omitted), ignoring failed attempts: after a failed send the member pays
+ * again, and the live attempt is the one the panel follows.
  */
 export function myCurrentContribution(
-  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "my_member_id">
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "my_member_id">,
+  round: number | null = openRound(detail)
 ): StokvelRoundContributionRead | undefined {
   const cycle = detail.cycle
-  if (!cycle) return undefined
+  if (!cycle || round == null) return undefined
   return detail.contributions.find(
     (c) =>
       c.cycle_id === cycle.cycle_id &&
-      c.round === cycle.current_round &&
+      c.round === round &&
       c.member_id === detail.my_member_id &&
       c.status !== ContributionStatus.failed
   )

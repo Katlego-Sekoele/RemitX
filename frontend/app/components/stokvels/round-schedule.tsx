@@ -27,14 +27,16 @@ type MemberLookup = (memberId: string) => StokvelMemberRead | undefined
  * and, when it is the viewer, says "You're next!" (product docx §3). */
 export function PayoutQueue({
   cycle,
+  openRound,
   member,
   myMemberId,
 }: {
   cycle: StokvelDetailCycleRead
+  /** Collecting round. Null when none is open, including a finished cycle. */
+  openRound: number | null
   member: MemberLookup
   myMemberId: string
 }) {
-  const active = cycle.status === "active"
   return (
     <Card>
       <CardHeader>
@@ -50,10 +52,7 @@ export function PayoutQueue({
             const m = member(memberId)
             const name = m?.full_name ?? "Member"
             const isMe = memberId === myMemberId
-            const isNext =
-              active &&
-              cycle.current_round != null &&
-              round === cycle.current_round
+            const isNext = openRound != null && round === openRound
             const released = cycle.rounds[round]?.release_status === "released"
             return (
               <li
@@ -97,12 +96,15 @@ export function PayoutQueue({
 /** Every round of the cycle with who it pays, when, and how far it got. */
 export function RoundSchedule({
   cycle,
+  openRound,
   member,
   myMemberId,
   paidByRound,
   memberCount,
 }: {
   cycle: StokvelDetailCycleRead
+  /** Collecting round. Null when none is open, including a finished cycle. */
+  openRound: number | null
   member: MemberLookup
   myMemberId: string
   /** Confirmed contributions per round index. */
@@ -124,15 +126,8 @@ export function RoundSchedule({
               round.recipient_member_id === myMemberId
                 ? "you"
                 : (recipient?.full_name ?? "a member")
-            const current = cycle.current_round
-            const isCurrent =
-              cycle.status === "active" &&
-              current != null &&
-              round.round === current
-            const upcoming =
-              cycle.status === "active" &&
-              current != null &&
-              round.round > current
+            const isCurrent = openRound != null && round.round === openRound
+            const upcoming = openRound != null && round.round > openRound
             const paid = paidByRound(round.round)
             const stage = payoutStage(round, paid >= memberCount)
             const proof = payoutProofHash(round)
