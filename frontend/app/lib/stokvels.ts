@@ -458,43 +458,16 @@ export function payoutProofHash(
 }
 
 /**
- * The round a contribution joins. `current_round` is a stored column and
- * stays 0; this is `StokvelContributionRepository.open_round`, with
- * `total_rounds` as the locked member count. Null once every round is full,
- * or when the cycle is not active.
- */
-export function openRound(
-  detail: Pick<StokvelDetailRead, "cycle" | "contributions">
-): number | null {
-  const cycle = detail.cycle
-  if (!cycle || cycle.status !== "active" || cycle.total_rounds == null) {
-    return null
-  }
-  const members = cycle.total_rounds
-  const counts = new Map<number, number>()
-  for (const contribution of detail.contributions) {
-    if (
-      contribution.cycle_id !== cycle.cycle_id ||
-      contribution.status === ContributionStatus.failed
-    ) {
-      continue
-    }
-    counts.set(contribution.round, (counts.get(contribution.round) ?? 0) + 1)
-  }
-  for (let round = 0; round < members; round++) {
-    if ((counts.get(round) ?? 0) < members) return round
-  }
-  return null
-}
-
-/**
- * The signed-in member's contribution to `round` (the open round when
- * omitted), ignoring failed attempts: after a failed send the member pays
- * again, and the live attempt is the one the panel follows.
+ * The signed-in member's contribution to `round` (`open_round` when omitted),
+ * ignoring failed attempts: after a failed send the member pays again, and
+ * the live attempt is the one the panel follows.
  */
 export function myCurrentContribution(
-  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "my_member_id">,
-  round: number | null = openRound(detail)
+  detail: Pick<
+    StokvelDetailRead,
+    "cycle" | "contributions" | "my_member_id" | "open_round"
+  >,
+  round: number | null = detail.open_round
 ): StokvelRoundContributionRead | undefined {
   const cycle = detail.cycle
   if (!cycle || round == null) return undefined
@@ -509,8 +482,8 @@ export function myCurrentContribution(
 
 /** Members whose contribution to `round` of the current cycle is confirmed. */
 export function paidMemberIds(
-  detail: Pick<StokvelDetailRead, "cycle" | "contributions">,
-  round: number = detail.cycle?.current_round ?? 0
+  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "open_round">,
+  round: number = detail.open_round ?? 0
 ): Set<string> {
   const cycleId = detail.cycle?.cycle_id
   const paid = new Set<string>()
@@ -570,8 +543,11 @@ export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
 
 /** Members who have not paid `round` of the current cycle. */
 export function outstandingMembers(
-  detail: Pick<StokvelDetailRead, "cycle" | "contributions" | "members">,
-  round: number = detail.cycle?.current_round ?? 0
+  detail: Pick<
+    StokvelDetailRead,
+    "cycle" | "contributions" | "members" | "open_round"
+  >,
+  round: number = detail.open_round ?? 0
 ): StokvelMemberRead[] {
   const paid = paidMemberIds(detail, round)
   return detail.members.filter((member) => !paid.has(member.member_id))

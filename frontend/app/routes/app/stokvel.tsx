@@ -43,7 +43,6 @@ import {
   canInvite,
   firstNameOf,
   myCurrentContribution,
-  openRound,
   outstandingMembers,
   paidMemberIds,
   pendingInvitations,
@@ -171,8 +170,8 @@ function StokvelDetail({
   const cycle = stokvel.cycle
   const active = cycle?.status === "active"
   const totalRounds = active && cycle ? cycle.total_rounds : null
-  // Collecting round. Stored current_round stays 0 (docs §5).
-  const open = openRound(stokvel)
+  // Collecting round from the detail response. Stored current_round stays 0.
+  const open = stokvel.open_round
   const roundIndex =
     open ??
     (active && totalRounds != null && totalRounds > 0 ? totalRounds - 1 : null)

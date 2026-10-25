@@ -497,6 +497,9 @@ class StokvelDetailRead(StokvelRead):
     contribution_fiat_estimate: LedgerDecimal | None
     phase: StokvelCycleStatus
     current_round: int | None
+    # Round a contribution joins (`StokvelContributionRepository.open_round`).
+    # Null while the cycle is not active, and null once every round is full.
+    open_round: int | None
     total_rounds: int | None
     next_payout_time: UtcDateTime | None
     my_contribution_status: StokvelContributionStatus | None
@@ -516,6 +519,7 @@ class StokvelDetailRead(StokvelRead):
             contribution_fiat_estimate=view.contribution_fiat_estimate,
             phase=view.phase,
             current_round=view.current_round,
+            open_round=view.open_round,
             total_rounds=view.total_rounds,
             next_payout_time=view.next_payout_time,
             my_contribution_status=view.my_contribution_status,

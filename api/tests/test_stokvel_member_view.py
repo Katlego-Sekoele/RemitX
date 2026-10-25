@@ -98,6 +98,7 @@ def test_member_sees_a_forming_stokvel(verified_client, monkeypatch):
     assert body["contribution_fiat_estimate"] == "462.50"
     assert body["organiser_name"] == "Verified"
     assert body["current_round"] is None
+    assert body["open_round"] is None
     assert body["total_rounds"] is None
     assert body["next_payout_time"] is None
     assert body["my_contribution_status"] is None
@@ -217,6 +218,7 @@ def test_current_round_stays_the_stored_column_when_the_open_round_moves(
     body = response.json()
     assert body["current_round"] == 0
     assert body["cycle"]["current_round"] == 0
+    assert body["open_round"] == 1
     assert body["my_contribution_status"] == "pending"
     assert body["next_payout_time"] == "2026-11-03T00:00:00+00:00"
 

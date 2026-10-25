@@ -170,6 +170,9 @@ class StokvelDetailView:
     contribution_fiat_estimate: Decimal | None
     phase: str
     current_round: int | None
+    # The round a contribution joins. Null when the cycle is not active, and
+    # null once every round is full. Not the stored `current_round`.
+    open_round: int | None
     total_rounds: int | None
     next_payout_time: datetime | None
     my_contribution_status: str | None
@@ -322,13 +325,27 @@ class StokvelController:
         else:
             cycle_view, contributions, beneficiary = self._cycle_view(cycle, member.id)
         current_round = cycle.current_round if cycle is not None else None
+        # Start writes total_rounds as the locked member count (R2-10).
+        total_rounds = cycle.total_rounds if cycle is not None else None
+        open_round = (
+            self._contributions.open_round(
+                cycle.id,
+                member_count=total_rounds,
+                total_rounds=total_rounds,
+            )
+            if cycle is not None
+            and cycle.status == "active"
+            and total_rounds is not None
+            else None
+        )
         return StokvelDetailView(
             stokvel=stokvel_view(stokvel, user_id, member_count=len(members)),
             organiser_name=_display(users.get(stokvel.organiser_user_id)),
             contribution_fiat_estimate=estimate,
             phase=cycle.status if cycle is not None else "forming",
             current_round=current_round,
-            total_rounds=cycle.total_rounds if cycle is not None else None,
+            open_round=open_round,
+            total_rounds=total_rounds,
             next_payout_time=_next_payout_time(cycle_view, current_round),
             my_contribution_status=_my_status(contributions, member.id, current_round),
             my_member_id=member.id,
