@@ -18,7 +18,7 @@ test inserts one and then upgrades to head. A CHECK would stop that
 upgrade.
 
 Revision ID: a91c4e7b2d08
-Revises: f4a8c2e91b03
+Revises: c5d91a7e2b40
 Create Date: 2026-10-24 21:05:00.000000+00:00
 
 """
@@ -28,7 +28,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a91c4e7b2d08"
-down_revision: str | None = "f4a8c2e91b03"
+down_revision: str | None = "c5d91a7e2b40"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
