@@ -1,7 +1,7 @@
 import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
@@ -53,13 +53,14 @@ import {
 } from "~/components/ui/table"
 import {
   DEFAULT_PAY_BY_DAYS,
+  DEMO_INTERVAL_MINUTES,
+  demoFirstPayout,
   DEFAULT_PAYOUT_TIME,
   firstPayoutDate,
   firstPayoutIssue,
   FREQUENCIES,
   generateSchedule,
-  PAY_BY_OPTIONS,
-  payByLabel,
+  payByChoices,
   scheduleIssues,
   type Frequency,
 } from "~/lib/stokvel-schedule"
@@ -74,26 +75,38 @@ import {
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
-const PAY_BY_ITEMS = PAY_BY_OPTIONS.map((days) => ({
-  value: String(days),
-  label: payByLabel(days),
-}))
-
 /**
  * The Organiser's setup before a cycle (R4-06, #255): the payout order the
  * members agreed off the platform (D3), the schedule, and Start cycle. Each
  * round has a pay-by date and a payout time (Q4 B); the pay-by date is a
  * reminder with no penalty (D7), the payout waits for every member (D12).
  * Starting locks membership, order and beneficiaries until the cycle ends.
+ * In demo mode (#370) payouts are 5 minutes apart from Start cycle, and the
+ * schedule is worked out when Start is pressed, so time spent on the screen
+ * can't push the first payout into the past.
  */
 export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
   const queryClient = useQueryClient()
   const [frequency, setFrequency] = useState<Frequency>("monthly")
   const [firstPayout, setFirstPayout] = useState("")
   const [time, setTime] = useState(DEFAULT_PAYOUT_TIME)
-  const [payByDays, setPayByDays] = useState(DEFAULT_PAY_BY_DAYS)
+  // Days before each payout, or minutes in demo mode.
+  const [payBy, setPayBy] = useState(DEFAULT_PAY_BY_DAYS)
   const [touched, setTouched] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const demo = frequency === "demo"
+  const payByOptions = payByChoices(frequency)
+  const payByItems = payByOptions.options.map((value) => ({
+    value: String(value),
+    label: payByOptions.label(value),
+  }))
+  // The demo preview shows the times as if Start were pressed now.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    if (!demo) return
+    const timer = setInterval(() => setNow(new Date()), 15_000)
+    return () => clearInterval(timer)
+  }, [demo])
 
   const order = payoutOrderWithEveryone(stokvel)
   const member = (memberId: string) =>
@@ -109,14 +122,16 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
   })
   const start = useMutation({
     mutationFn: async () => {
-      if (!schedule) return
+      // Demo times are worked out now, when Start is pressed.
+      const rounds = demo ? scheduleFor(new Date()) : schedule
+      if (!rounds) return
       // The order shown is the one that starts, even if never reordered.
       await stokvelMutations
         .setPayoutOrder(stokvel.stokvel_id)
         .mutationFn({ member_ids: order })
       await stokvelMutations
         .startCycle(stokvel.stokvel_id)
-        .mutationFn({ rounds: schedule })
+        .mutationFn({ rounds })
     },
     onSuccess: async () => {
       setConfirming(false)
@@ -125,17 +140,21 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
     },
   })
 
-  const payoutProblem = firstPayoutIssue(firstPayout, time)
-  const schedule = useMemo(() => {
-    const first = firstPayoutDate(firstPayout, time)
+  const payoutProblem = demo ? null : firstPayoutIssue(firstPayout, time)
+  function scheduleFor(at: Date) {
+    const first = demo
+      ? demoFirstPayout(at)
+      : firstPayoutDate(firstPayout, time)
     if (!first || payoutProblem) return null
     return generateSchedule({
       firstPayout: first,
       frequency,
       rounds: order.length,
-      payByDaysBefore: payByDays,
+      payByBefore: payBy,
+      now: at,
     })
-  }, [firstPayout, time, payoutProblem, frequency, order.length, payByDays])
+  }
+  const schedule = scheduleFor(now)
   const problems = schedule ? scheduleIssues(schedule) : []
   const blockers = startCycleBlockers(stokvel, order)
   const lapsing = pendingInvitations(stokvel).length
@@ -211,7 +230,16 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
             <FieldLabel>How often</FieldLabel>
             <RadioGroup
               value={frequency}
-              onValueChange={(next) => setFrequency(next as Frequency)}
+              onValueChange={(next) => {
+                const nextFrequency = next as Frequency
+                // Days and minutes don't mix: "2 days" never goes as "2
+                // minutes", so switching mode resets the pay-by.
+                if ((nextFrequency === "demo") !== demo) {
+                  setPayBy(payByChoices(nextFrequency).fallback)
+                }
+                setNow(new Date())
+                setFrequency(nextFrequency)
+              }}
               className="flex flex-wrap gap-4"
             >
               {FREQUENCIES.map((option) => (
@@ -228,52 +256,60 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
             </RadioGroup>
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-            <Field data-invalid={touched && payoutProblem !== null}>
-              <FieldLabel htmlFor="cycle-first-payout">
-                First payout day
-              </FieldLabel>
-              <DatePicker
-                id="cycle-first-payout"
-                value={firstPayout}
-                range="future"
-                invalid={touched && payoutProblem !== null}
-                onChange={setFirstPayout}
-                onBlur={() => setTouched(true)}
-              />
-              {touched && payoutProblem ? (
-                <FieldError>{payoutProblem}</FieldError>
-              ) : (
-                <FieldDescription>
-                  The pool is released at this time once everyone has paid.
-                </FieldDescription>
-              )}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="cycle-payout-time">Time</FieldLabel>
-              <Input
-                id="cycle-payout-time"
-                type="time"
-                value={time}
-                onChange={(event) => setTime(event.target.value)}
-              />
-            </Field>
-          </div>
+          {demo ? (
+            <FieldDescription>
+              The first payout is {DEMO_INTERVAL_MINUTES} minutes after you
+              press Start cycle, then one every {DEMO_INTERVAL_MINUTES} minutes.
+              For demos.
+            </FieldDescription>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <Field data-invalid={touched && payoutProblem !== null}>
+                <FieldLabel htmlFor="cycle-first-payout">
+                  First payout day
+                </FieldLabel>
+                <DatePicker
+                  id="cycle-first-payout"
+                  value={firstPayout}
+                  range="future"
+                  invalid={touched && payoutProblem !== null}
+                  onChange={setFirstPayout}
+                  onBlur={() => setTouched(true)}
+                />
+                {touched && payoutProblem ? (
+                  <FieldError>{payoutProblem}</FieldError>
+                ) : (
+                  <FieldDescription>
+                    The pool is released at this time once everyone has paid.
+                  </FieldDescription>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="cycle-payout-time">Time</FieldLabel>
+                <Input
+                  id="cycle-payout-time"
+                  type="time"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
+                />
+              </Field>
+            </div>
+          )}
 
           <Field>
             <FieldLabel htmlFor="cycle-pay-by">Members pay by</FieldLabel>
             <Select
-              items={PAY_BY_ITEMS}
-              value={String(payByDays)}
+              items={payByItems}
+              value={String(payBy)}
               onValueChange={(next) => {
-                if (next !== null) setPayByDays(Number(next))
+                if (next !== null) setPayBy(Number(next))
               }}
             >
               <SelectTrigger id="cycle-pay-by" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
-                {PAY_BY_ITEMS.map((item) => (
+                {payByItems.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
@@ -281,8 +317,8 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
               </SelectContent>
             </Select>
             <FieldDescription>
-              A reminder date with no penalty. If someone pays late, the payout
-              waits for them.
+              {demo ? "A reminder time" : "A reminder date"} with no penalty. If
+              someone pays late, the payout waits for them.
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -306,7 +342,10 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
                       <TableCell>{i + 1}</TableCell>
                       <TableCell>{nameOf(order[i])}</TableCell>
                       <TableCell>
-                        {format(new Date(round.deadline), "EEE d MMM")}
+                        {format(
+                          new Date(round.deadline),
+                          demo ? "HH:mm" : "EEE d MMM"
+                        )}
                       </TableCell>
                       <TableCell>
                         {format(

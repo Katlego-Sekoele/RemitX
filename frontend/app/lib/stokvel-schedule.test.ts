@@ -1,8 +1,12 @@
 import { assert, test } from "vitest"
 
 import {
+  DEFAULT_PAY_BY_DAYS,
+  DEFAULT_PAY_BY_DEMO_MINUTES,
+  demoFirstPayout,
   firstPayoutIssue,
   generateSchedule,
+  payByChoices,
   scheduleIssues,
 } from "./stokvel-schedule"
 
@@ -62,7 +66,7 @@ test("generateSchedule puts the pay-by date before the payout when asked", () =>
     firstPayout: new Date(2026, 10, 20, 14, 0),
     frequency: "monthly",
     rounds: 2,
-    payByDaysBefore: 2,
+    payByBefore: 2,
     now: new Date(2026, 9, 16),
   })
   assert.equal(rounds[0].deadline, new Date(2026, 10, 18, 14, 0).toISOString())
@@ -74,7 +78,7 @@ test("generateSchedule puts the pay-by date before the payout when asked", () =>
     firstPayout: new Date(2026, 10, 20, 14, 0),
     frequency: "weekly",
     rounds: 2,
-    payByDaysBefore: 7,
+    payByBefore: 7,
     now: new Date(2026, 9, 16),
   })
   assert.equal(tight[1].deadline, tight[1].start_time)
@@ -88,7 +92,7 @@ test("a first payout within the pay-by days is due when round 1 opens", () => {
     firstPayout: new Date(2026, 9, 21, 14, 0),
     frequency: "monthly",
     rounds: 2,
-    payByDaysBefore: 2,
+    payByBefore: 2,
     now,
   })
   assert.equal(rounds[0].deadline, now.toISOString())
@@ -133,4 +137,68 @@ test("scheduleIssues mirrors the contract's _validateSchedule", () => {
   assert.deepEqual(scheduleIssues([{ ...ok[0], start_time: "nope" }]), [
     "Round 1 has an invalid date.",
   ])
+})
+
+test("demo: payouts 5 minutes apart from Start, as in #370's example", () => {
+  // Start cycle pressed at 10:00, pay-by 2 minutes before.
+  const start = new Date(2026, 10, 2, 10, 0)
+  const rounds = generateSchedule({
+    firstPayout: demoFirstPayout(start),
+    frequency: "demo",
+    rounds: 3,
+    payByBefore: 2,
+    now: start,
+  })
+  const at = (minute: number) => new Date(2026, 10, 2, 10, minute).toISOString()
+  assert.deepEqual(rounds, [
+    { start_time: at(0), deadline: at(3), payout_time: at(5) },
+    { start_time: at(5), deadline: at(8), payout_time: at(10) },
+    { start_time: at(10), deadline: at(13), payout_time: at(15) },
+  ])
+  assert.deepEqual(scheduleIssues(rounds), [])
+})
+
+test("demo: pay-by is in minutes and never before the round opens", () => {
+  const start = new Date(2026, 10, 2, 10, 0)
+  const schedule = (payByBefore: number) =>
+    generateSchedule({
+      firstPayout: demoFirstPayout(start),
+      frequency: "demo",
+      rounds: 2,
+      payByBefore,
+      now: start,
+    })
+  // On the payout time.
+  assert.equal(schedule(0)[1].deadline, schedule(0)[1].payout_time)
+  // 3 minutes: 10:02 and 10:07, both after their round opens.
+  assert.equal(
+    schedule(3)[0].deadline,
+    new Date(2026, 10, 2, 10, 2).toISOString()
+  )
+  // More minutes than the round lasts: clamped to the opening.
+  const long = schedule(30)
+  assert.equal(long[0].deadline, long[0].start_time)
+  assert.equal(long[1].deadline, long[1].start_time)
+  assert.deepEqual(scheduleIssues(long), [])
+})
+
+test("pay-by choices follow the mode, so days never go as minutes", () => {
+  assert.equal(payByChoices("demo").fallback, DEFAULT_PAY_BY_DEMO_MINUTES)
+  assert.deepEqual(payByChoices("demo").options, [0, 1, 2, 3])
+  assert.equal(payByChoices("demo").label(2), "2 minutes before")
+  assert.equal(payByChoices("demo").label(0), "On the payout time")
+  assert.equal(payByChoices("weekly").fallback, DEFAULT_PAY_BY_DAYS)
+  assert.equal(payByChoices("monthly").label(1), "1 day before the payout")
+})
+
+test("weekly rounds still open the morning after the previous payout", () => {
+  const rounds = generateSchedule({
+    firstPayout: new Date(2026, 10, 20, 14, 0),
+    frequency: "weekly",
+    rounds: 2,
+    payByBefore: 2,
+    now: new Date(2026, 9, 16),
+  })
+  assert.equal(rounds[1].start_time, new Date(2026, 10, 21, 7, 0).toISOString())
+  assert.equal(rounds[1].deadline, new Date(2026, 10, 25, 14, 0).toISOString())
 })

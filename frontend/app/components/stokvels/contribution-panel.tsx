@@ -205,15 +205,22 @@ export function ContributionPanel({
     )
   }
 
+  // Past the pay-by time: still accepted, with no penalty (D7); the payout
+  // waits for everyone (D12).
+  const late = Date.now() > Date.parse(round.deadline)
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <CardTitle>Your contribution</CardTitle>
-          <Badge variant="secondary">Waiting for you</Badge>
+          <Badge variant={late ? "outline" : "secondary"}>
+            {late ? "Late, no penalty" : "Waiting for you"}
+          </Badge>
         </div>
         <CardDescription>
-          Due {format(new Date(round.deadline), "EEE d MMM")} · payout{" "}
+          {late ? "Was due" : "Due"}{" "}
+          {format(new Date(round.deadline), "EEE d MMM, HH:mm")} · payout{" "}
           {format(new Date(round.payout_time), "EEE d MMM, HH:mm")}
           {availableBalance !== undefined
             ? ` · balance ${formatMoney(availableBalance, currency)}`
