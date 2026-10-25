@@ -10,6 +10,10 @@ XRPL balance (section 8 of docs/stokvel_integration.md). This command then
 prints FAIL until that balance is rebased. That FAIL is the rebase, not a
 stokvel over-burn.
 
+A burn's hash is stored before the send. While that leg is still
+`processing`, `in-flight` is its net and it is not part of `ledger`. If the
+chain has already moved by that net, the FAIL line says so.
+
 The chain read lives in ``remitx_worker.evm_service``. This file is a demo
 command, not the API process, which must not import the worker.
 """
@@ -31,9 +35,18 @@ def main() -> int:
         db.close_session(token)
     print(f"ledger    {result.expected}")
     print(f"on-chain  {result.on_chain}")
+    print(f"in-flight {result.in_flight}")
     print(f"contract  {result.contract_held}")
-    print("PASS" if result.matches else "FAIL")
-    return 0 if result.matches else 1
+    if result.matches:
+        print("PASS")
+        return 0
+    print("FAIL")
+    if result.gap_is_in_flight:
+        print(
+            "the gap is processing legs that already have a hash; "
+            "the hash is written before the send, so they stay out of ledger"
+        )
+    return 1
 
 
 if __name__ == "__main__":
