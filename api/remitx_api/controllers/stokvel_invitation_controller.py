@@ -104,8 +104,8 @@ class StokvelInvitationController:
         self,
         organiser_id: uuid.UUID,
         stokvel_id: uuid.UUID,
-        *,
         account_reference: str | None = None,
+        *,
         beneficiary_id: uuid.UUID | None = None,
     ) -> SentStokvelInvitationView:
         """Invite the owner of `account_reference`, or the person the
