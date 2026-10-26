@@ -26,44 +26,63 @@ import {
 import { FieldError } from "~/components/ui/field"
 import { isGoneInvitationError, revokeErrorMessage } from "~/lib/stokvel-errors"
 import {
+  INVITATION_STATUS_LABELS,
+  InvitationStatus,
   invalidateStokvels,
+  invitationsByStatus,
   pendingInvitations,
   stokvelMutations,
   type StokvelDetailInvitationRead,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
+/** Accepted reads as done; the rest as answered with no member. */
+const STATUS_BADGES: Record<InvitationStatus, "default" | "outline"> = {
+  pending: "outline",
+  accepted: "default",
+  declined: "outline",
+  revoked: "outline",
+  lapsed: "outline",
+}
+
 /**
- * Who has been invited and not answered yet (R4-13, #299), for every member
- * while the stokvel is being set up. The Organiser can revoke one
+ * Every invitation of the stokvel and its status (R4-13, #299; all of them
+ * since R2-17, #375), for every member while the stokvel is being set up:
+ * the ones waiting for an answer first, then accepted, declined, revoked and
+ * lapsed ones. The Organiser can revoke a pending one
  * (`POST /invitations/{id}/revoke`, #297); the person can then be invited
- * again. `GET /stokvels/{id}` returns every invitation whatever its status
- * (R2-17, #375); this card lists only the pending ones.
+ * again.
  */
 export function StokvelInvitations({
   stokvel,
 }: {
   stokvel: StokvelDetailRead
 }) {
-  const pending = pendingInvitations(stokvel)
-  if (pending.length === 0) return null
+  const invitations = invitationsByStatus(stokvel)
+  if (invitations.length === 0) return null
+  const waiting = pendingInvitations(stokvel).length
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Invitations</CardTitle>
         <CardDescription>
-          Waiting for an answer. Invitations still open when the cycle starts
-          lapse.
+          {waiting === 0
+            ? "Nobody is waiting to answer."
+            : `${waiting} waiting for an answer.`}{" "}
+          Invitations still open when the cycle starts lapse.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col gap-3">
-          {pending.map((invitation) => (
-            <PendingInvitation
+          {invitations.map((invitation) => (
+            <InvitationRow
               key={invitation.invitation_id}
               invitation={invitation}
-              canRevoke={stokvel.is_organiser}
+              canRevoke={
+                stokvel.is_organiser &&
+                invitation.status === InvitationStatus.pending
+              }
             />
           ))}
         </ul>
@@ -72,10 +91,10 @@ export function StokvelInvitations({
   )
 }
 
-/** One pending invitation. The detail route leaves the reference null for
- * anyone but the Organiser, or when the invitee no longer holds the account,
- * so it is shown only when there is one. */
-function PendingInvitation({
+/** One invitation and its status. The detail route leaves the reference
+ * null for anyone but the Organiser, or when the invitee no longer holds
+ * the account, so it is shown only when there is one. */
+function InvitationRow({
   invitation,
   canRevoke,
 }: {
@@ -85,6 +104,7 @@ function PendingInvitation({
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState(false)
   const name = invitation.invitee_name ?? "this person"
+  const pending = invitation.status === InvitationStatus.pending
   const revoke = useMutation({
     ...stokvelMutations.revokeInvitation(),
     onSuccess: async () => {
@@ -107,12 +127,18 @@ function PendingInvitation({
         ) : null}
       </span>
       <span className="flex items-center gap-2">
-        <Badge variant="secondary">
-          Invited{" "}
-          {formatDistanceToNow(new Date(invitation.created_at), {
-            addSuffix: true,
-          })}
-        </Badge>
+        {pending ? (
+          <Badge variant="secondary">
+            Invited{" "}
+            {formatDistanceToNow(new Date(invitation.created_at), {
+              addSuffix: true,
+            })}
+          </Badge>
+        ) : (
+          <Badge variant={STATUS_BADGES[invitation.status]}>
+            {INVITATION_STATUS_LABELS[invitation.status]}
+          </Badge>
+        )}
         {canRevoke ? (
           <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
             Revoke

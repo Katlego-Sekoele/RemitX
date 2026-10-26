@@ -419,3 +419,24 @@ test("from cycle 2, only members going in count for the order and start", async 
     3
   )
 })
+
+test("invitationsByStatus lists pending ones first, then the rest in order", async () => {
+  const { invitationsByStatus } = await import("./stokvels")
+  const invitation = (id: string, status: string) =>
+    ({ invitation_id: id, status }) as never
+  // The API sends them newest first.
+  const ordered = invitationsByStatus({
+    invitations: [
+      invitation("declined-new", "declined"),
+      invitation("pending-new", "pending"),
+      invitation("accepted", "accepted"),
+      invitation("pending-old", "pending"),
+      invitation("lapsed", "lapsed"),
+    ],
+  })
+  assert.deepEqual(
+    ordered.map((i: { invitation_id: string }) => i.invitation_id),
+    ["pending-new", "pending-old", "declined-new", "accepted", "lapsed"]
+  )
+  assert.deepEqual(invitationsByStatus({ invitations: [] }), [])
+})

@@ -223,6 +223,18 @@ export const stokvelMutations = {
   }),
 }
 
+/** Every invitation of the stokvel (#375), the ones waiting for an answer
+ * first; otherwise newest first, as the API sends them. */
+export function invitationsByStatus(
+  detail: Pick<StokvelDetailRead, "invitations">
+): StokvelDetailRead["invitations"] {
+  const pending = pendingInvitations(detail)
+  return [
+    ...pending,
+    ...detail.invitations.filter((invitation) => !pending.includes(invitation)),
+  ]
+}
+
 /** Invitations still waiting for an answer. */
 export function pendingInvitations(
   detail: Pick<StokvelDetailRead, "invitations">
