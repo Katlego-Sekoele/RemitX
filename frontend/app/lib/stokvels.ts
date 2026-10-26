@@ -216,6 +216,24 @@ export function pendingInvitations(
 }
 
 /**
+ * The Organiser's beneficiaries the invite card offers: those with an
+ * account in the Stokvel currency, which they'd pay from, and not already a
+ * member. `otherCurrency` counts the ones left out for the currency, so the
+ * card can say why they're missing.
+ */
+export function invitableBeneficiaries(
+  beneficiaries: readonly BeneficiaryRead[],
+  detail: Pick<StokvelDetailRead, "currency" | "members">
+): { invitable: BeneficiaryRead[]; otherCurrency: number } {
+  const members = new Set(detail.members.map((m) => m.user_id))
+  const candidates = beneficiaries.filter((b) => !members.has(b.linked_user_id))
+  const invitable = candidates.filter((b) =>
+    b.payout_currencies.includes(detail.currency)
+  )
+  return { invitable, otherCurrency: candidates.length - invitable.length }
+}
+
+/**
  * Whether the Organiser can invite now: the stokvel is being set up and has
  * a free place. Pending invitations don't hold places (the cap is checked
  * when someone accepts, #230), so only current members count.
