@@ -267,7 +267,7 @@ class SentStokvelInvitationRead(Schema):
 
 
 class StokvelDetailInvitationRead(SentStokvelInvitationRead):
-    """A pending invitation on `GET /stokvels/{id}`.
+    """An invitation on `GET /stokvels/{id}`, of any status.
 
     `account_reference` is set only for the Organiser, and null when the
     invitee no longer holds an account in the stokvel currency. `POST

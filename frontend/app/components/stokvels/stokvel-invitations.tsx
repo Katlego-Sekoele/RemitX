@@ -37,8 +37,8 @@ import {
  * Who has been invited and not answered yet (R4-13, #299), for every member
  * while the stokvel is being set up. The Organiser can revoke one
  * (`POST /invitations/{id}/revoke`, #297); the person can then be invited
- * again. `GET /stokvels/{id}` returns pending invitations only, so answered,
- * revoked and lapsed ones aren't listed.
+ * again. `GET /stokvels/{id}` returns every invitation whatever its status
+ * (R2-17, #375); this card lists only the pending ones.
  */
 export function StokvelInvitations({
   stokvel,

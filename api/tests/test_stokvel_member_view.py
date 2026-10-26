@@ -24,7 +24,10 @@ from remitx_api.models.orm.stokvel_contribution import (
 )
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
-from remitx_api.models.orm.stokvel_invitation import StokvelInvitation
+from remitx_api.models.orm.stokvel_invitation import (
+    StokvelInvitation,
+    StokvelInvitationStatus,
+)
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.stokvel_payout import (
     StokvelPayout,
@@ -247,6 +250,54 @@ def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypat
     assert hidden["invitation_id"] == invitation["invitation_id"]
     assert hidden["account_reference"] is None
     assert hidden["invitee_name"] == "Thandi"
+
+
+def test_every_invitation_is_returned_whatever_its_status(verified_client, monkeypatch):
+    """Members see answered invitations too (#299, R2-17), newest first."""
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    _member_id, invitations = _invitation_of_each_status(stokvel_id, user.id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    returned = [
+        (row["invitation_id"], row["status"]) for row in response.json()["invitations"]
+    ]
+    assert returned == [
+        (str(invitation_id), status)
+        for status, (invitation_id, _reference) in reversed(invitations.items())
+    ]
+
+
+def test_only_the_organiser_sees_the_reference_on_an_answered_invitation(
+    verified_client, monkeypatch
+):
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    member_id, invitations = _invitation_of_each_status(stokvel_id, user.id)
+    invitation_id, reference = invitations["declined"]
+
+    def declined(response):
+        assert response.status_code == 200, response.text
+        (row,) = [
+            row
+            for row in response.json()["invitations"]
+            if row["invitation_id"] == str(invitation_id)
+        ]
+        assert row["status"] == "declined"
+        return row
+
+    as_organiser = declined(client.get(f"{STOKVELS}/{stokvel_id}"))
+    client.app.dependency_overrides[get_current_user] = lambda: User(id=member_id)
+    as_member = declined(client.get(f"{STOKVELS}/{stokvel_id}"))
+
+    assert as_organiser["account_reference"] == reference
+    assert as_member["account_reference"] is None
 
 
 def test_payout_order_ignores_an_unlocked_former_member(verified_client, monkeypatch):
@@ -585,6 +636,63 @@ def _pending_invitation(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
         )
         db.session.commit()
         return member.id, create_account_reference(invitee.base_reference, CURRENCY_ZAR)
+
+    return _in_session(write)
+
+
+def _invitation_of_each_status(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
+    """A second current member, and one invitation of each status to someone
+    else, each a day newer than the last. The member's id, and each status's
+    invitation id and invitee reference, oldest first."""
+
+    def write():
+        member = UserController().ensure_provisioned(
+            "user_stokvel_reader",
+            lambda: "reader@example.com",
+            lambda: "Reader",
+        )
+        account = AccountRepository().get_user_account(member.id, CURRENCY_ZAR)
+        db.session.add(
+            StokvelMember(
+                stokvel_id=stokvel_id,
+                user_id=member.id,
+                account_id=account.account_id,
+            )
+        )
+        invitations = {}
+        start = datetime(2026, 10, 1, tzinfo=UTC)
+        for day, status in enumerate(StokvelInvitationStatus):
+            invitee = UserController().ensure_provisioned(
+                f"user_stokvel_{status}",
+                lambda status=status: f"{status}@example.com",
+                lambda: "Thandi",
+            )
+            answered = status != StokvelInvitationStatus.PENDING
+            by_invitee = status in (
+                StokvelInvitationStatus.ACCEPTED,
+                StokvelInvitationStatus.DECLINED,
+            )
+            invitation = StokvelInvitation(
+                stokvel_id=stokvel_id,
+                invitee_user_id=invitee.id,
+                invited_by_user_id=organiser_id,
+                status=status.value,
+                created_at=start + timedelta(days=day),
+                status_changed_at=start + timedelta(days=day, hours=1)
+                if answered
+                else None,
+                status_changed_by_user_id=(
+                    None if not answered else invitee.id if by_invitee else organiser_id
+                ),
+            )
+            db.session.add(invitation)
+            db.session.flush()
+            invitations[status.value] = (
+                invitation.id,
+                create_account_reference(invitee.base_reference, CURRENCY_ZAR),
+            )
+        db.session.commit()
+        return member.id, invitations
 
     return _in_session(write)
 
