@@ -29,6 +29,7 @@ from remitx_api.models.orm.kyc_assessment_audit_signal import (
 from remitx_api.models.orm.kyc_decision import KycDecision
 from remitx_api.models.orm.kyc_decision_history import KycDecisionHistory
 from remitx_api.models.orm.kyc_lifecycle import (
+    CLOSED_STATUSES,
     DECISION_STATUSES,
     KYC_TIER_NONE,
     KYC_TIER_VERIFIED,
@@ -79,9 +80,14 @@ class KycStanding:
     what the user has used of them: their sends over the current SAST day and
     month (`services/send_limits.py`). This is what the limits enforcement path
     (#25) reads.
+
+    `status` is the latest application's. `is_verified` rests on the latest
+    closed one (`CLOSED_STATUSES`), so the two disagree while a renewal of a
+    `review_due` approval is open: in progress, and still verified.
     """
 
     status: KycStatus
+    is_verified: bool
     tier: int
     application_id: uuid.UUID | None
     risk_rating: str | None = None
@@ -90,10 +96,6 @@ class KycStanding:
     monthly_limit_zar: Decimal = Decimal("0.00")
     daily_used_zar: Decimal = Decimal("0.00")
     monthly_used_zar: Decimal = Decimal("0.00")
-
-    @property
-    def is_verified(self) -> bool:
-        return self.status in VERIFIED_STATUSES
 
     @property
     def daily_remaining_zar(self) -> Decimal:
@@ -135,26 +137,39 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             .order_by(KycApplication.created_at.desc())
         ).first()
 
+    def get_latest_closed_for_user(self, user_id: uuid.UUID) -> KycApplication | None:
+        """The latest application in `CLOSED_STATUSES`, which is what decides
+        whether the user is verified."""
+        return db.session.scalars(
+            select(KycApplication)
+            .where(KycApplication.user_id == user_id)
+            .where(
+                KycApplication.status.in_(status.value for status in CLOSED_STATUSES)
+            )
+            .order_by(KycApplication.created_at.desc())
+        ).first()
+
     def is_other_user_verified(self, user_id: uuid.UUID) -> bool:
         """Whether someone other than the caller is verified, by the same
-        rule as `KycStanding.is_verified`: their latest application.
+        rule as `KycStanding.is_verified`: their latest closed application.
 
         Row-level security lets a customer read only their own applications,
-        so on Postgres this asks `kyc_latest_status` (`V20261017_1820`),
-        which returns the status and nothing else. An approval past its
-        review date reads `approved` here and `review_due` through
-        `effective_status`, and both are verified, so the stored status is
-        enough. For the caller's own standing, use `get_standing`.
+        so on Postgres this asks `kyc_latest_closed_status`
+        (`V20261026_1200`), which returns the status and nothing else. An
+        approval past its review date reads `approved` here and `review_due`
+        through `effective_status`, and both are verified, so the stored
+        status is enough. For the caller's own standing, use `get_standing`.
         """
         if db.session.get_bind().dialect.name == "postgresql":
-            status = db.session.scalar(select(func.kyc_latest_status(user_id)))
+            status = db.session.scalar(select(func.kyc_latest_closed_status(user_id)))
         else:
-            latest = self.get_latest_for_user(user_id)
-            status = None if latest is None else latest.status
+            closed = self.get_latest_closed_for_user(user_id)
+            status = None if closed is None else closed.status
         return status is not None and KycStatus(status) in VERIFIED_STATUSES
 
     def get_standing(self, user_id: uuid.UUID) -> KycStanding:
         latest = self.get_latest_for_user(user_id)
+        closed = self.get_latest_closed_for_user(user_id)
         verified = db.session.scalars(
             select(KycApplication)
             .where(KycApplication.user_id == user_id)
@@ -192,6 +207,10 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
                 KycStatus.NOT_STARTED
                 if latest is None
                 else KycStatus(latest.effective_status)
+            ),
+            is_verified=(
+                closed is not None
+                and KycStatus(closed.effective_status) in VERIFIED_STATUSES
             ),
             tier=tier_number,
             application_id=None if latest is None else latest.application_id,

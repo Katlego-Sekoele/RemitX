@@ -348,6 +348,46 @@ def test_an_expired_approval_reports_review_due_and_may_start_again():
     assert started.json()["application"]["full_name"] == "Thandiwe Mokoena"
 
 
+def test_a_renewal_leaves_the_expired_approval_verified_until_it_is_decided():
+    user = make_user("renewing")
+    with rbac_client(user) as client:
+        insert_application(
+            user.id,
+            KycStatus.APPROVED,
+            with_pii=True,
+            tier_granted=1,
+            created_at=datetime.now(UTC) - timedelta(days=400),
+            next_review_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+
+        started = client.post(APPLICATIONS)
+        standing = client.get(STANDING).json()["standing"]
+
+    assert started.status_code == 200
+    assert standing["status"] == "in_progress"
+    assert standing["is_verified"] is True
+    assert standing["tier"] == 1
+
+
+def test_a_rejected_renewal_ends_verification():
+    user = make_user("renewal-rejected")
+    with rbac_client(user) as client:
+        insert_application(
+            user.id,
+            KycStatus.APPROVED,
+            with_pii=True,
+            tier_granted=1,
+            created_at=datetime.now(UTC) - timedelta(days=400),
+            next_review_at=datetime.now(UTC) - timedelta(days=1),
+        )
+        insert_application(user.id, KycStatus.REJECTED, with_pii=True)
+
+        standing = client.get(STANDING).json()["standing"]
+
+    assert standing["status"] == "rejected"
+    assert standing["is_verified"] is False
+
+
 def test_another_users_application_is_not_found():
     with rbac_client(make_user("intruder")) as client:
         owner = make_persisted_user()

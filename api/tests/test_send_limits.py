@@ -14,7 +14,11 @@ from remitx_api.errors.remittances import KycNotApprovedError, LimitExceededErro
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.kyc_application import KycApplication
-from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
+from remitx_api.models.orm.kyc_lifecycle import (
+    KYC_TIER_VERIFIED,
+    VERIFIED_STATUSES,
+    KycStatus,
+)
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_FAILED,
@@ -86,6 +90,7 @@ def standing(
     """Tier 1 (R3,000 a day, R25,000 a month) with some of it used."""
     return KycStanding(
         status=status,
+        is_verified=status in VERIFIED_STATUSES,
         tier=KYC_TIER_VERIFIED,
         application_id=None,
         daily_limit_zar=Decimal("3000.00"),

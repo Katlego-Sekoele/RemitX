@@ -331,23 +331,31 @@ def test_a_memberships_identity_cannot_change(session, column, bound):
 
 
 @pytest.mark.postgres
-def test_kyc_latest_status_reads_another_users_latest_application(session):
+def test_kyc_latest_closed_status_reads_another_users_latest_closed_application(
+    session,
+):
     """Bound as someone who cannot read the applications, the lookup still
-    answers, and with the latest one, as `get_standing` reads it."""
-    asker, approved, reapplied, none = (_customer() for _ in range(4))
+    answers, with the latest closed one, as `get_standing` reads it: an open
+    renewal leaves the approval before it in force."""
+    asker, approved, reapplied, renewing, none = (_customer() for _ in range(5))
     now = datetime.now(UTC)
     insert_application(approved.id, KycStatus.APPROVED, created_at=now)
     insert_application(
         reapplied.id, KycStatus.APPROVED, created_at=now - timedelta(days=2)
     )
     insert_application(reapplied.id, KycStatus.REJECTED, created_at=now)
+    insert_application(
+        renewing.id, KycStatus.APPROVED, created_at=now - timedelta(days=2)
+    )
+    insert_application(renewing.id, KycStatus.SUBMITTED, created_at=now)
 
     def status_of(user):
         with bound_row_security_context(asker.id, is_admin_route=False):
-            return db.session.scalar(select(func.kyc_latest_status(user.id)))
+            return db.session.scalar(select(func.kyc_latest_closed_status(user.id)))
 
     assert status_of(approved) == "approved"
     assert status_of(reapplied) == "rejected"
+    assert status_of(renewing) == "approved"
     assert status_of(none) is None
 
 

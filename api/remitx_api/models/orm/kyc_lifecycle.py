@@ -22,7 +22,10 @@ was rejected on — overwriting it would make "what did they claim the first
 time, and why did we reject it?" unanswerable, which is the opposite of what
 FICA §23 record-keeping asks for. `KycController.start_application` is the only
 way out of both states, and the new row it inserts is what moves the user's
-derived status back to `in_progress`.
+derived status back to `in_progress`. Whether they are *verified* is read
+from their latest closed application instead (`CLOSED_STATUSES`), so renewing
+a `review_due` approval does not take verification away until the renewal is
+decided.
 
 `more_info_required` is the exception, and deliberately so: a blurry photo
 should not cost the applicant their whole attempt, so that edge returns to
@@ -126,6 +129,14 @@ APPLICATION_STATUSES = tuple(
 # someone's allowance the moment a review falls due would punish them for the
 # platform's scheduling.
 VERIFIED_STATUSES = frozenset({KycStatus.APPROVED, KycStatus.REVIEW_DUE})
+
+# An application nobody is working on any more: decided, or due for refresh.
+# Whether a user is verified rests on the latest of these, not on their latest
+# application, so an open renewal of a `review_due` approval leaves them
+# verified until a reviewer decides it.
+CLOSED_STATUSES = frozenset(
+    {KycStatus.APPROVED, KycStatus.REJECTED, KycStatus.REVIEW_DUE}
+)
 
 # A new application may be opened from these standings and no others: the user
 # is still onboarding, or their verification has expired. An approval in force

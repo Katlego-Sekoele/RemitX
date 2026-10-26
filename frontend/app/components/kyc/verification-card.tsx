@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { useMePermissions } from "~/hooks/use-permissions"
-import { verificationPath } from "~/lib/kyc-onboarding"
+import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 
 /**
  * Signed-in prompt on the home page. Does not force a redirect — a deep link
@@ -37,10 +37,11 @@ function SignedInVerificationCard() {
     ...api.kyc.onboarding.getApplication(),
     enabled: isCustomer,
   })
-  const standing = query.data?.standing.status
   if (!isCustomer) return null
-  if (standing === "approved" || standing === "review_due") return null
   if (!query.data) return null
+  // Not the status: a customer renewing a review_due approval is in
+  // progress, and still verified.
+  if (isKycVerified(query.data.standing)) return null
 
   return (
     <div>
