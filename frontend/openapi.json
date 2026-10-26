@@ -5475,7 +5475,7 @@
         "type": "string"
       },
       "StokvelDetailCycleRead": {
-        "description": "The stokvel's current cycle on `GET /stokvels/{id}`.\n\nDistinct from `StokvelCycleRead`, which is the body `POST\n/stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.",
+        "description": "A cycle on `GET /stokvels/{id}`: the current one (`cycle`), and the\none that closed while the next is forming (`previous_cycle`).\n\nDistinct from `StokvelCycleRead`, which is the body `POST\n/stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.",
         "properties": {
           "closed_at": {
             "anyOf": [
@@ -5785,6 +5785,16 @@
           "phase": {
             "$ref": "#/components/schemas/StokvelCycleStatus"
           },
+          "previous_cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelDetailCycleRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "stokvel_id": {
             "format": "uuid",
             "title": "Stokvel Id",
@@ -5825,6 +5835,7 @@
           "members",
           "invitations",
           "cycle",
+          "previous_cycle",
           "contributions"
         ],
         "title": "StokvelDetailRead",

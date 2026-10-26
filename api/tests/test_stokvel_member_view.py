@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from remitx_api.auth.dependencies import get_current_user
+from remitx_api.controllers.stokvel_cycle_controller import open_next_cycle
 from remitx_api.controllers.user_controller import UserController
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
@@ -117,6 +118,7 @@ def test_member_sees_a_forming_stokvel(verified_client, monkeypatch):
     assert cycle["rounds"] == []
     assert cycle["payout_order"] == []
     assert cycle["registered_at"] is None
+    assert body["previous_cycle"] is None
     assert "remittance_reference" not in response.text
 
 
@@ -315,6 +317,57 @@ def test_a_sent_payout_returns_its_remittance_status(verified_client, monkeypatc
     assert rnd["remittance_id"] == remittance_id
     assert rnd["remittance_status"] == "processing"
     assert rnd["release_status"] == "released"
+
+
+def test_a_closed_cycle_stays_on_the_screen_while_the_next_is_forming(
+    verified_client, monkeypatch
+):
+    """Brief §2 step 6: each round's release status, hashes and remittance
+    stay visible after the worker opens cycle 2 (R2-15, #237)."""
+    _stub_rate(monkeypatch)
+    client, user = verified_client
+    created = client.post(STOKVELS, json=_body())
+    stokvel_id = uuid.UUID(created.json()["stokvel_id"])
+    organiser_member, other_member = _activate(stokvel_id, user.id)
+    remittance_id = _attach_remittance(stokvel_id)
+    closed_id = _close_and_open_next(stokvel_id)
+
+    response = client.get(f"{STOKVELS}/{stokvel_id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["phase"] == "forming"
+    assert body["cycle"]["cycle_number"] == 2
+    assert body["cycle"]["rounds"] == []
+    previous = body["previous_cycle"]
+    assert previous["cycle_id"] == closed_id
+    assert previous["cycle_number"] == 1
+    assert previous["status"] == "closed"
+    assert previous["closed_at"] is not None
+    assert previous["payout_order"] == [organiser_member, other_member]
+    first = previous["rounds"][0]
+    assert first["recipient_member_id"] == organiser_member
+    assert first["release_status"] == "released"
+    assert first["release_tx_hash"] == "0xrelease"
+    assert first["remittance_id"] == remittance_id
+    assert first["remittance_status"] == "processing"
+
+
+def _close_and_open_next(stokvel_id: uuid.UUID) -> str:
+    """Close the current cycle and open the next, as the worker does on
+    `CycleClosed`."""
+
+    def write():
+        stokvel = db.session.get(Stokvel, stokvel_id)
+        cycle = db.session.get(StokvelCycle, stokvel.current_cycle_id)
+        cycle.status = StokvelCycleStatus.CLOSED.value
+        cycle.closed_at = datetime.now(UTC)
+        db.session.flush()
+        open_next_cycle(db.session, cycle)
+        db.session.commit()
+        return str(cycle.id)
+
+    return _in_session(write)
 
 
 def _locked_leaver(stokvel_id: uuid.UUID, organiser_id: uuid.UUID) -> str:

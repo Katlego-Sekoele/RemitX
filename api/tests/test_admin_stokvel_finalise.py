@@ -315,6 +315,36 @@ def test_a_closed_cycles_round_is_already_finalised(monkeypatch):
         assert queued == []
 
 
+def test_a_closed_cycles_round_is_already_finalised_once_the_next_is_forming(
+    monkeypatch,
+):
+    """The worker opens cycle 2 as cycle 1 closes (R2-15, #237)."""
+
+    def readiness(*_args):
+        raise AssertionError("a closed cycle is answered from the database")
+
+    queued = _patch(monkeypatch, readiness)
+    user = make_user("finalise-closed-next-forming")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id, status=StokvelCycleStatus.CLOSED.value)
+        following = StokvelCycle(
+            stokvel_id=stokvel.id,
+            cycle_number=2,
+            status=StokvelCycleStatus.FORMING.value,
+        )
+        db.session.add(following)
+        db.session.flush()
+        stokvel.current_cycle_id = following.id
+        db.session.commit()
+        response = client.post(_url(stokvel.id))
+        assert response.status_code == 409
+        assert response.json()["code"] == "round_already_finalised"
+        past = client.post(_url(stokvel.id, 2))
+        assert past.status_code == 409
+        assert past.json()["code"] == "round_not_finalisable"
+        assert queued == []
+
+
 def test_a_paused_vault_is_refused_before_the_chain_read(monkeypatch):
     def readiness(*_args):
         raise AssertionError("paused vault must not be read for finalise")

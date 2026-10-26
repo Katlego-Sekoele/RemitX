@@ -443,7 +443,8 @@ class StokvelRoundRead(Schema):
 
 
 class StokvelDetailCycleRead(Schema):
-    """The stokvel's current cycle on `GET /stokvels/{id}`.
+    """A cycle on `GET /stokvels/{id}`: the current one (`cycle`), and the
+    one that closed while the next is forming (`previous_cycle`).
 
     Distinct from `StokvelCycleRead`, which is the body `POST
     /stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.
@@ -529,6 +530,9 @@ class StokvelDetailRead(StokvelRead):
     members: list[StokvelMemberRead]
     invitations: list[StokvelDetailInvitationRead]
     cycle: StokvelDetailCycleRead | None
+    # The closed cycle while the next one is forming (R2-15, #237), so its
+    # rounds' release status, hashes and remittances stay visible.
+    previous_cycle: StokvelDetailCycleRead | None
     contributions: list[StokvelRoundContributionRead]
 
     @classmethod
@@ -556,6 +560,11 @@ class StokvelDetailRead(StokvelRead):
                 None
                 if view.cycle is None
                 else StokvelDetailCycleRead.from_view(view.cycle)
+            ),
+            previous_cycle=(
+                None
+                if view.previous_cycle is None
+                else StokvelDetailCycleRead.from_view(view.previous_cycle)
             ),
             contributions=[
                 StokvelRoundContributionRead.from_view(row)
