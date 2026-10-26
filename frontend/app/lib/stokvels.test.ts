@@ -418,6 +418,7 @@ test("from cycle 2, only members going in count for the order and start", async 
     goingIntoCycle({ ...cycle2, previous_cycle: null }).length,
     3
   )
+})
 
 test("invitationsByStatus lists pending ones first, then the rest in order", async () => {
   const { invitationsByStatus } = await import("./stokvels")
