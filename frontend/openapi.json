@@ -5741,19 +5741,36 @@
       },
       "StokvelInvitationCreateRequest": {
         "additionalProperties": false,
-        "description": "Invite the owner of an account to the stokvel.",
+        "description": "Invite someone to the stokvel, by their account reference or as one of\nthe Organiser's beneficiaries. Exactly one of the two.",
         "properties": {
           "account_reference": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "The invitee's account reference, e.g. `thandi2-zar`. The account must be in the Stokvel currency: the invitee's contributions are paid from it.",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Account Reference",
-            "type": "string"
+            "title": "Account Reference"
+          },
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One of the Organiser's beneficiaries. The invitee is the person it links to, paying from their account in the Stokvel currency.",
+            "title": "Beneficiary Id"
           }
         },
-        "required": [
-          "account_reference"
-        ],
         "title": "StokvelInvitationCreateRequest",
         "type": "object"
       },
@@ -13317,7 +13334,7 @@
     },
     "/stokvels/{stokvel_id}/invitations": {
       "post": {
-        "description": "Invite the owner of `account_reference` to the caller's stokvel. They\nbecome a Member only if they accept. Invitations may outnumber the free\nplaces: the member cap holds when an invitation is accepted.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an unknown\nstokvel or one the caller is not a member of, and for an unknown\nreference; 403 `not_organiser` for a member who is not the Organiser;\n403 `invitee_not_verified` for an invitee who is not KYC-verified; 422\n`invitee_currency_mismatch` for an account not in the Stokvel currency;\n422 `too_many_members` when the stokvel is full; 409 `already_a_member`,\n`invitation_already_pending` or `stokvel_deactivated`; 400 for the\ncaller's own reference.",
+        "description": "Invite someone to the caller's stokvel: the owner of\n`account_reference`, or the person one of the caller's beneficiaries\nlinks to (`beneficiary_id`). They become a Member only if they accept.\nInvitations may outnumber the free places: the member cap holds when an\ninvitation is accepted.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an unknown\nstokvel or one the caller is not a member of, for an unknown reference,\nand for a beneficiary that isn't the caller's; 403 `not_organiser` for a\nmember who is not the Organiser; 403 `invitee_not_verified` for an\ninvitee who is not KYC-verified; 422 `invitee_currency_mismatch` for an\naccount not in the Stokvel currency, or a beneficiary with no account in\nit; 422 `too_many_members` when the stokvel is full; 409\n`already_a_member`, `invitation_already_pending` or\n`stokvel_deactivated`; 400 for the caller's own reference.",
         "operationId": "invite_to_stokvel",
         "parameters": [
           {

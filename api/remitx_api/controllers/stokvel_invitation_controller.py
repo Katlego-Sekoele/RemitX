@@ -22,6 +22,7 @@ from remitx_api.clock import utcnow
 from remitx_api.config import Config
 from remitx_api.controllers.stokvel_controller import StokvelView, stokvel_view
 from remitx_api.db.transaction import db_transaction
+from remitx_api.errors.beneficiaries import UnknownBeneficiaryError
 from remitx_api.errors.stokvels import (
     AlreadyStokvelMemberError,
     CannotInviteYourselfError,
@@ -48,6 +49,7 @@ from remitx_api.models.orm.stokvel_invitation import (
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.beneficiary_repository import BeneficiaryRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_invitation_repository import (
@@ -89,6 +91,7 @@ class SentStokvelInvitationView:
 class StokvelInvitationController:
     def __init__(self) -> None:
         self._accounts = AccountRepository()
+        self._beneficiaries = BeneficiaryRepository()
         self._applications = KycApplicationRepository()
         self._cycles = StokvelCycleRepository()
         self._invitations = StokvelInvitationRepository()
@@ -98,9 +101,16 @@ class StokvelInvitationController:
 
     @db_transaction
     def invite(
-        self, organiser_id: uuid.UUID, stokvel_id: uuid.UUID, account_reference: str
+        self,
+        organiser_id: uuid.UUID,
+        stokvel_id: uuid.UUID,
+        *,
+        account_reference: str | None = None,
+        beneficiary_id: uuid.UUID | None = None,
     ) -> SentStokvelInvitationView:
-        """Invite the owner of `account_reference` to the stokvel.
+        """Invite the owner of `account_reference`, or the person the
+        Organiser's beneficiary `beneficiary_id` links to, to the stokvel.
+        Exactly one of the two.
 
         The member cap is checked here only to refuse early: invitations may
         outnumber free places, and accepting is where the cap holds.
@@ -115,14 +125,33 @@ class StokvelInvitationController:
         if stokvel.deactivated_at is not None:
             raise StokvelDeactivatedError()
 
-        account = self._accounts.get_user_account_by_reference(account_reference)
-        if account is None or account.user_id is None:
-            raise InviteeAccountNotFoundError(account_reference)
-        invitee_id = account.user_id
-        if invitee_id == organiser_id:
-            raise CannotInviteYourselfError()
-        if account.account_currency != stokvel.currency:
-            raise InviteeCurrencyMismatchError(stokvel.currency)
+        if beneficiary_id is not None:
+            # Someone else's beneficiary reads as unknown, as on the
+            # beneficiary routes. The invitee pays from their account in the
+            # Stokvel currency, so one without it is refused like a
+            # reference in another currency.
+            row = self._beneficiaries.get_sender_beneficiary(
+                organiser_id, beneficiary_id
+            )
+            if row is None:
+                raise UnknownBeneficiaryError(beneficiary_id)
+            invitee_id = row.beneficiary.linked_user_id
+            if invitee_id == organiser_id:
+                raise CannotInviteYourselfError()
+            account = self._accounts.get_user_account(invitee_id, stokvel.currency)
+            if account is None:
+                raise InviteeCurrencyMismatchError(stokvel.currency)
+        else:
+            if account_reference is None:
+                raise ValueError("Give an account_reference or a beneficiary_id")
+            account = self._accounts.get_user_account_by_reference(account_reference)
+            if account is None or account.user_id is None:
+                raise InviteeAccountNotFoundError(account_reference)
+            invitee_id = account.user_id
+            if invitee_id == organiser_id:
+                raise CannotInviteYourselfError()
+            if account.account_currency != stokvel.currency:
+                raise InviteeCurrencyMismatchError(stokvel.currency)
         if not self._applications.is_other_user_verified(invitee_id):
             raise InviteeNotKycVerifiedError()
         if self._members.get_active_member(stokvel.id, invitee_id) is not None:
