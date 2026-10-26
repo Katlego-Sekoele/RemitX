@@ -27,13 +27,16 @@ The events:
   as waiting before R3-04 are recorded by the next run.
 - `CycleClosed`: closes the cycle (`active -> closed`), but only once every
   round's payout is recorded as released. Until then it waits, so the cycle
-  is not closed (and a new one cannot open) with a payout missing.
+  is not closed (and a new one cannot open) with a payout missing. Closing
+  opens the next cycle as `forming` in the same transaction
+  (`open_next_cycle`, R2-15).
 """
 
 import logging
 from typing import Any
 
 from remitx_api.clock import utcnow
+from remitx_api.controllers.stokvel_cycle_controller import open_next_cycle
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import (
@@ -220,11 +223,16 @@ def _cycle_closed(session, event: ContractEvent) -> str:
         .values(status=StokvelCycleStatus.CLOSED.value, closed_at=utcnow())
         .execution_options(synchronize_session=False)
     )
+    # In the same transaction, so a stokvel is never left with no cycle to
+    # continue into (R2-15, #237).
+    following = open_next_cycle(session, cycle)
     logger.info(
-        "event=stokvel.sync_cycle_closed cycle_id=%s tx_hash=%s block=%s",
+        "event=stokvel.sync_cycle_closed cycle_id=%s tx_hash=%s block=%s "
+        "next_cycle_id=%s",
         cycle.id,
         event.tx_hash,
         event.block_number,
+        None if following is None else following.id,
     )
     return APPLIED
 

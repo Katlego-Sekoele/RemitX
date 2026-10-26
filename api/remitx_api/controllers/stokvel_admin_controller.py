@@ -25,7 +25,7 @@ from remitx_api.models.orm.audit_log import (
     AuditAction,
     AuditSubject,
 )
-from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
 from remitx_api.models.schemas.stokvel_contract import (
     StokvelContractActionResponse,
@@ -96,9 +96,16 @@ class StokvelAdminController:
         stokvel = StokvelRepository().get_by_id(stokvel_id)
         if stokvel is None:
             raise StokvelNotFoundError()
-        cycle = StokvelCycleRepository().get_open_cycle(stokvel_id)
+        cycles = StokvelCycleRepository()
+        cycle = cycles.get_open_cycle(stokvel_id)
         if cycle is None:
-            self._refuse_without_open_cycle(stokvel_id, round_)
+            self._refuse_after_cycle(cycles.get_latest_cycle(stokvel_id), round_)
+        if cycle.status == StokvelCycleStatus.FORMING.value and cycle.cycle_number > 1:
+            # The worker opens the next cycle as one closes (R2-15, #237), so
+            # the round asked about is most likely the closed cycle's.
+            self._refuse_after_cycle(
+                cycles.get_cycle_by_number(stokvel_id, cycle.cycle_number - 1), round_
+            )
         if cycle.status != StokvelCycleStatus.ACTIVE.value:
             raise CycleNotOpenError()
         if cycle.registered_at is None:
@@ -161,20 +168,19 @@ class StokvelAdminController:
             after={"paused": False, "tx_hash": tx_hash},
         )
 
-    def _refuse_without_open_cycle(
-        self, stokvel_id: uuid.UUID, round_: int
+    def _refuse_after_cycle(
+        self, previous: StokvelCycle | None, round_: int
     ) -> NoReturn:
         """A closed cycle has already released every round it had. The
         contract sets `closed` only after the last round is released."""
-        latest = StokvelCycleRepository().get_latest_cycle(stokvel_id)
         if (
-            latest is not None
-            and latest.status == StokvelCycleStatus.CLOSED.value
-            and latest.total_rounds is not None
-            and round_ < latest.total_rounds
+            previous is not None
+            and previous.status == StokvelCycleStatus.CLOSED.value
+            and previous.total_rounds is not None
+            and round_ < previous.total_rounds
         ):
             raise RoundAlreadyFinalisedError()
-        if latest is not None and latest.status == StokvelCycleStatus.CLOSED.value:
+        if previous is not None and previous.status == StokvelCycleStatus.CLOSED.value:
             raise RoundNotFinalisableError()
         raise CycleNotOpenError()
 

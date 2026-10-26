@@ -25,10 +25,13 @@ from hexbytes import HexBytes
 from remitx_api.db.rls import bound_row_security_context
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import Account
+from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
+from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_held_event import StokvelHeldEvent
+from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.stokvel_sync_state import StokvelSyncState
 from remitx_api.models.orm.transaction import (
@@ -36,6 +39,7 @@ from remitx_api.models.orm.transaction import (
     TYPE_STOKVEL_POOL_RELEASE,
     Transaction,
 )
+from remitx_api.models.orm.user import User
 from remitx_api.services import queue_service
 from remitx_worker import evm_service, stokvel_contract, stokvel_sync
 from remitx_worker.stokvel_contract import ContractEvent
@@ -719,6 +723,194 @@ def test_cycle_closed_with_every_payout_released_closes_once(
         )
     finally:
         session.close()
+
+
+# --- CycleClosed opens the next cycle (R2-15) -------------------------------
+
+
+def _lock_with_beneficiaries(session_factory, pending) -> dict[uuid.UUID, uuid.UUID]:
+    """Lock the cycle's rows as a start does (R2-10), each with a
+    beneficiary: a started cycle's members are its locked rows. Returns each
+    member's beneficiary, by member id."""
+    chosen = {}
+    with session_factory() as session:
+        row = session.get(StokvelContribution, uuid.UUID(pending["id"]))
+        rows = session.scalars(
+            select(StokvelCycleMember).where(
+                StokvelCycleMember.cycle_id == row.cycle_id
+            )
+        ).all()
+        linked = _new_user(session)
+        for cycle_row in rows:
+            member = session.get(StokvelMember, cycle_row.member_id)
+            beneficiary = Beneficiary(
+                sender_user_id=member.user_id,
+                linked_user_id=linked.id,
+                payout_currency="ZAR",
+                relationship=BeneficiaryRelationship.PARENT.value,
+            )
+            session.add(beneficiary)
+            session.flush()
+            cycle_row.payout_beneficiary_id = beneficiary.beneficiary_id
+            cycle_row.payout_currency = "ZAR"
+            cycle_row.locked = True
+            chosen[cycle_row.member_id] = beneficiary.beneficiary_id
+        session.commit()
+    return chosen
+
+
+def _new_user(session) -> User:
+    suffix = uuid.uuid4().hex[:10]
+    user = User(
+        clerk_user_id=f"user_{suffix}",
+        email=f"{suffix}@example.com",
+        first_name="Test",
+        base_reference=suffix,
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+def _join_mid_cycle(session_factory, stokvel_id) -> uuid.UUID:
+    """A member who accepted while the cycle ran: no row in it (R2-08)."""
+    with session_factory() as session:
+        organiser_row = session.scalars(
+            select(StokvelMember).where(StokvelMember.stokvel_id == stokvel_id)
+        ).first()
+        member = StokvelMember(
+            stokvel_id=stokvel_id,
+            user_id=_new_user(session).id,
+            account_id=organiser_row.account_id,
+        )
+        session.add(member)
+        session.commit()
+        return member.id
+
+
+def _close_cycle(session_factory, pending, logs):
+    _release_every_round(session_factory, pending)
+    stokvel_id, cycle_id, organiser_member_id = _ids(session_factory, pending)
+    logs.events = [_event("CycleClosed", START + 2, stokvel_id=stokvel_id)]
+    sync_events()
+    return stokvel_id, cycle_id, organiser_member_id
+
+
+def _rows(session, cycle_id) -> dict[uuid.UUID, StokvelCycleMember]:
+    return {
+        row.member_id: row
+        for row in session.scalars(
+            select(StokvelCycleMember).where(StokvelCycleMember.cycle_id == cycle_id)
+        )
+    }
+
+
+def test_closing_a_cycle_opens_the_next_with_the_organiser_carried_over(
+    session_factory, pending, logs
+):
+    """The Organiser cannot leave, so they continue with their beneficiary;
+    everyone else in the closed cycle chooses (R2-15)."""
+    chosen = _lock_with_beneficiaries(session_factory, pending)
+
+    stokvel_id, closed_id, organiser_member_id = _close_cycle(
+        session_factory, pending, logs
+    )
+
+    with session_factory() as session:
+        following = session.scalars(
+            select(StokvelCycle).where(
+                StokvelCycle.stokvel_id == stokvel_id,
+                StokvelCycle.cycle_number == 2,
+            )
+        ).one()
+        assert following.status == "forming"
+        assert following.started_at is None
+        assert session.get(Stokvel, stokvel_id).current_cycle_id == following.id
+
+        rows = _rows(session, following.id)
+        assert set(rows) == {organiser_member_id}
+        carried = rows[organiser_member_id]
+        assert carried.payout_beneficiary_id == chosen[organiser_member_id]
+        assert carried.payout_currency == "ZAR"
+        assert carried.payout_position is None
+        assert carried.locked is False
+
+        before = _rows(session, closed_id)
+        assert before[organiser_member_id].continued is True
+        others = [row for key, row in before.items() if key != organiser_member_id]
+        assert [row.continued for row in others] == [None]
+
+
+def test_a_member_who_joined_while_the_cycle_ran_is_in_the_next(
+    session_factory, pending, logs
+):
+    _lock_with_beneficiaries(session_factory, pending)
+    stokvel_id, _cycle_id, _organiser = _ids(session_factory, pending)
+    joiner = _join_mid_cycle(session_factory, stokvel_id)
+
+    _close_cycle(session_factory, pending, logs)
+
+    with session_factory() as session:
+        following = session.scalars(
+            select(StokvelCycle).where(
+                StokvelCycle.stokvel_id == stokvel_id,
+                StokvelCycle.cycle_number == 2,
+            )
+        ).one()
+        row = _rows(session, following.id)[joiner]
+        assert row.payout_beneficiary_id is None
+        assert row.payout_position is None
+
+
+def test_a_cycle_that_is_waiting_to_close_opens_nothing(session_factory, pending, logs):
+    stokvel_id, _cycle_id, _member_id = _ids(session_factory, pending)
+    logs.events = [_event("CycleClosed", START + 2, stokvel_id=stokvel_id)]
+
+    sync_events()
+
+    with session_factory() as session:
+        numbers = session.scalars(
+            select(StokvelCycle.cycle_number).where(
+                StokvelCycle.stokvel_id == stokvel_id
+            )
+        ).all()
+    assert numbers == [1]
+
+
+def test_replaying_cycle_closed_opens_the_next_cycle_once(
+    session_factory, pending, logs
+):
+    stokvel_id, _cycle_id, _member_id = _close_cycle(session_factory, pending, logs)
+    session = session_factory()
+    try:
+        assert (
+            stokvel_sync.apply_event(session, logs.events[0])
+            == stokvel_sync.ALREADY_RECORDED
+        )
+        session.commit()
+        numbers = session.scalars(
+            select(StokvelCycle.cycle_number).where(
+                StokvelCycle.stokvel_id == stokvel_id
+            )
+        ).all()
+    finally:
+        session.close()
+    assert sorted(numbers) == [1, 2]
+
+
+def test_a_deactivated_stokvel_gets_no_next_cycle(session_factory, pending, logs):
+    stokvel_id, _cycle_id, _member_id = _ids(session_factory, pending)
+    with session_factory() as session:
+        session.get(Stokvel, stokvel_id).deactivated_at = datetime.now(UTC)
+        session.commit()
+
+    _close_cycle(session_factory, pending, logs)
+
+    with session_factory() as session:
+        statuses = session.scalars(
+            select(StokvelCycle.status).where(StokvelCycle.stokvel_id == stokvel_id)
+        ).all()
+    assert statuses == ["closed"]
 
 
 # --- One event never stops the sync ----------------------------------------

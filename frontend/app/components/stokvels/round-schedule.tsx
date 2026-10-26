@@ -101,6 +101,7 @@ export function RoundSchedule({
   myMemberId,
   paidByRound,
   memberCount,
+  title = "Rounds",
 }: {
   cycle: StokvelDetailCycleRead
   /** Collecting round. Null when none is open, including a finished cycle. */
@@ -110,11 +111,12 @@ export function RoundSchedule({
   /** Confirmed contributions per round index. */
   paidByRound: (round: number) => number
   memberCount: number
+  title?: string
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Rounds</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col divide-y">
