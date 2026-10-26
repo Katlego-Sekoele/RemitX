@@ -664,6 +664,26 @@ def test_an_invitee_whose_verification_lapsed_cannot_accept(api):
     assert _get_invitation(invitation_id).status == "pending"
 
 
+def test_an_invitee_renewing_their_verification_is_invited_and_accepts(api):
+    """An open renewal leaves the approval before it in force."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    _in_session(
+        lambda: insert_application(
+            invitee.id,
+            KycStatus.SUBMITTED,
+            created_at=datetime.now(UTC) + timedelta(seconds=1),
+        )
+    )
+
+    invited = api.invite(organiser, stokvel_id, invitee.ref())
+    assert invited.status_code == 201, invited.text
+    accepted = api.accept(invitee, invited.json()["invitation_id"])
+
+    assert accepted.status_code == 200, accepted.text
+    assert _members(stokvel_id) == {organiser.id, invitee.id}
+
+
 def test_an_invitation_to_a_deactivated_stokvel_cannot_be_accepted(api):
     organiser, invitee = _person("sipho"), _person()
     stokvel_id = _stokvel(organiser, deactivated=True)
