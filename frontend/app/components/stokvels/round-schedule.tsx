@@ -15,8 +15,10 @@ import { beneficiaryInitials } from "~/lib/beneficiaries"
 import {
   explorerTxUrl,
   payoutProofHash,
+  PAYOUT_FAILED_DETAIL,
   PAYOUT_STAGE_LABELS,
   payoutStage,
+  roundCountsAsPaidOut,
   type StokvelDetailCycleRead,
   type StokvelMemberRead,
 } from "~/lib/stokvels"
@@ -42,8 +44,8 @@ export function PayoutQueue({
       <CardHeader>
         <CardTitle>Payout order</CardTitle>
         <CardDescription>
-          {cycle.rounds.filter((r) => r.release_status === "released").length}{" "}
-          of {cycle.total_rounds ?? cycle.payout_order.length} paid out
+          {cycle.rounds.filter((r) => roundCountsAsPaidOut(r)).length} of{" "}
+          {cycle.total_rounds ?? cycle.payout_order.length} paid out
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -53,7 +55,9 @@ export function PayoutQueue({
             const name = m?.full_name ?? "Member"
             const isMe = memberId === myMemberId
             const isNext = openRound != null && round === openRound
-            const released = cycle.rounds[round]?.release_status === "released"
+            const row = cycle.rounds[round]
+            const released = row?.release_status === "released"
+            const failed = row != null && payoutStage(row, true) === "failed"
             return (
               <li
                 key={memberId}
@@ -79,7 +83,11 @@ export function PayoutQueue({
                     ? ` · ${format(new Date(cycle.rounds[round].payout_time), "d MMM")}`
                     : ""}
                 </span>
-                {released ? (
+                {failed ? (
+                  <Badge variant="destructive">
+                    {PAYOUT_STAGE_LABELS.failed}
+                  </Badge>
+                ) : released ? (
                   <Badge variant="outline">Paid out</Badge>
                 ) : isNext ? (
                   <Badge>{isMe ? "You're next!" : "Next"}</Badge>
@@ -147,6 +155,11 @@ export function RoundSchedule({
                         ? `${paid} of ${memberCount} paid · releases ${format(new Date(round.payout_time), "EEE d MMM, HH:mm")}`
                         : `Released ${format(new Date(round.payout_time), "EEE d MMM")}`}
                   </span>
+                  {stage === "failed" ? (
+                    <span className="text-xs text-muted-foreground">
+                      {PAYOUT_FAILED_DETAIL}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   {upcoming ? (

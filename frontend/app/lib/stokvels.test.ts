@@ -136,6 +136,38 @@ test("payoutStage follows release then remittance status", async () => {
   )
 })
 
+test("a failed beneficiary transfer is not paid out", async () => {
+  const { roundCountsAsPaidOut } = await import("./stokvels")
+  assert.equal(
+    roundCountsAsPaidOut({
+      release_status: "released",
+      remittance_status: "failed",
+    }),
+    false
+  )
+  assert.equal(
+    roundCountsAsPaidOut({
+      release_status: "released",
+      remittance_status: "confirmed",
+    }),
+    true
+  )
+  assert.equal(
+    roundCountsAsPaidOut({
+      release_status: "released",
+      remittance_status: null,
+    }),
+    true
+  )
+  assert.equal(
+    roundCountsAsPaidOut({
+      release_status: "failed",
+      remittance_status: null,
+    }),
+    false
+  )
+})
+
 test("a hash is proof only once confirmed", async () => {
   const { contributionProofHash, payoutProofHash } = await import("./stokvels")
   const hash = `0x${"a".repeat(64)}`
