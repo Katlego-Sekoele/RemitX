@@ -30,7 +30,10 @@ import pytest
 from fastapi.testclient import TestClient
 from remitx_api.app import create_app
 from remitx_api.config import TestConfig
-from remitx_api.controllers import stokvel_contribution_controller
+from remitx_api.controllers import (
+    stokvel_admin_controller,
+    stokvel_contribution_controller,
+)
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -46,9 +49,11 @@ from remitx_api.models.orm.stokvel_payout import StokvelPayout
 from remitx_api.models.orm.transaction import TYPE_BENEFICIARY_PAYOUT, Transaction
 from remitx_api.services import queue_service
 from remitx_api.services.exchange_rate_provider import use_rate_provider
+from remitx_api.services.stokvel_contract_read import classify_finalise
 from remitx_worker import db as worker_db, evm_service, stokvel_contract
 from remitx_worker.stokvel_contract import ContractEvent, OnChainStokvel
 from remitx_worker.stokvel_payouts import settle_payout
+from remitx_worker.stokvel_release import release_pool
 from remitx_worker.stokvel_tasks import (
     confirm_contribution,
     start_cycle,
@@ -91,10 +96,14 @@ class FakeVault:
 
     Transactions are mined at once, one block each, and their events are
     kept for the sync to read back. `contribute` refuses a duplicate or an
-    unknown member, as the contract does. `burn_tokens` is the Treasury
-    Wallet's UCTUSD burn, which this chain also mines."""
+    unknown member, and `finalise` a round that is not ready, as the
+    contract does. `now` is the chain's clock, which a test may move on.
+    `burn_tokens` is the Treasury Wallet's UCTUSD burn, which this chain
+    also mines."""
 
     def __init__(self):
+        self.now = time.time
+        self.contributes: list[tuple[int, uuid.UUID]] = []
         self.block = START_BLOCK
         self.events: list[ContractEvent] = []
         self.blocks: dict[str, int] = {}
@@ -163,9 +172,13 @@ class FakeVault:
 
     def contribute(self, stokvel_id, round_, member_id, *, on_signed=None, w3=None):
         member_id = uuid.UUID(str(member_id))
-        assert self.cycle_open, "CycleNotOpen"
-        assert member_id in self.members, "UnknownMember"
-        assert member_id not in self.paid[round_], "AlreadyContributed"
+        self.contributes.append((round_, member_id))
+        if not self.cycle_open:
+            raise stokvel_contract.ContractRefused("CycleNotOpen", "")
+        if member_id not in self.members:
+            raise stokvel_contract.ContractRefused("NotMember", "")
+        if member_id in self.paid[round_]:
+            raise stokvel_contract.ContractRefused("AlreadyContributed", "")
         tx_hash = self._mine("c3")
         if on_signed is not None:
             on_signed(tx_hash)
@@ -179,29 +192,70 @@ class FakeVault:
             amount=self.contribution,
         )
         # Automatic finalisation (D5, D12): every round now due, in order
-        while self.released < len(self.members) and self._finalisable(self.released):
-            round_ = self.released
-            self._emit(
-                "RoundFinalised",
-                tx_hash,
-                stokvel_id,
-                round=round_,
-                memberId=evm_service.uuid_to_bytes32(self.members[round_]),
-                pool=self.contribution * len(self.members),
-            )
-            self.released += 1
-        if self.released == len(self.members):
-            self._emit("CycleClosed", tx_hash, stokvel_id)
-            self.cycle_open = False
+        while self.cycle_open and self._finalisable(self.released):
+            self._release(stokvel_id, tx_hash)
         return tx_hash
 
     def _finalisable(self, round_: int) -> bool:
+        """`isFinalisable`: the round is fully paid, so is the next one (or
+        it is the last), and its payout time has passed (D5, D12)."""
         everyone = set(self.members)
         last = round_ == len(self.members) - 1
         return (
             self.paid[round_] == everyone
             and (last or self.paid[round_ + 1] == everyone)
-            and time.time() >= self.payout_times[round_]
+            and self.now() >= self.payout_times[round_]
+        )
+
+    def _release(self, stokvel_id, tx_hash: str) -> None:
+        """Release the next round's pool, and close the cycle after the
+        last."""
+        round_ = self.released
+        self._emit(
+            "RoundFinalised",
+            tx_hash,
+            stokvel_id,
+            round=round_,
+            memberId=evm_service.uuid_to_bytes32(self.members[round_]),
+            pool=self.contribution * len(self.members),
+        )
+        self.released += 1
+        if self.released == len(self.members):
+            self._emit("CycleClosed", tx_hash, stokvel_id)
+            self.cycle_open = False
+
+    # --- a release by hand (the admin's finalise, stokvel.release_pool) ---
+
+    def finalise(self, stokvel_id, round_, *, on_signed=None, w3=None):
+        if round_ < self.released:
+            raise stokvel_contract.ContractRefused("AlreadyFinalised", "")
+        if round_ > self.released or not self._finalisable(round_):
+            raise stokvel_contract.ContractRefused("NotYetFinalisable", "")
+        tx_hash = self._mine("f0")
+        if on_signed is not None:
+            on_signed(tx_hash)
+        self._release(stokvel_id, tx_hash)
+        return tx_hash
+
+    def round_finalised(self, receipt, w3):
+        return [
+            e
+            for e in self.events
+            if e.tx_hash == receipt["transactionHash"] and e.name == "RoundFinalised"
+        ]
+
+    def finalise_readiness(self, stokvel_id, cycle_number, round_):
+        """The API's read of `getStokvel`, `isFinalisable` and `getCycle`,
+        classified by the real `classify_finalise`."""
+        return classify_finalise(
+            round_,
+            current_cycle=self.cycle,
+            cycle_open=self.cycle_open,
+            asked_cycle=cycle_number,
+            is_finalisable=self.cycle_open
+            and round_ == self.released
+            and self._finalisable(round_),
+            next_to_finalise=self.released if self.cycle else None,
         )
 
     # --- the payout's burn (burn_treasury_tokens) ---
@@ -239,6 +293,7 @@ class Broker:
 
     TASKS = {
         "start_cycle": start_cycle,
+        "release_pool": release_pool,
         "submit_contribution": submit_contribution,
         "confirm_contribution": confirm_contribution,
         "settle_payout": settle_payout,
@@ -296,6 +351,10 @@ class StokvelApi(Api):
     def contribute(self, as_: Person, stokvel_id):
         return self._post(as_, f"/stokvels/{stokvel_id}/contributions")
 
+    def finalise(self, as_: Person, stokvel_id, round_: int):
+        """The admin's Release payout button (P5)."""
+        return self._post(as_, f"/admin/stokvels/{stokvel_id}/rounds/{round_}/finalise")
+
     def stokvel(self, as_: Person, stokvel_id):
         return self.client.get(
             f"/stokvels/{stokvel_id}", headers={USER_HEADER: str(as_.id)}
@@ -313,6 +372,8 @@ def vault(monkeypatch):
         "contribute",
         "fetch_logs",
         "decode_log",
+        "finalise",
+        "round_finalised",
     ):
         monkeypatch.setattr(stokvel_contract, name, getattr(fake, name))
     for name in ("burn_tokens", "transaction_status", "wait_for_receipt"):
@@ -323,8 +384,13 @@ def vault(monkeypatch):
         "get_web3",
         lambda: SimpleNamespace(eth=SimpleNamespace(block_number=fake.block)),
     )
-    # The API checks the contract is not paused before taking a contribution.
-    monkeypatch.setattr(stokvel_contribution_controller, "is_paused", lambda: False)
+    # The API's own reads of the vault: whether it is paused, before taking
+    # a contribution or a manual finalise, and whether a round is ready.
+    for controller in (stokvel_contribution_controller, stokvel_admin_controller):
+        monkeypatch.setattr(controller, "is_paused", lambda: False)
+    monkeypatch.setattr(
+        stokvel_admin_controller, "finalise_readiness", fake.finalise_readiness
+    )
     monkeypatch.setenv("STOKVEL_CONTRACT_ADDRESS", CONTRACT)
     monkeypatch.setenv("STOKVEL_SYNC_START_BLOCK", str(START_BLOCK))
     monkeypatch.setenv("STOKVEL_SYNC_CONFIRMATIONS", "0")
@@ -415,10 +481,11 @@ def _zar_balance(session_factory, person: Person) -> Decimal:
         return _zar_account(session, person).account_balance
 
 
-def _schedule(rounds: int) -> list[dict]:
-    """Rounds a few minutes apart (brief §7.5), every payout time already
-    passed, so each round releases as soon as the payment rule allows."""
-    first = datetime.now(UTC) - timedelta(hours=1)
+def _schedule(rounds: int, *, due=True) -> list[dict]:
+    """Rounds a few minutes apart (brief §7.5). If `due`, every payout time
+    has already passed, so each round releases as soon as the payment rule
+    allows; otherwise the first is an hour away."""
+    first = datetime.now(UTC) + timedelta(hours=-1 if due else 1)
     schedule = []
     for number in range(rounds):
         start = first + timedelta(minutes=5 * number)
@@ -439,12 +506,12 @@ def _payouts(session_factory) -> dict[int, StokvelPayout]:
         return {row.round: row for row in rows}
 
 
-def _set_up(platform, vault, broker):
+def _set_up(platform, vault, broker, *, due=True):
     """Brief §2 steps 1-2, through the API: the Organiser (Sipho) creates a
     ZAR stokvel and invites Thandi and Lerato, who accept; the payout order
     is Thandi, Sipho, Lerato, so it differs from the order they joined in;
-    each member chooses a beneficiary of their own; the cycle starts and the
-    worker opens it on-chain."""
+    each member chooses a beneficiary of their own; the cycle starts on
+    `_schedule(due=due)` and the worker opens it on-chain."""
     api = platform.api
     sipho, thandi, lerato = _person("sipho"), _person("thandi"), _person("lerato")
     for member in (sipho, thandi, lerato):
@@ -476,7 +543,7 @@ def _set_up(platform, vault, broker):
         assert chosen.status_code == 200, chosen.text
         recipients[member] = recipient
 
-    started = api.start(sipho, stokvel_id, _schedule(MEMBERS))
+    started = api.start(sipho, stokvel_id, _schedule(MEMBERS, due=due))
     assert started.status_code in (200, 201), started.text
     assert broker.deliver() == [("start_cycle", "registered")]
     assert vault.members == [members[p.id] for p in order]
@@ -489,12 +556,14 @@ def _set_up(platform, vault, broker):
     )
 
 
-def _pay_round(platform, broker, group, round_: int) -> list[dict]:
-    """Brief §2 step 3: each member contributes through the API, and the
-    worker sends it to the contract and confirms it. Returns what each
-    member was debited: the contribution in ZAR and their fee share."""
+def _pay_round(
+    platform, broker, group, round_: int, members=None
+) -> dict[Person, Decimal]:
+    """Brief §2 step 3: each member (or only `members`) contributes through
+    the API, and the worker sends it to the contract and confirms it. Returns
+    what each was debited: the contribution in ZAR and their fee share."""
     debited = {}
-    for member in group.order:
+    for member in group.order if members is None else members:
         response = platform.api.contribute(member, group.stokvel_id)
         assert response.status_code == 201, response.text
         body = response.json()
