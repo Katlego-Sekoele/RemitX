@@ -19,7 +19,9 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldSeparator,
 } from "~/components/ui/field"
+import { Input } from "~/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -34,31 +36,40 @@ import { stokvelErrorMessage } from "~/lib/stokvel-errors"
 import {
   invalidateStokvels,
   invitableBeneficiaries,
+  normaliseReference,
   stokvelMutations,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
+/** Which field the last invite came from, so its refusal shows there. */
+type InviteBy = "beneficiary" | "reference"
+
 /**
- * The Organiser invites people from their beneficiaries, like choosing a
- * payout beneficiary (`beneficiary_id` on `POST /stokvels/{id}/invitations`),
- * while the stokvel is being set up. Someone new is added with the app's own
- * beneficiary form first. Only beneficiaries with an account in the Stokvel
- * currency are offered, since they pay from it, and current members are left
- * out. The API checks the rest (#230: verified, not already invited) and
- * words each refusal. Nobody joins until they accept, and invitations still
- * open when the cycle starts lapse. The page shows this card only when
- * `canInvite` holds; who is invited, and Revoke, are on `StokvelInvitations`
- * (#299).
+ * The Organiser invites people while the stokvel is being set up: one of
+ * their beneficiaries from a dropdown, like choosing a payout beneficiary
+ * (`beneficiary_id` on `POST /stokvels/{id}/invitations`), or anyone by the
+ * fiat account reference they shared, e.g. "thandi2-zar", without saving
+ * them as a beneficiary. Add a beneficiary uses the app's own form. Only
+ * beneficiaries with an account in the Stokvel currency, which they'd pay
+ * from, are offered, and current members are left out. The API checks the
+ * rest (#230: verified, the right currency, not already invited) and words
+ * each refusal. Nobody joins until they accept, and invitations still open
+ * when the cycle starts lapse. The page shows this card only when
+ * `canInvite` holds; who is invited, and Revoke, are on
+ * `StokvelInvitations` (#299).
  */
 export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   const queryClient = useQueryClient()
   const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
   const [beneficiaryId, setBeneficiaryId] = useState("")
+  const [reference, setReference] = useState("")
+  const [inviteBy, setInviteBy] = useState<InviteBy>("beneficiary")
   const [adding, setAdding] = useState(false)
   const invite = useMutation({
     ...stokvelMutations.invite(stokvel.stokvel_id),
     onSuccess: async (invitation) => {
       setBeneficiaryId("")
+      setReference("")
       await invalidateStokvels(queryClient)
       toast.success(
         `Invitation sent to ${invitation.invitee_name ?? invitation.account_reference}`
@@ -75,6 +86,20 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
     value: b.beneficiary_id,
     label: beneficiaryName(b),
   }))
+  // References are stored lower-case and matched exactly.
+  const normalised = normaliseReference(reference)
+  const currency = stokvel.currency.toLowerCase()
+  const refusal = (by: InviteBy) =>
+    invite.isError && inviteBy === by ? stokvelErrorMessage(invite.error) : null
+
+  function inviteWith(by: InviteBy) {
+    setInviteBy(by)
+    if (by === "beneficiary" && chosen) {
+      invite.mutate({ beneficiary_id: chosen.beneficiary_id })
+    } else if (by === "reference" && normalised) {
+      invite.mutate({ account_reference: normalised })
+    }
+  }
 
   if (adding) {
     return (
@@ -95,33 +120,32 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
 
   return (
     <Card>
-      <form
-        noValidate
-        className="flex flex-col gap-(--card-spacing)"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (chosen) invite.mutate({ beneficiary_id: chosen.beneficiary_id })
-        }}
-      >
-        <CardHeader>
-          <CardTitle>Invite members</CardTitle>
-          <CardDescription>
-            Nobody joins until they accept, and invitations still open when you
-            start the cycle lapse.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CardHeader>
+        <CardTitle>Invite members</CardTitle>
+        <CardDescription>
+          Nobody joins until they accept, and invitations still open when you
+          start the cycle lapse.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <FieldGroup>
           {beneficiaries.isPending ? (
             <Skeleton className="h-16 w-full" />
           ) : beneficiaries.isError ? (
             <FieldError>{errorMessage(beneficiaries.error)}</FieldError>
-          ) : (
-            <FieldGroup>
-              {invitable.length > 0 ? (
-                <Field data-invalid={invite.isError}>
-                  <FieldLabel htmlFor="invite-beneficiary">
-                    Beneficiary
-                  </FieldLabel>
+          ) : invitable.length > 0 ? (
+            <form
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault()
+                inviteWith("beneficiary")
+              }}
+            >
+              <Field data-invalid={refusal("beneficiary") !== null}>
+                <FieldLabel htmlFor="invite-beneficiary">
+                  From your beneficiaries
+                </FieldLabel>
+                <div className="flex gap-2">
                   <Select
                     items={items}
                     value={beneficiaryId || null}
@@ -141,44 +165,84 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
                       ))}
                     </SelectContent>
                   </Select>
-                  {invite.isError ? (
-                    <FieldError>{stokvelErrorMessage(invite.error)}</FieldError>
-                  ) : (
-                    <FieldDescription>
-                      They pay from their {stokvel.currency} account.
-                    </FieldDescription>
-                  )}
-                </Field>
+                  <Button type="submit" disabled={!chosen || invite.isPending}>
+                    {invite.isPending && inviteBy === "beneficiary"
+                      ? "Inviting…"
+                      : "Invite"}
+                  </Button>
+                </div>
+                {refusal("beneficiary") ? (
+                  <FieldError>{refusal("beneficiary")}</FieldError>
+                ) : otherCurrency > 0 ? (
+                  <FieldDescription>
+                    {otherCurrency === 1
+                      ? "1 beneficiary isn't listed: they have"
+                      : `${otherCurrency} beneficiaries aren't listed: they have`}{" "}
+                    no {stokvel.currency} account to pay from.
+                  </FieldDescription>
+                ) : null}
+              </Field>
+            </form>
+          ) : (
+            <FieldDescription>
+              None of your beneficiaries can join this stokvel. Invite someone
+              by their account reference below, or add them as a beneficiary.
+            </FieldDescription>
+          )}
+
+          <FieldSeparator>Or</FieldSeparator>
+
+          <form
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              inviteWith("reference")
+            }}
+          >
+            <Field data-invalid={refusal("reference") !== null}>
+              <FieldLabel htmlFor="invite-reference">
+                Their {stokvel.currency} account reference
+              </FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  id="invite-reference"
+                  value={reference}
+                  placeholder={`thandi2-${currency}`}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  aria-invalid={refusal("reference") !== null}
+                  onChange={(event) => {
+                    setReference(event.target.value)
+                    if (invite.isError) invite.reset()
+                  }}
+                />
+                <Button
+                  type="submit"
+                  disabled={!normalised || invite.isPending}
+                >
+                  {invite.isPending && inviteBy === "reference"
+                    ? "Inviting…"
+                    : "Invite"}
+                </Button>
+              </div>
+              {refusal("reference") ? (
+                <FieldError>{refusal("reference")}</FieldError>
               ) : (
                 <FieldDescription>
-                  None of your beneficiaries can join yet. Add the person you
-                  want to invite as a beneficiary first.
+                  For someone who isn&apos;t one of your beneficiaries. Ask them
+                  for the reference on their Accounts page.
                 </FieldDescription>
               )}
-              {otherCurrency > 0 ? (
-                <FieldDescription>
-                  {otherCurrency === 1
-                    ? "1 beneficiary isn't listed: they have"
-                    : `${otherCurrency} beneficiaries aren't listed: they have`}{" "}
-                  no {stokvel.currency} account to pay from.
-                </FieldDescription>
-              ) : null}
-            </FieldGroup>
-          )}
-        </CardContent>
-        <CardFooter className="flex-wrap justify-between gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setAdding(true)}
-          >
-            Add a beneficiary
-          </Button>
-          <Button type="submit" disabled={!chosen || invite.isPending}>
-            {invite.isPending ? "Inviting…" : "Invite"}
-          </Button>
-        </CardFooter>
-      </form>
+            </Field>
+          </form>
+        </FieldGroup>
+      </CardContent>
+      <CardFooter>
+        <Button type="button" variant="outline" onClick={() => setAdding(true)}>
+          Add a beneficiary
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
