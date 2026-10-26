@@ -43,6 +43,9 @@ export const STOKVEL_ERROR_MESSAGES = {
   cycle_not_forming: "This stokvel's next cycle hasn't been opened yet.",
   cycle_in_progress: "This stokvel's cycle has already started.",
   too_few_members: "A cycle needs at least 2 members.",
+  // Continue or leave after a cycle (#237).
+  organiser_cannot_leave:
+    "As Organiser you can't leave. Closing the stokvel ends it for everyone.",
   // #232: a cycle has started but is not on-chain yet; worth a retry.
   cycle_starting:
     "This stokvel's cycle is still being set up. Try again in a minute.",

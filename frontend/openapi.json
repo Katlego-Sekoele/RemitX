@@ -5979,6 +5979,11 @@
             ],
             "title": "Full Name"
           },
+          "in_cycle": {
+            "description": "Has a place in the current cycle. From cycle 2, while it is forming: the Organiser, members who chose to continue and anyone who joined since; false for a member who hasn't answered yet.",
+            "title": "In Cycle",
+            "type": "boolean"
+          },
           "is_me": {
             "title": "Is Me",
             "type": "boolean"
@@ -6008,7 +6013,8 @@
           "full_name",
           "is_organiser",
           "is_me",
-          "joined_at"
+          "joined_at",
+          "in_cycle"
         ],
         "title": "StokvelMemberRead",
         "type": "object"

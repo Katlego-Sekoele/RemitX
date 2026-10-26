@@ -96,6 +96,10 @@ class StokvelMemberView:
     is_organiser: bool
     is_me: bool
     joined_at: datetime
+    # Has a row in the current cycle. From cycle 2 that is the Organiser,
+    # those who chose to continue and anyone who joined since (R2-15, #237);
+    # the others haven't answered yet.
+    in_cycle: bool
 
 
 @dataclass(frozen=True)
@@ -337,6 +341,11 @@ class StokvelController:
         current_round = cycle.current_round if cycle is not None else None
         # Start writes total_rounds as the locked member count (R2-10).
         total_rounds = cycle.total_rounds if cycle is not None else None
+        in_cycle = (
+            {row.member_id for row in self._cycles.get_cycle_members(cycle.id)}
+            if cycle is not None
+            else set()
+        )
         open_round = (
             self._contributions.open_round(
                 cycle.id,
@@ -368,6 +377,7 @@ class StokvelController:
                     is_organiser=row.user_id == stokvel.organiser_user_id,
                     is_me=row.user_id == user_id,
                     joined_at=row.joined_at,
+                    in_cycle=row.id in in_cycle,
                 )
                 for row in members
             ],

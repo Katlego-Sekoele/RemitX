@@ -377,6 +377,13 @@ class StokvelMemberRead(Schema):
     is_organiser: bool
     is_me: bool
     joined_at: UtcDateTime
+    in_cycle: bool = Field(
+        description=(
+            "Has a place in the current cycle. From cycle 2, while it is "
+            "forming: the Organiser, members who chose to continue and anyone "
+            "who joined since; false for a member who hasn't answered yet."
+        )
+    )
 
     @classmethod
     def from_view(cls, view: StokvelMemberView) -> "StokvelMemberRead":
@@ -387,6 +394,7 @@ class StokvelMemberRead(Schema):
             is_organiser=view.is_organiser,
             is_me=view.is_me,
             joined_at=view.joined_at,
+            in_cycle=view.in_cycle,
         )
 
 

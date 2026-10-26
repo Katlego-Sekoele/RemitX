@@ -52,6 +52,11 @@ class ContinuationApi(Api):
             headers={USER_HEADER: str(as_.id)},
         )
 
+    def detail(self, as_: Person, stokvel_id):
+        return self.client.get(
+            f"/stokvels/{stokvel_id}", headers={USER_HEADER: str(as_.id)}
+        )
+
     def continuation(self, as_: Person, stokvel_id, choice, beneficiary_id=None):
         body = {"choice": choice}
         if beneficiary_id is not None:
@@ -258,6 +263,32 @@ def test_a_member_who_continued_may_still_leave(capi):
     assert response.status_code == 200, response.text
     assert _left_at(group.member_id(thandi)) is not None
     assert _continued(group.stokvel_id, 1)[group.member_id(thandi)] is False
+
+
+def test_the_member_list_says_who_is_in_the_next_cycle(capi, monkeypatch):
+    """`in_cycle` on `GET /stokvels/{id}`: the Organiser and a member who
+    continued are in cycle 2; a member who hasn't answered isn't yet."""
+    monkeypatch.setattr(
+        "remitx_api.controllers.stokvel_controller._fiat_estimate",
+        lambda currency, amount: None,
+    )
+    organiser, thandi, lerato = _person("sipho"), _person(), _person("lerato")
+    group = _after_first_cycle(organiser, thandi, lerato).group
+    capi.continuation(thandi, group.stokvel_id, "continue")
+
+    response = capi.detail(lerato, group.stokvel_id)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cycle"]["cycle_number"] == 2
+    assert body["previous_cycle"]["cycle_number"] == 1
+    assert {m["member_id"]: m["in_cycle"] for m in body["members"]} == {
+        str(group.member_id(organiser)): True,
+        str(group.member_id(thandi)): True,
+        str(group.member_id(lerato)): False,
+    }
+    # Lerato hasn't answered, so she has no choice in cycle 2 yet.
+    assert body["my_beneficiary"] is None
 
 
 def test_the_organiser_cannot_leave(capi):

@@ -13,6 +13,8 @@ import {
   type BeneficiaryRead,
   type StokvelPayoutOrderRequest,
   type SentStokvelInvitationRead,
+  type StokvelContinuationRead,
+  type StokvelContinuationRequest,
   type StokvelContributionRead,
   type StokvelCycleStartRequest,
   type StokvelDetailCycleRead,
@@ -185,6 +187,21 @@ export const stokvelMutations = {
       })
     },
   }),
+  /** `POST /stokvels/{id}/members/me/continuation` (#237): continue into
+   * the next cycle (keeping the payout beneficiary, or with a new one), or
+   * leave the stokvel for good. */
+  continueOrLeave: (stokvelId: string) => ({
+    mutationFn: async (
+      body: StokvelContinuationRequest
+    ): Promise<StokvelContinuationRead> => {
+      const { data } = await sdk.stokvels.continueOrLeaveStokvel({
+        path: { stokvel_id: stokvelId },
+        body,
+        throwOnError: true,
+      })
+      return data
+    },
+  }),
   /** `POST /invitations/{id}/decline` (#230). */
   declineInvitation: () => ({
     mutationFn: async (invitationId: string): Promise<void> => {
@@ -283,12 +300,14 @@ export function startCycleBlockers(
   detail: Pick<
     StokvelDetailRead,
     "members" | "cycle" | "phase" | "my_beneficiary"
-  >,
+  > &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>,
   order: readonly string[] = plannedPayoutOrder(detail)
 ): string[] {
   if (detail.phase !== CycleStatus.forming) return []
   const blockers: string[] = []
-  if (detail.members.length < 2) {
+  const going = goingIntoCycle(detail)
+  if (going.length < 2) {
     blockers.push("A cycle needs at least 2 members.")
   }
   // Other members' beneficiary choices are not on this response. A missing
@@ -297,7 +316,7 @@ export function startCycleBlockers(
   if (me && detail.my_beneficiary == null) {
     blockers.push("Choose your payout beneficiary.")
   }
-  const everyone = new Set(detail.members.map((m) => m.member_id))
+  const everyone = new Set(going.map((m) => m.member_id))
   if (
     order.length !== everyone.size ||
     !order.every((memberId) => everyone.has(memberId))
@@ -310,11 +329,58 @@ export function startCycleBlockers(
 /** The planned order, completed with any member not in it yet (a new member
  * joins at the end), so the Organiser always has a full list. */
 export function payoutOrderWithEveryone(
-  detail: Pick<StokvelDetailRead, "members" | "cycle">
+  detail: Pick<StokvelDetailRead, "members" | "cycle"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
 ): string[] {
-  const everyone = detail.members.map((m) => m.member_id)
+  const everyone = goingIntoCycle(detail).map((m) => m.member_id)
   const kept = plannedPayoutOrder(detail).filter((id) => everyone.includes(id))
   return [...kept, ...everyone.filter((id) => !kept.includes(id))]
+}
+
+/**
+ * The members going into the forming cycle: everyone for cycle 1; from
+ * cycle 2 (`previous_cycle` set), the Organiser, those who chose to continue
+ * and anyone who joined since (`in_cycle`, R2-15 #237). The payout order
+ * must name exactly these.
+ */
+export function goingIntoCycle(
+  detail: Pick<StokvelDetailRead, "members"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): StokvelMemberRead[] {
+  return detail.previous_cycle
+    ? detail.members.filter((member) => member.in_cycle)
+    : detail.members
+}
+
+/** Members of the closed cycle who haven't said yet whether they continue.
+ * Starting the next cycle treats them as leaving (#237). */
+export function undecidedMembers(
+  detail: Pick<StokvelDetailRead, "members"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): StokvelMemberRead[] {
+  return detail.previous_cycle
+    ? detail.members.filter((member) => !member.in_cycle)
+    : []
+}
+
+/**
+ * Where the signed-in member stands after a cycle closes (R4-10, #259):
+ * `none` when no cycle has closed into a forming one, `organiser` (always
+ * continued, and can't leave), `continued`, or `undecided`.
+ */
+export type ContinuationStatus =
+  "none" | "organiser" | "continued" | "undecided"
+
+export function continuationStatus(
+  detail: Pick<StokvelDetailRead, "members" | "is_organiser" | "phase"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): ContinuationStatus {
+  if (!detail.previous_cycle || detail.phase !== CycleStatus.forming) {
+    return "none"
+  }
+  if (detail.is_organiser) return "organiser"
+  const me = detail.members.find((member) => member.is_me)
+  return me?.in_cycle ? "continued" : "undecided"
 }
 
 /** `order` with the item at `from` moved one place up (-1) or down (+1). */

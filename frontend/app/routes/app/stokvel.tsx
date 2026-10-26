@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router"
 
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { ContinueOrLeaveCard } from "~/components/stokvels/continue-or-leave-card"
 import { ContributionPanel } from "~/components/stokvels/contribution-panel"
 import { CycleSetup } from "~/components/stokvels/cycle-setup"
 import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
@@ -42,6 +43,9 @@ import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
   canInvite,
+  continuationStatus,
+  goingIntoCycle,
+  undecidedMembers,
   firstNameOf,
   myCurrentContribution,
   outstandingMembers,
@@ -170,6 +174,7 @@ function StokvelDetail({
 }) {
   const cycle = stokvel.cycle
   const previous = stokvel.previous_cycle
+  const continuation = continuationStatus(stokvel)
   const active = cycle?.status === "active"
   const totalRounds = active && cycle ? cycle.total_rounds : null
   // Collecting round from the detail response. Stored current_round stays 0.
@@ -282,28 +287,29 @@ function StokvelDetail({
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Setting up</CardTitle>
+              <CardTitle>
+                {previous
+                  ? `Setting up cycle ${cycle?.cycle_number}`
+                  : "Setting up"}
+              </CardTitle>
               <CardDescription>
-                {stokvel.member_count} of {stokvel.max_members} members ·{" "}
-                {pendingInvitations(stokvel).length} invited
+                {previous
+                  ? `${goingIntoCycle(stokvel).length} going in · ${undecidedMembers(stokvel).length} haven't answered`
+                  : `${stokvel.member_count} of ${stokvel.max_members} members`}{" "}
+                · {pendingInvitations(stokvel).length} invited
               </CardDescription>
             </CardHeader>
           </Card>
-          <PayoutBeneficiaryCard stokvel={stokvel} />
+          <ContinueOrLeaveCard stokvel={stokvel} />
+          {/* Choosing a payout beneficiary for the next cycle counts as
+              continuing (#237), so an undecided member chooses on the card
+              above instead. */}
+          {continuation !== "undecided" ? (
+            <PayoutBeneficiaryCard stokvel={stokvel} />
+          ) : null}
           {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
           <StokvelInvitations stokvel={stokvel} />
-          {stokvel.is_organiser && (cycle?.cycle_number ?? 1) > 1 ? (
-            // Setup needs each member's choice to continue, which the
-            // detail does not show yet (#259).
-            <Card>
-              <CardHeader>
-                <CardTitle>Next cycle</CardTitle>
-                <CardDescription>
-                  Setting up cycle {cycle?.cycle_number} is not available yet.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : stokvel.is_organiser ? (
+          {stokvel.is_organiser ? (
             <CycleSetup stokvel={stokvel} />
           ) : (
             <Card>
