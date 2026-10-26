@@ -72,7 +72,17 @@ _ERROR_NAMES: dict[str, str] = {
 
 def error_name(data: Any) -> str | None:
     """The name of the custom error `data` encodes (its first four bytes), or
-    None if it is not one the vault or the token defines."""
+    None if it is not one the vault or the token defines.
+
+    A node may hand the revert back as the hex string itself, or as the object
+    Hardhat (and web3's dict branch) uses: ``{"message": "...", "data": "0x..."}``.
+    The selector is in that inner ``data``.
+    """
+    if isinstance(data, dict):
+        inner = data.get("data")
+        if inner is None or inner is data:
+            return None
+        return error_name(inner)
     if isinstance(data, bytes | bytearray):
         hex_data = bytes(data).hex()
     elif isinstance(data, str):

@@ -69,5 +69,7 @@ book into the account as they are made, and a release books out of it:
   current and former members read them, current members record only the
   contribution's token leg (Treasury Wallet -> the account), and no member
   may update or delete one. The worker books the release. The quote and
-  remittance parts are still pending.
+  remittance parts were not built: members see payouts through
+  `stokvel_payouts` in `GET /stokvels/{id}` instead (2026-10-25, doc
+  section 8).
 
