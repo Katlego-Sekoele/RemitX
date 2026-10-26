@@ -12,6 +12,7 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 from remitx_api.controllers.stokvel_contribution_controller import (
@@ -207,19 +208,37 @@ class StokvelContributionRead(Schema):
 
 
 class StokvelInvitationCreateRequest(Schema):
-    """Invite the owner of an account to the stokvel."""
+    """Invite someone to the stokvel, by their account reference or as one of
+    the Organiser's beneficiaries. Exactly one of the two."""
 
     model_config = ConfigDict(extra="forbid")
 
-    account_reference: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
-    ] = Field(
+    account_reference: (
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+        ]
+        | None
+    ) = Field(
+        default=None,
         description=(
             "The invitee's account reference, e.g. `thandi2-zar`. The account "
             "must be in the Stokvel currency: the invitee's contributions are "
             "paid from it."
-        )
+        ),
     )
+    beneficiary_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "One of the Organiser's beneficiaries. The invitee is the person "
+            "it links to, paying from their account in the Stokvel currency."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_invitee(self) -> "StokvelInvitationCreateRequest":
+        if (self.account_reference is None) == (self.beneficiary_id is None):
+            raise ValueError("Give an account_reference or a beneficiary_id, not both")
+        return self
 
 
 class SentStokvelInvitationRead(Schema):

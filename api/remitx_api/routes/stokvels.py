@@ -155,20 +155,28 @@ def invite_to_stokvel(
     payload: StokvelInvitationCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """Invite the owner of `account_reference` to the caller's stokvel. They
-    become a Member only if they accept. Invitations may outnumber the free
-    places: the member cap holds when an invitation is accepted.
+    """Invite someone to the caller's stokvel: the owner of
+    `account_reference`, or the person one of the caller's beneficiaries
+    links to (`beneficiary_id`). They become a Member only if they accept.
+    Invitations may outnumber the free places: the member cap holds when an
+    invitation is accepted.
 
     Refusals carry a `code` where doc section 6 gives one: 404 for an unknown
-    stokvel or one the caller is not a member of, and for an unknown
-    reference; 403 `not_organiser` for a member who is not the Organiser;
-    403 `invitee_not_verified` for an invitee who is not KYC-verified; 422
-    `invitee_currency_mismatch` for an account not in the Stokvel currency;
-    422 `too_many_members` when the stokvel is full; 409 `already_a_member`,
-    `invitation_already_pending` or `stokvel_deactivated`; 400 for the
-    caller's own reference."""
+    stokvel or one the caller is not a member of, for an unknown reference,
+    and for a beneficiary that isn't the caller's; 403 `not_organiser` for a
+    member who is not the Organiser; 403 `invitee_not_verified` for an
+    invitee who is not KYC-verified; 422 `invitee_currency_mismatch` for an
+    account not in the Stokvel currency, or a beneficiary with no account in
+    it; 422 `too_many_members` when the stokvel is full; 409
+    `already_a_member`, `invitation_already_pending` or
+    `stokvel_deactivated`; 400 for the caller's own reference."""
     return SentStokvelInvitationRead.from_view(
-        invitations.invite(user.id, stokvel_id, payload.account_reference)
+        invitations.invite(
+            user.id,
+            stokvel_id,
+            account_reference=payload.account_reference,
+            beneficiary_id=payload.beneficiary_id,
+        )
     )
 
 
