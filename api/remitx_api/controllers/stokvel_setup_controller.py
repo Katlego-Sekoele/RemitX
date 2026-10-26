@@ -44,6 +44,7 @@ from remitx_api.errors.stokvels import (
 from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import short_display_name
 from remitx_api.repositories.beneficiary_repository import BeneficiaryRepository
@@ -169,6 +170,10 @@ class StokvelSetupController:
         the beneficiary later does not move a choice already made. The
         recipient must still hold a fiat account in it, as when the
         beneficiary was added.
+
+        In cycle 2 onwards this gives the caller a row in the forming cycle,
+        so it counts as continuing and is recorded on their row in the closed
+        cycle, as `continue_or_leave` does.
         """
         stokvel, member = self._lock_own_stokvel(user_id, stokvel_id)
         if stokvel.deactivated_at is not None:
@@ -183,6 +188,9 @@ class StokvelSetupController:
         ) or self._cycles.add_cycle_member(cycle.id, member.id)
         cycle_member.payout_beneficiary_id = chosen
         cycle_member.payout_currency = currency
+        before = self._closed_cycle_row(stokvel, cycle, member)
+        if before is not None:
+            before.continued = True
         return PayoutBeneficiaryView(
             stokvel_id=stokvel.id,
             cycle_number=cycle.cycle_number,
@@ -222,11 +230,7 @@ class StokvelSetupController:
         cycle = self._forming_cycle(stokvel, is_organiser=is_organiser)
         if cycle.cycle_number < 2:
             raise NothingToContinueError()
-        closed = self._cycles.get_cycle_by_number(stokvel.id, cycle.cycle_number - 1)
-        before = self._cycles.get_cycle_member(closed.id, member.id)
-        if before is not None and not before.locked:
-            # A row that was never locked: they were not in that cycle.
-            before = None
+        before = self._closed_cycle_row(stokvel, cycle, member)
         row = self._cycles.get_cycle_member(cycle.id, member.id)
 
         if choice == ContinuationChoice.LEAVE:
@@ -264,6 +268,20 @@ class StokvelSetupController:
             beneficiary_id=row.payout_beneficiary_id,
             payout_currency=row.payout_currency,
         )
+
+    def _closed_cycle_row(
+        self, stokvel: Stokvel, cycle: StokvelCycle, member: StokvelMember
+    ) -> StokvelCycleMember | None:
+        """The member's row in the cycle before `cycle`, or None when there is
+        no earlier cycle or they were not in it."""
+        if cycle.cycle_number < 2:
+            return None
+        closed = self._cycles.get_cycle_by_number(stokvel.id, cycle.cycle_number - 1)
+        before = self._cycles.get_cycle_member(closed.id, member.id)
+        if before is not None and not before.locked:
+            # A row that was never locked: they were not in that cycle.
+            return None
+        return before
 
     def _checked_beneficiary(
         self, user_id: uuid.UUID, beneficiary_id: uuid.UUID

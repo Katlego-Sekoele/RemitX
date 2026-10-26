@@ -193,6 +193,24 @@ def test_continuing_again_changes_or_keeps_the_choice(capi):
     assert response.json()["beneficiary_id"] == str(new_choice)
 
 
+def test_choosing_a_beneficiary_for_the_next_cycle_counts_as_continuing(capi):
+    organiser, thandi = _person("sipho"), _person()
+    group = _after_first_cycle(organiser, thandi).group
+    new_choice = _beneficiary(thandi, _person("brother"))
+
+    response = capi.beneficiary(thandi, group.stokvel_id, new_choice)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle_number"] == 2
+    assert _continued(group.stokvel_id, 1)[group.member_id(thandi)] is True
+    ordered = capi.payout_order(
+        organiser,
+        group.stokvel_id,
+        [group.member_id(thandi), group.member_id(organiser)],
+    )
+    assert ordered.status_code == 200, ordered.text
+
+
 def test_the_organiser_is_continued_already_and_may_change_beneficiary(capi):
     organiser, thandi = _person("sipho"), _person()
     after = _after_first_cycle(organiser, thandi)

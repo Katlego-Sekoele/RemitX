@@ -291,7 +291,19 @@ function StokvelDetail({
           <PayoutBeneficiaryCard stokvel={stokvel} />
           {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
           <StokvelInvitations stokvel={stokvel} />
-          {stokvel.is_organiser ? (
+          {stokvel.is_organiser && (cycle?.cycle_number ?? 1) > 1 ? (
+            // Setup needs each member's choice to continue, which the
+            // detail does not show yet (#259).
+            <Card>
+              <CardHeader>
+                <CardTitle>Next cycle</CardTitle>
+                <CardDescription>
+                  Members are choosing whether to continue. Setting up cycle{" "}
+                  {cycle?.cycle_number} is not available yet.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ) : stokvel.is_organiser ? (
             <CycleSetup stokvel={stokvel} />
           ) : (
             <Card>

@@ -17,7 +17,7 @@ Widening a policy only allows more, so safe against the code already running
 (rule 5).
 
 Revision ID: b6d1e4a7c302
-Revises: 3e7b9d2c4a51
+Revises: a91c4e7b2d08
 Create Date: 2026-10-22 10:00:00.000000+00:00
 
 """
@@ -26,7 +26,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b6d1e4a7c302"
-down_revision: str | None = "3e7b9d2c4a51"
+down_revision: str | None = "a91c4e7b2d08"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 

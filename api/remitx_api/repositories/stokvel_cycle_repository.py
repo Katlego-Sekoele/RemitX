@@ -44,7 +44,7 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
         ).one_or_none()
 
     def get_latest_cycle(self, stokvel_id: uuid.UUID) -> StokvelCycle | None:
-        """The stokvel's highest-numbered cycle, of any status."""
+        """The stokvel's highest-numbered cycle, closed ones included."""
         return db.session.scalars(
             select(StokvelCycle)
             .where(StokvelCycle.stokvel_id == stokvel_id)
