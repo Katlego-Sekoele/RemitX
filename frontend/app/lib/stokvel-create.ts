@@ -91,7 +91,9 @@ export function resolveCreateStep(
   amountValid: boolean
 ): CreateStep {
   if (!nameValid) return "name"
-  if (search.step === "name") return "name"
+  // No step yet is a fresh wizard: stay on the name while it's typed, or the
+  // first valid letter would jump to the amount.
+  if (search.step === null || search.step === "name") return "name"
   if (search.step === "review" && amountValid) return "review"
   return "amount"
 }
