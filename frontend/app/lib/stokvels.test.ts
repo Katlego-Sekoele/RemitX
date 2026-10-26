@@ -362,3 +362,60 @@ test("invitableBeneficiaries offers the Stokvel currency, not members", async ()
   // The member isn't counted as left out for the currency.
   assert.equal(otherCurrency, 1)
 })
+
+test("from cycle 2, only members going in count for the order and start", async () => {
+  const {
+    continuationStatus,
+    goingIntoCycle,
+    payoutOrderWithEveryone,
+    startCycleBlockers,
+    undecidedMembers,
+  } = await import("./stokvels")
+  const member = (id: string, in_cycle: boolean, extra = {}) =>
+    ({ member_id: id, in_cycle, is_me: false, ...extra }) as never
+  const cycle2 = {
+    phase: "forming" as const,
+    is_organiser: false,
+    members: [
+      member("organiser", true, { is_organiser: true }),
+      member("thandi", true),
+      member("me", false, { is_me: true }),
+    ],
+    cycle: { status: "forming", payout_order: [] } as never,
+    previous_cycle: { cycle_number: 1 } as never,
+    my_beneficiary: null,
+  }
+
+  assert.deepEqual(
+    goingIntoCycle(cycle2).map((m) => m.member_id),
+    ["organiser", "thandi"]
+  )
+  assert.deepEqual(
+    undecidedMembers(cycle2).map((m) => m.member_id),
+    ["me"]
+  )
+  assert.deepEqual(payoutOrderWithEveryone(cycle2), ["organiser", "thandi"])
+  // Two going in and a full order: only the caller's own beneficiary is
+  // listed, and the undecided member doesn't block the start.
+  assert.deepEqual(startCycleBlockers(cycle2, ["thandi", "organiser"]), [
+    "Choose your payout beneficiary.",
+  ])
+
+  assert.equal(continuationStatus(cycle2), "undecided")
+  const continued = {
+    ...cycle2,
+    members: [member("organiser", true), member("me", true, { is_me: true })],
+  }
+  assert.equal(continuationStatus(continued), "continued")
+  assert.equal(
+    continuationStatus({ ...cycle2, is_organiser: true }),
+    "organiser"
+  )
+  // Cycle 1, or once the next cycle has started: nothing to choose.
+  assert.equal(continuationStatus({ ...cycle2, previous_cycle: null }), "none")
+  assert.equal(continuationStatus({ ...cycle2, phase: "active" }), "none")
+  assert.deepEqual(
+    goingIntoCycle({ ...cycle2, previous_cycle: null }).length,
+    3
+  )
+})

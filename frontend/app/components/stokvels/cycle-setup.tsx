@@ -69,6 +69,7 @@ import {
   invalidateStokvels,
   moveInOrder,
   payoutOrderWithEveryone,
+  undecidedMembers,
   pendingInvitations,
   startCycleBlockers,
   stokvelMutations,
@@ -158,6 +159,9 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
   const problems = schedule ? scheduleIssues(schedule) : []
   const blockers = startCycleBlockers(stokvel, order)
   const lapsing = pendingInvitations(stokvel).length
+  // From cycle 2: members who haven't said whether they continue. Starting
+  // treats them as leaving (#237).
+  const undecided = undecidedMembers(stokvel)
   const canStart =
     blockers.length === 0 && schedule !== null && problems.length === 0
 
@@ -367,6 +371,21 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
           </div>
         ) : null}
 
+        {undecided.length > 0 ? (
+          <Alert>
+            <AlertTitle>
+              {undecided.length === 1
+                ? "1 member hasn't answered"
+                : `${undecided.length} members haven't answered`}
+            </AlertTitle>
+            <AlertDescription>
+              {undecided.map((m) => m.full_name ?? "A member").join(", ")}{" "}
+              {undecided.length === 1 ? "hasn't" : "haven't"} said whether
+              they&apos;re continuing. If you start now, they leave the stokvel.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {blockers.length > 0 ? (
           <Alert>
             <AlertTitle>Before you can start</AlertTitle>
@@ -407,6 +426,9 @@ export function CycleSetup({ stokvel }: { stokvel: StokvelDetailRead }) {
               locked until the cycle ends.
               {lapsing > 0
                 ? ` ${lapsing} open invitation${lapsing === 1 ? "" : "s"} will lapse.`
+                : ""}
+              {undecided.length > 0
+                ? ` ${undecided.length === 1 ? "1 member who hasn't answered leaves" : `${undecided.length} members who haven't answered leave`} the stokvel.`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
