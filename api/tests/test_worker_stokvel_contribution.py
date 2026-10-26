@@ -741,6 +741,26 @@ def test_vault_errors_are_decoded_by_name():
             assert stokvel_contract.error_name("0x" + selector) == entry["name"]
 
 
+def test_a_hardhat_revert_object_decodes_the_inner_selector():
+    """Hardhat's estimateGas error is ``{"message", "data": "0x<selector>..."}``.
+    web3 leaves that dict on ``ContractLogicError.data``. A pause or an early
+    finalise must still name itself, or the worker fails the contribution
+    instead of retrying and treats ``NotYetFinalisable`` as an unknown refusal.
+    """
+    entry = next(
+        item
+        for item in stokvel_contract.VAULT_ABI
+        if item["type"] == "error" and item["name"] == "EnforcedPause"
+    )
+    selector = stokvel_contract._selector(stokvel_contract._signature(entry))
+    payload = {
+        "message": "Error: VM Exception while processing transaction: reverted",
+        "data": "0x" + selector,
+    }
+    assert stokvel_contract.error_name(payload) == "EnforcedPause"
+    assert stokvel_contract.error_name({"message": "reverted"}) is None
+
+
 class _FakeCall:
     def __init__(self, value):
         self.value = value
