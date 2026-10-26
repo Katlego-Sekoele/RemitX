@@ -9,7 +9,9 @@ an invitation do, so none of them can interleave with the start:
 2. invitations still pending lapse: their invitee is not in this cycle;
 3. the current members' cycle rows are locked, with their order and
    beneficiaries. A former member's row stays, unlocked: the cycle's members
-   are its locked rows;
+   are its locked rows. From cycle 2, only members who chose to continue (or
+   joined since) are in it; anyone else from the closed cycle leaves now
+   (R2-15, `going_into`);
 4. the cycle becomes `active`, with its number of rounds.
 
 The token contribution is already fixed: it is the stokvel's
@@ -19,6 +21,10 @@ After the commit the worker registers the cycle on the contract
 (`stokvel.start_cycle`: `createStokvel` for a new stokvel, then
 `startCycle`). Contributions wait for that (`registered_at`), because the
 contract has no open cycle until `startCycle` is mined.
+
+When a cycle closes, `open_next_cycle` opens the next one as `forming`
+(R2-15, #237), so its members can choose to continue or leave and the
+Organiser can set it up and start it the same way.
 
 The checks mirror the contract's `startCycle` rules (doc section 1), so a
 cycle that starts here is one the contract accepts: at least `MIN_MEMBERS`
@@ -30,6 +36,8 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from remitx_api.clock import utcnow
 from remitx_api.config import Config
@@ -45,9 +53,14 @@ from remitx_api.errors.stokvels import (
     TooFewMembersError,
     TooManyMembersError,
 )
-from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
+from remitx_api.models.orm.stokvel import Stokvel
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
-from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
+from remitx_api.models.orm.stokvel_member import StokvelMember
+from remitx_api.repositories.stokvel_cycle_repository import (
+    StokvelCycleRepository,
+    locked_members_query,
+)
 from remitx_api.repositories.stokvel_invitation_repository import (
     StokvelInvitationRepository,
 )
@@ -103,6 +116,94 @@ class StartedCycleView:
     lapsed_invitations: int
 
 
+def going_into(
+    cycle: StokvelCycle, current: list[StokvelMember], cycles: StokvelCycleRepository
+) -> list[StokvelMember]:
+    """The current members who go into the forming `cycle` (R2-15). Cycle 1:
+    all of them. A later cycle: those with a row in it, so the Organiser,
+    each member of the closed cycle who chose to continue, and everyone who
+    joined since. A member of the closed cycle who has not chosen is not in
+    it, and is treated as leaving when it starts."""
+    if cycle.cycle_number == 1:
+        return current
+    with_rows = {row.member_id for row in cycles.get_cycle_members(cycle.id)}
+    return [member for member in current if member.id in with_rows]
+
+
+def open_next_cycle(session, closed: StokvelCycle) -> StokvelCycle | None:
+    """Open the cycle after `closed` as `forming` and make it the stokvel's
+    current cycle (R2-15, #237). Flushes only; the caller commits.
+
+    Rows in the new cycle, with no payout position yet:
+
+    - the Organiser, who cannot leave, carried over with their beneficiary
+      (re-checked at payout time, as every choice is); their row in `closed`
+      is marked `continued`
+    - each current member who was not in `closed` (they joined while it
+      ran), empty: they have not been in a cycle to continue from
+
+    Everyone else in `closed` gets a row only by choosing to continue.
+
+    Shared by the worker, when it records `CycleClosed`, and the Organiser's
+    first setup call for a cycle that closed before this existed, so it runs
+    on the caller's `session`. Holds the `stokvels` row lock, as accepting an
+    invitation does, so a member who joins meanwhile is not missed. None,
+    and nothing changes, if the stokvel is deactivated or a cycle is already
+    open.
+    """
+    stokvel = session.scalars(
+        select(Stokvel).where(Stokvel.id == closed.stokvel_id).with_for_update()
+    ).one_or_none()
+    if stokvel is None or stokvel.deactivated_at is not None:
+        return None
+    already_open = session.scalar(
+        select(StokvelCycle.id).where(
+            StokvelCycle.stokvel_id == stokvel.id,
+            StokvelCycle.status != StokvelCycleStatus.CLOSED.value,
+        )
+    )
+    if already_open is not None:
+        return None
+
+    cycle = StokvelCycle(
+        stokvel_id=stokvel.id,
+        cycle_number=closed.cycle_number + 1,
+        status=StokvelCycleStatus.FORMING.value,
+    )
+    session.add(cycle)
+    session.flush()
+
+    was_in = {
+        row.member_id: row for row in session.scalars(locked_members_query(closed.id))
+    }
+    current = session.scalars(
+        select(StokvelMember).where(
+            StokvelMember.stokvel_id == stokvel.id,
+            StokvelMember.left_at.is_(None),
+        )
+    )
+    for member in current:
+        before = was_in.get(member.id)
+        if member.user_id == stokvel.organiser_user_id:
+            session.add(
+                StokvelCycleMember(
+                    cycle_id=cycle.id,
+                    member_id=member.id,
+                    payout_beneficiary_id=(
+                        None if before is None else before.payout_beneficiary_id
+                    ),
+                    payout_currency=None if before is None else before.payout_currency,
+                )
+            )
+            if before is not None:
+                before.continued = True
+        elif before is None:
+            session.add(StokvelCycleMember(cycle_id=cycle.id, member_id=member.id))
+    stokvel.current_cycle_id = cycle.id
+    session.flush()
+    return cycle
+
+
 class StokvelCycleController:
     def __init__(self) -> None:
         self._cycles = StokvelCycleRepository()
@@ -156,12 +257,13 @@ class StokvelCycleController:
             raise CycleAlreadyStartedError()
 
         current = self._members.list_active(stokvel.id)
+        members = going_into(cycle, current, self._cycles)
         max_members = Config().MAX_STOKVEL_MEMBERS
-        if len(current) < MIN_CYCLE_MEMBERS:
+        if len(members) < MIN_CYCLE_MEMBERS:
             raise TooFewMembersError(MIN_CYCLE_MEMBERS)
-        if len(current) > max_members:
+        if len(members) > max_members:
             raise TooManyMembersError(max_members)
-        rows = self._ready_rows(cycle.id, [member.id for member in current])
+        rows = self._ready_rows(cycle.id, [member.id for member in members])
         times = _checked_schedule(schedule, len(rows))
 
         for round_, round_times in enumerate(times):
@@ -174,6 +276,10 @@ class StokvelCycleController:
             )
         now = utcnow()
         lapsed = self._invitations.lapse_pending(stokvel.id, by_user_id=user_id, at=now)
+        going = {member.id for member in members}
+        self._end_undecided(
+            cycle, [member for member in current if member.id not in going], at=now
+        )
         for row in rows:
             row.locked = True
         cycle.status = StokvelCycleStatus.ACTIVE.value
@@ -211,6 +317,25 @@ class StokvelCycleController:
             ],
             lapsed_invitations=lapsed,
         )
+
+    def _end_undecided(
+        self, cycle: StokvelCycle, undecided: list[StokvelMember], *, at: datetime
+    ) -> None:
+        """Members of the closed cycle who never chose to continue or leave
+        are treated as leaving now (R2-15): their membership ends and their
+        row in the closed cycle records `continued` as false. Row-level
+        security lets the Organiser make only this change to another
+        member's membership (`V20261022_1000`)."""
+        if not undecided:
+            return
+        closed = self._cycles.get_cycle_by_number(
+            cycle.stokvel_id, cycle.cycle_number - 1
+        )
+        for member in undecided:
+            member.left_at = at
+            before = self._cycles.get_cycle_member(closed.id, member.id)
+            if before is not None and before.locked:
+                before.continued = False
 
     def _ready_rows(
         self, cycle_id: uuid.UUID, member_ids: list[uuid.UUID]

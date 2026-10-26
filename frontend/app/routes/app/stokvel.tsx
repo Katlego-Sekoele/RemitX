@@ -169,6 +169,7 @@ function StokvelDetail({
   availableBalance: string | undefined
 }) {
   const cycle = stokvel.cycle
+  const previous = stokvel.previous_cycle
   const active = cycle?.status === "active"
   const totalRounds = active && cycle ? cycle.total_rounds : null
   // Collecting round from the detail response. Stored current_round stays 0.
@@ -291,7 +292,18 @@ function StokvelDetail({
           <PayoutBeneficiaryCard stokvel={stokvel} />
           {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
           <StokvelInvitations stokvel={stokvel} />
-          {stokvel.is_organiser ? (
+          {stokvel.is_organiser && (cycle?.cycle_number ?? 1) > 1 ? (
+            // Setup needs each member's choice to continue, which the
+            // detail does not show yet (#259).
+            <Card>
+              <CardHeader>
+                <CardTitle>Next cycle</CardTitle>
+                <CardDescription>
+                  Setting up cycle {cycle?.cycle_number} is not available yet.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ) : stokvel.is_organiser ? (
             <CycleSetup stokvel={stokvel} />
           ) : (
             <Card>
@@ -379,6 +391,20 @@ function StokvelDetail({
           myMemberId={stokvel.my_member_id}
           paidByRound={(round) => paidMemberIds(stokvel, round).size}
           memberCount={fillCount}
+        />
+      ) : null}
+
+      {previous ? (
+        // The cycle that just closed, while the next one forms (#237). Every
+        // round of it has been released.
+        <RoundSchedule
+          cycle={previous}
+          openRound={null}
+          member={member}
+          myMemberId={stokvel.my_member_id}
+          paidByRound={() => previous.rounds.length}
+          memberCount={previous.rounds.length}
+          title={`Cycle ${previous.cycle_number}`}
         />
       ) : null}
     </div>

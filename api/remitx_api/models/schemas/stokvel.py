@@ -1,6 +1,6 @@
 """Request/response schemas for creating and listing stokvels (R2-07),
-inviting members (R2-08), setting up a cycle (R2-09), starting it (R2-10)
-and contributing (R2-11)."""
+inviting members (R2-08), setting up a cycle (R2-09), starting it (R2-10),
+contributing (R2-11) and continuing or leaving after a cycle (R2-15)."""
 
 import uuid
 from datetime import UTC, datetime
@@ -40,6 +40,8 @@ from remitx_api.controllers.stokvel_invitation_controller import (
     SentStokvelInvitationView,
 )
 from remitx_api.controllers.stokvel_setup_controller import (
+    ContinuationChoice,
+    ContinuationView,
     PayoutBeneficiaryView,
     PayoutOrderView,
     PayoutPlaceView,
@@ -265,7 +267,7 @@ class SentStokvelInvitationRead(Schema):
 
 
 class StokvelDetailInvitationRead(SentStokvelInvitationRead):
-    """A pending invitation on `GET /stokvels/{id}`.
+    """An invitation on `GET /stokvels/{id}`, of any status.
 
     `account_reference` is set only for the Organiser, and null when the
     invitee no longer holds an account in the stokvel currency. `POST
@@ -441,7 +443,8 @@ class StokvelRoundRead(Schema):
 
 
 class StokvelDetailCycleRead(Schema):
-    """The stokvel's current cycle on `GET /stokvels/{id}`.
+    """A cycle on `GET /stokvels/{id}`: the current one (`cycle`), and the
+    one that closed while the next is forming (`previous_cycle`).
 
     Distinct from `StokvelCycleRead`, which is the body `POST
     /stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.
@@ -527,6 +530,9 @@ class StokvelDetailRead(StokvelRead):
     members: list[StokvelMemberRead]
     invitations: list[StokvelDetailInvitationRead]
     cycle: StokvelDetailCycleRead | None
+    # The closed cycle while the next one is forming (R2-15, #237), so its
+    # rounds' release status, hashes and remittances stay visible.
+    previous_cycle: StokvelDetailCycleRead | None
     contributions: list[StokvelRoundContributionRead]
 
     @classmethod
@@ -554,6 +560,11 @@ class StokvelDetailRead(StokvelRead):
                 None
                 if view.cycle is None
                 else StokvelDetailCycleRead.from_view(view.cycle)
+            ),
+            previous_cycle=(
+                None
+                if view.previous_cycle is None
+                else StokvelDetailCycleRead.from_view(view.previous_cycle)
             ),
             contributions=[
                 StokvelRoundContributionRead.from_view(row)
@@ -715,4 +726,61 @@ class StokvelCycleRead(Schema):
             rounds=[StokvelCycleRoundRead.from_view(item) for item in view.rounds],
             order=[StokvelCyclePlaceRead.from_view(place) for place in view.order],
             lapsed_invitations=view.lapsed_invitations,
+        )
+
+
+class StokvelContinuationRequest(Schema):
+    """The caller's choice after a cycle closes: continue into the next
+    cycle, optionally paying a new beneficiary, or leave the stokvel."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    choice: ContinuationChoice = Field(
+        description=(
+            "`continue` into the next cycle, or `leave` the stokvel. Leaving "
+            "is final: coming back needs a new invitation."
+        )
+    )
+    beneficiary_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "When continuing: one of the caller's own beneficiaries "
+            "(`GET /beneficiaries`) to pay in the next cycle. Leave it out to "
+            "keep the current choice. Not allowed when leaving."
+        ),
+    )
+
+    @field_validator("beneficiary_id")
+    @classmethod
+    def _only_when_continuing(cls, value, info):
+        if value is not None and info.data.get("choice") == ContinuationChoice.LEAVE:
+            raise ValueError("a beneficiary is chosen only when continuing")
+        return value
+
+
+class StokvelContinuationRead(Schema):
+    """The caller's recorded choice for the stokvel's next cycle."""
+
+    stokvel_id: uuid.UUID
+    # The cycle the choice is for: 2 after the first cycle closes.
+    cycle_number: int
+    member_id: uuid.UUID
+    choice: ContinuationChoice
+    beneficiary_id: uuid.UUID | None = Field(
+        description=(
+            "The beneficiary paid in the next cycle. Null on leaving, or "
+            "until the member chooses one."
+        )
+    )
+    payout_currency: PayoutCurrency | None
+
+    @classmethod
+    def from_view(cls, view: ContinuationView) -> "StokvelContinuationRead":
+        return cls(
+            stokvel_id=view.stokvel_id,
+            cycle_number=view.cycle_number,
+            member_id=view.member_id,
+            choice=view.choice,
+            beneficiary_id=view.beneficiary_id,
+            payout_currency=view.payout_currency,
         )

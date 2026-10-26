@@ -17,6 +17,8 @@ from remitx_api.models.schemas.stokvel import (
     SentStokvelInvitationRead,
     StokvelBeneficiaryRead,
     StokvelBeneficiaryRequest,
+    StokvelContinuationRead,
+    StokvelContinuationRequest,
     StokvelContributionRead,
     StokvelCreateRequest,
     StokvelCycleRead,
@@ -91,7 +93,8 @@ def get_stokvel(
     user: User = Depends(get_current_user),
 ):
     """The member screen for one stokvel: the group, its current cycle,
-    who has paid, and each round's payout once one exists.
+    who has paid, and each round's payout once one exists. `invitations`
+    holds every invitation of the stokvel, whatever its status, newest first.
 
     404 for an unknown stokvel or one the caller is not a current member of,
     the same answer, so an id reveals nothing. `contribution_fiat_estimate`
@@ -266,4 +269,39 @@ def start_stokvel_cycle(
     or times out of order."""
     return StokvelCycleRead.from_view(
         cycles.start_cycle(user.id, stokvel_id, payload.schedule())
+    )
+
+
+@router.post(
+    "/{stokvel_id}/members/me/continuation",
+    response_model=StokvelContinuationRead,
+    summary="Continue or leave after a cycle",
+    responses=error_responses(400, 404, 409, 422),
+)
+def continue_or_leave_stokvel(
+    stokvel_id: uuid.UUID,
+    payload: StokvelContinuationRequest,
+    user: User = Depends(get_current_user),
+):
+    """After a cycle closes, continue into the stokvel's next cycle or leave
+    it. Allowed until the Organiser starts the next cycle; a member who has
+    not chosen by then is treated as leaving.
+
+    Continuing can name a new beneficiary (checked as for `PUT
+    /members/me/beneficiary`); without one, the current choice is kept or
+    carried over from the closed cycle. It can be repeated. Leaving is
+    final. The Organiser is always continued and cannot leave.
+
+    Refusals carry a `code` where doc section 6 gives one: 404 for an
+    unknown stokvel or one the caller is not a current member of, and for a
+    beneficiary that is unknown or not the caller's; 400 if the recipient
+    no longer holds an account in the beneficiary's payout currency; 409
+    `stokvel_deactivated`, `nothing_to_continue` before any cycle has
+    finished, `cycle_locked` once the next cycle has started,
+    `cycle_not_forming` while the Organiser has not opened it, or
+    `organiser_cannot_leave`; 422 for an invalid request body."""
+    return StokvelContinuationRead.from_view(
+        setup.continue_or_leave(
+            user.id, stokvel_id, payload.choice, payload.beneficiary_id
+        )
     )

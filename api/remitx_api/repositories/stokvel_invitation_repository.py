@@ -44,11 +44,11 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
         ).all()
         return [(invitation, stokvel, inviter) for invitation, stokvel, inviter in rows]
 
-    def list_pending_for_stokvel(
+    def list_for_stokvel(
         self, stokvel_id: uuid.UUID, currency: str, *, include_reference: bool
     ) -> list[tuple[StokvelInvitation, User, str | None]]:
-        """The stokvel's unanswered invitations, newest first, each with the
-        invitee. The account reference in `currency` is included only when
+        """The stokvel's invitations, of every status, newest first, each with
+        the invitee. The account reference in `currency` is included only when
         `include_reference` is set (the Organiser); otherwise it is None and
         `accounts` is not read. None also when they no longer hold one.
         Scoped by `stokvel_id` so SQLite matches Postgres row-level security."""
@@ -62,10 +62,9 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
                 & (Account.type == TYPE_USER)
                 & (Account.account_currency == currency),
             )
-        stmt = stmt.where(
-            StokvelInvitation.stokvel_id == stokvel_id,
-            StokvelInvitation.status == StokvelInvitationStatus.PENDING.value,
-        ).order_by(StokvelInvitation.created_at.desc(), StokvelInvitation.id)
+        stmt = stmt.where(StokvelInvitation.stokvel_id == stokvel_id).order_by(
+            StokvelInvitation.created_at.desc(), StokvelInvitation.id
+        )
         rows = db.session.execute(stmt).all()
         if include_reference:
             return [
