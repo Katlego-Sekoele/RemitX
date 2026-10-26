@@ -29,6 +29,7 @@ import { formatMoney } from "~/lib/money"
 import {
   explorerTxUrl,
   payoutProofHash,
+  PAYOUT_FAILED_DETAIL,
   PAYOUT_STAGE_LABELS,
   payoutStage,
   roundLabel,
@@ -113,7 +114,7 @@ export function PayoutStatus({
             : stage === "delivered"
               ? `${to} received the payout${payoutCurrency ? ` in ${payoutCurrency}` : ""}.`
               : stage === "failed"
-                ? "The transfer didn't go through. The RemitX team has been notified; your pool is safe."
+                ? PAYOUT_FAILED_DETAIL
                 : "Exchange rate is fixed when the payout is sent."}
         </CardDescription>
       </CardHeader>

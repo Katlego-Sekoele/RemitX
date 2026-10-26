@@ -543,6 +543,18 @@ export function payoutStage(
   return everyonePaid ? "released" : "collecting"
 }
 
+/** The payout order may call a round paid out only after the pool is
+ * released and the beneficiary transfer has not failed. A failed transfer
+ * still has `release_status` released: the pool left the vault. */
+export function roundCountsAsPaidOut(
+  round: Pick<StokvelRoundRead, "release_status" | "remittance_status">
+): boolean {
+  return (
+    round.release_status === ReleaseStatus.released &&
+    payoutStage(round, true) !== "failed"
+  )
+}
+
 export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
   collecting: "Waiting",
   released: "Released",
@@ -550,6 +562,11 @@ export const PAYOUT_STAGE_LABELS: Record<PayoutStage, string> = {
   delivered: "Delivered",
   failed: "Didn't go through",
 }
+
+/** Shown on the payout tracker and, once the cycle has closed and that
+ * card is gone, on the round row. */
+export const PAYOUT_FAILED_DETAIL =
+  "The transfer didn't go through. The RemitX team has been notified; your pool is safe."
 
 /** Members who have not paid `round` of the current cycle. */
 export function outstandingMembers(
