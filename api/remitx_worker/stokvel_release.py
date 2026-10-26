@@ -438,8 +438,9 @@ def release_due_rounds() -> int:
 def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, int]]:
     """(cycle id, stokvel id, round) for each active, registered cycle whose
     next unreleased round is past its payout time, fully paid, and not held
-    by a `release_pool`. A payout held with no hash for longer than a run is
-    logged for a person: a worker may have stopped after claiming it."""
+    by a `release_pool`. A payout held with no hash for longer than
+    `STOKVEL_RELEASE_STUCK_LOG_SECONDS` is logged for a person: a worker may
+    have stopped after claiming it."""
     released = (
         select(StokvelPayout.id)
         .where(
@@ -455,7 +456,7 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
         .group_by(StokvelRound.cycle_id)
         .subquery()
     )
-    held_since = now - timedelta(seconds=Config().STOKVEL_RELEASE_INTERVAL_SECONDS)
+    held_since = now - timedelta(seconds=Config().STOKVEL_RELEASE_STUCK_LOG_SECONDS)
     rows = session.execute(
         select(
             StokvelCycle.id,
@@ -497,7 +498,7 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
                 logger.warning(
                     "event=stokvel.release_sweep_stuck cycle_id=%s round=%s: "
                     "overdue, and its payout has been processing with no hash "
-                    "for over a run; a release_pool may have stopped before "
+                    "for too long; a release_pool may have stopped before "
                     "signing. Needs a person",
                     cycle_id,
                     round_,

@@ -368,7 +368,7 @@ def test_a_claimed_payout_is_left_to_its_delivery(
     session_factory, cycle, vault, queued, caplog
 ):
     """A `release_pool` has the payout: it is not queued again, and a claim held
-    for longer than a run with no hash stored is logged for a person."""
+    past the stuck threshold with no hash stored is logged for a person."""
     _pay_everything(session_factory, vault)
     vault.now = PAYOUT_TIMES[0] + timedelta(minutes=5)
     with session_factory() as session:
@@ -382,6 +382,11 @@ def test_a_claimed_payout_is_left_to_its_delivery(
     assert "event=stokvel.release_sweep_stuck" not in caplog.text
 
     vault.now += timedelta(seconds=Config.STOKVEL_RELEASE_INTERVAL_SECONDS + 1)
+    with caplog.at_level(logging.WARNING, logger="remitx_worker.stokvel_release"):
+        assert release_due_rounds() == 0
+    assert "event=stokvel.release_sweep_stuck" not in caplog.text
+
+    vault.now += timedelta(seconds=Config.STOKVEL_RELEASE_STUCK_LOG_SECONDS)
     with caplog.at_level(logging.WARNING, logger="remitx_worker.stokvel_release"):
         assert release_due_rounds() == 0
     assert "event=stokvel.release_sweep_stuck" in caplog.text

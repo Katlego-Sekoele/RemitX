@@ -64,6 +64,13 @@ class Config:
     STOKVEL_RELEASE_INTERVAL_SECONDS = int(
         os.getenv("STOKVEL_RELEASE_INTERVAL_SECONDS", "60")
     )
+    # A payout `processing` with no hash for longer than this is logged by
+    # `stokvel.release_due_rounds` for a person. Its own setting, not the
+    # interval: a `release_pool` waiting on the Treasury send lock or an RPC
+    # retry can rightly take longer than a run.
+    STOKVEL_RELEASE_STUCK_LOG_SECONDS = int(
+        os.getenv("STOKVEL_RELEASE_STUCK_LOG_SECONDS", "600")
+    )
     # Only remittance groups fully ``pending`` for at least this long are
     # re-enqueued on the beat tick (boot reclaim ignores the age gate).
     SETTLEMENT_RECLAIM_MIN_AGE_SECONDS = int(
