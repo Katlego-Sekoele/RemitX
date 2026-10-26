@@ -577,10 +577,16 @@ def test_three_members_three_rounds_each_payout_reaches_its_beneficiary(
         assert _zar_balance(platform.session, member) == OPENING_ZAR - spent
 
     # Brief §2 step 6: the member screen shows each round's payout status,
-    # hashes and remittance reference, and the closed cycle
+    # hashes and remittance reference. The worker opened cycle 2 as cycle 1
+    # closed (R2-15, #237), so the closed cycle is `previous_cycle`.
     screen = platform.api.stokvel(group.order[0], group.stokvel_id).json()
-    assert screen["cycle"]["status"] == "closed"
-    rounds = screen["cycle"]["rounds"]
+    assert (screen["cycle"]["cycle_number"], screen["cycle"]["status"]) == (
+        2,
+        "forming",
+    )
+    closed = screen["previous_cycle"]
+    assert (closed["cycle_number"], closed["status"]) == (1, "closed")
+    rounds = closed["rounds"]
     assert [r["recipient_member_id"] for r in rounds] == [
         str(group.member_ids[member]) for member in group.order
     ]
