@@ -649,7 +649,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Contract member cap (DEC-3) | Contract side done | #213 | `maxMembers` = 3 at deployment. Backend `MAX_STOKVEL_MEMBERS` and ticket wording remain |
 | Contract cancel and refund | Not in v1 | #220 | P4 |
 | Backend connection to the contract | Not started | #273 (was #201) | |
-| Members create stokvels and invite others | In progress | #229 (was #209), #230, #297 | Create and list done (#229, PR #339); invite, accept and decline done (#230, PR #344); revoke done (#297) |
+| Members create stokvels and invite others | In progress | #229 (was #209), #230, #297, #375 | Create and list done (#229, PR #339); invite, accept and decline done (#230, PR #344); revoke done (#297); every invitation, of any status, on `GET /stokvels/{id}` (#375) |
 | Payout order and beneficiary | Done | #231 | `PUT /stokvels/{id}/payout-order`, `PUT /stokvels/{id}/members/me/beneficiary`; cycle 1 opens at creation (PR #347) |
 | Start a cycle | In review | #232 | `POST /stokvels/{id}/cycles` with the round schedule; `stokvel.start_cycle` registers it on-chain (`createStokvel`, `startCycle`) and records it, `stokvel.register_started_cycles` re-queues any left unregistered; contributions wait for it (`cycle_starting`) |
 | DB models and migrations | In progress | #226, #227, #228, #238, #239, #240, #232 | Section 3. Done: group tables with row-level security (#226, PR #300); ledger account, transaction types, stokvel quote sender and EVM names (#238, #239, PR #301); cycle tables with row-level security (#227, PR #306); contribution table (#228, PR #338); payout table (#240, PR #342). In review: cycle on-chain registration columns (#232) |
@@ -816,7 +816,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
 | `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07); read one stokvel (R2-14, #236) | #229 |
 | `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`, `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/invitations` (#230) | #229 |
-| `api/tests/test_stokvel_member_view.py` | `GET /stokvels/{id}` on SQLite: the forming screen, a missing rate, 404 for a non-member, the caller's fee only, and a payout with no remittance yet | #236 |
+| `api/tests/test_stokvel_member_view.py` | `GET /stokvels/{id}` on SQLite: the forming screen, a missing rate, 404 for a non-member, the caller's fee only, a payout with no remittance yet, every invitation of any status newest first, and the reference on an answered invitation for the Organiser only | #236, #375 |
 | `api/remitx_api/models/schemas/stokvel.py` | `StokvelCreateRequest`, `StokvelRead`, `StokvelInvitationRead`, `StokvelListRead`; `StokvelInvitationCreateRequest`, `SentStokvelInvitationRead` (#230) | #229 |
 | `api/remitx_api/errors/stokvels.py` | `KycNotApprovedToCreateStokvelError` (403), `StokvelCurrencyAccountMissingError` (400) | #229 |
 | `api/tests/test_stokvels_route.py` | Both routes on SQLite: refusals, one transaction, validation, and the caller scoping that SQLite needs | #229 |
@@ -824,7 +824,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `api/alembic/versions/V20261017_1820__stokvel_member_write_rules.py` | `stokvel_members` and `stokvel_invitations` policies per operation, their triggers, and the `kyc_latest_status` and `stokvel_active_member_count` lookups (section 3) | #230 |
 | `api/remitx_api/controllers/stokvel_invitation_controller.py` | Invite, accept and decline (R2-08); revoke (R2-16) | #230, #297 |
 | `api/remitx_api/routes/stokvel_invitations.py` | `POST /invitations/{id}/accept`, `POST /invitations/{id}/decline`; `POST /invitations/{id}/revoke` (#297) | #230, #297 |
-| `api/tests/test_stokvel_invitations_route.py` | The four routes on SQLite (the #209 examples, every refusal, one transaction) and under Postgres row-level security (KYC lookup, cap for an invitee, two accepts for the last place, the Organiser's revoke) | #230, #297 |
+| `api/tests/test_stokvel_invitations_route.py` | The four routes on SQLite (the #209 examples, every refusal, one transaction) and under Postgres row-level security (KYC lookup, cap for an invitee, two accepts for the last place, the Organiser's revoke, members reading every invitation on `GET /stokvels/{id}`) | #230, #297, #375 |
 | `api/tests/test_stokvel_member_row_security.py` | The `stokvel_members` and `stokvel_invitations` write rules, their triggers, and the lookups (`postgres` lane) | #230 |
 | `api/remitx_api/controllers/stokvel_setup_controller.py` | Payout order and beneficiary for the forming cycle (R2-09) | #231 |
 | `api/tests/test_stokvel_setup_route.py` | Both setup routes on SQLite (every refusal, re-ordering in place, former members, on-demand cycle 1) and under Postgres row-level security | #231 |
