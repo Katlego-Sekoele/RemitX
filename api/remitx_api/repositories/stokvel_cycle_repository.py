@@ -52,11 +52,16 @@ class StokvelCycleRepository(Repository[StokvelCycle, uuid.UUID]):
             .limit(1)
         ).one_or_none()
 
-    def has_any_cycle(self, stokvel_id: uuid.UUID) -> bool:
-        """Whether the stokvel has ever had a cycle, closed ones included."""
-        return db.session.scalar(
-            select(exists().where(StokvelCycle.stokvel_id == stokvel_id))
-        )
+    def get_cycle_by_number(
+        self, stokvel_id: uuid.UUID, cycle_number: int
+    ) -> StokvelCycle | None:
+        """The stokvel's cycle `cycle_number` (from 1), of any status."""
+        return db.session.scalars(
+            select(StokvelCycle).where(
+                StokvelCycle.stokvel_id == stokvel_id,
+                StokvelCycle.cycle_number == cycle_number,
+            )
+        ).one_or_none()
 
     def add_forming_cycle(
         self, stokvel_id: uuid.UUID, cycle_number: int = 1

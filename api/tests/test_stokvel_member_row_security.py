@@ -254,6 +254,79 @@ def test_a_member_cannot_update_or_delete_someone_elses_row(session):
 
 
 @pytest.mark.postgres
+def test_the_organiser_may_end_a_members_membership(session):
+    """A member who never chose is treated as leaving when the Organiser
+    starts the next cycle (R2-15, `V20261022_1000`)."""
+    organiser, member = _customer(), _customer()
+    stokvel = _stokvel(organiser)
+    accepted = _invite(stokvel, member, StokvelInvitationStatus.ACCEPTED)
+    row_id = _add_member(stokvel.id, member, accepted.id).id
+    db.session.commit()
+    left_at = datetime.now(UTC)
+
+    with bound_row_security_context(organiser.id, is_admin_route=False):
+        updated = db.session.execute(
+            update(StokvelMember)
+            .where(StokvelMember.id == row_id)
+            .values(left_at=left_at)
+        ).rowcount
+    db.session.commit()
+
+    assert updated == 1
+    assert db.session.get(StokvelMember, row_id).left_at == left_at
+
+
+@pytest.mark.postgres
+def test_another_stokvels_organiser_cannot_end_a_membership(session):
+    organiser, member, stranger = _customer(), _customer(), _customer()
+    stokvel = _stokvel(organiser)
+    _stokvel(stranger, "Theirs")
+    accepted = _invite(stokvel, member, StokvelInvitationStatus.ACCEPTED)
+    row_id = _add_member(stokvel.id, member, accepted.id).id
+    db.session.commit()
+
+    with bound_row_security_context(stranger.id, is_admin_route=False):
+        updated = db.session.execute(
+            update(StokvelMember)
+            .where(StokvelMember.id == row_id)
+            .values(left_at=datetime.now(UTC))
+        ).rowcount
+    db.session.rollback()
+
+    assert updated == 0
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize("change", ["without_ending", "already_ended"])
+def test_the_organiser_may_only_end_a_membership(session, change):
+    """Any other update to a member's row (the paying account, say), and a
+    membership already ended, stay the member's own."""
+    organiser, member = _customer(), _customer()
+    stokvel = _stokvel(organiser)
+    accepted = _invite(stokvel, member, StokvelInvitationStatus.ACCEPTED)
+    row = _add_member(stokvel.id, member, accepted.id)
+    row_id = row.id
+    if change == "already_ended":
+        row.left_at = datetime.now(UTC) - timedelta(days=1)
+        values = {"left_at": datetime.now(UTC)}
+    else:
+        values = {"account_id": row.account_id}
+    db.session.commit()
+
+    def change_as_organiser():
+        with bound_row_security_context(organiser.id, is_admin_route=False):
+            db.session.execute(
+                update(StokvelMember).where(StokvelMember.id == row_id).values(values)
+            )
+
+    with pytest.raises(DBAPIError, match="may only end it") as refused:
+        change_as_organiser()
+    db.session.rollback()
+
+    assert refused.value.orig.pgcode == TRIGGER_REFUSED
+
+
+@pytest.mark.postgres
 def test_no_customer_can_delete_a_membership_their_own_included(session):
     organiser = _customer()
     stokvel = _stokvel(organiser)

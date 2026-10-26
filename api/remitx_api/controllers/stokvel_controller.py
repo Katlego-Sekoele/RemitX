@@ -181,6 +181,9 @@ class StokvelDetailView:
     members: list[StokvelMemberView]
     invitations: list[StokvelDetailInvitationView]
     cycle: StokvelCycleView | None
+    # The cycle that closed, while the one after it is forming (R2-15, #237),
+    # so its payouts stay on the screen. None otherwise.
+    previous_cycle: StokvelCycleView | None
     contributions: list[StokvelDetailContributionView]
 
 
@@ -324,6 +327,13 @@ class StokvelController:
             cycle_view, contributions, beneficiary = None, [], None
         else:
             cycle_view, contributions, beneficiary = self._cycle_view(cycle, member.id)
+        previous = (
+            self._cycles.get_cycle_by_number(stokvel.id, cycle.cycle_number - 1)
+            if cycle is not None
+            and cycle.status == "forming"
+            and cycle.cycle_number > 1
+            else None
+        )
         current_round = cycle.current_round if cycle is not None else None
         # Start writes total_rounds as the locked member count (R2-10).
         total_rounds = cycle.total_rounds if cycle is not None else None
@@ -379,6 +389,11 @@ class StokvelController:
                 )
             ],
             cycle=cycle_view,
+            previous_cycle=(
+                self._cycle_view(previous, member.id)[0]
+                if previous is not None and previous.status == "closed"
+                else None
+            ),
             contributions=contributions,
         )
 
