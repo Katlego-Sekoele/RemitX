@@ -212,7 +212,14 @@ def _view(call):
 
 
 def _revert_name(exc: Exception) -> str | None:
+    """The vault error name in `exc`, or None.
+
+    web3 sets ``data`` to the hex string on the XRPL EVM testnet, and to
+    ``{"message", "data"}`` when the node (Hardhat) returns an object.
+    """
     data = getattr(exc, "data", None)
+    if isinstance(data, dict):
+        data = data.get("data")
     if isinstance(data, bytes | bytearray):
         hex_data = bytes(data).hex()
     elif isinstance(data, str):

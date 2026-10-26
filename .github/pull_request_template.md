@@ -31,5 +31,5 @@
 
 ## Checklist
 
-- [ ] If this touches stokvel work, I updated [docs/stokvel_integration.md](../docs/stokvel_integration.md) (changelog row, features, files, functions, statuses, endpoints, tasks, open questions)
+- [ ] If this touches stokvel work, I updated [docs/stokvel_integration.md](../docs/stokvel_integration.md) and, where relevant, [docs/stokvel_database_model.md](../docs/stokvel_database_model.md) (changelog row in [docs/stokvel_changelog.md](../docs/stokvel_changelog.md), features, files, functions, statuses, endpoints, tasks, open questions)
 - [ ] Any interface change in that file is approved by the owners it affects

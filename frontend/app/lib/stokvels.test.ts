@@ -334,3 +334,31 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
     []
   )
 })
+
+test("invitableBeneficiaries offers the Stokvel currency, not members", async () => {
+  const { invitableBeneficiaries } = await import("./stokvels")
+  const beneficiary = (id: string, currencies: string[]) =>
+    ({
+      beneficiary_id: id,
+      linked_user_id: `user-${id}`,
+      payout_currencies: currencies,
+    }) as never
+  const { invitable, otherCurrency } = invitableBeneficiaries(
+    [
+      beneficiary("zar", ["ZAR"]),
+      beneficiary("usd-only", ["USD"]),
+      beneficiary("both", ["ZAR", "USD"]),
+      beneficiary("member", ["ZAR"]),
+    ],
+    {
+      currency: "ZAR",
+      members: [{ user_id: "user-member" }] as never,
+    }
+  )
+  assert.deepEqual(
+    invitable.map((b) => b.beneficiary_id),
+    ["zar", "both"]
+  )
+  // The member isn't counted as left out for the currency.
+  assert.equal(otherCurrency, 1)
+})
