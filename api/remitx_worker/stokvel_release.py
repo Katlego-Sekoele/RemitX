@@ -1,28 +1,25 @@
-"""Releasing a stokvel round's pool on-chain (R3-04, #241; doc section 4).
+"""Releasing a stokvel round's pool on-chain.
 
-Most rounds release themselves: the `contribute` that makes a round due
-releases it in the same transaction, and the event sync records it from the
-`RoundFinalised` event. A round that becomes due with time instead (everyone
-paid before its payout time, which is always the case for a cycle's last
-round if it was paid early) needs someone to call the contract's `finalise`.
-`stokvel.release_pool(cycle_id, round)` does that. It is queued by the
-scheduled release, `stokvel.release_due_rounds` (R3-11, #248, at the end of
-this module), and the Administrator fallback (R3-10, #247), never by the
-sync.
+Most rounds release themselves: the `contribute` that completes a round
+releases it in the same transaction, and the event sync records it.
 
-Either way the release is recorded through one guard,
-`stokvel_ledger.record_pool_release` (OI-1, doc section 8), so it is booked once
-whichever sees it first.
+A round that was fully paid before its payout time (always true of a
+cycle's last round, if paid on time) has no later contribution to release
+it, so someone must call the contract's `finalise`. `release_pool` does
+that. It is queued by `release_due_rounds` (at the end of this module, run on
+a schedule) and by the Administrator, never by the sync.
 
-As with contributions (`stokvel_tasks.submit_contribution`):
+Either way the release is recorded with `stokvel_ledger.record_pool_release`,
+so it is booked once, by whichever sees it first.
 
-- only the delivery whose guarded claim (`pending -> processing`) succeeds
-  sends, and the hash is stored on the payout before the send, so a
-  redelivery waits on that hash instead of sending a second `finalise`
-- a call whose gas estimate reverts is never sent, and the claim is handed
-  back (`processing -> pending`) so a later call can try again: no payout is
-  failed from here
-- once a hash may have reached the chain it is only ever waited on
+Like contributions, sending is safe to repeat:
+
+- only the call that claims the payout (`pending -> processing`) sends
+- the hash is saved before sending, so a retry waits on it instead of
+  sending a second `finalise`
+- if the contract would refuse, nothing is sent and the claim is given back
+  (`processing -> pending`) for a later try
+- once a hash may have reached the chain, it is only ever waited on
 """
 
 import logging
@@ -59,9 +56,7 @@ RECEIPT_TIMEOUT_SECONDS = 120
 RETRY_SECONDS = 60
 MAX_RETRIES = 10
 
-# The round is already released (a `contribute` got there first; the sync
-# records it) or is not due yet (not fully paid, or its payout time has not
-# passed; the scheduled release asks again later). Nothing to retry.
+# The round is already released or is not due yet. Nothing to retry.
 _NOTHING_TO_DO = frozenset({"AlreadyFinalised", "NotYetFinalisable"})
 
 # The platform's to fix, as for contributions: the contract is paused, the
@@ -72,26 +67,31 @@ _RETRYABLE_REFUSALS = frozenset(
 
 
 class _HashNotRecorded(Exception):
-    """`release_pool` could not store a signed `finalise`'s hash, so it did
-    not send it."""
+    """The signed `finalise`'s hash could not be saved (the payout changed in
+    the meantime), so the transaction is not sent."""
 
 
 @celery.task(bind=True, name="stokvel.release_pool", max_retries=MAX_RETRIES)
 def release_pool(self, cycle_id: str, round_: int) -> str:
-    """Send `finalise` for round `round_` of cycle `cycle_id`, then record the
-    release from the receipt.
+    """Release a due round's pool by sending `finalise`, then record it.
 
-    The payout row is created if missing and claimed `pending ->
-    processing`; a delivery that finds it already claimed waits on the
-    stored hash, or does nothing if none was stored. A released round is
-    left alone. Reports what happened, for the log and the tests.
+    1. Get the round's payout row (created if missing) and claim it,
+       `pending -> processing`.
+    2. Save the transaction hash before sending, so a retry waits on it
+       instead of sending a second `finalise`.
+    3. Send `finalise` and wait for the receipt.
+    4. Record the release from the receipt's `RoundFinalised` event.
+
+    If the payout is already claimed, this never sends (see `_resume`).
+    Returns a short word saying what happened, for the logs and tests.
     """
+    # Try get the cycle id, if not valid skip the release
     try:
         target_id = uuid.UUID(cycle_id)
     except (AttributeError, TypeError, ValueError):
         logger.warning("cycle id %r is not a valid id; skipping", cycle_id)
         return "skipped"
-
+    # Try get the payout row and claim it, if not valid skip the release
     with session_scope() as session:
         stokvel_id = session.scalar(
             select(StokvelCycle.stokvel_id).where(StokvelCycle.id == target_id)
@@ -100,7 +100,9 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
             logger.info("cycle %s does not exist; skipping", cycle_id)
             return "skipped"
         try:
+             # get the payout row for the cycle and round, creating it if missing
             payout = ensure_payout(session, target_id, round_)
+        # Contract refused the claim, so another worker is already processing it. Skip.
         except ReleaseConflict as exc:
             logger.error(
                 "event=stokvel.release_unscheduled cycle_id=%s round=%s: %s",
@@ -109,6 +111,7 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
                 exc,
             )
             return "skipped"
+        # Claim the payout row, `pending -> processing`.
         claimed = session.execute(
             update(StokvelPayout)
             .where(
@@ -118,6 +121,7 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
             .values(release_status=RELEASE_PROCESSING, updated_at=utcnow())
             .execution_options(synchronize_session=False)
         )
+        # If the claim failed, the payout is already claimed. Refresh it to get its status and hash.
         if claimed.rowcount == 0:
             session.refresh(payout)
             status, tx_hash = payout.release_status, payout.release_tx_hash
@@ -126,11 +130,13 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
     if claimed.rowcount == 0:
         return _resume(self, payout_id, status, tx_hash)
 
-    recorded: list[str] = []
+    recorded: list[str] = [] 
 
     def record(tx_hash: str) -> None:
-        # Its own commit, before the send: a crash after this point leaves
-        # the hash for a redelivery to wait on.
+        """ Record the signed `finalise`'s hash in the payout row, so a retry waits on it 
+        instead of sending a second `finalise`. Only called once, by the `on_signed` callback. 
+        Raises `_HashNotRecorded` if the payout changed since the claim (e.g. the sync already 
+        recorded it)."""
         with session_scope() as session:
             stored = session.execute(
                 update(StokvelPayout)
@@ -145,13 +151,14 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
         if stored.rowcount != 1:
             raise _HashNotRecorded(tx_hash)
         recorded.append(tx_hash)
-
+    # Try send the signed `finalise` and wait for the receipt. 
+    # If it fails, give the claim back (`processing -> pending`) for a later try.
     try:
         w3 = evm_service.get_web3()
         tx_hash = stokvel_contract.finalise(stokvel_id, round_, on_signed=record, w3=w3)
     except _HashNotRecorded as exc:
-        # The payout left `processing` or gained a hash between the claim and
-        # now (the sync recorded it, say). Nothing was sent.
+        # The payout changed since the claim (e.g. the sync already recorded
+        # it). Nothing was sent.
         logger.warning(
             "event=stokvel.release_not_recorded payout_id=%s tx_hash=%s: no "
             "longer processing without a hash, so the signed finalise was not sent",
@@ -178,13 +185,13 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
         )
         return "refused"
     except evm_service.TransactionRejected as exc:
-        # The RPC refused the signed `finalise`: it can never be mined, so its
-        # stored hash goes with the claim.
+        # The RPC refused the transaction, so it can never be mined. Clear
+        # its hash along with the claim.
         _hand_back(payout_id, recorded[0] if recorded else None)
         return _retry(self, payout_id, exc)
     except Exception as exc:
         if not recorded:
-            # Failed before signing finished: nothing reached the chain.
+            # Nothing was signed, so nothing reached the chain.
             _hand_back(payout_id)
             return _retry(self, payout_id, exc)
         (tx_hash,) = recorded
@@ -200,9 +207,10 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
 
 
 def _hand_back(payout_id: uuid.UUID, tx_hash: str | None = None) -> bool:
-    """`processing -> pending`, clearing the hash, so a later call can try
-    again. Only if the payout still holds this delivery's hash (or none), so
-    it never undoes a release the sync has recorded meanwhile."""
+    """Give the claim back (`processing -> pending`) and clear the hash, so a
+    later call can try again. Only if the payout still holds this call's hash
+    (or none), so it never undoes a release the sync recorded meanwhile.
+    Returns True if it handed the claim back."""
     with session_scope() as session:
         handed = session.execute(
             update(StokvelPayout)
@@ -224,9 +232,9 @@ def _hand_back(payout_id: uuid.UUID, tx_hash: str | None = None) -> bool:
 
 
 def _retry(task, payout_id: uuid.UUID, exc: Exception) -> str:
-    """Nothing reached the chain and the claim is handed back: retry, or give
-    up once the retries are spent. The payout stays `pending`, so the
-    scheduled release can ask again."""
+    """Retry the task, or give up once out of retries. Only called when
+    nothing reached the chain, so the payout is `pending` and the scheduled
+    release can try again later."""
     if task.request.retries >= task.max_retries:
         logger.error(
             "event=stokvel.release_unsent payout_id=%s retries=%s (%s): giving "
@@ -246,7 +254,12 @@ def _retry(task, payout_id: uuid.UUID, exc: Exception) -> str:
 
 
 def _resume(task, payout_id: uuid.UUID, status: str, tx_hash: str | None) -> str:
-    """A delivery that found nothing pending to claim: never sends."""
+    """For a call that found the payout already claimed. Never sends:
+
+    - `released`: nothing to do
+    - `processing` with a hash: wait on that transaction
+    - anything else: skip
+    """
     if status == RELEASED:
         logger.info("payout %s is already released", payout_id)
         return "already_released"
@@ -254,9 +267,8 @@ def _resume(task, payout_id: uuid.UUID, status: str, tx_hash: str | None) -> str
         logger.info("payout %s is %s; not releasing", payout_id, status)
         return "skipped"
     if tx_hash is None:
-        # Another delivery is signing right now, or a worker stopped after
-        # the claim and before signing (nothing was sent). Telling those
-        # apart needs a person.
+        # Either another call is signing right now, or a worker crashed
+        # before signing. Only a person can tell which.
         logger.warning(
             "event=stokvel.release_unsigned payout_id=%s: processing but no hash "
             "is stored; not sending",
@@ -273,13 +285,12 @@ def _resume(task, payout_id: uuid.UUID, status: str, tx_hash: str | None) -> str
 
 
 def _await(task, payout_id: uuid.UUID, tx_hash: str) -> str:
-    """Wait for the receipt, then record the release from its event."""
+    """Wait for the transaction to be mined, then record the release."""
     try:
         receipt = evm_service.wait_for_receipt(tx_hash, timeout=RECEIPT_TIMEOUT_SECONDS)
     except evm_service.TransactionReverted:
-        # Mined and failed, most likely because a `contribute` released the
-        # round first. The sync records that release; this one only hands the
-        # claim back if the payout still holds its hash.
+        # Mined but failed, most likely because a `contribute` released the
+        # round first (the sync records that). Give the claim back.
         _hand_back(payout_id, tx_hash)
         logger.warning(
             "event=stokvel.release_reverted payout_id=%s tx_hash=%s: claim handed "
@@ -289,8 +300,8 @@ def _await(task, payout_id: uuid.UUID, tx_hash: str) -> str:
         )
         return "reverted"
     except Exception as exc:
-        # No answer: the transaction may still be mined. Wait on the same
-        # hash again; after the retries, leave it processing for a person.
+        # No receipt yet; it may still be mined. Retry on the same hash, and
+        # after the last retry leave it `processing` for a person.
         if task.request.retries >= task.max_retries:
             logger.error(
                 "event=stokvel.release_unconfirmed payout_id=%s tx_hash=%s "
@@ -314,10 +325,10 @@ def _await(task, payout_id: uuid.UUID, tx_hash: str) -> str:
 
 
 def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
-    """Record the mined release through `record_pool_release`. If that fails (a
-    contribution in the pool is not recorded yet, so the `STOKVEL` balance
-    would go below zero), the payout stays `processing` with its hash and the
-    event sync records it from the `RoundFinalised` event."""
+    """Find this round's `RoundFinalised` event in the receipt and record it
+    with `record_pool_release`. If that fails (e.g. a contribution in the
+    pool is not recorded yet), the payout stays `processing` and the event
+    sync records it later."""
     with session_scope() as session:
         payout = session.get(StokvelPayout, payout_id)
         cycle_id, round_ = payout.cycle_id, payout.round
@@ -373,21 +384,15 @@ def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
 
 @celery.task(name="stokvel.release_due_rounds")
 def release_due_rounds() -> int:
-    """Queue `stokvel.release_pool` for every round that became due with time
-    (R3-11, #248). Run by the beat every `STOKVEL_RELEASE_INTERVAL_SECONDS`.
+    """Runs on a timer and queues `release_pool` for any round that is ready
+    to pay out but has not been released yet.
 
-    A round paid in full before its payout time has no transaction left to
-    release it when that time comes (always a cycle's last round, if paid on
-    time). For each active cycle registered on-chain, the next round not yet
-    released is checked: its payout time has passed, it is fully paid (and
-    so is the round after, unless it is the last), and no `release_pool`
-    holds its payout. The contract's `isFinalisable` then has the last word,
-    so the rule is never re-implemented here. One round per cycle per run:
-    rounds release in order, so the next is checked on the next run.
+    For each active cycle, it checks the next unreleased round: is it fully
+    paid, and has its payout time passed? If so, and the contract agrees
+    (`isFinalisable`), it is queued.
 
-    Nothing is queued while the contract is paused. Repeating is harmless:
-    `release_pool` claims the payout before sending, and a round a
-    `contribute` released first is `AlreadyFinalised`. The number queued."""
+    Does nothing while the contract is paused. Returns how many rounds were
+    queued."""
     now = utcnow()
     with session_scope() as session:
         overdue = _overdue_rounds(session, now)
@@ -402,8 +407,10 @@ def release_due_rounds() -> int:
         )
         return 0
     queued = 0
+    # Loop over the overdue rounds, checking with the contract if they are finalisable, and enqueueing them for release.
     for cycle_id, stokvel_id, round_ in overdue:
         try:
+            # Check with the contract if the round is finalisable.
             due = stokvel_contract.is_finalisable(stokvel_id, round_, w3=w3)
         except Exception as exc:
             logger.warning(
@@ -420,6 +427,7 @@ def release_due_rounds() -> int:
             # contribution the database has confirmed that the chain has not.
             continue
         try:
+            # Try enqueue the release task for this round. 
             queue_service.enqueue_release_pool(str(cycle_id), round_)
         except Exception:
             logger.exception(
@@ -436,11 +444,13 @@ def release_due_rounds() -> int:
 
 
 def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, int]]:
-    """(cycle id, stokvel id, round) for each active, registered cycle whose
-    next unreleased round is past its payout time, fully paid, and not held
-    by a `release_pool`. A payout held with no hash for longer than
-    `STOKVEL_RELEASE_STUCK_LOG_SECONDS` is logged for a person: a worker may
-    have stopped after claiming it."""
+    """Find the rounds ready to release: for each active cycle, its next
+    unreleased round, if its payout time has passed, it is fully paid, and no
+    `release_pool` is already handling it. Returns (cycle id, stokvel id,
+    round) for each.
+
+    A payout stuck `processing` with no hash for too long is logged for a
+    person: a worker may have crashed after claiming it."""
     released = (
         select(StokvelPayout.id)
         .where(
@@ -512,9 +522,11 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
 
 
 def _fully_paid(session, cycle_id: uuid.UUID, round_: int, total_rounds: int) -> bool:
-    """Every member's contribution to `round_` is confirmed, and to the round
-    after unless it is the last (D5). A cycle has one round per member, so
-    `total_rounds` is also its member count."""
+    """Whether every member has paid `round_` and the round after it (just
+    `round_` if it is the last), as the contract requires.
+
+    There is one round per member, so `total_rounds` is also the number of
+    contributions a round needs."""
     rounds = [round_] if round_ + 1 == total_rounds else [round_, round_ + 1]
     paid = dict(
         session.execute(

@@ -1,35 +1,29 @@
-"""Applying the stokvel contract's events to the database (R2-13, #235).
+"""Applying the stokvel contract's events to the database.
 
-`stokvel.sync_events` (in `stokvel_tasks`) reads the vault's events block range
-by block range and hands each one to `apply_event`, inside the transaction that
-moves the cursor (`StokvelSyncState`). Every handler is guarded, so applying an
-event twice changes nothing: a replayed range, or an event the worker already
-recorded from a receipt, is a no-op.
+`stokvel.sync_events` (in `stokvel_tasks`) reads the vault's events and hands
+each one to `apply_event`, in the same transaction that moves the cursor
+(`StokvelSyncState`). Every handler is safe to run twice: a replayed event, or
+one already recorded from a receipt, changes nothing.
 
-A handler reports one of:
+A handler returns:
 
-- `APPLIED` / `ALREADY_RECORDED` / `UNKNOWN`: done (for `UNKNOWN`, the
-  database has no such stokvel or cycle: the contract is shared, so a local
-  or QA backend sees the other's stokvels too)
-- `WAITING`: it cannot be applied yet; the task holds it
-  (`StokvelHeldEvent`) and retries it on every run
-- raises `EventNeedsAPerson` when the chain and the database disagree; the
-  task holds it as failed, without changing anything
+- `APPLIED`, `ALREADY_RECORDED` or `UNKNOWN`: done. `UNKNOWN` means the
+  database has no such stokvel or cycle (the contract is shared, so local and
+  QA see each other's stokvels).
+- `WAITING`: not ready yet; the task holds it (`StokvelHeldEvent`) and retries
+  it every run.
+
+or raises `EventNeedsAPerson` when the chain and the database disagree; the
+task holds it as failed without changing anything.
 
 The events:
 
-- `ContributionMade`: records the contribution as mined through
-  `stokvel_ledger.record_mined`, the same guard `confirm_contribution` uses.
-  The safety net for a confirmation that was lost.
-- `RoundFinalised`: records the release through `stokvel_ledger.record_pool_release`
-  (R3-04, #241), the guard `release_pool` shares: the payout becomes
-  `released` and the `STOKVEL -> Treasury` leg is booked, once. Rounds held
-  as waiting before R3-04 are recorded by the next run.
-- `CycleClosed`: closes the cycle (`active -> closed`), but only once every
-  round's payout is recorded as released. Until then it waits, so the cycle
-  is not closed (and a new one cannot open) with a payout missing. Closing
-  opens the next cycle as `forming` in the same transaction
-  (`open_next_cycle`, R2-15).
+- `ContributionMade`: records the contribution as mined
+  (`stokvel_ledger.record_mined`), in case its confirmation was lost.
+- `RoundFinalised`: records the payout as released and books the
+  `STOKVEL -> Treasury` leg, once (`stokvel_ledger.record_pool_release`).
+- `CycleClosed`: closes the cycle once every payout is released (until then
+  it waits) and opens the next cycle as `forming`.
 """
 
 import logging
@@ -103,8 +97,7 @@ def args_from_json(args: dict[str, Any]) -> dict[str, Any]:
 
 def _cycle(session, event: ContractEvent) -> StokvelCycle | None:
     """The database cycle an event names: its stokvel (the packed `id`) and
-    the contract's 1-based `cycle`, which is `cycle_number` (R2-10 keeps the
-    two equal)."""
+    the contract's 1-based `cycle`, which equals `cycle_number`."""
     stokvel_id = evm_service.bytes32_to_uuid(event.args["id"])
     if stokvel_id is None:
         return None
@@ -224,7 +217,7 @@ def _cycle_closed(session, event: ContractEvent) -> str:
         .execution_options(synchronize_session=False)
     )
     # In the same transaction, so a stokvel is never left with no cycle to
-    # continue into (R2-15, #237).
+    # continue into.
     following = open_next_cycle(session, cycle)
     logger.info(
         "event=stokvel.sync_cycle_closed cycle_id=%s tx_hash=%s block=%s "
@@ -238,25 +231,26 @@ def _cycle_closed(session, event: ContractEvent) -> str:
 
 
 def _round_finalised(session, event: ContractEvent) -> str:
-    """Record the release in this transaction through
-    `stokvel_ledger.record_pool_release` (R3-04, #241), the guard
-    `release_pool` shares: the payout row (created if missing) becomes
-    `released` and the `STOKVEL -> Treasury` leg is booked, once.
+    """Record a `RoundFinalised` event with `record_pool_release`, the same
+    function `release_pool` uses: the payout becomes `released` and the pool
+    moves from `STOKVEL` to the Treasury, once.
 
-    Recorded here rather than queued, so a cycle's last `RoundFinalised` is
-    recorded before the `CycleClosed` that follows it in the same transaction,
-    and the cycle closes in the same run. Events held as waiting before R3-04
-    are replayed by the next run.
+    Recorded straight away rather than queued, so a cycle's last round is
+    recorded before the `CycleClosed` event that follows it, and the cycle
+    closes in the same run.
 
-    The `STOKVEL` balance cannot go below zero: if a contribution in the pool
-    is not recorded yet, recording fails and the event is held as failed,
-    then retried on the next run, once the contribution is in.
+    If a contribution in the pool is not recorded yet, recording fails and
+    the event is retried on the next run.
     """
+    # Check if the cycle and member exist, and get the cycle id and member id for
+    # `record_pool_release`. If not, skip the event.
     cycle = _cycle(session, event)
     member_id = evm_service.bytes32_to_uuid(event.args["memberId"])
     if cycle is None or member_id is None:
         return _skip_unknown(event)
     try:
+        # Record the release in the database, or raise `ReleaseConflict` if a
+        # contribution in the pool is not recorded yet.
         outcome = record_pool_release(
             session,
             cycle_id=cycle.id,
