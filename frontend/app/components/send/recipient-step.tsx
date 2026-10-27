@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { BeneficiaryRead as Beneficiary } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
 import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
+import { BeneficiaryCombobox } from "~/components/beneficiaries/beneficiary-combobox"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -13,14 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card"
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "~/components/ui/combobox"
 import {
   Empty,
   EmptyContent,
@@ -42,11 +35,6 @@ import { useKycReferenceQuery } from "~/hooks/use-kyc-reference"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
 import { countryName } from "~/lib/kyc-reference"
-
-// Module-level so their identities never change between renders.
-const beneficiaryId = (beneficiary: Beneficiary) => beneficiary.beneficiary_id
-const sameBeneficiary = (left: Beneficiary, right: Beneficiary) =>
-  left.beneficiary_id === right.beneficiary_id
 
 export function RecipientStep({
   beneficiaries,
@@ -71,15 +59,6 @@ export function RecipientStep({
 
   const describe = (beneficiary: Beneficiary) =>
     `${countryName(reference.data, beneficiary.country)} · paid in ${beneficiary.payout_currency}`
-
-  const matches = (beneficiary: Beneficiary, query: string) => {
-    const needle = query.trim().toLowerCase()
-    return (
-      needle === "" ||
-      beneficiaryName(beneficiary).toLowerCase().includes(needle) ||
-      describe(beneficiary).toLowerCase().includes(needle)
-    )
-  }
 
   if (loading) {
     return <Skeleton className="h-40 w-full" />
@@ -145,49 +124,17 @@ export function RecipientStep({
         <Field data-invalid={missing}>
           <FieldLabel htmlFor="send-recipient">Recipient</FieldLabel>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Combobox
-              items={beneficiaries}
-              value={selected}
-              onValueChange={(next) => onSelect(next)}
-              itemToStringLabel={beneficiaryName}
-              itemToStringValue={beneficiaryId}
-              isItemEqualToValue={sameBeneficiary}
-              filter={matches}
-              autoHighlight
-            >
-              <ComboboxInput
+            <div className="w-full sm:flex-1">
+              <BeneficiaryCombobox
                 id="send-recipient"
-                className="w-full sm:flex-1"
+                beneficiaries={beneficiaries}
+                value={selected}
+                onValueChange={onSelect}
                 placeholder="Search your beneficiaries"
-                aria-invalid={missing}
+                description={describe}
+                invalid={missing}
               />
-              <ComboboxContent>
-                <ComboboxEmpty>No beneficiary matches that.</ComboboxEmpty>
-                <ComboboxList>
-                  {(beneficiary: Beneficiary) => (
-                    <ComboboxItem
-                      key={beneficiary.beneficiary_id}
-                      value={beneficiary}
-                    >
-                      <Item size="xs" className="p-0">
-                        <ItemMedia>
-                          <BeneficiaryAvatar
-                            beneficiary={beneficiary}
-                            size="sm"
-                          />
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle>{beneficiaryName(beneficiary)}</ItemTitle>
-                          <ItemDescription>
-                            {describe(beneficiary)}
-                          </ItemDescription>
-                        </ItemContent>
-                      </Item>
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            </div>
             <Button variant="outline" onClick={() => setAdding(true)}>
               <PlusIcon />
               Add new

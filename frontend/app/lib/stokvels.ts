@@ -106,12 +106,14 @@ export function stokvelPollInterval(query: {
   return query.state.data == null ? false : STOKVEL_POLL_INTERVAL_MS
 }
 
-/** Same as `stokvelPollInterval`, faster while the caller's own pay is in flight. */
+/** Same as `stokvelPollInterval`, faster while the caller's own pay is in
+ * flight or the cycle is open in the database but not yet on the chain. */
 export function stokvelDetailPollInterval(query: {
   state: {
     data?: {
       my_member_id: string
       contributions: { member_id: string; status: string }[]
+      cycle?: { status: string; registered_at: string | null } | null
     }
   }
 }): number | false {
@@ -123,7 +125,12 @@ export function stokvelDetailPollInterval(query: {
       (contribution.status === ContributionStatus.pending ||
         contribution.status === ContributionStatus.processing)
   )
-  return inflight ? STOKVEL_INFLIGHT_POLL_INTERVAL_MS : STOKVEL_POLL_INTERVAL_MS
+  const opening =
+    data.cycle?.status === CycleStatus.active &&
+    data.cycle.registered_at == null
+  return inflight || opening
+    ? STOKVEL_INFLIGHT_POLL_INTERVAL_MS
+    : STOKVEL_POLL_INTERVAL_MS
 }
 
 export const stokvelQueries = {
@@ -350,14 +357,32 @@ export function startCycleBlockers(
     StokvelDetailRead,
     "members" | "cycle" | "phase" | "my_beneficiary"
   > &
-    Partial<Pick<StokvelDetailRead, "previous_cycle">>,
+    Partial<Pick<StokvelDetailRead, "previous_cycle" | "invitations">>,
   order: readonly string[] = plannedPayoutOrder(detail)
 ): string[] {
   if (detail.phase !== CycleStatus.forming) return []
   const blockers: string[] = []
   const going = goingIntoCycle(detail)
-  if (going.length < 2) {
+  const waiting = detail.invitations
+    ? pendingInvitations({ invitations: detail.invitations })
+    : []
+  // Pending invitations count toward the people the Organiser is setting up,
+  // but they are not members until they accept.
+  if (going.length + waiting.length < 2) {
     blockers.push("A cycle needs at least 2 members.")
+  }
+  // The Organiser arranges the order from the invite list before everyone
+  // has accepted. Starting still needs each of those invitations accepted;
+  // the API would otherwise lapse them.
+  if (waiting.length > 0) {
+    const names = waiting.map(
+      (invitation) => invitation.invitee_name ?? "someone"
+    )
+    blockers.push(
+      names.length === 1
+        ? `Wait for ${names[0]} to accept their invitation.`
+        : `Wait for ${names.join(", ")} to accept their invitations.`
+    )
   }
   // Other members' beneficiary choices are not on this response. A missing
   // one comes back as `cycle_not_ready` when the Organiser starts the cycle.

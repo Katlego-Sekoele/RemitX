@@ -55,6 +55,18 @@ test("stokvel screens poll while a read is on screen", () => {
     STOKVEL_INFLIGHT_POLL_INTERVAL_MS
   )
   assert.equal(stokvelDetailPollInterval({ state: { data: undefined } }), false)
+  assert.equal(
+    stokvelDetailPollInterval({
+      state: {
+        data: {
+          my_member_id: "me",
+          contributions: [],
+          cycle: { status: "active", registered_at: null },
+        },
+      },
+    }),
+    STOKVEL_INFLIGHT_POLL_INTERVAL_MS
+  )
 })
 
 test("roundLabel shows the round 1-based", () => {
@@ -379,6 +391,22 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
       cycle: null,
     }),
     []
+  )
+  assert.deepEqual(
+    startCycleBlockers(
+      {
+        phase: "forming",
+        my_beneficiary: beneficiary,
+        members: [me, thandi] as never,
+        cycle: { status: "forming", payout_order: ["m2", "m1"] } as never,
+        invitations: [
+          { status: "pending", invitee_name: "Sipho K." },
+          { status: "accepted", invitee_name: "Thandi M." },
+        ] as never,
+      },
+      ["m2", "m1"]
+    ),
+    ["Wait for Sipho K. to accept their invitation."]
   )
 })
 

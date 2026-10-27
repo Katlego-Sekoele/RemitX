@@ -1,15 +1,17 @@
 import { ArrowClockwiseIcon, UsersFourIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
 import { Link, useParams } from "react-router"
+import { toast } from "sonner"
 
 import { api } from "~/client"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContinueOrLeaveCard } from "~/components/stokvels/continue-or-leave-card"
 import { ContributionPanel } from "~/components/stokvels/contribution-panel"
-import { CycleSetup } from "~/components/stokvels/cycle-setup"
-import { InviteMemberForm } from "~/components/stokvels/invite-member-form"
 import { PayoutBeneficiaryCard } from "~/components/stokvels/payout-beneficiary-card"
+import { RosterReadout } from "~/components/stokvels/payout-order-list"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
+import { SetupWizard } from "~/components/stokvels/setup-wizard"
 import { PotRing } from "~/components/stokvels/pot-ring"
 import { StokvelInvitations } from "~/components/stokvels/stokvel-invitations"
 import {
@@ -42,16 +44,16 @@ import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
 import {
-  canInvite,
+  arrangeRoster,
+  cycleRoster,
+  savedRosterOrder,
+} from "~/lib/stokvel-setup"
+import {
   continuationStatus,
-  goingIntoCycle,
-  undecidedMembers,
   firstNameOf,
   myCurrentContribution,
   outstandingMembers,
   paidMemberIds,
-  pendingInvitations,
-  plannedPayoutOrder,
   PHASE_LABELS,
   poolAmount,
   roundLabel,
@@ -73,7 +75,7 @@ export function meta(): Route.MetaDescriptors {
  * One stokvel, the member screen (R4-05, #254): pot, your contribution and
  * the pay flow, the current round's payout, payout order, members and the
  * round history, from `GET /stokvels/{id}` (#236).
- * The organiser's setup (beneficiary, order, start cycle) is R4-06 (#255).
+ * The organiser's setup is a stepper (people, order, schedule, start).
  */
 export default function StokvelPage() {
   const { stokvelId = "" } = useParams()
@@ -187,7 +189,14 @@ function StokvelDetail({
   const recipient = recipientId ? member(recipientId) : undefined
   const recipientIsMe = recipient?.member_id === stokvel.my_member_id
   const firstName = (m: StokvelMemberRead) => (m.is_me ? "you" : firstNameOf(m))
-  const plannedOrder = plannedPayoutOrder(stokvel)
+  const formingRoster = arrangeRoster(
+    cycleRoster(stokvel),
+    savedRosterOrder(stokvel),
+    null
+  )
+  const showAside =
+    Boolean(active && currentRound) ||
+    (stokvel.phase === "forming" && stokvel.invitations.length > 0)
 
   return (
     <div className="flex flex-col gap-6">
@@ -211,195 +220,172 @@ function StokvelDetail({
         </PageHeaderDescription>
       </PageHeader>
 
-      {active && currentRound ? (
+      <CycleOpeningToast stokvel={stokvel} />
+
+      {stokvel.phase === "forming" && stokvel.is_organiser ? (
         <>
-          <Card>
-            <CardContent className="flex flex-col items-center gap-3">
-              {pool && collected ? (
-                <PotRing
-                  paid={paid.size}
-                  total={fillCount}
-                  collected={collected}
-                  pool={pool}
+          <SetupWizard stokvel={stokvel} />
+          {previous ? (
+            <RoundSchedule
+              cycle={previous}
+              openRound={null}
+              member={member}
+              myMemberId={stokvel.my_member_id}
+              paidByRound={() => previous.rounds.length}
+              memberCount={previous.rounds.length}
+              title={`Cycle ${previous.cycle_number}`}
+            />
+          ) : null}
+        </>
+      ) : (
+        <div
+          className={
+            showAside
+              ? "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]"
+              : "grid items-start gap-4"
+          }
+        >
+          {showAside ? (
+            <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:order-last">
+              {active && currentRound ? (
+                <PayoutStatus
+                  round={currentRound}
+                  totalRounds={totalRounds ?? stokvel.member_count}
+                  recipientName={
+                    recipientIsMe ? "you" : (recipient?.full_name ?? "a member")
+                  }
+                  beneficiaryName={
+                    recipientIsMe
+                      ? (stokvel.my_beneficiary?.full_name ?? null)
+                      : null
+                  }
+                  payoutCurrency={
+                    recipientIsMe
+                      ? (stokvel.my_beneficiary?.payout_currency ?? null)
+                      : null
+                  }
                   currency={stokvel.currency}
+                  pool={pool}
+                  paid={paid.size}
+                  members={fillCount}
+                  outstandingNames={outstanding.map(firstName)}
                 />
               ) : null}
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {stokvel.members.map((m) => (
-                  <Badge
-                    key={m.member_id}
-                    variant={paid.has(m.member_id) ? "default" : "secondary"}
-                  >
-                    {paid.has(m.member_id)
-                      ? m.is_me
-                        ? "You"
-                        : firstName(m)
-                      : `Waiting for ${firstName(m)}`}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <ContributionPanel
-            stokvel={stokvel}
-            round={currentRound}
-            mine={mine}
-            outstanding={outstanding.length}
-            availableBalance={availableBalance}
-          />
-
-          <PayoutStatus
-            round={currentRound}
-            totalRounds={totalRounds ?? stokvel.member_count}
-            recipientName={
-              recipientIsMe ? "you" : (recipient?.full_name ?? "a member")
-            }
-            beneficiaryName={
-              recipientIsMe ? (stokvel.my_beneficiary?.full_name ?? null) : null
-            }
-            payoutCurrency={
-              recipientIsMe
-                ? (stokvel.my_beneficiary?.payout_currency ?? null)
-                : null
-            }
-            currency={stokvel.currency}
-            pool={pool}
-            paid={paid.size}
-            members={fillCount}
-            outstandingNames={outstanding.map(firstName)}
-          />
-        </>
-      ) : stokvel.phase === "forming" ? (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {previous
-                  ? `Setting up cycle ${cycle?.cycle_number}`
-                  : "Setting up"}
-              </CardTitle>
-              <CardDescription>
-                {previous
-                  ? `${goingIntoCycle(stokvel).length} going in · ${undecidedMembers(stokvel).length} haven't answered`
-                  : `${stokvel.member_count} of ${stokvel.max_members} members`}{" "}
-                · {pendingInvitations(stokvel).length} invited
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <ContinueOrLeaveCard stokvel={stokvel} />
-          {/* Choosing a payout beneficiary for the next cycle counts as
-              continuing (#237), so an undecided member chooses on the card
-              above instead. */}
-          {continuation !== "undecided" ? (
-            <PayoutBeneficiaryCard stokvel={stokvel} />
-          ) : null}
-          {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
-          <StokvelInvitations stokvel={stokvel} />
-          {stokvel.is_organiser ? (
-            <CycleSetup stokvel={stokvel} />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Waiting to start</CardTitle>
-                <CardDescription>
-                  {stokvel.organiser_name ?? "The organiser"} starts the cycle
-                  once everyone has chosen a payout beneficiary.
-                </CardDescription>
-              </CardHeader>
-              {plannedOrder.length > 0 ? (
-                <CardContent>
-                  <ol className="flex flex-col gap-1">
-                    {plannedOrder.map((memberId, i) => {
-                      const m = member(memberId)
-                      return (
-                        <li key={memberId}>
-                          Round {i + 1}:{" "}
-                          {m?.is_me ? "You" : (m?.full_name ?? "A member")}
-                        </li>
-                      )
-                    })}
-                  </ol>
-                </CardContent>
+              {stokvel.phase === "forming" ? (
+                <StokvelInvitations stokvel={stokvel} />
               ) : null}
-            </Card>
-          )}
-        </>
-      ) : null}
+            </aside>
+          ) : null}
 
-      {cycle && cycle.status !== "forming" ? (
-        <PayoutQueue
-          cycle={cycle}
-          openRound={open}
-          member={member}
-          myMemberId={stokvel.my_member_id}
-        />
-      ) : null}
-
-      {stokvel.members.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Members</CardTitle>
-            {active ? (
-              <CardDescription>
-                If one member hasn&apos;t paid, the payout waits for them.
-              </CardDescription>
-            ) : null}
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2">
-              {stokvel.members.map((m) => (
-                <li
-                  key={m.member_id}
-                  className="flex items-center justify-between gap-2 text-sm"
-                >
-                  <span>
-                    {m.is_me ? "You" : (m.full_name ?? "A member")}
-                    {m.is_organiser ? (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · organiser
-                      </span>
+          <div className="flex min-w-0 flex-col gap-4">
+            {active && currentRound ? (
+              <>
+                <Card>
+                  <CardContent className="flex flex-col items-center gap-3">
+                    {pool && collected ? (
+                      <PotRing
+                        paid={paid.size}
+                        total={fillCount}
+                        collected={collected}
+                        pool={pool}
+                        currency={stokvel.currency}
+                      />
                     ) : null}
-                  </span>
-                  {active ? (
-                    <Badge
-                      variant={paid.has(m.member_id) ? "default" : "secondary"}
-                    >
-                      {paid.has(m.member_id) ? "Paid" : "Waiting"}
-                    </Badge>
+                  </CardContent>
+                </Card>
+                <ContributionPanel
+                  stokvel={stokvel}
+                  round={currentRound}
+                  mine={mine}
+                  outstanding={outstanding.length}
+                  availableBalance={availableBalance}
+                />
+              </>
+            ) : null}
+
+            {stokvel.phase === "forming" ? (
+              <>
+                <ContinueOrLeaveCard stokvel={stokvel} />
+                {/* Choosing a payout beneficiary for the next cycle counts as
+                    continuing (#237), so an undecided member chooses on the
+                    card above instead. */}
+                {continuation !== "undecided" ? (
+                  <PayoutBeneficiaryCard stokvel={stokvel} />
+                ) : null}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Waiting to start</CardTitle>
+                    <CardDescription>
+                      {stokvel.organiser_name ?? "The organiser"} starts the
+                      cycle once everyone invited has joined.
+                    </CardDescription>
+                  </CardHeader>
+                  {formingRoster.length > 0 ? (
+                    <CardContent>
+                      <RosterReadout roster={formingRoster} />
+                    </CardContent>
                   ) : null}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
+                </Card>
+              </>
+            ) : null}
 
-      {cycle && cycle.rounds.length > 0 ? (
-        <RoundSchedule
-          cycle={cycle}
-          openRound={open}
-          member={member}
-          myMemberId={stokvel.my_member_id}
-          paidByRound={(round) => paidMemberIds(stokvel, round).size}
-          memberCount={fillCount}
-        />
-      ) : null}
+            {cycle && cycle.status !== "forming" ? (
+              <PayoutQueue
+                cycle={cycle}
+                openRound={open}
+                member={member}
+                myMemberId={stokvel.my_member_id}
+                paidIds={paid}
+              />
+            ) : null}
 
-      {previous ? (
-        // The cycle that just closed, while the next one forms (#237). Every
-        // round of it has been released.
-        <RoundSchedule
-          cycle={previous}
-          openRound={null}
-          member={member}
-          myMemberId={stokvel.my_member_id}
-          paidByRound={() => previous.rounds.length}
-          memberCount={previous.rounds.length}
-          title={`Cycle ${previous.cycle_number}`}
-        />
-      ) : null}
+            {cycle && cycle.rounds.length > 0 ? (
+              <RoundSchedule
+                cycle={cycle}
+                openRound={open}
+                member={member}
+                myMemberId={stokvel.my_member_id}
+                paidByRound={(round) => paidMemberIds(stokvel, round).size}
+                memberCount={fillCount}
+              />
+            ) : null}
+
+            {previous ? (
+              <RoundSchedule
+                cycle={previous}
+                openRound={null}
+                member={member}
+                myMemberId={stokvel.my_member_id}
+                paidByRound={() => previous.rounds.length}
+                memberCount={previous.rounds.length}
+                title={`Cycle ${previous.cycle_number}`}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+/** The cycle is active in the database before `startCycle` is mined. */
+function CycleOpeningToast({ stokvel }: { stokvel: StokvelDetailRead }) {
+  const opening =
+    stokvel.cycle?.status === "active" && stokvel.cycle.registered_at == null
+  const wasOpening = useRef(false)
+  const toastId = `cycle-open-${stokvel.stokvel_id}`
+
+  useEffect(() => {
+    if (opening) {
+      wasOpening.current = true
+      toast.loading("Opening the cycle on the network…", { id: toastId })
+      return
+    }
+    if (wasOpening.current && stokvel.cycle?.registered_at) {
+      wasOpening.current = false
+      toast.success("The cycle is open", { id: toastId })
+    }
+  }, [opening, stokvel.cycle?.registered_at, toastId])
+
+  return null
 }
