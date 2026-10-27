@@ -32,11 +32,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_UP, Decimal
+from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 
 from remitx_api.db.transaction import db_transaction
+from remitx_api.errors.base import DomainError
 from remitx_api.errors.stokvels import (
     ContributionAlreadyPaidError,
     ContributionInsufficientBalanceError,
@@ -75,18 +76,19 @@ from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services import queue_service
 from remitx_api.services.quote_service import (
-    TokenRates,
-    remittance_fee_and_margin,
+    contribution_fee_share,
     to_zar,
     token_rates,
     token_to_fiat,
 )
-from remitx_api.services.send_limits import require_can_send
+from remitx_api.services.send_limits import (
+    require_verified,
+    require_within_monthly_room,
+)
 from remitx_api.services.stokvel_contract_read import is_paused
 
 logger = logging.getLogger(__name__)
 
-_CENT = Decimal("0.01")
 _ONCE_CONSTRAINT = "uq_stokvel_contributions_once"
 # SQLite names no constraint in its error, only the columns of a unique one.
 _ONCE_SQLITE_MESSAGE = (
@@ -103,41 +105,6 @@ def _is_paid_twice(exc: IntegrityError) -> bool:
     if diag is not None:
         return diag.constraint_name == _ONCE_CONSTRAINT
     return _ONCE_SQLITE_MESSAGE in str(exc.orig)
-
-
-def contribution_fee_share(
-    amount_fiat: Decimal,
-    rates: TokenRates,
-    *,
-    member_count: int,
-    payout_currency: str,
-) -> Decimal:
-    """Each member's share of the round's payout fee, paid on top of their
-    contribution, in the Stokvel currency (product question 4, option A:
-    the beneficiary then receives the full pool).
-
-    The round's payout is one remittance of the pool (`amount_fiat` from
-    every member) to its recipient's beneficiary, so its fee and margin are
-    FSE's usual ones on that pool (`remittance_fee_and_margin`): no margin
-    when the recipient is paid in the Stokvel currency. The total is split
-    equally and rounded up to the cent, so the members always cover it. The
-    recipient's payout currency is locked when the cycle starts, so it is the
-    same for every member of the round.
-
-    Worked out at the rate when the member pays, as the contribution is. In a
-    stokvel whose currency is not ZAR, members who pay at different rates pay
-    slightly different shares, and the shares need not add up exactly to the
-    fee on the pool paid out (D6). The one place to change if the rule does.
-    """
-    pool = amount_fiat * member_count
-    fee, margin = remittance_fee_and_margin(
-        pool,
-        rates.currency,
-        payout_currency,
-        fiat_to_token_exchange_rate=rates.token_per_unit,
-        zar_token_rate=rates.zar_token_per_unit,
-    )
-    return ((fee + margin) / member_count).quantize(_CENT, rounding=ROUND_UP)
 
 
 @dataclass(frozen=True)
@@ -252,14 +219,26 @@ class StokvelContributionController:
         )
         total = amount_fiat + fee
         # What leaves the member's account, fee included, counts against
-        # their own limits (D8), as a remittance counts its gross amount.
+        # their own monthly limit (D8), as a remittance counts its gross
+        # amount. Only the monthly one: a contribution never meets the daily
+        # limit, and the reservation it was held under is its own to use.
         amount_zar = to_zar(total, currency, rates=rates)
-        require_can_send(
-            self._applications.get_standing(user_id),
-            amount_zar,
-            amount=total,
-            currency=currency,
-        )
+        standing = self._applications.get_standing(user_id)
+        try:
+            require_verified(standing)
+            require_within_monthly_room(
+                standing, amount_zar, amount=total, currency=currency
+            )
+        except DomainError as exc:
+            logger.info(
+                "contribute: user %s refused for stokvel %s cycle %s round %s: %s",
+                user_id,
+                stokvel.id,
+                cycle.id,
+                round_,
+                type(exc).__name__,
+            )
+            raise
         available = self._accounts.get_available_balance_locked(member.account_id)
         if available < total:
             raise ContributionInsufficientBalanceError(available, total, currency)

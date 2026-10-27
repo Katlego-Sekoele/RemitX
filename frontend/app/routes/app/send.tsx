@@ -27,6 +27,7 @@ import { isKycVerified, verificationPath } from "~/lib/kyc-onboarding"
 import { amountToCents, fromCents } from "~/lib/money"
 import {
   amountIssue,
+  monthlyRoom,
   DEFAULT_SENDER_CURRENCY,
   readSendSearch,
   resolveSendPayoutCurrency,
@@ -57,16 +58,24 @@ function asAmount(value: string | undefined): string | undefined {
 /**
  * What's left to send: the standing allowance (the tier's daily and monthly
  * limits scaled by the risk rating) less what was already sent today and
- * this month, as the API counts it when it checks a quote.
+ * this month, and less what the month holds for stokvel contributions, as
+ * the API counts it when it checks a quote.
  */
 function limitsFrom(
   standing: KycStanding | undefined,
   available: string | undefined
 ): AmountLimits {
+  const limit = asAmount(standing?.monthly_limit_zar)
+  const used = asAmount(standing?.monthly_used_zar)
   return {
     available: asAmount(available),
     dailyRemaining: asAmount(standing?.daily_remaining_zar),
     monthlyRemaining: asAmount(standing?.monthly_remaining_zar),
+    monthlyReserved: asAmount(standing?.monthly_reserved_zar),
+    monthlyRoom:
+      limit === undefined || used === undefined
+        ? undefined
+        : monthlyRoom(limit, used),
   }
 }
 

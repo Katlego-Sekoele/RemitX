@@ -20,6 +20,8 @@ class LimitHeadroomRead(Schema):
     daily_sent_zar: LedgerDecimal
     monthly_limit_zar: LedgerDecimal
     monthly_sent_zar: LedgerDecimal
+    # Held back for stokvel contributions due this month (D8)
+    monthly_reserved_zar: LedgerDecimal
 
 
 class ActivityDayRead(Schema):

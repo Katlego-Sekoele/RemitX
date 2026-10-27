@@ -1,5 +1,5 @@
 import { ArrowSquareOutIcon, CheckCircleIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useState } from "react"
 import { Link } from "react-router"
@@ -37,6 +37,7 @@ import { ACCOUNTS_HREF } from "~/lib/accounts"
 import {
   amountToCents,
   formatMoney,
+  isZeroMoney,
   subtractMoney,
   sumMoney,
 } from "~/lib/money"
@@ -120,6 +121,10 @@ export function ContributionPanel({
       : null,
     enabled: !mine && amount != null,
   })
+  // The month holds every contribution due for the member (D8). When it
+  // can't cover them all, say so before one is refused.
+  const standing = useQuery(api.kyc.onboarding.getApplication()).data?.standing
+  const shortfall = standing?.monthly_reserved_shortfall_zar
   const proof = mine ? contributionProofHash(mine) : null
   const actualFee = mine?.fee_amount ?? contribute.data?.fee_amount
   const fee = actualFee ?? estimate.data
@@ -242,6 +247,17 @@ export function ContributionPanel({
             <Button onClick={() => setOpen(true)}>Pay now</Button>
           )}
         </div>
+        {shortfall && !isZeroMoney(shortfall) ? (
+          <Alert>
+            <AlertTitle>Your monthly limit is short</AlertTitle>
+            <AlertDescription>
+              Your stokvel contributions due this month come to{" "}
+              {formatMoney(shortfall, "ZAR")} more than what&apos;s left of your
+              monthly limit. A contribution that doesn&apos;t fit is refused
+              until next month.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {refusal ? (
           <Alert variant="destructive">
             <AlertTitle>
@@ -265,7 +281,8 @@ export function ContributionPanel({
         <p className="text-xs text-muted-foreground">
           You also pay a share of the payout fee, so the beneficiary gets the
           full pool. Top up 2 days before your due date; deposits take time to
-          confirm. Contributions and fees count toward your sending limits.
+          confirm. Contributions and fees count toward your monthly limit, which
+          holds them back for you each month.
         </p>
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground">
@@ -323,8 +340,8 @@ export function ContributionPanel({
             </DescriptionList>
             <p className="text-xs text-muted-foreground">
               The exact fee share is set when you pay, at that moment&apos;s
-              rate. Contributions and fees count toward your sending limits.
-              Your money is held safely until payout day.
+              rate. Contributions and fees count toward your monthly limit. Your
+              money is held safely until payout day.
             </p>
           </div>
           <SheetFooter>

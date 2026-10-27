@@ -191,7 +191,8 @@ export function AmountStep({
           fromCurrency,
           issue === "over_daily_limit"
             ? estimate(limits.dailyRemaining)
-            : issue === "over_monthly_limit"
+            : issue === "over_monthly_limit" ||
+                issue === "over_monthly_limit_reserved"
               ? estimate(limits.monthlyRemaining)
               : undefined
         )

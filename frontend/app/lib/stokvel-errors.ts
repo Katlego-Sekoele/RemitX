@@ -35,6 +35,9 @@ export const STOKVEL_ERROR_MESSAGES = {
   not_invitee: "Only the person invited can answer this invitation.",
   invitation_not_pending:
     "This invitation has already been answered or has expired.",
+  // Accepting needs room for one contribution in the invitee's month (D8).
+  monthly_limit_too_low:
+    "What's left of your monthly limit doesn't cover this stokvel's contribution. You can accept once it does, next month or after you raise your verification level.",
   // Payout order, beneficiary and starting a cycle (#231, #232). Not here:
   // cycle_not_ready and invalid_schedule, whose `detail` says which part is
   // missing or wrong, so the API's message is shown as is.
@@ -133,7 +136,7 @@ export function contributeRefusalMessage(
     case "insufficient_balance":
       return "Your balance is too low for this round. Top up first; deposits take time to confirm."
     case "over_limit":
-      return "This contribution would take you over your sending limit. Contributions count toward your limits."
+      return "This contribution would take you over your monthly limit. Contributions count toward your monthly limit, not your daily one."
     case "unverified":
       return "Only verified members can contribute."
     case "other":

@@ -173,14 +173,31 @@ export type AmountIssue =
   | "over_balance"
   | "over_daily_limit"
   | "over_monthly_limit"
+  | "over_monthly_limit_reserved"
 
 export type AmountLimits = {
   /** The chosen "from" account's available balance, in its own currency. */
   available?: string
   /** What's left to send today and this month. Always in ZAR — the limits
-   * are rand, whatever account the send leaves from. */
+   * are rand, whatever account the send leaves from. The month's is after
+   * what's held back for stokvel contributions. */
   dailyRemaining?: string
   monthlyRemaining?: string
+  /** What the month holds back for stokvel contributions still to pay, and
+   * the month's room before that hold — so a refusal can say the
+   * reservation is why. */
+  monthlyReserved?: string
+  monthlyRoom?: string
+}
+
+/**
+ * The month's limit less what was used, before the stokvel reservation:
+ * what the send screen compares against to tell a reservation refusal from
+ * a plain one. Never below zero, as the API counts it.
+ */
+export function monthlyRoom(limit: string, used: string): string {
+  const room = amountToCents(limit) - amountToCents(used)
+  return fromCents(room > 0n ? room : 0n)
 }
 
 /**
@@ -214,7 +231,21 @@ export function amountIssue(
   const zarCents = amountZar === undefined ? null : toCents(amountZar)
   if (zarCents === null) return null
   if (over(limits.dailyRemaining, zarCents)) return "over_daily_limit"
-  if (over(limits.monthlyRemaining, zarCents)) return "over_monthly_limit"
+  if (over(limits.monthlyRemaining, zarCents)) {
+    // It would fit without what's held for stokvel contributions: say so.
+    const reservedCents =
+      limits.monthlyReserved === undefined
+        ? null
+        : toCents(limits.monthlyReserved)
+    const fitsWithoutReservation =
+      reservedCents !== null &&
+      reservedCents > 0n &&
+      limits.monthlyRoom !== undefined &&
+      !over(limits.monthlyRoom, zarCents)
+    return fitsWithoutReservation
+      ? "over_monthly_limit_reserved"
+      : "over_monthly_limit"
+  }
   return null
 }
 
@@ -248,7 +279,8 @@ export function canPreview(issue: AmountIssue | null): boolean {
     issue === null ||
     issue === "over_balance" ||
     issue === "over_daily_limit" ||
-    issue === "over_monthly_limit"
+    issue === "over_monthly_limit" ||
+    issue === "over_monthly_limit_reserved"
   )
 }
 
@@ -290,6 +322,10 @@ export function amountIssueMessage(
       return `That would exceed your daily limit. You can send up to ${zar(limits.dailyRemaining)}${suffix} today.`
     case "over_monthly_limit":
       return `That would exceed your monthly limit. You can send up to ${zar(limits.monthlyRemaining)}${suffix} this month.`
+    case "over_monthly_limit_reserved":
+      return toCents(limits.monthlyRemaining ?? "0") === 0n
+        ? `You're over your monthly limit: the rest of it is reserved for your stokvel contributions (${zar(limits.monthlyReserved)}).`
+        : `That would take you over your monthly limit: ${zar(limits.monthlyReserved)} of it is reserved for your stokvel contributions. You can send up to ${zar(limits.monthlyRemaining)}${suffix} this month.`
   }
 }
 

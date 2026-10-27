@@ -31,6 +31,7 @@ export function LimitHeadroom({ limits }: { limits: LimitHeadroomRead }) {
           title="This month"
           sent={limits.monthly_sent_zar}
           limit={limits.monthly_limit_zar}
+          reserved={limits.monthly_reserved_zar}
         />
       </CardContent>
     </Card>
@@ -41,10 +42,13 @@ function Allowance({
   title,
   sent,
   limit,
+  reserved,
 }: {
   title: string
   sent: string
   limit: string
+  /** Held back for stokvel contributions due this month (D8). */
+  reserved?: string
 }) {
   const share = usedShare(sent, limit)
   const caption = isZeroMoney(limit)
@@ -56,6 +60,11 @@ function Allowance({
       <ShareRadial share={share} label={`${Math.round(share * 100)}%`} />
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground">{caption}</p>
+      {reserved && !isZeroMoney(reserved) ? (
+        <p className="text-muted-foreground">
+          {formatMoney(reserved, "ZAR")} reserved for stokvel contributions
+        </p>
+      ) : null}
     </div>
   )
 }

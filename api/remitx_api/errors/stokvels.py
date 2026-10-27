@@ -239,6 +239,21 @@ class KycNotApprovedToJoinStokvelError(ForbiddenError):
         )
 
 
+class MonthlyLimitTooLowToJoinError(ConflictError):
+    """What is left of the invitee's monthly limit, after their own sends
+    and other stokvels' reservations, does not cover one contribution to
+    this stokvel (D8). They may accept once it does."""
+
+    code = "monthly_limit_too_low"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "What's left of your monthly limit doesn't cover this stokvel's "
+            "contribution. You can accept once it does, next month or after "
+            "you raise your verification level."
+        )
+
+
 # --- Payout order and beneficiary (R2-09). Codes and wording are doc
 # section 6's.
 

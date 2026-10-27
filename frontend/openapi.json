@@ -3773,7 +3773,7 @@
             "type": "string"
           },
           "daily_used_zar": {
-            "description": "ZAR sent today (SAST), counting transfers still settling and leaving out failed ones.",
+            "description": "ZAR sent today (SAST), counting transfers still settling and leaving out failed ones. Stokvel contributions don't count today.",
             "title": "Daily Used Zar",
             "type": "string"
           },
@@ -3790,12 +3790,22 @@
             "type": "string"
           },
           "monthly_remaining_zar": {
-            "description": "What can still be sent this month, counted the same way. A send must fit both this and daily_remaining_zar.",
+            "description": "What can still be sent this month: the monthly limit less what was used and what is reserved, never below zero. A send must fit both this and daily_remaining_zar.",
             "title": "Monthly Remaining Zar",
             "type": "string"
           },
+          "monthly_reserved_shortfall_zar": {
+            "description": "How much of monthly_reserved_zar the month can't cover: the contributions due this month that would go over the monthly limit. Zero when they all fit.",
+            "title": "Monthly Reserved Shortfall Zar",
+            "type": "string"
+          },
+          "monthly_reserved_zar": {
+            "description": "ZAR held back this month for stokvel contributions still to pay: every unpaid round due this month or overdue, at today's rate.",
+            "title": "Monthly Reserved Zar",
+            "type": "string"
+          },
           "monthly_used_zar": {
-            "description": "ZAR sent this calendar month (SAST), counted the same way.",
+            "description": "ZAR sent this calendar month (SAST), counted the same way, stokvel contributions included.",
             "title": "Monthly Used Zar",
             "type": "string"
           },
@@ -3817,6 +3827,8 @@
           "monthly_limit_zar",
           "daily_used_zar",
           "monthly_used_zar",
+          "monthly_reserved_zar",
+          "monthly_reserved_shortfall_zar",
           "daily_remaining_zar",
           "monthly_remaining_zar"
         ],
@@ -3946,6 +3958,10 @@
             "title": "Monthly Limit Zar",
             "type": "string"
           },
+          "monthly_reserved_zar": {
+            "title": "Monthly Reserved Zar",
+            "type": "string"
+          },
           "monthly_sent_zar": {
             "title": "Monthly Sent Zar",
             "type": "string"
@@ -3955,7 +3971,8 @@
           "daily_limit_zar",
           "daily_sent_zar",
           "monthly_limit_zar",
-          "monthly_sent_zar"
+          "monthly_sent_zar",
+          "monthly_reserved_zar"
         ],
         "title": "LimitHeadroomRead",
         "type": "object"
@@ -11377,7 +11394,7 @@
     },
     "/invitations/{invitation_id}/accept": {
       "post": {
-        "description": "Accept the caller's invitation. They become a Member, paying\ncontributions from their own account in the Stokvel currency, and get\nback the stokvel they joined.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed, and `stokvel_deactivated`; 422 `too_many_members` when the\nstokvel is full; 403 if the caller is no longer verified; 400 if they\nhold no account in the Stokvel currency (they open one with\n`POST /accounts` first).",
+        "description": "Accept the caller's invitation. They become a Member, paying\ncontributions from their own account in the Stokvel currency, and get\nback the stokvel they joined.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed, `stokvel_deactivated`, and `monthly_limit_too_low` when what\nis left of the caller's monthly limit does not cover one contribution;\n422 `too_many_members` when the stokvel is full; 403 if the caller is no\nlonger verified; 400 if they hold no account in the Stokvel currency\n(they open one with `POST /accounts` first). 503 when no exchange rate is\navailable to price the contribution: nothing changes.",
         "operationId": "accept_stokvel_invitation",
         "parameters": [
           {
@@ -11461,6 +11478,16 @@
               }
             },
             "description": "The request body failed validation."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -13234,7 +13261,7 @@
     },
     "/stokvels/{stokvel_id}/contributions": {
       "post": {
-        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
+        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown monthly limit (never the daily one). What the month holds back for\ntheir unpaid contributions does not count against it. Returns the\ncontribution `pending`; it is confirmed once the worker's on-chain\n`contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a contribution over the monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
         "operationId": "contribute_to_stokvel",
         "parameters": [
           {

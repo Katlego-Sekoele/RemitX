@@ -329,18 +329,29 @@ class KycStandingRead(Schema):
     monthly_limit_zar: LedgerDecimal
     daily_used_zar: LedgerDecimal = Field(
         description="ZAR sent today (SAST), counting transfers still settling "
-        "and leaving out failed ones."
+        "and leaving out failed ones. Stokvel contributions don't count today."
     )
     monthly_used_zar: LedgerDecimal = Field(
-        description="ZAR sent this calendar month (SAST), counted the same way."
+        description="ZAR sent this calendar month (SAST), counted the same way, "
+        "stokvel contributions included."
+    )
+    monthly_reserved_zar: LedgerDecimal = Field(
+        description="ZAR held back this month for stokvel contributions still "
+        "to pay: every unpaid round due this month or overdue, at today's rate."
+    )
+    monthly_reserved_shortfall_zar: LedgerDecimal = Field(
+        description="How much of monthly_reserved_zar the month can't cover: "
+        "the contributions due this month that would go over the monthly "
+        "limit. Zero when they all fit."
     )
     daily_remaining_zar: LedgerDecimal = Field(
         description="What can still be sent today: the daily limit less what "
         "was used, never below zero."
     )
     monthly_remaining_zar: LedgerDecimal = Field(
-        description="What can still be sent this month, counted the same way. "
-        "A send must fit both this and daily_remaining_zar."
+        description="What can still be sent this month: the monthly limit less "
+        "what was used and what is reserved, never below zero. A send must fit "
+        "both this and daily_remaining_zar."
     )
 
 

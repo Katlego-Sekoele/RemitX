@@ -89,6 +89,7 @@ class DashboardController:
                 daily_sent_zar=_money(standing.daily_used_zar),
                 monthly_limit_zar=_money(standing.monthly_limit_zar),
                 monthly_sent_zar=_money(standing.monthly_used_zar),
+                monthly_reserved_zar=_money(standing.monthly_reserved_zar),
             ),
             activity=[
                 ActivityDayRead(

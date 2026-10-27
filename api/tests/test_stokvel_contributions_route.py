@@ -54,6 +54,10 @@ from remitx_api.models.orm.transaction import (
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
+from remitx_api.repositories.remittance_repository import (
+    RemittanceRepository,
+    SentTotals,
+)
 from remitx_api.repositories.stokvel_contribution_repository import (
     StokvelContributionRepository,
 )
@@ -672,7 +676,7 @@ def test_an_unverified_member_is_refused(monkeypatch):
         assert _contributions(built) == []
 
 
-def test_contributions_count_toward_the_members_own_limits(group):
+def test_contributions_count_toward_the_members_monthly_limit_only(group):
     first = group.contribute()
     standing = _in_session(
         lambda: KycApplicationRepository().get_standing(group.caller.id)
@@ -680,21 +684,22 @@ def test_contributions_count_toward_the_members_own_limits(group):
 
     assert first.status_code == 201
     # The fee counts too: it leaves the member's account with the contribution.
-    assert standing.daily_used_zar == TOTAL
     assert standing.monthly_used_zar == TOTAL
+    # Never toward the day (D8): it leaves today's remittances untouched.
+    assert standing.daily_used_zar == Decimal("0.00")
 
 
-def test_a_contribution_over_the_daily_limit_is_refused(group):
-    # The verified tier allows R3,000 a day. Round 0 (R1,850) fits; paying
-    # round 1 the same day as well (another R1,850) would not.
+def test_contributions_are_not_held_to_the_daily_limit(group):
+    # The verified tier allows R3,000 a day. Round 0 (R1,866.75) and round 1
+    # the same day (R1,885.25) come to more, but contributions meet only the
+    # monthly limit (D8).
     _record(group, group.other_member_id, 0)
     assert group.contribute().status_code == 201
 
     response = group.contribute()
 
-    assert response.status_code == 400
-    assert "today" in response.json()["detail"]
-    assert len(_contributions(group)) == 2  # the caller's round 0 and Sipho's
+    assert response.status_code == 201, response.text
+    assert len(_contributions(group)) == 3
 
 
 def test_a_contribution_over_the_monthly_limit_is_refused(group, monkeypatch):
@@ -721,6 +726,151 @@ def test_a_contribution_over_the_monthly_limit_is_refused(group, monkeypatch):
     assert "monthly limit" in response.json()["detail"]
     assert len(_contributions(group)) == 2  # only the two recorded above
     assert group.enqueued == []
+
+
+# --- Reserving the monthly limit (D8) ------------------------------------------
+# Round 0 is due 2 November and pays the caller in ZAR (R1,866.75 with its fee
+# share); round 1 is due 9 November and pays Sipho in ZWL (R1,885.25).
+ROUND_1_TOTAL = Decimal("1885.25")
+MONTHLY_LIMIT = Decimal("25000.00")
+
+
+def _standing_at(group: Group, monkeypatch, now: datetime):
+    monkeypatch.setattr(
+        "remitx_api.repositories.kyc_application_repository.utcnow", lambda: now
+    )
+    return _in_session(lambda: KycApplicationRepository().get_standing(group.caller.id))
+
+
+def _sent_this_month(monkeypatch, month_zar: str) -> None:
+    """The caller's remittances this month, without writing any."""
+    monkeypatch.setattr(
+        RemittanceRepository,
+        "sent_zar",
+        lambda *_: SentTotals(day_zar=Decimal("0"), month_zar=Decimal(month_zar)),
+    )
+
+
+def _rounds_overdue(group: Group) -> None:
+    """Both rounds' pay-by dates in the past, whatever today is: overdue
+    rounds are reserved in every month until paid."""
+
+    def move():
+        now = datetime.now(UTC)
+        db.session.execute(
+            update(StokvelRound)
+            .where(StokvelRound.cycle_id == group.cycle_id)
+            .values(
+                start_time=now - timedelta(days=3),
+                deadline=now - timedelta(days=2),
+                payout_time=now - timedelta(days=1),
+            )
+        )
+        db.session.commit()
+
+    _in_session(move)
+
+
+def test_unpaid_rounds_due_this_month_are_reserved(group, monkeypatch):
+    standing = _standing_at(group, monkeypatch, datetime(2026, 11, 16, tzinfo=UTC))
+
+    assert standing.monthly_reserved_zar == TOTAL + ROUND_1_TOTAL
+    assert standing.monthly_remaining_zar == MONTHLY_LIMIT - TOTAL - ROUND_1_TOTAL
+    # The day is untouched: the reservation is the month's only.
+    assert standing.daily_remaining_zar == Decimal("3000.00")
+
+
+def test_rounds_due_in_a_later_month_are_not_reserved_yet(group, monkeypatch):
+    standing = _standing_at(group, monkeypatch, datetime(2026, 10, 20, tzinfo=UTC))
+
+    assert standing.monthly_reserved_zar == Decimal("0.00")
+    assert standing.monthly_remaining_zar == MONTHLY_LIMIT
+
+
+def test_an_overdue_round_stays_reserved_until_paid(group, monkeypatch):
+    standing = _standing_at(group, monkeypatch, datetime(2026, 12, 5, tzinfo=UTC))
+
+    assert standing.monthly_reserved_zar == TOTAL + ROUND_1_TOTAL
+
+
+def test_a_paid_round_is_used_rather_than_reserved(group, monkeypatch):
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    _record(group, group.caller_member_id, 0, created_at=now - timedelta(days=1))
+
+    standing = _standing_at(group, monkeypatch, now)
+
+    assert standing.monthly_reserved_zar == ROUND_1_TOTAL
+    assert standing.monthly_used_zar == FIAT
+
+
+def test_a_failed_payment_leaves_its_round_reserved(group, monkeypatch):
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    _record(
+        group,
+        group.caller_member_id,
+        0,
+        StokvelContributionStatus.FAILED,
+        created_at=now - timedelta(days=1),
+    )
+
+    standing = _standing_at(group, monkeypatch, now)
+
+    assert standing.monthly_reserved_zar == TOTAL + ROUND_1_TOTAL
+    assert standing.monthly_used_zar == Decimal("0.00")
+
+
+def test_closing_the_cycle_releases_the_reservation(group, monkeypatch):
+    def close():
+        cycle = db.session.get(StokvelCycle, group.cycle_id)
+        cycle.status = StokvelCycleStatus.CLOSED.value
+        cycle.closed_at = datetime.now(UTC)
+        db.session.commit()
+
+    _in_session(close)
+
+    standing = _standing_at(group, monkeypatch, datetime(2026, 11, 16, tzinfo=UTC))
+
+    assert standing.monthly_reserved_zar == Decimal("0.00")
+
+
+def test_leaving_the_stokvel_releases_the_reservation(group, monkeypatch):
+    def leave():
+        member = db.session.get(StokvelMember, group.caller_member_id)
+        member.left_at = datetime.now(UTC)
+        db.session.commit()
+
+    _in_session(leave)
+
+    standing = _standing_at(group, monkeypatch, datetime(2026, 11, 16, tzinfo=UTC))
+
+    assert standing.monthly_reserved_zar == Decimal("0.00")
+
+
+def test_a_contribution_may_spend_what_is_reserved_for_it(group, monkeypatch):
+    # R22,000 sent leaves R3,000 of the month, all of it reserved for the two
+    # overdue rounds (R3,752): a remittance may send nothing more, but the
+    # contribution the reservation is for still goes through.
+    _rounds_overdue(group)
+    _sent_this_month(monkeypatch, "22000")
+
+    response = group.contribute()
+
+    assert response.status_code == 201, response.text
+
+
+def test_the_monthly_limit_still_caps_reserved_contributions(group, monkeypatch):
+    # After round 0 (R1,866.75), R1,133.25 is left: round 1 (R1,885.25) would
+    # go over the month, reserved or not.
+    _rounds_overdue(group)
+    _sent_this_month(monkeypatch, "22000")
+    assert group.contribute().status_code == 201
+    _record(group, group.other_member_id, 0)
+
+    response = group.contribute()
+
+    assert response.status_code == 400
+    assert "monthly limit" in response.json()["detail"]
+    assert group.enqueued[1:] == []
 
 
 def test_a_payment_that_slips_past_the_paid_check_is_still_refused(group, monkeypatch):

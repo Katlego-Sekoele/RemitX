@@ -1,19 +1,48 @@
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import func, select
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
     StokvelContributionStatus,
 )
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
+from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_member import StokvelMember
-from remitx_api.repositories.remittance_repository import CENTS, SentTotals
+from remitx_api.models.orm.stokvel_round import StokvelRound
+from remitx_api.repositories.remittance_repository import CENTS
 from remitx_api.repositories.repository import Repository
 from remitx_api.services.send_limits import LimitWindows
 
 _FAILED = StokvelContributionStatus.FAILED.value
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite returns timestamps without their zone; they are stored UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+@dataclass(frozen=True)
+class UnpaidRound:
+    """A round a member still owes their contribution to, with what pricing
+    that contribution needs (`StokvelContributionRepository.unpaid_rounds`)."""
+
+    stokvel_id: uuid.UUID
+    cycle_id: uuid.UUID
+    round: int
+    # Pay-by date: it decides the month the contribution is reserved in
+    deadline: datetime
+    currency: str
+    contribution_amount: Decimal
+    member_count: int
+    payout_currency: str
 
 
 class StokvelContributionRepository(Repository[StokvelContribution, uuid.UUID]):
@@ -107,22 +136,15 @@ class StokvelContributionRepository(Repository[StokvelContribution, uuid.UUID]):
                 return round_
         return None
 
-    def contributed_zar(self, user_id: uuid.UUID, windows: LimitWindows) -> SentTotals:
-        """What the user contributed to stokvels during `windows`' day and
-        month, in rand, fee included (`amount_zar`), by when each contribution
-        was made. Every contribution that has not failed counts, pending ones
-        too, as `RemittanceRepository.sent_zar` counts unsettled sends: a
-        contribution counts toward the member's own limits (D8)."""
-        in_day = and_(
-            StokvelContribution.created_at >= windows.day_start,
-            StokvelContribution.created_at < windows.day_end,
-        )
-        amount = func.coalesce(StokvelContribution.amount_zar, 0)
-        day_total, month_total = db.session.execute(
-            select(
-                func.coalesce(func.sum(case((in_day, amount), else_=0)), 0),
-                func.coalesce(func.sum(amount), 0),
-            )
+    def contributed_zar(self, user_id: uuid.UUID, windows: LimitWindows) -> Decimal:
+        """What the user contributed to stokvels during `windows`' month, in
+        rand, fee included (`amount_zar`), by when each contribution was made.
+        Every contribution that has not failed counts, pending ones too, as
+        `RemittanceRepository.sent_zar` counts unsettled sends: a contribution
+        counts toward the member's own monthly limit, never the daily one
+        (D8)."""
+        total = db.session.scalar(
+            select(func.coalesce(func.sum(StokvelContribution.amount_zar), 0))
             .select_from(StokvelContribution)
             .join(StokvelMember, StokvelMember.id == StokvelContribution.member_id)
             .where(
@@ -131,9 +153,89 @@ class StokvelContributionRepository(Repository[StokvelContribution, uuid.UUID]):
                 StokvelContribution.created_at >= windows.month_start,
                 StokvelContribution.created_at < windows.month_end,
             )
-        ).one()
-        # SQLite sums Numeric columns as floats.
-        return SentTotals(
-            day_zar=Decimal(str(day_total)).quantize(CENTS),
-            month_zar=Decimal(str(month_total)).quantize(CENTS),
         )
+        # SQLite sums Numeric columns as floats.
+        return Decimal(str(total)).quantize(CENTS)
+
+    def unpaid_rounds(self, user_id: uuid.UUID) -> list[UnpaidRound]:
+        """Every round the user still owes a contribution to: the rounds of
+        each active cycle they are locked into, as a current member, that
+        have no contribution from them that has not failed. A pending
+        contribution has paid its round here, as it counts as used.
+
+        Each comes with what pricing it needs: the stokvel's currency and
+        token amount, the cycle's member count, and the payout currency of
+        the member the round pays (which sets the fee share). Leaving the
+        stokvel or the cycle closing drops its rounds."""
+        mine = (
+            select(
+                StokvelCycleMember.cycle_id,
+                StokvelCycleMember.member_id,
+                Stokvel.id.label("stokvel_id"),
+                Stokvel.currency,
+                Stokvel.contribution_amount,
+            )
+            .join(StokvelMember, StokvelMember.id == StokvelCycleMember.member_id)
+            .join(StokvelCycle, StokvelCycle.id == StokvelCycleMember.cycle_id)
+            .join(Stokvel, Stokvel.id == StokvelCycle.stokvel_id)
+            .where(
+                StokvelMember.user_id == user_id,
+                StokvelMember.left_at.is_(None),
+                StokvelCycleMember.locked.is_(True),
+                StokvelCycle.status == StokvelCycleStatus.ACTIVE.value,
+            )
+        )
+        places = db.session.execute(mine).all()
+        if not places:
+            return []
+        cycle_ids = [place.cycle_id for place in places]
+        member_ids = [place.member_id for place in places]
+
+        # Who each round pays, and so in what currency, and how many pay in.
+        payout_currency: dict[tuple[uuid.UUID, int], str | None] = {}
+        member_count: dict[uuid.UUID, int] = {}
+        for cycle_id, position, currency in db.session.execute(
+            select(
+                StokvelCycleMember.cycle_id,
+                StokvelCycleMember.payout_position,
+                StokvelCycleMember.payout_currency,
+            ).where(
+                StokvelCycleMember.cycle_id.in_(cycle_ids),
+                StokvelCycleMember.locked.is_(True),
+            )
+        ).all():
+            payout_currency[(cycle_id, position)] = currency
+            member_count[cycle_id] = member_count.get(cycle_id, 0) + 1
+
+        paid = set(
+            db.session.execute(
+                select(StokvelContribution.cycle_id, StokvelContribution.round).where(
+                    StokvelContribution.cycle_id.in_(cycle_ids),
+                    StokvelContribution.member_id.in_(member_ids),
+                    StokvelContribution.status != _FAILED,
+                )
+            ).all()
+        )
+        by_cycle = {place.cycle_id: place for place in places}
+        rounds = db.session.execute(
+            select(StokvelRound.cycle_id, StokvelRound.round, StokvelRound.deadline)
+            .where(StokvelRound.cycle_id.in_(cycle_ids))
+            .order_by(StokvelRound.deadline, StokvelRound.round)
+        ).all()
+        return [
+            UnpaidRound(
+                stokvel_id=by_cycle[cycle_id].stokvel_id,
+                cycle_id=cycle_id,
+                round=round_,
+                deadline=_as_utc(deadline),
+                currency=by_cycle[cycle_id].currency,
+                contribution_amount=by_cycle[cycle_id].contribution_amount,
+                member_count=member_count[cycle_id],
+                payout_currency=(
+                    payout_currency.get((cycle_id, round_))
+                    or by_cycle[cycle_id].currency
+                ),
+            )
+            for cycle_id, round_, deadline in rounds
+            if (cycle_id, round_) not in paid
+        ]

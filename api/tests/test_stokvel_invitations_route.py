@@ -31,6 +31,7 @@ from remitx_api.models.orm.account import (
     create_account_reference,
 )
 from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
+from remitx_api.models.orm.exchange_rate import ExchangeRate
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
@@ -42,12 +43,17 @@ from remitx_api.models.orm.stokvel_invitation import (
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
+from remitx_api.repositories.remittance_repository import (
+    RemittanceRepository,
+    SentTotals,
+)
 from remitx_api.routes import stokvel_invitations as invitations_route
 from remitx_api.services.exchange_rate_service import RateUnavailableError
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
 MAX_MEMBERS = TestConfig().MAX_STOKVEL_MEMBERS
+USD_ZAR = Decimal("18.50")
 # Picks the caller per request, so threads can call as different users.
 USER_HEADER = "X-Test-User"
 
@@ -307,9 +313,30 @@ class Api:
         )
 
 
+def _seed_rate() -> None:
+    """A stored USD/ZAR rate, so accepting can price a contribution (D8)
+    without a live fetch."""
+
+    def insert():
+        now = datetime.now(UTC)
+        db.session.add(
+            ExchangeRate(
+                base_currency="USD",
+                quote_currency="ZAR",
+                rate=USD_ZAR,
+                fetched_at=now,
+                valid_until=now + timedelta(hours=1),
+            )
+        )
+        db.session.commit()
+
+    _in_session(insert)
+
+
 @pytest.fixture
 def api():
     with TestClient(create_app(TestConfig)) as client:
+        _seed_rate()
         yield Api(client)
         client.app.dependency_overrides.clear()
 
@@ -696,6 +723,27 @@ def test_an_invitee_whose_verification_lapsed_cannot_accept(api):
     assert _get_invitation(invitation_id).status == "pending"
 
 
+def test_an_invitee_whose_month_cannot_cover_a_contribution_cannot_accept(
+    api, monkeypatch
+):
+    # One contribution is 10 UCTUSD, R185.00 before its fee share: R24,900
+    # sent of the R25,000 month leaves R100 (D8).
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+    monkeypatch.setattr(
+        RemittanceRepository,
+        "sent_zar",
+        lambda *_: SentTotals(day_zar=Decimal("0"), month_zar=Decimal("24900")),
+    )
+
+    response = api.accept(invitee, invitation_id)
+
+    _refused(response, 409, "monthly_limit_too_low")
+    assert _get_invitation(invitation_id).status == "pending"
+    assert _members(stokvel_id) == {organiser.id}
+
+
 def test_an_invitation_to_a_deactivated_stokvel_cannot_be_accepted(api):
     organiser, invitee = _person("sipho"), _person()
     stokvel_id = _stokvel(organiser, deactivated=True)
@@ -899,6 +947,7 @@ def test_a_concurrent_answer_beats_the_revoke(api, monkeypatch):
 @pytest.fixture
 def pg_api(postgres_app):
     with TestClient(postgres_app) as client:
+        _seed_rate()
         yield Api(client)
         postgres_app.dependency_overrides.clear()
 

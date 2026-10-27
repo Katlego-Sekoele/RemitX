@@ -5,6 +5,7 @@ import { ApiError } from "~/lib/api"
 import {
   amountIssue,
   amountIssueMessage,
+  monthlyRoom,
   canPreview,
   confirmRefusal,
   estimateInCurrency,
@@ -218,6 +219,7 @@ describe("amountIssue", () => {
       "over_balance",
       "over_daily_limit",
       "over_monthly_limit",
+      "over_monthly_limit_reserved",
     ]
     const messages = issues.map((issue) => amountIssueMessage(issue, limits))
     expect(new Set(messages).size).toBe(issues.length)
@@ -242,6 +244,48 @@ describe("amountIssue", () => {
     expect(message).toBe(
       "That would exceed your daily limit. You can send up to R 800.00 (about USD 97.29) today."
     )
+  })
+
+  describe("with part of the month reserved for stokvel contributions", () => {
+    // R2,000 of the month's R2,600 room is held for contributions.
+    const held = {
+      ...limits,
+      available: "10000.00",
+      monthlyRemaining: "600.00",
+      monthlyReserved: "2000.00",
+      monthlyRoom: "2600.00",
+    }
+
+    it("says the reservation is why when the send fits without it", () => {
+      expect(zar("700.00", { ...held, dailyRemaining: "5000.00" })).toBe(
+        "over_monthly_limit_reserved"
+      )
+      expect(
+        plain(amountIssueMessage("over_monthly_limit_reserved", held))
+      ).toBe(
+        "That would take you over your monthly limit: R 2,000.00 of it is reserved for your stokvel contributions. You can send up to R 600.00 this month."
+      )
+    })
+
+    it("is a plain monthly refusal when the send wouldn't fit anyway", () => {
+      expect(zar("2600.01", { ...held, dailyRemaining: "5000.00" })).toBe(
+        "over_monthly_limit"
+      )
+    })
+
+    it("says the rest is reserved once nothing is left to send", () => {
+      const spent = { ...held, monthlyRemaining: "0.00" }
+      expect(
+        plain(amountIssueMessage("over_monthly_limit_reserved", spent))
+      ).toBe(
+        "You're over your monthly limit: the rest of it is reserved for your stokvel contributions (R 2,000.00)."
+      )
+    })
+
+    it("works out the room from the limit and what was used", () => {
+      expect(monthlyRoom("25000.00", "22400.00")).toBe("2600.00")
+      expect(monthlyRoom("25000.00", "26000.00")).toBe("0.00")
+    })
   })
 
   it("previews amounts that only break the balance or a limit", () => {

@@ -64,6 +64,14 @@ export function VerificationPage({ kyc }: { kyc: KycStandingRead }) {
             left="left this month"
             per="per month"
           />
+          {isZeroMoney(kyc.monthly_reserved_zar) ? null : (
+            <SettingsItem>
+              {formatMoney(kyc.monthly_reserved_zar, "ZAR")}
+              <SettingsItemDescription>
+                reserved this month for your stokvel contributions
+              </SettingsItemDescription>
+            </SettingsItem>
+          )}
         </SettingsSectionContent>
       </SettingsSection>
       <SettingsSection>

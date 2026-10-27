@@ -10,7 +10,11 @@ from decimal import Decimal
 
 import pytest
 import time_machine
-from remitx_api.errors.remittances import KycNotApprovedError, LimitExceededError
+from remitx_api.errors.remittances import (
+    KycNotApprovedError,
+    LimitExceededError,
+    LimitReservedForStokvelError,
+)
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_ZAR
 from remitx_api.models.orm.kyc_application import KycApplication
@@ -25,7 +29,12 @@ from remitx_api.repositories.kyc_application_repository import (
     KycApplicationRepository,
     KycStanding,
 )
-from remitx_api.services.send_limits import SAST, limit_windows, require_can_send
+from remitx_api.services.send_limits import (
+    SAST,
+    limit_windows,
+    require_can_send,
+    require_within_monthly_room,
+)
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, make_user
 from tests.send_helpers import record_transfer
@@ -82,8 +91,10 @@ def standing(
     status: KycStatus = KycStatus.APPROVED,
     daily_used: str = "0",
     monthly_used: str = "0",
+    monthly_reserved: str = "0",
 ) -> KycStanding:
-    """Tier 1 (R3,000 a day, R25,000 a month) with some of it used."""
+    """Tier 1 (R3,000 a day, R25,000 a month) with some of it used, and some
+    of the month held back for stokvel contributions."""
     return KycStanding(
         status=status,
         tier=KYC_TIER_VERIFIED,
@@ -92,6 +103,7 @@ def standing(
         monthly_limit_zar=Decimal("25000.00"),
         daily_used_zar=Decimal(daily_used),
         monthly_used_zar=Decimal(monthly_used),
+        monthly_reserved_zar=Decimal(monthly_reserved),
     )
 
 
@@ -340,3 +352,86 @@ def test_what_is_left_never_goes_below_zero(sender, recipient):
     assert now.daily_used_zar == Decimal("2000.00")
     assert now.daily_remaining_zar == Decimal("0.00")
     assert now.monthly_remaining_zar == Decimal("10500.00")
+
+
+# --- The stokvel reservation (D8) ------------------------------------------
+
+
+def test_the_reservation_comes_off_what_a_remittance_may_send():
+    held = standing(monthly_used="20000", monthly_reserved="3000")
+
+    assert held.monthly_room_zar == Decimal("5000.00")
+    assert held.monthly_remaining_zar == Decimal("2000.00")
+    assert held.monthly_reserved_shortfall_zar == Decimal("0.00")
+
+
+def test_a_reservation_past_the_room_leaves_nothing_and_a_shortfall():
+    held = standing(monthly_used="23000", monthly_reserved="3000")
+
+    assert held.monthly_remaining_zar == Decimal("0.00")
+    assert held.monthly_reserved_shortfall_zar == Decimal("1000.00")
+
+
+def test_a_send_that_fits_only_without_the_reservation_says_why():
+    with pytest.raises(LimitReservedForStokvelError) as refused:
+        check(standing(monthly_used="20000", monthly_reserved="3000"), "2000.01")
+
+    assert refused.value.status_code == 400
+    assert refused.value.code == "limit_reserved_for_stokvel"
+    assert refused.value.detail == (
+        "This would take you over your monthly limit: R 3,000.00 of it is "
+        "reserved for your stokvel contributions. You can send up to "
+        "R 2,000.00 this month."
+    )
+
+
+def test_a_month_left_wholly_to_the_reservation_says_so():
+    with pytest.raises(LimitReservedForStokvelError) as refused:
+        check(standing(monthly_used="22000", monthly_reserved="3000"), "0.01")
+
+    assert refused.value.detail == (
+        "You're over your monthly limit: the rest of it is reserved for your "
+        "stokvel contributions (R 3,000.00)."
+    )
+
+
+def test_a_send_past_the_month_even_without_the_reservation_is_plainly_refused():
+    with pytest.raises(LimitExceededError) as refused:
+        check(standing(monthly_used="24000", monthly_reserved="500"), "1000.01")
+
+    assert type(refused.value) is LimitExceededError
+    assert refused.value.code is None
+
+
+def test_the_day_still_binds_a_remittance_first():
+    with pytest.raises(LimitExceededError) as refused:
+        check(
+            standing(daily_used="2900", monthly_used="20000", monthly_reserved="3000"),
+            "200",
+        )
+
+    assert type(refused.value) is LimitExceededError
+    assert refused.value.limit == "daily"
+
+
+def test_a_contribution_ignores_the_day_and_its_own_reservation():
+    # Over the day and over what remittances may send, but inside the month.
+    require_within_monthly_room(
+        standing(daily_used="3000", monthly_used="20000", monthly_reserved="5000"),
+        Decimal("5000.00"),
+        amount=Decimal("5000.00"),
+        currency=CURRENCY_ZAR,
+    )
+
+
+def test_a_contribution_past_the_month_is_refused():
+    with pytest.raises(LimitExceededError) as refused:
+        require_within_monthly_room(
+            standing(monthly_used="24000"),
+            Decimal("1000.01"),
+            amount=Decimal("1000.01"),
+            currency=CURRENCY_ZAR,
+        )
+
+    assert refused.value.limit == "monthly"
+    assert refused.value.remaining == Decimal("1000.00")

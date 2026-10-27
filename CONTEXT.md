@@ -39,8 +39,12 @@ The fiat currency a **Stokvel** is denominated in, set by the **Organiser**. Eve
 _Avoid_: Contribution currency
 
 **Contribution**:
-A **Member**'s payment into a **Round** of a fixed **UCTUSD** amount (the same for every round and cycle of the **Stokvel**), paid from their fiat account in the **Stokvel currency** at the live rate when they contribute, and held by the stokvel contract. Counts toward the member's own sending limits; a **Stokvel** has none.
+A **Member**'s payment into a **Round** of a fixed **UCTUSD** amount (the same for every round and cycle of the **Stokvel**), paid from their fiat account in the **Stokvel currency** at the live rate when they contribute, and held by the stokvel contract. Counts toward the member's own monthly sending limit, never the daily one; a **Stokvel** has none. Until it is paid, each contribution due that month is a **Reservation**.
 _Avoid_: Deposit (that is a ZAR cash-in), payment
+
+**Reservation**:
+The part of a **Member**'s monthly sending limit held back for their unpaid **Contributions** due that month (by each **Round**'s pay-by date) or overdue, so their remittances cannot spend it. Worked out from the rounds each time, never stored; it ends when the contribution is paid, the member leaves or the **Cycle** closes.
+_Avoid_: Hold, earmark, reserved balance (it is limit, not money)
 
 **Payout order**:
 The sequence in which **Members** receive their **Payout** across the rounds of a **Cycle**. The members agree it among themselves off the platform; the **Organiser** enters it before each cycle, and it is fixed once the cycle starts. The platform never chooses the order.

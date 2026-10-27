@@ -79,6 +79,12 @@ class KycStanding:
     what the user has used of them: their sends over the current SAST day and
     month (`services/send_limits.py`). This is what the limits enforcement path
     (#25) reads.
+
+    Stokvel contributions count toward the month only (D8), and the ones still
+    to pay are held back too: `monthly_reserved_zar` is what the member's
+    unpaid rounds due this month or overdue are worth now
+    (`services/stokvel_reservations.py`). It comes off what remittances may
+    still send, not off what a contribution may (`monthly_room_zar`).
     """
 
     status: KycStatus
@@ -90,6 +96,7 @@ class KycStanding:
     monthly_limit_zar: Decimal = Decimal("0.00")
     daily_used_zar: Decimal = Decimal("0.00")
     monthly_used_zar: Decimal = Decimal("0.00")
+    monthly_reserved_zar: Decimal = Decimal("0.00")
 
     @property
     def is_verified(self) -> bool:
@@ -101,8 +108,22 @@ class KycStanding:
         return max(self.daily_limit_zar - self.daily_used_zar, Decimal("0.00"))
 
     @property
-    def monthly_remaining_zar(self) -> Decimal:
+    def monthly_room_zar(self) -> Decimal:
+        """The month's limit less what was used, before the reservation: what
+        a stokvel contribution may still take."""
         return max(self.monthly_limit_zar - self.monthly_used_zar, Decimal("0.00"))
+
+    @property
+    def monthly_remaining_zar(self) -> Decimal:
+        """What a remittance may still take this month: the room less the
+        stokvel reservation."""
+        return max(self.monthly_room_zar - self.monthly_reserved_zar, Decimal("0.00"))
+
+    @property
+    def monthly_reserved_shortfall_zar(self) -> Decimal:
+        """How far the reservation runs past the room, when it does: the
+        contributions due this month that the limit cannot cover."""
+        return max(self.monthly_reserved_zar - self.monthly_room_zar, Decimal("0.00"))
 
 
 @dataclass(frozen=True)
@@ -182,9 +203,14 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limits_from_tier(tier),
             None if rating_record is None else band_from_record(rating_record),
         )
+        # Imported here: the reservation is priced through quote_service, which
+        # imports this module for the sender's standing.
+        from remitx_api.services.stokvel_reservations import reserved_zar
+
         windows = limit_windows(utcnow())
         sent = RemittanceRepository().sent_zar(user_id, windows)
-        # Stokvel contributions count toward the member's own limits (D8).
+        # Stokvel contributions count toward the member's own monthly limit
+        # (D8), never the daily one.
         contributed = StokvelContributionRepository().contributed_zar(user_id, windows)
 
         return KycStanding(
@@ -199,8 +225,9 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
             limit_percent=allowance.limit_percent,
             daily_limit_zar=allowance.daily_limit_zar,
             monthly_limit_zar=allowance.monthly_limit_zar,
-            daily_used_zar=sent.day_zar + contributed.day_zar,
-            monthly_used_zar=sent.month_zar + contributed.month_zar,
+            daily_used_zar=sent.day_zar,
+            monthly_used_zar=sent.month_zar + contributed,
+            monthly_reserved_zar=reserved_zar(user_id, windows),
         )
 
     def list_for_user(self, user_id: uuid.UUID) -> list[KycApplication]:

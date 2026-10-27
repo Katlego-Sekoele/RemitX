@@ -18,6 +18,13 @@ quote's rates and locked on the quote (`Quote.sender_amount_zar`).
 limits, and `require_can_send` is the one rule `create_quote` (early, so the
 sender hears it before committing) and `confirm_remittance` (the real gate,
 since two quotes can be issued against one allowance) both apply.
+
+Stokvel contributions (D8) meet the monthly limit only, never the daily one,
+and are reserved ahead: each unpaid round of a cycle the member is in, due
+this month or overdue, is held back from what their remittances may use
+(`services/stokvel_reservations.py`). A contribution is checked against the
+month without its reservation (`require_within_monthly_room`), since the
+reservation is there for it.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from remitx_api.errors.remittances import (
     LIMIT_MONTHLY,
     KycNotApprovedError,
     LimitExceededError,
+    LimitReservedForStokvelError,
 )
 from remitx_api.models.orm.account import CURRENCY_ZAR
 
@@ -88,6 +96,8 @@ def require_within_limits(
     The refusal names whichever leaves less, and the month on a tie, since a
     new day wouldn't help. For a send of `amount` in another `currency`, it
     also estimates what is left in that currency at the send's own rate.
+    When the month binds only because of the member's stokvel reservation
+    (the send would fit without it), the refusal says so.
     """
     daily = standing.daily_remaining_zar
     monthly = standing.monthly_remaining_zar
@@ -96,14 +106,41 @@ def require_within_limits(
     limit, remaining = (
         (LIMIT_MONTHLY, monthly) if monthly <= daily else (LIMIT_DAILY, daily)
     )
-    estimate = None
-    if currency != CURRENCY_ZAR:
-        # Rounded down, so sending the estimate itself would fit.
-        estimate = (
-            (remaining * amount / amount_zar).quantize(CENTS, rounding=ROUND_DOWN),
-            currency,
+    estimate = _estimate(remaining, amount_zar, amount=amount, currency=currency)
+    if limit == LIMIT_MONTHLY and amount_zar <= min(daily, standing.monthly_room_zar):
+        raise LimitReservedForStokvelError(
+            remaining, standing.monthly_reserved_zar, estimate=estimate
         )
     raise LimitExceededError(limit, remaining, estimate=estimate)
+
+
+def require_within_monthly_room(
+    standing: KycStanding, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> None:
+    """Refuse a stokvel contribution worth `amount_zar` in rand that doesn't
+    fit what is left of the month (D8). Contributions meet only the monthly
+    limit, and the reservation exists for them, so it is not held against
+    them: the room is the limit less what was used. The limit itself still
+    binds, so a member whose month is spent cannot contribute past it."""
+    room = standing.monthly_room_zar
+    if amount_zar <= room:
+        return
+    estimate = _estimate(room, amount_zar, amount=amount, currency=currency)
+    raise LimitExceededError(LIMIT_MONTHLY, room, estimate=estimate)
+
+
+def _estimate(
+    remaining: Decimal, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> tuple[Decimal, str] | None:
+    """What `remaining` rand is worth in `currency`, at the rate of a send of
+    `amount` worth `amount_zar`; None for rand itself. Rounded down, so
+    sending the estimate itself would fit."""
+    if currency == CURRENCY_ZAR:
+        return None
+    return (
+        (remaining * amount / amount_zar).quantize(CENTS, rounding=ROUND_DOWN),
+        currency,
+    )
 
 
 def require_can_send(

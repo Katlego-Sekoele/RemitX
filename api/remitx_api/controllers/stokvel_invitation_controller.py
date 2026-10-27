@@ -12,6 +12,7 @@ go through the lookups in `KycApplicationRepository.is_other_user_verified`
 and `StokvelMemberRepository.count_active`.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,6 +34,7 @@ from remitx_api.errors.stokvels import (
     InviteeCurrencyMismatchError,
     InviteeNotKycVerifiedError,
     KycNotApprovedToJoinStokvelError,
+    MonthlyLimitTooLowToJoinError,
     NotInviteeError,
     NotStokvelOrganiserError,
     StokvelCurrencyAccountMissingError,
@@ -58,6 +60,9 @@ from remitx_api.repositories.stokvel_invitation_repository import (
 from remitx_api.repositories.stokvel_member_repository import StokvelMemberRepository
 from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.user_repository import UserRepository
+from remitx_api.services.quote_service import contribution_cost_zar, token_rates
+
+logger = logging.getLogger(__name__)
 
 _PENDING_CONSTRAINT = "uq_stokvel_invitations_pending"
 # SQLite names no index in its error, only the columns of a unique one.
@@ -194,8 +199,19 @@ class StokvelInvitationController:
         A member who joins while the cycle is `forming` gets a row in it
         (R2-09), to choose their beneficiary and be placed in the payout
         order. During an active cycle they wait for the next one (#237).
+
+        One contribution, fee share included, must fit what is left of their
+        monthly limit (D8). Its dates are not known until the cycle starts,
+        so from then on the reservation holds each round's contribution in
+        its month (`services/stokvel_reservations.py`).
         """
         invitation = self._own_invitation(user_id, invitation_id)
+        found = self._stokvels.get_by_id(invitation.stokvel_id)
+        if found is None:
+            raise InvitationNotFoundError()
+        # Before the lock: a lookup may fetch a live rate and commit, which
+        # would release it. The limit check below prices from these.
+        rates = token_rates(found.currency)
         # Held until the commit, so two accepts cannot both pass the cap.
         # Nothing below may commit before the member is inserted.
         stokvel = self._stokvels.lock(invitation.stokvel_id)
@@ -203,7 +219,8 @@ class StokvelInvitationController:
             raise InvitationNotFoundError()
         if stokvel.deactivated_at is not None:
             raise StokvelDeactivatedError()
-        if not self._applications.get_standing(user_id).is_verified:
+        standing = self._applications.get_standing(user_id)
+        if not standing.is_verified:
             raise KycNotApprovedToJoinStokvelError()
         account = self._accounts.get_user_account(user_id, stokvel.currency)
         if account is None:
@@ -212,6 +229,23 @@ class StokvelInvitationController:
         member_count = self._members.count_active(stokvel.id)
         if member_count >= max_members:
             raise TooManyMembersError(max_members)
+        # Each round's payout currency is chosen later, so the fee share is
+        # the one without an FX margin: the least a contribution can cost.
+        one_contribution = contribution_cost_zar(
+            stokvel.contribution_amount,
+            rates,
+            member_count=member_count + 1,
+            payout_currency=stokvel.currency,
+        )
+        if one_contribution > standing.monthly_remaining_zar:
+            logger.info(
+                "accept: user %s refused joining stokvel %s (invitation %s): "
+                "monthly limit too low",
+                user_id,
+                stokvel.id,
+                invitation.id,
+            )
+            raise MonthlyLimitTooLowToJoinError()
 
         self._answer(invitation, user_id, StokvelInvitationStatus.ACCEPTED)
         member = self._members.add(

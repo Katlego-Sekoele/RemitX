@@ -78,3 +78,40 @@ class LimitExceededError(DomainError):
         self.limit = limit
         self.remaining = remaining
         self.estimate = estimate
+
+
+class LimitReservedForStokvelError(LimitExceededError):
+    """The send would fit the month, but not once the member's stokvel
+    contributions due this month are held back for them (D8). Told apart by
+    `code`, so the send screen can say why the limit is closer than the
+    member's own sends explain."""
+
+    code = "limit_reserved_for_stokvel"
+
+    def __init__(
+        self,
+        remaining: Decimal,
+        reserved: Decimal,
+        *,
+        estimate: tuple[Decimal, str] | None = None,
+    ) -> None:
+        held = _format_money(reserved, "ZAR")
+        if remaining > 0:
+            left = _format_money(remaining, "ZAR")
+            if estimate is not None:
+                left += f" (about {_format_money(*estimate)})"
+            detail = (
+                f"This would take you over your monthly limit: {held} of it is "
+                f"reserved for your stokvel contributions. You can send up to "
+                f"{left} this month."
+            )
+        else:
+            detail = (
+                "You're over your monthly limit: the rest of it is reserved "
+                f"for your stokvel contributions ({held})."
+            )
+        DomainError.__init__(self, detail)
+        self.limit = LIMIT_MONTHLY
+        self.remaining = remaining
+        self.estimate = estimate
+        self.reserved = reserved
