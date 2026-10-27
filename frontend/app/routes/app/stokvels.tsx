@@ -60,6 +60,7 @@ export function meta(): Route.MetaDescriptors {
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
+  const loaded = list.data
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
@@ -76,26 +77,27 @@ export default function StokvelsPage() {
           </Button>
         </div>
 
-        {list.isPending ? (
-          <StokvelListSkeleton />
-        ) : list.isError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Couldn&apos;t load your stokvels</AlertTitle>
-            <AlertDescription>{errorMessage(list.error)}</AlertDescription>
-            <AlertAction>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={list.isFetching}
-                onClick={() => list.refetch()}
-              >
-                <ArrowClockwiseIcon data-icon="inline-start" />
-                Retry
-              </Button>
-            </AlertAction>
-          </Alert>
-        ) : list.data.stokvels.length === 0 &&
-          list.data.invitations.length === 0 ? (
+        {loaded == null ? (
+          list.isError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Couldn&apos;t load your stokvels</AlertTitle>
+              <AlertDescription>{errorMessage(list.error)}</AlertDescription>
+              <AlertAction>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={list.isFetching}
+                  onClick={() => list.refetch()}
+                >
+                  <ArrowClockwiseIcon data-icon="inline-start" />
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
+          ) : (
+            <StokvelListSkeleton />
+          )
+        ) : loaded.stokvels.length === 0 && loaded.invitations.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -118,12 +120,12 @@ export default function StokvelsPage() {
           </Empty>
         ) : (
           <>
-            {list.data.invitations.length > 0 ? (
+            {loaded.invitations.length > 0 ? (
               <section className="flex flex-col gap-3">
                 <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   Invitations
                 </h2>
-                {list.data.invitations.map((invitation) => (
+                {loaded.invitations.map((invitation) => (
                   <InvitationCard
                     key={invitation.invitation_id}
                     invitation={invitation}
@@ -136,7 +138,7 @@ export default function StokvelsPage() {
                 Your stokvels
               </h2>
               <div className="grid gap-3 md:grid-cols-2">
-                {list.data.stokvels.map((stokvel) => (
+                {loaded.stokvels.map((stokvel) => (
                   <StokvelCard key={stokvel.stokvel_id} stokvel={stokvel} />
                 ))}
               </div>

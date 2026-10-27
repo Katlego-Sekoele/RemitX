@@ -5,6 +5,7 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
 
 import { sdk, type AdminStokvelRoundRead } from "~/client"
+import { stokvelPollInterval } from "~/lib/stokvels"
 
 export type { AdminStokvelRoundRead }
 
@@ -77,6 +78,7 @@ export const stokvelAdminQueries = {
         })
         return data
       },
+      refetchInterval: stokvelPollInterval,
     }),
 }
 

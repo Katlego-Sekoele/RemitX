@@ -80,37 +80,24 @@ export default function StokvelPage() {
   const detail = useQuery({
     ...stokvelQueries.detail(stokvelId),
     enabled: Boolean(stokvelId),
-    // A contribution confirms on chain a few seconds after it is sent.
-    refetchInterval: (query) => {
-      if (query.state.status === "error") return false
-      const data = query.state.data
-      if (!data) return false
-      const inflight = data.contributions.some(
-        (contribution) =>
-          contribution.member_id === data.my_member_id &&
-          (contribution.status === "pending" ||
-            contribution.status === "processing")
-      )
-      return inflight ? 1500 : false
-    },
   })
   const accounts = useQuery(api.accounts.getAccounts())
 
   const parents = [{ label: "Stokvels", href: stokvelsPath() }]
 
-  if (detail.isPending) {
-    return (
-      <AppPageFrame module={ROUTE_MODULE} title="Stokvel" parents={parents}>
-        <div className="flex flex-col gap-4">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-56 w-full" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      </AppPageFrame>
-    )
-  }
-
-  if (detail.isError) {
+  // A later poll can fail while the last read is still on screen. Keep it.
+  if (detail.data == null) {
+    if (!detail.isError) {
+      return (
+        <AppPageFrame module={ROUTE_MODULE} title="Stokvel" parents={parents}>
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-56 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+        </AppPageFrame>
+      )
+    }
     return (
       <AppPageFrame module={ROUTE_MODULE} title="Stokvel" parents={parents}>
         <Empty className="border">

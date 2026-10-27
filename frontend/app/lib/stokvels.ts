@@ -90,6 +90,42 @@ export const RemittanceStatus = {
 export type RemittanceStatus =
   (typeof RemittanceStatus)[keyof typeof RemittanceStatus]
 
+/** How often a stokvel screen asks again while it is open. */
+export const STOKVEL_POLL_INTERVAL_MS = 3_000
+
+/**
+ * A contribution confirms on chain a few seconds after it is sent, so the
+ * member's own pending or processing row is asked about sooner.
+ */
+export const STOKVEL_INFLIGHT_POLL_INTERVAL_MS = 1_500
+
+/** Keep the last successful read. Stop only when there is nothing to show. */
+export function stokvelPollInterval(query: {
+  state: { data?: unknown }
+}): number | false {
+  return query.state.data == null ? false : STOKVEL_POLL_INTERVAL_MS
+}
+
+/** Same as `stokvelPollInterval`, faster while the caller's own pay is in flight. */
+export function stokvelDetailPollInterval(query: {
+  state: {
+    data?: {
+      my_member_id: string
+      contributions: { member_id: string; status: string }[]
+    }
+  }
+}): number | false {
+  const data = query.state.data
+  if (data == null) return false
+  const inflight = data.contributions.some(
+    (contribution) =>
+      contribution.member_id === data.my_member_id &&
+      (contribution.status === ContributionStatus.pending ||
+        contribution.status === ContributionStatus.processing)
+  )
+  return inflight ? STOKVEL_INFLIGHT_POLL_INTERVAL_MS : STOKVEL_POLL_INTERVAL_MS
+}
+
 export const stokvelQueries = {
   /** `GET /stokvels`. */
   list: () =>
@@ -102,6 +138,7 @@ export const stokvelQueries = {
         })
         return data
       },
+      refetchInterval: stokvelPollInterval,
     }),
   /** `GET /stokvels/{id}` (#236). */
   detail: (stokvelId: string) =>
@@ -115,6 +152,7 @@ export const stokvelQueries = {
         })
         return data
       },
+      refetchInterval: stokvelDetailPollInterval,
     }),
 }
 
