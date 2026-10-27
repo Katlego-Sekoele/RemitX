@@ -12,7 +12,85 @@ permissions:
   pull-requests: read
 
 jobs:
+  # Each check runs only when a path it covers changed. A manual run
+  # (workflow_dispatch) executes all of them. Deploy calls this workflow, and
+  # github.event_name there is still the caller's event, so the same filters
+  # apply on the way to a rollout.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.resolve.outputs.api }}
+      frontend: ${{ steps.resolve.outputs.frontend }}
+      contracts: ${{ steps.resolve.outputs.contracts }}
+      seeder: ${{ steps.resolve.outputs.seeder }}
+      deploy_scripts: ${{ steps.resolve.outputs.deploy_scripts }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            api:
+              - "api/**"
+              # The worker ABI is a copy of this file; an API test fails if they differ.
+              - "contracts/abi/**"
+              - ".github/workflows/ci.yml"
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/ci.yml"
+            contracts:
+              - "contracts/**"
+              - ".github/workflows/ci.yml"
+            seeder:
+              # The seeder drives the real backend, so an API change can break it.
+              - "api/**"
+              - "tools/seeder/**"
+              - "tools/loadtest/**"
+              - ".github/workflows/ci.yml"
+            deploy_scripts:
+              - "deploy/**"
+              - "scripts/**"
+              - ".github/scripts/**"
+              - ".github/workflows/ci.yml"
+              - ".github/workflows/deploy.yml"
+              - "infra/Makefile"
+
+      - name: Resolve which checks run
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          API: ${{ steps.filter.outputs.api }}
+          FRONTEND: ${{ steps.filter.outputs.frontend }}
+          CONTRACTS: ${{ steps.filter.outputs.contracts }}
+          SEEDER: ${{ steps.filter.outputs.seeder }}
+          DEPLOY_SCRIPTS: ${{ steps.filter.outputs.deploy_scripts }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            api=true
+            frontend=true
+            contracts=true
+            seeder=true
+            deploy_scripts=true
+          else
+            api="$API"
+            frontend="$FRONTEND"
+            contracts="$CONTRACTS"
+            seeder="$SEEDER"
+            deploy_scripts="$DEPLOY_SCRIPTS"
+          fi
+          {
+            echo "api=$api"
+            echo "frontend=$frontend"
+            echo "contracts=$contracts"
+            echo "seeder=$seeder"
+            echo "deploy_scripts=$deploy_scripts"
+          } >> "$GITHUB_OUTPUT"
+
   api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -82,6 +160,8 @@ jobs:
           alembic check
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,6 +182,8 @@ jobs:
         run: npm run lint
 
   contracts:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -127,6 +209,8 @@ jobs:
   # run weeks later. CI never seeds a real environment: Clerk, storage and the
   # EVM chain are faked, and the database is thrown away.
   seeder:
+    needs: changes
+    if: needs.changes.outputs.seeder == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -173,6 +257,8 @@ jobs:
           pytest
 
   deploy-scripts:
+    needs: changes
+    if: needs.changes.outputs.deploy_scripts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
