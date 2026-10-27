@@ -1,18 +1,17 @@
-"""Paying a released stokvel pool out to the beneficiary (R3-05, #242; doc
-section 4).
+"""Paying a released stokvel pool out to the beneficiary.
 
-Once a round's release is recorded (R3-04, `stokvel_ledger.record_pool_release`),
+Once a round's release is recorded (`stokvel_ledger.record_pool_release`),
 the pool is in the Treasury Wallet. `stokvel.settle_payout(payout_id)` turns
-it into a normal remittance (D6), with the stokvel as the quote's sender and
+it into a normal remittance, with the stokvel as the quote's sender and
 the scheduled member's chosen Payout beneficiary as the recipient:
 
-- one quote, priced by `quote_service.price_stokvel_payout`: the full pool,
-  no fee or margin (the members paid the fee on top of their contributions),
-  and no sending limits (D8). It is accepted at once (`USED`): there is no
-  customer to accept it
+- one quote, priced by `quote_service.price_stokvel_payout`, containing the
+  full amount released from the pool, no fee or margin (the members paid the
+  fee on top of their contributions), and no sending limits. It is accepted
+  at once (`USED`) as there is no customer to accept it
 - its pending legs, sharing the quote's `quote_id` as settlement expects. The
   pool is paid from the Treasury Wallet, where the release put it, not back
-  through `STOKVEL` (decided 2026-10-19, #241):
+  through `STOKVEL`:
 
       Treasury -> beneficiary token         remittance (the remittance's leg)
       beneficiary token -> Treasury         remittance
@@ -24,13 +23,15 @@ the scheduled member's chosen Payout beneficiary as the recipient:
 - one remittance, and the payout's `remittance_status` `pending ->
   processing` with its `quote_id` and `remittance_id`, in the same commit
 
-After that commit it hands the remittance to the existing settlement chain
-(R3-06, #243): `settle_remittance` -> `burn_treasury_tokens` ->
-`confirm_treasury_burn`, the chain a user's remittance takes, with its
-guards against a second burn or credit. A lost hand-off leaves the legs
-fully pending, which the reclaim sweep queues again. `confirm_treasury_burn`
-finishes the payout through `record_settlement`, in the commit that settles
-or fails its legs, so the payout can never disagree with them.
+It hands the remittance to the existing settlement chain:
+
+    `settle_remittance` -> `burn_treasury_tokens` -> `confirm_treasury_burn`
+
+the chain a user's remittance takes, with its guards against a second burn or
+credit. A lost hand-off leaves the legs fully pending, which the reclaim sweep
+queues again. `confirm_treasury_burn` finishes the payout through
+`record_settlement`, in the commit that settles or fails its legs, so the
+payout can never disagree with them.
 
 Queued by `queue_released_payouts`, which the event sync runs at the end of
 every run, for every released payout not yet started. Repeating it is
