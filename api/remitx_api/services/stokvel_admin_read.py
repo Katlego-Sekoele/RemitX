@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import and_, func, select
 from web3 import Web3
 
 from remitx_api.clock import utcnow
@@ -16,8 +16,8 @@ from remitx_api.extensions import db
 from remitx_api.models.orm.audit_log import (
     STOKVEL_CONTRACT_SUBJECT_ID,
     AuditAction,
-    AuditSubject,
     AuditLog,
+    AuditSubject,
 )
 from remitx_api.models.orm.platform_account_seed import CURRENCY_TOKEN, TYPE_EVM_WALLET
 from remitx_api.models.orm.stokvel import Stokvel
@@ -119,9 +119,7 @@ def read_contract_status() -> StokvelContractStatusView:
     if address:
         checksum = Web3.to_checksum_address(address)
     paused = is_paused() if address else False
-    paused_at, paused_reason = (
-        _latest_pause_audit() if paused else (None, None)
-    )
+    paused_at, paused_reason = _latest_pause_audit() if paused else (None, None)
     return StokvelContractStatusView(
         address=checksum,
         network=EVM_NETWORK_LABEL,
@@ -279,15 +277,11 @@ def _treasury_token_balance(config: Config) -> Decimal:
     if not treasury or not token:
         return Decimal("0")
     try:
-        w3 = Web3(
-            Web3.HTTPProvider(config.EVM_RPC_URL, request_kwargs={"timeout": 10})
-        )
+        w3 = Web3(Web3.HTTPProvider(config.EVM_RPC_URL, request_kwargs={"timeout": 10}))
         contract = w3.eth.contract(
             address=Web3.to_checksum_address(token), abi=_BALANCE_OF_ABI
         )
-        raw = contract.functions.balanceOf(
-            Web3.to_checksum_address(treasury)
-        ).call()
+        raw = contract.functions.balanceOf(Web3.to_checksum_address(treasury)).call()
         scale = Decimal(10) ** config.UCTUSD_EVM_DECIMALS
         return Decimal(raw) / scale
     except Exception:

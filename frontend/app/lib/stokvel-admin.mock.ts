@@ -21,6 +21,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now - DAY).toISOString(),
       release_status: "pending",
       release_tx_hash: null,
+      manual_release_allowed: true,
     },
     {
       stokvel_id: "stk_4d10",
@@ -33,6 +34,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now - 2 * DAY).toISOString(),
       release_status: "pending",
       release_tx_hash: null,
+      manual_release_allowed: false,
     },
     {
       stokvel_id: "stk_9a33",
@@ -45,6 +47,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now + 3 * DAY).toISOString(),
       release_status: "pending",
       release_tx_hash: null,
+      manual_release_allowed: false,
     },
     {
       stokvel_id: "stk_6b70",
@@ -58,6 +61,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now - 3 * DAY).toISOString(),
       release_status: "failed",
       release_tx_hash: null,
+      manual_release_allowed: false,
     },
     {
       stokvel_id: "stk_c5e1",
@@ -71,6 +75,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now - 60 * 60 * 1000).toISOString(),
       release_status: "processing",
       release_tx_hash: null,
+      manual_release_allowed: false,
     },
     {
       stokvel_id: "stk_02bd",
@@ -83,6 +88,7 @@ function initialRounds(now = Date.now()): AdminStokvelRoundRead[] {
       payout_time: new Date(now - 30 * DAY).toISOString(),
       release_status: "released",
       release_tx_hash: `0x${"5e".repeat(32)}`,
+      manual_release_allowed: false,
     },
   ]
 }
@@ -140,6 +146,7 @@ export async function finaliseRoundMock(
     )
   }
   row.release_status = "released"
+  row.manual_release_allowed = false
   // A made-up but valid 32-byte hash: the id's characters as hex.
   row.release_tx_hash = `0x${[...row.stokvel_id]
     .map((char) => char.charCodeAt(0).toString(16))
