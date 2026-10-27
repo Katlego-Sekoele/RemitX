@@ -366,7 +366,9 @@ All stokvel tasks are registered as `stokvel.<name>` in `api/remitx_worker/stokv
 | `POST /stokvels/{id}/members/me/continuation` | Member | Continue or leave after a cycle ends. **Built (R2-15, #237)** |
 | `POST /stokvels/{id}/contributions` | Member | Contribute to the current round. **Built (R2-11, #233).** No body: the API takes the open round (the first round without a contribution from every member, the contract's `openRound` rule) and the stokvel's fixed amount, charges the member at the live rate, and answers 201 with the `pending` contribution (`StokvelContributionRead`: `contribution_id`, `stokvel_id`, `cycle_number`, `round`, `status`, `currency`, `amount_token`, `amount_fiat`, `fee_amount` (the member's fee share, D6), `amount_zar`, `created_at`). The member's account must cover `amount_fiat` + `fee_amount`. Refusals in section 6 |
 | `GET /stokvels/{id}` | Member | Member screen data. **Built (R2-14, #236)** |
+| `GET /admin/stokvel-contract` | `stokvel:contract:pause` | **Built.** Vault address, network label, on-chain `paused`, `paused_at` and `paused_reason` from the latest pause audit entry, treasury UCTUSD balance |
 | `POST /admin/stokvel-contract/pause` and `/unpause` | Administrator | Emergency stop and resume. Pause takes a required `reason` in the request body |
+| `GET /admin/stokvels/rounds` | `stokvel:round:finalise` | **Built.** Each active registered cycle's next unreleased round (paid counts, payout time, release status) |
 | `POST /admin/stokvels/{id}/rounds/{n}/finalise` | `stokvel:round:finalise` (compliance officer) | **Built (R3-10, #247).** Manual fallback (P5). See below |
 | `POST /admin/stokvels/{id}/cancel` | Administrator | Cancel. **Not in v1** (P4). Takes a required `reason` in the request body |
 
@@ -509,7 +511,7 @@ A payout left `processing` or `failed` answers 409 `round_release_not_pending` a
 
 A second call while the chain still says the round is ready, and the payout is still `pending`, queues the task again. That does not release twice: `release_pool` claims the payout once, and `record_pool_release` books the leg once (section 4). Once the chain says the round is released, the route answers 409 and queues nothing.
 
-The admin rounds page still uses its mock for the list and the button. No admin route lists rounds yet.
+The admin contract page calls `GET /admin/stokvel-contract` and the pause and unpause POSTs. The admin rounds page calls `GET /admin/stokvels/rounds` and the finalise POST (client: `api.admin.stokvel_contract.*`, `api.admin.stokvels.*`).
 
 | Status | When |
 |---|---|
@@ -777,7 +779,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | Worker tasks | In progress | #234, #235, #232, #241, #242, #243, #248 | Section 4. Built: `stokvel.submit_contribution`, `stokvel.confirm_contribution` (#234), `stokvel.sync_events` (#235). In review: `stokvel.start_cycle`, `stokvel.register_started_cycles` (#232); `stokvel.release_pool` and release recording (#241); `stokvel.settle_payout`, the payout remittance (#242); payout settlement through the existing burn chain (#243). In review: scheduled release, `stokvel.release_due_rounds` (#248) |
 | API routes | In progress | #229, #230, #231, #233, #236, #297, #247 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cycles` (#232); `POST /stokvels/{id}/contributions` (#233); invitations (#230); revoking an invitation (#297); payout order and beneficiary (#231, PR #347); `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247) |
 | Stokvel audit log (admin actions) | Done | #249, #244, #247 | Section 5. Actions and subjects on the existing audit log. Pause (R3-07) and manual finalise (R3-10) call `record_audit` |
-| Frontend screens | In progress | #251, #258 | Routes and nav (#251). Member list and detail call the API (#258). Admin contract and rounds pages stay on mocks: no contract read, and no rounds list (#247) |
+| Frontend screens | In progress | #251, #258 | Routes and nav (#251). Member and admin stokvel screens call the API (#258, admin reads wired 2026-10-27) |
 | TrustMeBank deposits and withdrawals | Not started | #274, #275 (were #202, #203) | Required in this build (optional in the brief) |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
 | Seeder and load test for EVM | Done | #267 (R6-02) | Builds on #278 |
@@ -939,7 +941,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvels.test.ts` | Helper tests. Mock-scenario tests removed with the mock (#258) | #251, #258 |
 | `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list (`GET /stokvels`) and detail (`GET /stokvels/{id}`) | #251, #258 |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
-| `frontend/app/lib/stokvel-contract.ts`, `stokvel-contract.mock.ts`, `stokvel-contract.test.ts` | Admin contract page. Pause and unpause exist (#244) and return only `tx_hash`, so the page still uses the mock | #256 |
+| `frontend/app/lib/stokvel-contract.ts`, `stokvel-contract.mock.ts`, `stokvel-contract.test.ts` | Admin contract page wired to `GET /admin/stokvel-contract` and pause/unpause; mock kept for unit tests | #256 |
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite; on Postgres (`postgres` lane) an exclusive transaction-level advisory lock, held only inside the block and released when the send raises | #278 |
 | `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
 | `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07); read one stokvel (R2-14, #236) | #229 |
@@ -978,7 +980,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvel-schedule.ts`, `stokvel-schedule.test.ts` | Round schedule from a cadence, first payout and pay-by days, in the start-cycle body's shape, checked like the contract's `_validateSchedule` | #255 |
 | `frontend/app/components/stokvels/payout-beneficiary-card.tsx`, `cycle-setup.tsx` | Member's payout beneficiary choice (reuses `AddBeneficiaryForm`); Organiser's payout order, schedule with pay-by dates, readiness list and Start cycle | #255 |
 | `frontend/app/components/stokvels/pot-ring.tsx`, `contribution-panel.tsx`, `payout-status.tsx`, `round-schedule.tsx` | Member screen pieces: the pot, Pay now with the confirm sheet and refusals, the payout tracker, payout order and round history (also the closed cycle's, while the next forms) | #254, #237 |
-| `frontend/app/lib/stokvel-admin.ts`, `stokvel-admin.mock.ts`, `stokvel-admin.test.ts`, `frontend/app/routes/admin/stokvel-rounds.tsx`, `frontend/app/components/admin/stokvel-finalise-button.tsx` | Admin rounds list and manual release: readiness hint and refusal wording. The list and the button stay on the mock until a rounds list route; the finalise API is #247. The sidebar item needs `stokvel:round:finalise` | #260, #247 |
+| `frontend/app/lib/stokvel-admin.ts`, `stokvel-admin.mock.ts`, `stokvel-admin.test.ts`, `frontend/app/routes/admin/stokvel-rounds.tsx`, `frontend/app/components/admin/stokvel-finalise-button.tsx` | Admin rounds list and manual release wired to `GET /admin/stokvels/rounds` and finalise; mock kept for unit tests. Sidebar needs `stokvel:round:finalise` | #260, #247 |
 | `tools/seeder/remitx_seeder/stories/stokvel.py` | The stokvel demo story: three named members, verified and funded, a stokvel ready to start and a second with an invitation pending | #268 |
 | `tools/seeder/remitx_seeder/stories/stokvel_plan.py` | Who the demo's members are and which stokvels they are in. Plain data with no backend import, so scenario validation in the seeder UI stays free of `remitx_api` | #268 |
 | `tools/seeder/scenarios/demo.json` | The `demo` scenario: Reset, then seed it, to prepare the demo | #268 |

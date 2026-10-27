@@ -28,8 +28,14 @@ from remitx_api.models.orm.audit_log import (
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
 from remitx_api.models.schemas.stokvel_contract import (
+    AdminStokvelRoundRead,
     StokvelContractActionResponse,
+    StokvelContractRead,
     StokvelRoundFinaliseResponse,
+)
+from remitx_api.services.stokvel_admin_read import (
+    list_admin_rounds,
+    read_contract_status,
 )
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_payout_repository import StokvelPayoutRepository
@@ -59,6 +65,34 @@ _CHAIN_MISMATCH = frozenset(
 
 
 class StokvelAdminController:
+    def get_contract(self) -> StokvelContractRead:
+        view = read_contract_status()
+        return StokvelContractRead(
+            address=view.address,
+            network=view.network,
+            paused=view.paused,
+            paused_at=view.paused_at,
+            paused_reason=view.paused_reason,
+            treasury_token_balance=view.treasury_token_balance,
+        )
+
+    def list_rounds(self) -> list[AdminStokvelRoundRead]:
+        return [
+            AdminStokvelRoundRead(
+                stokvel_id=row.stokvel_id,
+                stokvel_name=row.stokvel_name,
+                round=row.round,
+                total_rounds=row.total_rounds,
+                recipient_name=row.recipient_name,
+                paid_count=row.paid_count,
+                member_count=row.member_count,
+                payout_time=row.payout_time,
+                release_status=row.release_status,
+                release_tx_hash=row.release_tx_hash,
+            )
+            for row in list_admin_rounds()
+        ]
+
     def pause(
         self, actor_user_id: uuid.UUID, reason: str
     ) -> StokvelContractActionResponse:

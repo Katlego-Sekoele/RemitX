@@ -3,8 +3,8 @@
  * reloads. */
 
 import type {
+  StokvelContractPauseRequest,
   StokvelContractRead,
-  StokvelPauseRequest,
 } from "~/lib/stokvel-contract"
 
 const INITIAL: StokvelContractRead = {
@@ -39,7 +39,7 @@ export function getStokvelContractMock(): Promise<StokvelContractRead> {
 }
 
 export async function pauseStokvelContractMock(
-  body: StokvelPauseRequest
+  body: StokvelContractPauseRequest
 ): Promise<StokvelContractRead> {
   await settle(null)
   if (!body.reason.trim()) {

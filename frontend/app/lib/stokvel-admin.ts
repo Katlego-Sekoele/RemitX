@@ -1,37 +1,13 @@
 /**
- * The admin's manual release of a stokvel round (R4-11, #260), the fallback
- * when the automatic release fails (D5, P5: approved by product, 19 Oct).
- * The route is R3-10 (#247):
- * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which queues the release
- * and writes `stokvel.round.finalised_manually` to the audit log. No admin
- * route lists stokvels and their rounds yet, so the page still reads
- * `stokvel-admin.mock.ts` for both.
+ * Admin manual release of a stokvel round (R4-11, #260; wired R4-09).
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
 
-import {
-  finaliseRoundMock,
-  listAdminRoundsMock,
-} from "~/lib/stokvel-admin.mock"
+import { sdk, type AdminStokvelRoundRead } from "~/client"
 
-/** One round as the admin page lists it. Assumed until an admin route
- * lists rounds; no route returns this shape yet. */
-export type AdminStokvelRoundRead = {
-  stokvel_id: string
-  stokvel_name: string
-  /** 0-based, like the contract. */
-  round: number
-  total_rounds: number
-  recipient_name: string
-  paid_count: number
-  member_count: number
-  payout_time: string
-  release_status: "pending" | "processing" | "released" | "failed" | null
-  release_tx_hash: string | null
-}
+export type { AdminStokvelRoundRead }
 
-/** Doc §6 codes the finalise route answers with, and what the admin sees. */
 export const FINALISE_REFUSALS = {
   round_not_finalisable: "This round can't be paid out yet.",
   round_already_finalised: "This round has already been paid out.",
@@ -44,8 +20,6 @@ export const FINALISE_REFUSALS = {
 
 export type FinaliseRefusalCode = keyof typeof FINALISE_REFUSALS
 
-/** The admin-facing message for a failed finalise: the §6 wording for a
- * known `code`, otherwise the API's own `detail`. */
 export function finaliseRefusalMessage(error: unknown): string {
   if (error instanceof Error && "body" in error) {
     const body = error.body
@@ -60,12 +34,6 @@ export function finaliseRefusalMessage(error: unknown): string {
   return "Something went wrong. Please try again."
 }
 
-/**
- * Why a round can't be released yet, or null when it looks ready: every
- * member has paid and its payout time has passed (D12). Only a hint: the
- * contract decides, and the button still lets the admin try, which is how
- * the demo shows an early release being refused.
- */
 export function finaliseHint(
   round: Pick<
     AdminStokvelRoundRead,
@@ -74,7 +42,6 @@ export function finaliseHint(
   now: Date = new Date()
 ): string | null {
   if (round.release_status === "released") return "Already paid out."
-  // The worker's own release is in flight: a second one must not be sent.
   if (round.release_status === "processing") return "Release in progress."
   const waiting = round.member_count - round.paid_count
   if (waiting > 0) {
@@ -86,12 +53,6 @@ export function finaliseHint(
   return null
 }
 
-/**
- * Whether the page offers Release payout for a round: not once it has been
- * released, and not while the worker's release is in flight. A failed
- * release keeps the button on this mock. The live route refuses both
- * `processing` and `failed` with 409 `round_release_not_pending`.
- */
 export function canReleaseByHand(
   round: Pick<AdminStokvelRoundRead, "release_status">
 ): boolean {
@@ -106,15 +67,28 @@ export const stokvelAdminQueries = {
   rounds: () =>
     queryOptions({
       queryKey: ROUNDS_KEY,
-      queryFn: () => listAdminRoundsMock(),
+      queryFn: async ({ signal }) => {
+        const { data } = await sdk.admin.stokvels.listAdminStokvelRounds({
+          signal,
+          throwOnError: true,
+        })
+        return data
+      },
     }),
 }
 
 export const stokvelAdminMutations = {
-  /** `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247). Still the mock. */
   finalise: () => ({
-    mutationFn: (round: { stokvel_id: string; round: number }) =>
-      finaliseRoundMock(round.stokvel_id, round.round),
+    mutationFn: async (round: { stokvel_id: string; round: number }) => {
+      const { data } = await sdk.admin.stokvels.finaliseStokvelRound({
+        path: {
+          stokvel_id: round.stokvel_id,
+          round: round.round,
+        },
+        throwOnError: true,
+      })
+      return data
+    },
   }),
 }
 

@@ -1,9 +1,8 @@
 /** Stokvel screen data and helpers (R4-02, #251; wired in R4-09, #258).
  *
  * Member screens use the generated client (`~/client`) and its types.
- * `GET /stokvels/{id}` is `stokvelQueries.detail`. The admin contract page
- * and the admin rounds page stay on their own mocks: pause and unpause
- * return only a transaction hash, and there is no rounds list (#247).
+ * `GET /stokvels/{id}` is `stokvelQueries.detail`. Admin stokvel pages use
+ * `~/lib/stokvel-contract` and `~/lib/stokvel-admin`.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"

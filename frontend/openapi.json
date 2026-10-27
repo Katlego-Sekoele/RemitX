@@ -290,6 +290,93 @@
         "title": "AdminRoleRead",
         "type": "object"
       },
+      "AdminStokvelRoundRead": {
+        "description": "One round of one stokvel's open cycle, for the admin rounds list.",
+        "properties": {
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "paid_count": {
+            "title": "Paid Count",
+            "type": "integer"
+          },
+          "payout_time": {
+            "title": "Payout Time",
+            "type": "string"
+          },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Name"
+          },
+          "release_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "processing",
+                  "released",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Status"
+          },
+          "release_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Tx Hash"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          },
+          "stokvel_name": {
+            "title": "Stokvel Name",
+            "type": "string"
+          },
+          "total_rounds": {
+            "title": "Total Rounds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "stokvel_name",
+          "round",
+          "total_rounds",
+          "recipient_name",
+          "paid_count",
+          "member_count",
+          "payout_time",
+          "release_status",
+          "release_tx_hash"
+        ],
+        "title": "AdminStokvelRoundRead",
+        "type": "object"
+      },
       "ApproveDepositRequest": {
         "description": "The customer's account reference, for example ``sipho1-zar``.\n\nIt must name an account in the deposit's currency: a ZAR deposit lands\non a ZAR account, never on a USD or token one.",
         "properties": {
@@ -5188,6 +5275,59 @@
         "title": "StokvelContractPauseRequest",
         "type": "object"
       },
+      "StokvelContractRead": {
+        "description": "The shared vault as the admin contract page shows it.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "network": {
+            "title": "Network",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "paused_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Reason"
+          },
+          "treasury_token_balance": {
+            "title": "Treasury Token Balance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "network",
+          "paused",
+          "paused_at",
+          "paused_reason",
+          "treasury_token_balance"
+        ],
+        "title": "StokvelContractRead",
+        "type": "object"
+      },
       "StokvelContributionRead": {
         "description": "A contribution just recorded. It is `pending` until the worker has\nsent `contribute` on-chain and it is mined; then `confirmed`, or `failed`\nif nothing landed (the member may then pay the round again).",
         "properties": {
@@ -9854,6 +9994,63 @@
         ]
       }
     },
+    "/admin/stokvel-contract": {
+      "get": {
+        "description": "The vault address, pause state (from chain plus the latest pause audit\nentry), and treasury UCTUSD balance. Needs ``stokvel:contract:pause``.",
+        "operationId": "get_stokvel_contract",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContractRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read the shared stokvel vault",
+        "tags": [
+          "admin.stokvel_contract"
+        ]
+      }
+    },
     "/admin/stokvel-contract/pause": {
       "post": {
         "description": "Sends `pause()` on the vault and writes `stokvel.contract.paused` to the\naudit log. Needs ``stokvel:contract:pause``.",
@@ -10005,6 +10202,57 @@
         "summary": "Resume every stokvel on the contract",
         "tags": [
           "admin.stokvel_contract"
+        ]
+      }
+    },
+    "/admin/stokvels/rounds": {
+      "get": {
+        "description": "Each active cycle's next unreleased round: paid counts, payout time and\nrelease status. Needs ``stokvel:round:finalise``.",
+        "operationId": "list_admin_stokvel_rounds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminStokvelRoundRead"
+                  },
+                  "title": "Response List Admin Stokvel Rounds",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List stokvel rounds for manual release",
+        "tags": [
+          "admin.stokvels"
         ]
       }
     },

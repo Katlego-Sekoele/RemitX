@@ -42,7 +42,7 @@ export function StokvelFinaliseButton({
       setOpen(false)
       await invalidateAdminRounds(queryClient)
       toast.success(
-        `${round.stokvel_name}, round ${round.round + 1}: payout released`
+        `${round.stokvel_name}, round ${round.round + 1}: release queued`
       )
     },
   })
