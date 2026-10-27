@@ -43,6 +43,7 @@ from remitx_api.models.orm.stokvel_contribution import (
     StokvelContribution,
     StokvelContributionStatus,
 )
+from remitx_api.models.orm.stokvel_cover import StokvelCover
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_held_event import StokvelHeldEvent
@@ -101,6 +102,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "Stokvel",
+    "StokvelCover",
     "StokvelContribution",
     "StokvelContributionStatus",
     "StokvelCycle",

@@ -366,6 +366,7 @@ All stokvel tasks are registered as `stokvel.<name>` in `api/remitx_worker/stokv
 | `POST /stokvels/{id}/members/me/continuation` | Member | Continue or leave after a cycle ends. **Built (R2-15, #237)** |
 | `POST /stokvels/{id}/contributions` | Member | Contribute to the current round. **Built (R2-11, #233).** No body: the API takes the open round (the first round without a contribution from every member, the contract's `openRound` rule) and the stokvel's fixed amount, charges the member at the live rate, and answers 201 with the `pending` contribution (`StokvelContributionRead`: `contribution_id`, `stokvel_id`, `cycle_number`, `round`, `status`, `currency`, `amount_token`, `amount_fiat`, `fee_amount` (the member's fee share, D6), `amount_zar`, `created_at`). The member's account must cover `amount_fiat` + `fee_amount`. Refusals in section 6 |
 | `GET /stokvels/{id}` | Member | Member screen data. **Built (R2-14, #236)** |
+| `POST /stokvels/{id}/cover` | Member | Set the stokvel's cover photo. **Built.** The body is the file (JPEG, PNG or WebP, at most 5 MB). Any current member may replace it |
 | `GET /admin/stokvel-contract` | `stokvel:contract:pause` | **Built.** Vault address, network label, on-chain `paused`, `paused_at` and `paused_reason` from the latest pause audit entry, treasury UCTUSD balance |
 | `POST /admin/stokvel-contract/pause` and `/unpause` | Administrator | Emergency stop and resume. Pause takes a required `reason` in the request body |
 | `GET /admin/stokvels/rounds` | `stokvel:round:finalise` | **Built.** Each active registered cycle's next unreleased round (paid counts, payout time, release status) |
@@ -395,7 +396,7 @@ In one transaction: the stokvel, its `STOKVEL` ledger account (section 3) and th
 
 **`GET /stokvels`** → `200 StokvelListRead`: `{stokvels, invitations}`, each newest first.
 
-- `stokvels`: those the caller is a current member of (left ones are not listed). `StokvelRead`: `stokvel_id`, `name`, `currency`, `contribution_amount` (UCTUSD, 8 dp string), `is_organiser`, `member_count` (current members), `max_members` (`MAX_STOKVEL_MEMBERS`), `created_at`, `deactivated_at`.
+- `stokvels`: those the caller is a current member of (left ones are not listed). `StokvelRead`: `stokvel_id`, `name`, `currency`, `contribution_amount` (UCTUSD, 8 dp string), `is_organiser`, `member_count` (current members), `max_members` (`MAX_STOKVEL_MEMBERS`), `created_at`, `deactivated_at`, `cover_url` (a short-lived read URL for the cover photo, or null).
 - `invitations`: the caller's pending ones, leaving out invitations to a deactivated stokvel (they cannot be accepted; R2-08). `StokvelInvitationRead`: `invitation_id`, `stokvel_id`, `stokvel_name`, `currency`, `contribution_amount`, `invited_by_name` ("Tendai M."), `created_at`. No member count: an invitee cannot read the member rows under row-level security, so it would always read 0 on Postgres.
 - Both lists are filtered by the caller in the query, not only by row-level security, so SQLite (tests) returns the same rows as Postgres.
 
@@ -420,7 +421,18 @@ Customer route, tag `stokvels` (client: `api.stokvels.getStokvel`).
 | 401 | Not signed in |
 | 404 | Unknown stokvel, or the caller is not a current member (`StokvelNotFoundError`) |
 
-The member screen calls this route (`stokvelQueries.detail` → `sdk.stokvels.getStokvel`, R4-09 #258). The collecting round on that screen is the response field `open_round`. The screen does not recompute it. `current_round` stays the stored column. The list and this screen refetch every 3 seconds while open once a read has succeeded, and keep that read on screen if a later one fails. While any of the caller's contributions is pending or processing, this screen asks every 1.5 seconds. The admin rounds page refetches every 3 seconds the same way. `fee_amount` is null on other members' rows. The reference shown is `remittance_id`. `pool_fiat_amount` is null, so the screen estimates the pool as members × `contribution_fiat_estimate` when that estimate exists. `organiser_name`, member and beneficiary names, and `contribution_fiat_estimate` can be null. While the cycle is forming, `current_round`, `total_rounds` and rounds are null or empty. The response has no per-member beneficiary flag: the setup screen only knows the caller's `my_beneficiary`. Another member who has not chosen one is reported as `cycle_not_ready` when the Organiser starts the cycle. Demo ids (`stk_…`) are gone with `stokvels.mock.ts`. The admin contract page reads `GET /admin/stokvel-contract` when it is opened and after pause or resume; it does not poll, because each read calls the chain.
+**`POST /stokvels/{id}/cover`** → `200 StokvelCoverRead`: `cover_url`, a short-lived read URL for the photo just stored. The body is the file itself, with its own `Content-Type` (`image/jpeg`, `image/png` or `image/webp`). The type is taken from the leading bytes, and the declared type has to agree. At most 5 MB. Any current member may set it, and a later upload replaces it: one object, `stokvel-covers/<stokvel id>`. The list and the member screen show that photo with the stokvel's name over a gradient (`api.stokvels.uploadStokvelCover`). `cover_url` on `StokvelRead` is null when there is no photo, when the stored key is not that fixed key, or when the bucket cannot sign one; a missing bucket does not take the screen down.
+
+| Status | When |
+|---|---|
+| 401 | Not signed in |
+| 400 | Empty body, a type outside JPEG/PNG/WebP, or bytes that disagree with the declared type. An SVG is named in the refusal |
+| 404 | Unknown stokvel, or the caller is not a current member (`StokvelNotFoundError`), including a former member |
+| 409 | The stokvel is deactivated (`stokvel_deactivated`), or the object did not store |
+| 413 | Larger than 5 MB |
+| 502, 503 | The bucket refused the write, or it is not configured |
+
+The member screen calls `GET /stokvels/{id}` (`stokvelQueries.detail` → `sdk.stokvels.getStokvel`, R4-09 #258). The collecting round on that screen is the response field `open_round`. The screen does not recompute it. `current_round` stays the stored column. The list and this screen refetch every 3 seconds while open once a read has succeeded, and keep that read on screen if a later one fails. While any of the caller's contributions is pending or processing, this screen asks every 1.5 seconds. The admin rounds page refetches every 3 seconds the same way. `fee_amount` is null on other members' rows. The reference shown is `remittance_id`. `pool_fiat_amount` is null, so the screen estimates the pool as members × `contribution_fiat_estimate` when that estimate exists. `organiser_name`, member and beneficiary names, and `contribution_fiat_estimate` can be null. While the cycle is forming, `current_round`, `total_rounds` and rounds are null or empty. The response has no per-member beneficiary flag: the setup screen only knows the caller's `my_beneficiary`. Another member who has not chosen one is reported as `cycle_not_ready` when the Organiser starts the cycle. Demo ids (`stk_…`) are gone with `stokvels.mock.ts`. The admin contract page reads `GET /admin/stokvel-contract` when it is opened and after pause or resume; it does not poll, because each read calls the chain.
 
 ### Invitations (R2-08, built)
 
@@ -863,6 +875,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 6. Each round, every member contributes before the deadline (informational only).
 7. The contract finalises automatically once the round is fully paid and its payout time has passed (a scheduled task releases it if everyone paid early). An administrator can release that same round by hand if the automatic release has not (`POST /admin/stokvels/{id}/rounds/{n}/finalise`, P5). The payout remittance goes to the scheduled member's beneficiary; the member sees status, hashes and the remittance reference.
 8. After the last round the cycle closes and the next opens. Each member chooses to continue or leave, and may change their beneficiary; the Organiser always continues. The Organiser sets the payout order for those continuing and starts the new cycle; anyone who has not chosen by then leaves.
+9. Any current member can set a cover photo. The stokvel page and the list show that photo, with the name over a gradient so it stays readable.
 
 ## 13. Files created
 
@@ -939,15 +952,19 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/audit-entry.ts`, `audit-entry.test.ts` | Audit areas and stokvel actions for the filters; `auditTxHash` and `isStokvelEntry` for the entry detail | #261 |
 | `frontend/app/lib/stokvels.mock.ts` | Deleted (#258). It mocked `GET /stokvels`, `GET /stokvels/{id}` and a contract status the API does not return | #251 |
 | `frontend/app/lib/stokvels.test.ts` | Helper tests. Mock-scenario tests removed with the mock (#258) | #251, #258 |
-| `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list (`GET /stokvels`) and detail (`GET /stokvels/{id}`) | #251, #258 |
+| `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list (`GET /stokvels`) and detail (`GET /stokvels/{id}`). A cover photo is the list thumbnail and the detail banner | #251, #258 |
+| `frontend/app/components/stokvels/stokvel-cover.tsx` | Cover banner and list thumbnail, with the name on a gradient, and the upload | |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
 | `frontend/app/lib/stokvel-contract.ts`, `stokvel-contract.mock.ts`, `stokvel-contract.test.ts` | Admin contract page wired to `GET /admin/stokvel-contract` and pause/unpause; mock kept for unit tests | #256 |
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite; on Postgres (`postgres` lane) an exclusive transaction-level advisory lock, held only inside the block and released when the send raises | #278 |
 | `platform_wallet/scripts/test_burn.py` | One tiny real `burn(uint256)` from the Treasury to confirm the burn method (section 8); a dry run unless `--send`, and refuses any chain, token or wallet but the expected ones | #278 |
-| `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07); read one stokvel (R2-14, #236) | #229 |
-| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`, `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/invitations` (#230) | #229 |
+| `api/remitx_api/controllers/stokvel_controller.py` | Create a stokvel; list the caller's stokvels and pending invitations (R2-07); read one stokvel (R2-14, #236); set its cover photo | #229 |
+| `api/remitx_api/models/orm/stokvel_cover.py`, `api/remitx_api/repositories/stokvel_cover_repository.py` | Cover photo metadata. The bytes stay in object storage | |
+| `api/alembic/versions/V20261027_2134__stokvel_cover_photo.py` | `stokvel_covers`, current-member policies, and the fixed object-key trigger | |
+| `api/tests/test_stokvel_cover.py` | Upload rules on SQLite; current-member writes and the key trigger under row-level security (`postgres` lane) | |
+| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`, `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cover`; `POST /stokvels/{id}/invitations` (#230) | #229 |
 | `api/tests/test_stokvel_member_view.py` | `GET /stokvels/{id}` on SQLite: the forming screen, a missing rate, 404 for a non-member, the caller's fee only, a payout with no remittance yet, every invitation of any status newest first, and the reference on an answered invitation for the Organiser only | #236, #375 |
-| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`, `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/invitations` (#230); `POST /stokvels/{id}/members/me/continuation` (#237) | #229 |
+| `api/remitx_api/routes/stokvels.py` | `POST /stokvels`, `GET /stokvels`, `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cover`; `POST /stokvels/{id}/invitations` (#230); `POST /stokvels/{id}/members/me/continuation` (#237) | #229 |
 | `api/tests/test_stokvel_member_view.py` | `GET /stokvels/{id}` on SQLite: the forming screen, a missing rate, 404 for a non-member, the caller's fee only, a payout with no remittance yet, and the closed cycle in `previous_cycle` while the next forms | #236, #237 |
 | `api/remitx_api/models/schemas/stokvel.py` | `StokvelCreateRequest`, `StokvelRead`, `StokvelInvitationRead`, `StokvelListRead`; `StokvelInvitationCreateRequest`, `SentStokvelInvitationRead` (#230) | #229 |
 | `api/remitx_api/errors/stokvels.py` | `KycNotApprovedToCreateStokvelError` (403), `StokvelCurrencyAccountMissingError` (400) | #229 |

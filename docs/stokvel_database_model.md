@@ -22,6 +22,7 @@ erDiagram
     accounts |o--o| stokvels : "STOKVEL pool account"
     stokvels ||--o{ stokvel_cycles : "runs"
     stokvels |o--o| stokvel_cycles : "current_cycle_id"
+    stokvels ||--o| stokvel_covers : "cover photo"
     stokvels ||--o{ stokvel_invitations : "invites to"
     users ||--o{ stokvel_invitations : "invitee, inviter, decider"
     stokvels ||--o{ stokvel_members : "has"
@@ -80,6 +81,13 @@ erDiagram
         uuid current_cycle_id FK "null until the first cycle"
         timestamptz created_at
         timestamptz deactivated_at "null while in service"
+    }
+    stokvel_covers {
+        uuid stokvel_id PK, FK
+        text object_key "stokvel-covers/id"
+        text content_type "jpeg, png or webp"
+        uuid updated_by_user_id FK
+        timestamptz updated_at
     }
     stokvel_invitations {
         uuid id PK
@@ -148,6 +156,7 @@ erDiagram
 | Table | Key columns | Migration |
 |---|---|---|
 | `stokvels` | `id`, `organiser_user_id`, `name`, `currency` (Stokvel currency), `contribution_amount` (UCTUSD, fixed for the stokvel's life; the value sent to `createStokvel`), `created_at`, `deactivated_at` (null while in service), `account_id` (its `STOKVEL` ledger account, R3-01; nullable until the account is created, unique), `current_cycle_id` (its latest cycle, R2-05; null until the first) | `V20261009_1801__stokvel_group_tables`, `V20261011_1000__stokvel_ledger_account_and_types`, `V20261014_1200__stokvel_cycle_tables` |
+| `stokvel_covers` | One row per stokvel that has a cover photo. `stokvel_id` (PK, FK), `object_key` (always `stokvel-covers/<stokvel id>`; the trigger `stokvel_cover_key_fixed` refuses any other, so the row cannot point at another object), `content_type` (`image/jpeg`, `image/png` or `image/webp`), `updated_by_user_id`, `updated_at`. The bytes are in object storage, not in this row. A later upload overwrites the object and updates the row | `V20261027_2134__stokvel_cover_photo` |
 | `stokvel_cycles` | `id`, `stokvel_id`, `cycle_number` (from 1; unique per stokvel), `status` (`forming`, `active`, `closed`), `total_rounds` (set at start, at least 2), `current_round` (0-based), `started_at` (null while forming), `closed_at` (set only when closed). At most one cycle per stokvel is not closed, as the contract allows one open cycle. `POST /stokvels` opens cycle 1 as `forming`, with no rounds yet (R2-09). When a cycle closes, the worker opens the next as `forming` in the same transaction (R2-15, `open_next_cycle`); for a cycle that closed before that, the Organiser's first setup or continuation call opens it. On-chain registration (R2-10): `start_tx_hash` (the `startCycle`, stored before it is sent; unique), `start_block_number` and `registered_at` (set once it is mined; contributions are refused until then). A `forming` cycle has none of them; `registered_at` may be set without a hash or block when the worker finds the cycle already open on-chain | `V20261014_1200__stokvel_cycle_tables`, `V20261019_1051__stokvel_cycle_chain_registration` |
 | `stokvel_rounds` | PK (`cycle_id`, `round`); `round` is 0-based, the contract's `uint8 round`. `start_time`, `deadline` (informational), `payout_time` (hard gate, D12); CHECK start ≤ deadline ≤ payout. The cross-round order rule is checked when the cycle starts. Written by `POST /stokvels/{id}/cycles` (R2-10), one per member, to the whole second (the contract holds seconds) | `V20261014_1200__stokvel_cycle_tables` |
 | `stokvel_members` | `id` (the on-chain `memberId`), `stokvel_id`, `user_id`, `account_id` (the member's account in the Stokvel currency that pays contributions), `invitation_id` (null for the Organiser), `joined_at`, `left_at` (null while a member). One active row per user per stokvel; rejoining makes a new row. `left_at` is set when the member leaves after a cycle, or, for a member of the closed cycle who never chose, when the Organiser starts the next (R2-15) | `V20261009_1801__stokvel_group_tables`, `V20261022_1000__stokvel_organiser_ends_membership` |
@@ -174,6 +183,7 @@ As for the ledger tables: `app.current_user_id` and `app.is_admin_route`, with `
 | Table | A customer reads | A customer writes |
 |---|---|---|
 | `stokvels` | Stokvels they organise, are a member of, or hold a pending invitation to | As Organiser |
+| `stokvel_covers` | A stokvel they are a current member of (`stokvel_is_current_member`: `left_at` is null). A former member does not see the row | Insert and update, as a current member. No deletes. The object key cannot be changed to anything but `stokvel-covers/<stokvel id>` |
 | `stokvel_members` | Their own rows and their fellow members' | Insert their own row only as the Organiser with no invitation, or with their accepted invitation to that stokvel (`stokvel_member_can_join`, R2-08); update their own row. The Organiser may also end a fellow member's membership: set a null `left_at`, and change nothing else (R2-15, `V20261022_1000`). No deletes |
 | `stokvel_invitations` | Their own, plus every invitation of a stokvel they are a member of or hold a pending invitation to | Insert only as the Organiser, naming themselves as inviter, and only `pending`; update only to answer: the invitee accepts or declines, the Organiser revokes (R2-08) or lapses (R2-10, at a cycle's start), recorded as changed by the caller. No deletes |
 | `stokvel_cycles` | Cycles of a stokvel they are a member of | As Organiser (insert and update only) |

@@ -5413,6 +5413,20 @@
         "title": "StokvelContributionStatus",
         "type": "string"
       },
+      "StokvelCoverRead": {
+        "description": "The cover photo just stored, as a short-lived read URL.",
+        "properties": {
+          "cover_url": {
+            "title": "Cover Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cover_url"
+        ],
+        "title": "StokvelCoverRead",
+        "type": "object"
+      },
       "StokvelCreateRequest": {
         "additionalProperties": false,
         "description": "A new stokvel. The caller becomes its Organiser and first Member.",
@@ -5800,6 +5814,17 @@
             "title": "Contributions",
             "type": "array"
           },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -5967,6 +5992,7 @@
           "max_members",
           "created_at",
           "deactivated_at",
+          "cover_url",
           "organiser_name",
           "contribution_fiat_estimate",
           "phase",
@@ -6263,6 +6289,17 @@
             "title": "Contribution Amount",
             "type": "string"
           },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -6312,7 +6349,8 @@
           "member_count",
           "max_members",
           "created_at",
-          "deactivated_at"
+          "deactivated_at",
+          "cover_url"
         ],
         "title": "StokvelRead",
         "type": "object"
@@ -13589,6 +13627,148 @@
           }
         ],
         "summary": "Contribute to the stokvel's current round",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/cover": {
+      "post": {
+        "description": "The body is the photo itself, sent with its own ``Content-Type``.\n\nAny current member may set it. The type is checked against the file's\nleading bytes before it is stored, and a later upload replaces it.\n404 for an unknown stokvel or one the caller is not a current member of.",
+        "operationId": "upload_stokvel_cover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelCoverRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upload is too large."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Set the stokvel's cover photo",
         "tags": [
           "stokvels"
         ]

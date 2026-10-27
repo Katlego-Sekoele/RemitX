@@ -13,6 +13,7 @@ import { RosterReadout } from "~/components/stokvels/payout-order-list"
 import { PayoutStatus } from "~/components/stokvels/payout-status"
 import { SetupWizard } from "~/components/stokvels/setup-wizard"
 import { PotRing } from "~/components/stokvels/pot-ring"
+import { StokvelCoverBanner } from "~/components/stokvels/stokvel-cover"
 import { StokvelInvitations } from "~/components/stokvels/stokvel-invitations"
 import {
   PayoutQueue,
@@ -35,11 +36,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "~/components/ui/empty"
-import {
-  PageHeader,
-  PageHeaderDescription,
-  PageHeaderTitle,
-} from "~/components/ui/page-header"
+import { PageHeader, PageHeaderDescription } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { formatMoney } from "~/lib/money"
@@ -200,15 +197,20 @@ function StokvelDetail({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader>
-        <div className="flex flex-wrap items-center gap-3">
-          <PageHeaderTitle>{stokvel.name}</PageHeaderTitle>
+      <StokvelCoverBanner
+        name={stokvel.name}
+        coverUrl={stokvel.cover_url}
+        stokvelId={stokvel.stokvel_id}
+        canEdit={stokvel.deactivated_at == null}
+        badge={
           <Badge variant={active ? "default" : "outline"}>
             {active && roundIndex != null && totalRounds != null
               ? roundLabel(roundIndex, totalRounds)
               : PHASE_LABELS[stokvel.phase]}
           </Badge>
-        </div>
+        }
+      />
+      <PageHeader>
         <PageHeaderDescription>
           {estimate && pool
             ? `${formatMoney(estimate, stokvel.currency)} per member each round · pool ${formatMoney(pool, stokvel.currency)} · `
