@@ -11630,7 +11630,7 @@
     },
     "/invitations/{invitation_id}/accept": {
       "post": {
-        "description": "Accept the caller's invitation. They become a Member, paying\ncontributions from their own account in the Stokvel currency, and get\nback the stokvel they joined.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed, and `stokvel_deactivated`; 422 `too_many_members` when the\nstokvel is full; 403 if the caller is no longer verified; 400 if they\nhold no account in the Stokvel currency (they open one with\n`POST /accounts` first).",
+        "description": "Accept the caller's invitation. They become a Member, paying\ncontributions from their own account in the Stokvel currency, and get\nback the stokvel they joined.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_invitee` for a fellow member, who can see it but not answer it;\n409 `invitation_not_pending` once it has been accepted, declined, revoked\nor lapsed, `stokvel_deactivated`, and `monthly_limit_too_low` when what\nis left of the caller's monthly limit does not cover one contribution\n(the daily limit is not checked); 422 `too_many_members` when the\nstokvel is full; 403 if the caller is no longer verified; 400 if they\nhold no account in the Stokvel currency (they open one with\n`POST /accounts` first). 503 when no exchange rate is available to price\nthe contribution: nothing changes.",
         "operationId": "accept_stokvel_invitation",
         "parameters": [
           {
@@ -11714,6 +11714,16 @@
               }
             },
             "description": "The request body failed validation."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
           }
         },
         "security": [
@@ -13487,7 +13497,7 @@
     },
     "/stokvels/{stokvel_id}/contributions": {
       "post": {
-        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
+        "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency. It must fit their monthly\nsending limit (the daily one is not checked). Returns the contribution\n`pending`; it is confirmed once the worker's on-chain `contribute` is\nmined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a contribution over the monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
         "operationId": "contribute_to_stokvel",
         "parameters": [
           {

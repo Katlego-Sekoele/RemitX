@@ -81,7 +81,10 @@ from remitx_api.services.quote_service import (
     token_rates,
     token_to_fiat,
 )
-from remitx_api.services.send_limits import require_can_send
+from remitx_api.services.send_limits import (
+    require_verified,
+    require_within_monthly_limit,
+)
 from remitx_api.services.stokvel_contract_read import is_paused
 
 logger = logging.getLogger(__name__)
@@ -253,12 +256,13 @@ class StokvelContributionController:
         total = amount_fiat + fee
         # What leaves the member's account, fee included, counts against
         # their own limits (D8), as a remittance counts its gross amount.
+        # Only the monthly limit is checked: a round is due in the month, not
+        # on the day it is paid.
         amount_zar = to_zar(total, currency, rates=rates)
-        require_can_send(
-            self._applications.get_standing(user_id),
-            amount_zar,
-            amount=total,
-            currency=currency,
+        standing = self._applications.get_standing(user_id)
+        require_verified(standing)
+        require_within_monthly_limit(
+            standing, amount_zar, amount=total, currency=currency
         )
         available = self._accounts.get_available_balance_locked(member.account_id)
         if available < total:

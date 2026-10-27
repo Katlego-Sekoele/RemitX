@@ -684,17 +684,17 @@ def test_contributions_count_toward_the_members_own_limits(group):
     assert standing.monthly_used_zar == TOTAL
 
 
-def test_a_contribution_over_the_daily_limit_is_refused(group):
+def test_a_contribution_over_the_daily_limit_is_not_refused(group):
     # The verified tier allows R3,000 a day. Round 0 (R1,850) fits; paying
-    # round 1 the same day as well (another R1,850) would not.
+    # round 1 the same day as well (another R1,850) goes over the day, but
+    # contributions meet only the monthly limit.
     _record(group, group.other_member_id, 0)
     assert group.contribute().status_code == 201
 
     response = group.contribute()
 
-    assert response.status_code == 400
-    assert "today" in response.json()["detail"]
-    assert len(_contributions(group)) == 2  # the caller's round 0 and Sipho's
+    assert response.status_code == 201, response.text
+    assert len(_contributions(group)) == 3
 
 
 def test_a_contribution_over_the_monthly_limit_is_refused(group, monkeypatch):

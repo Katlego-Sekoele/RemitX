@@ -119,9 +119,10 @@ def contribute_to_stokvel(
     the first round that does not yet have a contribution from every member,
     as on the contract. No body: the member, round and amount are the
     stokvel's. The member is debited the UCTUSD contribution at the live rate
-    from their account in the Stokvel currency, and it counts toward their
-    own sending limits. Returns the contribution `pending`; it is confirmed
-    once the worker's on-chain `contribute` is mined.
+    from their account in the Stokvel currency. It must fit their monthly
+    sending limit (the daily one is not checked). Returns the contribution
+    `pending`; it is confirmed once the worker's on-chain `contribute` is
+    mined.
 
     Refusals carry a `code` (doc section 6): 404 for an unknown stokvel or
     one the caller is not a current member of (the same answer, so an id
@@ -132,7 +133,7 @@ def contribute_to_stokvel(
     every round is paid, `contribution_already_paid` for a second payment to
     the open round.
     Plain 400 / 403 refusals, without a code, as for `POST /remittances`: a
-    short available balance, a send over the daily or monthly limit, or a
+    short available balance, a contribution over the monthly limit, or a
     caller who is not verified. 503 when no exchange rate is available, as
     for a quote: nothing is recorded."""
     try:
