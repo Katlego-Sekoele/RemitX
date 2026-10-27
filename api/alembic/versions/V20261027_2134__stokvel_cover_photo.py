@@ -16,7 +16,7 @@ sign it. SQLSTATE 23514. The API also refuses to sign a key that does not
 match, which is what SQLite tests see: they have no trigger.
 
 Revision ID: d4c8e2a91b17
-Revises: b6d1e4a7c302
+Revises: 09149682d0b2
 Create Date: 2026-10-27 21:34:00.000000+00:00
 
 """
@@ -26,7 +26,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d4c8e2a91b17"
-down_revision: str | None = "b6d1e4a7c302"
+down_revision: str | None = "09149682d0b2"
 branch_labels: str | tuple | None = None
 depends_on: str | tuple | None = None
 
