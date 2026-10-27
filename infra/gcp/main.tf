@@ -34,7 +34,7 @@ module "worker" {
   env                   = local.worker_env
   secret_env            = local.worker_secret_env
   allow_unauthenticated = true
-  min_instance_count    = 0
+  min_instance_count    = 1
 
   depends_on = [
     google_project_service.this,
