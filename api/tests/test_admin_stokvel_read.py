@@ -72,6 +72,7 @@ def test_rounds_list_returns_admin_rows(monkeypatch):
         payout_time=when,
         release_status="pending",
         release_tx_hash=None,
+        manual_release_allowed=True,
     )
     monkeypatch.setattr(
         "remitx_api.controllers.stokvel_admin_controller.list_admin_rounds",
@@ -96,6 +97,7 @@ def test_rounds_list_returns_admin_rows(monkeypatch):
             "payout_time": when.isoformat(),
             "release_status": "pending",
             "release_tx_hash": None,
+            "manual_release_allowed": True,
         }
     ]
 

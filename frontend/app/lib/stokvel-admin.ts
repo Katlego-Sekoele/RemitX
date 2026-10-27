@@ -37,7 +37,11 @@ export function finaliseRefusalMessage(error: unknown): string {
 export function finaliseHint(
   round: Pick<
     AdminStokvelRoundRead,
-    "paid_count" | "member_count" | "payout_time" | "release_status"
+    | "paid_count"
+    | "member_count"
+    | "payout_time"
+    | "release_status"
+    | "manual_release_allowed"
   >,
   now: Date = new Date()
 ): string | null {
@@ -50,15 +54,17 @@ export function finaliseHint(
   if (Date.parse(round.payout_time) > now.getTime()) {
     return "Its payout time hasn't come yet."
   }
+  if (
+    round.paid_count >= round.member_count &&
+    !round.manual_release_allowed
+  ) {
+    return "Waiting for the next round to fill."
+  }
   return null
 }
 
-export function canReleaseByHand(
-  round: Pick<AdminStokvelRoundRead, "release_status">
-): boolean {
-  return (
-    round.release_status !== "released" && round.release_status !== "processing"
-  )
+export function canReleaseByHand(round: AdminStokvelRoundRead): boolean {
+  return round.manual_release_allowed
 }
 
 const ROUNDS_KEY = ["admin", "stokvel-rounds"] as const

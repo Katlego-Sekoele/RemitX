@@ -36,6 +36,7 @@ from remitx_api.models.schemas.stokvel_contract import (
 from remitx_api.services.stokvel_admin_read import (
     list_admin_rounds,
     read_contract_status,
+    round_manual_release_allowed,
 )
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_payout_repository import StokvelPayoutRepository
@@ -89,6 +90,7 @@ class StokvelAdminController:
                 payout_time=row.payout_time,
                 release_status=row.release_status,
                 release_tx_hash=row.release_tx_hash,
+                manual_release_allowed=row.manual_release_allowed,
             )
             for row in list_admin_rounds()
         ]
@@ -148,10 +150,23 @@ class StokvelAdminController:
             raise RoundNotFinalisableError()
         if is_paused():
             raise StokvelPausedError()
+        rounds = StokvelCycleRepository().get_cycle_rounds(cycle.id)
+        schedule = next((row for row in rounds if row.round == round_), None)
+        if schedule is None:
+            raise RoundNotFinalisableError()
+        payout = StokvelPayoutRepository().get_round_payout(cycle.id, round_)
+        release_status = None if payout is None else payout.release_status
+        if not round_manual_release_allowed(
+            cycle_id=cycle.id,
+            round_=round_,
+            total_rounds=cycle.total_rounds,
+            payout_time=schedule.payout_time,
+            release_status=release_status,
+        ):
+            raise RoundNotFinalisableError()
         readiness = finalise_readiness(stokvel_id, cycle.cycle_number, round_)
         if readiness is not FinaliseReadiness.READY:
             self._refuse_chain(stokvel_id, cycle.cycle_number, round_, readiness)
-        payout = StokvelPayoutRepository().get_round_payout(cycle.id, round_)
         if (
             payout is not None
             and payout.release_status != StokvelPayoutReleaseStatus.PENDING.value

@@ -19,6 +19,7 @@ const ready = {
   member_count: 3,
   payout_time: "2026-10-18T12:00:00Z",
   release_status: "pending" as const,
+  manual_release_allowed: true,
 }
 
 test("finaliseHint says why a round isn't ready, or nothing", () => {
@@ -101,19 +102,34 @@ test("the mock releases a ready round and refuses the rest like the contract", a
   })
 })
 
-test("in-progress and failed releases read differently from a fresh round", () => {
-  // In flight: say so, and offer no second release.
+test("the release button follows manual_release_allowed from the API", () => {
+  const row = {
+    ...ready,
+    stokvel_id: "x",
+    stokvel_name: "Club",
+    round: 0,
+    total_rounds: 3,
+    recipient_name: "A",
+    release_tx_hash: null,
+    manual_release_allowed: true,
+  }
+  assert.equal(canReleaseByHand(row), true)
+  assert.equal(canReleaseByHand({ ...row, manual_release_allowed: false }), false)
   assert.equal(
     finaliseHint({ ...ready, release_status: "processing" }, NOW),
     "Release in progress."
   )
-  assert.equal(canReleaseByHand({ release_status: "processing" }), false)
-  assert.equal(canReleaseByHand({ release_status: "released" }), false)
-  // Failed: ready to release by hand, which is what the fallback is for.
-  assert.equal(finaliseHint({ ...ready, release_status: "failed" }, NOW), null)
-  assert.equal(canReleaseByHand({ release_status: "failed" }), true)
-  assert.equal(canReleaseByHand({ release_status: "pending" }), true)
-  assert.equal(canReleaseByHand({ release_status: null }), true)
+  assert.equal(
+    finaliseHint(
+      {
+        ...ready,
+        paid_count: 3,
+        manual_release_allowed: false,
+      },
+      NOW
+    ),
+    "Waiting for the next round to fill."
+  )
 })
 
 test("the mock releases a failed round and refuses one in flight", async () => {

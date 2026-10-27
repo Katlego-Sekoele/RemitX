@@ -53,6 +53,7 @@ class AdminStokvelRoundRead(Schema):
     payout_time: UtcDateTime
     release_status: ReleaseStatusRead | None
     release_tx_hash: str | None
+    manual_release_allowed: bool
 
 
 class StokvelRoundFinaliseResponse(Schema):

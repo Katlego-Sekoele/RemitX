@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlalchemy import and_, exists, func, select
 from web3 import Web3
 
+from remitx_api.clock import utcnow
 from remitx_api.config import Config
 from remitx_api.extensions import db
 from remitx_api.models.orm.audit_log import (
@@ -71,6 +72,43 @@ class AdminStokvelRoundView:
     payout_time: datetime
     release_status: str | None
     release_tx_hash: str | None
+    manual_release_allowed: bool
+
+
+def round_manual_release_allowed(
+    *,
+    cycle_id: uuid.UUID,
+    round_: int,
+    total_rounds: int,
+    payout_time: datetime,
+    release_status: str | None,
+    now: datetime | None = None,
+) -> bool:
+    """Whether an admin may queue manual release (D5, D12): payout time
+    passed, every member confirmed for this round and the next (unless last),
+    and the payout is missing or still `pending`."""
+    when = utcnow() if now is None else now
+    if release_status in (
+        StokvelPayoutReleaseStatus.RELEASED.value,
+        StokvelPayoutReleaseStatus.PROCESSING.value,
+        StokvelPayoutReleaseStatus.FAILED.value,
+    ):
+        return False
+    if payout_time > when:
+        return False
+    return _contributions_fully_paid(cycle_id, round_, total_rounds)
+
+
+def _contributions_fully_paid(
+    cycle_id: uuid.UUID, round_: int, total_rounds: int
+) -> bool:
+    """Same rule as the scheduled release sweep (D5)."""
+    contributions = StokvelContributionRepository()
+    rounds = [round_] if round_ + 1 == total_rounds else [round_, round_ + 1]
+    return all(
+        len(contributions.get_paid_member_ids(cycle_id, r)) == total_rounds
+        for r in rounds
+    )
 
 
 def read_contract_status() -> StokvelContractStatusView:
@@ -152,6 +190,7 @@ def list_admin_rounds() -> list[AdminStokvelRoundView]:
         member_count = int(total_rounds)
         paid_count = len(contributions.get_paid_member_ids(cycle_id, round_))
         payout = payouts.get_round_payout(cycle_id, round_)
+        release_status = None if payout is None else payout.release_status
         views.append(
             AdminStokvelRoundView(
                 stokvel_id=stokvel_id,
@@ -162,8 +201,15 @@ def list_admin_rounds() -> list[AdminStokvelRoundView]:
                 paid_count=paid_count,
                 member_count=member_count,
                 payout_time=payout_time,
-                release_status=None if payout is None else payout.release_status,
+                release_status=release_status,
                 release_tx_hash=None if payout is None else payout.release_tx_hash,
+                manual_release_allowed=round_manual_release_allowed(
+                    cycle_id=cycle_id,
+                    round_=int(round_),
+                    total_rounds=member_count,
+                    payout_time=payout_time,
+                    release_status=release_status,
+                ),
             )
         )
     return views

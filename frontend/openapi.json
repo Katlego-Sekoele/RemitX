@@ -293,6 +293,10 @@
       "AdminStokvelRoundRead": {
         "description": "One round of one stokvel's open cycle, for the admin rounds list.",
         "properties": {
+          "manual_release_allowed": {
+            "title": "Manual Release Allowed",
+            "type": "boolean"
+          },
           "member_count": {
             "title": "Member Count",
             "type": "integer"
@@ -372,7 +376,8 @@
           "member_count",
           "payout_time",
           "release_status",
-          "release_tx_hash"
+          "release_tx_hash",
+          "manual_release_allowed"
         ],
         "title": "AdminStokvelRoundRead",
         "type": "object"
