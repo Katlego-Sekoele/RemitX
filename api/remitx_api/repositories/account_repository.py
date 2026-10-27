@@ -283,6 +283,32 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         )
         return account.account_balance - pending_outgoing
 
+    def available_balances_for_accounts(
+        self, account_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """In-flight outgoing amount per account, for a list read.
+
+        One grouped statement instead of one per account, since each
+        statement is a network round trip to the database. Accounts with no
+        pending or processing legs are absent; treat a missing id as zero.
+        Counts the same statuses as `get_available_balance`: add a status to
+        both. Unlocked, like `get_available_balance`.
+        """
+        if not account_ids:
+            return {}
+        rows = db.session.execute(
+            select(
+                Transaction.credit_account_id,
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .where(
+                Transaction.credit_account_id.in_(account_ids),
+                Transaction.status.in_((STATUS_PENDING, STATUS_PROCESSING)),
+            )
+            .group_by(Transaction.credit_account_id)
+        ).all()
+        return {account_id: Decimal(str(total)) for account_id, total in rows}
+
     def get_available_balance_locked(self, account_id: uuid.UUID) -> Decimal:
         """Like `get_available_balance`, but takes a `SELECT ... FOR UPDATE`
         row lock on the account first.
