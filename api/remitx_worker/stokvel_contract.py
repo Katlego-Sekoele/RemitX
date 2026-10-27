@@ -4,8 +4,9 @@ R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
 (#235) reads the events the sync applies (`fetch_logs`, `decode_log`); R2-10
 (#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241)
 `finalise` and `round_finalised`; R3-07 (#244) `pause`, `unpause` and
-`paused`. Treasury sends go through `evm_service.submit_transaction`; pause
-and unpause use `submit_admin_transaction`. Every send goes through
+`paused`; R3-11 (#248) `isFinalisable`. Treasury sends go through
+`evm_service.submit_transaction`; pause and unpause use
+`submit_admin_transaction`. Every send goes through
 `evm_service.submit_transaction`, so it holds the Treasury send lock and can
 store its hash before the send.
 
@@ -233,6 +234,18 @@ def finalise(
         "finalise", args=[evm_service.uuid_to_bytes32(stokvel_id), round_]
     )
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def is_finalisable(stokvel_id: UUID, round_: int, w3: Web3 | None = None) -> bool:
+    """`isFinalisable(id, round)`: whether `finalise` would succeed now, by
+    the latest block's time (R3-11). Ignores the pause. A read: nothing is
+    sent."""
+    w3 = w3 or evm_service.get_web3()
+    return bool(
+        vault(w3)
+        .functions.isFinalisable(evm_service.uuid_to_bytes32(stokvel_id), round_)
+        .call()
+    )
 
 
 # The events `stokvel.sync_events` applies (doc section 4, "Contract event →

@@ -6,8 +6,9 @@ releases it in the same transaction, and the event sync records it from the
 paid before its payout time, which is always the case for a cycle's last
 round if it was paid early) needs someone to call the contract's `finalise`.
 `stokvel.release_pool(cycle_id, round)` does that. It is queued by the
-scheduled release (R3-11, #248) and the Administrator fallback (R3-10, #247),
-never by the sync.
+scheduled release, `stokvel.release_due_rounds` (R3-11, #248, at the end of
+this module), and the Administrator fallback (R3-10, #247), never by the
+sync.
 
 Either way the release is recorded through one guard,
 `stokvel_ledger.record_pool_release` (OI-1, doc section 8), so it is booked once
@@ -26,11 +27,19 @@ As with contributions (`stokvel_tasks.submit_contribution`):
 
 import logging
 import uuid
+from datetime import datetime, timedelta
 
 from remitx_api.clock import utcnow
-from remitx_api.models.orm.stokvel_cycle import StokvelCycle
+from remitx_api.config import Config
+from remitx_api.models.orm.stokvel_contribution import (
+    STATUS_CONFIRMED as CONTRIBUTION_CONFIRMED,
+    StokvelContribution,
+)
+from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import StokvelPayout
-from sqlalchemy import select, update
+from remitx_api.models.orm.stokvel_round import StokvelRound
+from remitx_api.services import queue_service
+from sqlalchemy import and_, func, select, update
 
 from remitx_worker import evm_service, stokvel_contract
 from remitx_worker.celery_app import celery
@@ -360,3 +369,162 @@ def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
         outcome,
     )
     return "released"
+
+
+@celery.task(name="stokvel.release_due_rounds")
+def release_due_rounds() -> int:
+    """Queue `stokvel.release_pool` for every round that became due with time
+    (R3-11, #248). Run by the beat every `STOKVEL_RELEASE_INTERVAL_SECONDS`.
+
+    A round paid in full before its payout time has no transaction left to
+    release it when that time comes (always a cycle's last round, if paid on
+    time). For each active cycle registered on-chain, the next round not yet
+    released is checked: its payout time has passed, it is fully paid (and
+    so is the round after, unless it is the last), and no `release_pool`
+    holds its payout. The contract's `isFinalisable` then has the last word,
+    so the rule is never re-implemented here. One round per cycle per run:
+    rounds release in order, so the next is checked on the next run.
+
+    Nothing is queued while the contract is paused. Repeating is harmless:
+    `release_pool` claims the payout before sending, and a round a
+    `contribute` released first is `AlreadyFinalised`. The number queued."""
+    now = utcnow()
+    with session_scope() as session:
+        overdue = _overdue_rounds(session, now)
+    if not overdue:
+        return 0
+    w3 = evm_service.get_web3()
+    if stokvel_contract.paused(w3=w3):
+        logger.info(
+            "event=stokvel.release_sweep_paused rounds=%d: the contract is "
+            "paused, so nothing is queued",
+            len(overdue),
+        )
+        return 0
+    queued = 0
+    for cycle_id, stokvel_id, round_ in overdue:
+        try:
+            due = stokvel_contract.is_finalisable(stokvel_id, round_, w3=w3)
+        except Exception as exc:
+            logger.warning(
+                "event=stokvel.release_sweep_check_failed cycle_id=%s round=%s "
+                "(%s: %s): will retry next run",
+                cycle_id,
+                round_,
+                type(exc).__name__,
+                exc,
+            )
+            continue
+        if not due:
+            # Released on-chain but not yet recorded by the sync, or a
+            # contribution the database has confirmed that the chain has not.
+            continue
+        try:
+            queue_service.enqueue_release_pool(str(cycle_id), round_)
+        except Exception:
+            logger.exception(
+                "event=stokvel.release_sweep_enqueue_failed cycle_id=%s round=%s: "
+                "will retry next run",
+                cycle_id,
+                round_,
+            )
+            continue
+        queued += 1
+    if queued:
+        logger.info("event=stokvel.release_sweep queued=%d", queued)
+    return queued
+
+
+def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, int]]:
+    """(cycle id, stokvel id, round) for each active, registered cycle whose
+    next unreleased round is past its payout time, fully paid, and not held
+    by a `release_pool`. A payout held with no hash for longer than
+    `STOKVEL_RELEASE_STUCK_LOG_SECONDS` is logged for a person: a worker may
+    have stopped after claiming it."""
+    released = (
+        select(StokvelPayout.id)
+        .where(
+            StokvelPayout.cycle_id == StokvelRound.cycle_id,
+            StokvelPayout.round == StokvelRound.round,
+            StokvelPayout.release_status == RELEASED,
+        )
+        .exists()
+    )
+    next_round = (
+        select(StokvelRound.cycle_id, func.min(StokvelRound.round).label("round"))
+        .where(~released)
+        .group_by(StokvelRound.cycle_id)
+        .subquery()
+    )
+    held_since = now - timedelta(seconds=Config().STOKVEL_RELEASE_STUCK_LOG_SECONDS)
+    rows = session.execute(
+        select(
+            StokvelCycle.id,
+            StokvelCycle.stokvel_id,
+            StokvelCycle.total_rounds,
+            StokvelRound.round,
+            StokvelPayout.release_status,
+            StokvelPayout.release_tx_hash,
+            (StokvelPayout.updated_at <= held_since).label("stale"),
+        )
+        .select_from(StokvelCycle)
+        .join(next_round, next_round.c.cycle_id == StokvelCycle.id)
+        .join(
+            StokvelRound,
+            and_(
+                StokvelRound.cycle_id == StokvelCycle.id,
+                StokvelRound.round == next_round.c.round,
+            ),
+        )
+        .outerjoin(
+            StokvelPayout,
+            and_(
+                StokvelPayout.cycle_id == StokvelCycle.id,
+                StokvelPayout.round == StokvelRound.round,
+            ),
+        )
+        .where(
+            StokvelCycle.status == StokvelCycleStatus.ACTIVE.value,
+            StokvelCycle.registered_at.is_not(None),
+            StokvelRound.payout_time <= now,
+        )
+        .order_by(StokvelRound.payout_time)
+    ).all()
+
+    overdue = []
+    for cycle_id, stokvel_id, total_rounds, round_, status, tx_hash, stale in rows:
+        if status == RELEASE_PROCESSING:
+            if tx_hash is None and stale:
+                logger.warning(
+                    "event=stokvel.release_sweep_stuck cycle_id=%s round=%s: "
+                    "overdue, and its payout has been processing with no hash "
+                    "for too long; a release_pool may have stopped before "
+                    "signing. Needs a person",
+                    cycle_id,
+                    round_,
+                )
+            continue
+        if status not in (None, RELEASE_PENDING):
+            continue
+        if _fully_paid(session, cycle_id, round_, total_rounds):
+            overdue.append((cycle_id, stokvel_id, round_))
+    return overdue
+
+
+def _fully_paid(session, cycle_id: uuid.UUID, round_: int, total_rounds: int) -> bool:
+    """Every member's contribution to `round_` is confirmed, and to the round
+    after unless it is the last (D5). A cycle has one round per member, so
+    `total_rounds` is also its member count."""
+    rounds = [round_] if round_ + 1 == total_rounds else [round_, round_ + 1]
+    paid = dict(
+        session.execute(
+            select(StokvelContribution.round, func.count())
+            .where(
+                StokvelContribution.cycle_id == cycle_id,
+                StokvelContribution.round.in_(rounds),
+                StokvelContribution.status == CONTRIBUTION_CONFIRMED,
+            )
+            .group_by(StokvelContribution.round)
+        ).all()
+    )
+    return all(paid.get(r, 0) == total_rounds for r in rounds)
