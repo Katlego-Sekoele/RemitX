@@ -32,6 +32,22 @@ def test_manual_release_when_fully_paid_and_due(monkeypatch):
     )
 
 
+def test_manual_release_before_a_naive_payout_time(monkeypatch):
+    """SQLite hands `payout_time` back without an offset."""
+    monkeypatch.setattr(
+        StokvelContributionRepository,
+        "get_paid_member_ids",
+        lambda self, cycle_id, round_: _PAID,
+    )
+    naive_future = _FUTURE.replace(tzinfo=None)
+    assert not round_manual_release_allowed(
+        cycle_id=_CYCLE,
+        round_=0,
+        total_rounds=_MEMBERS,
+        payout_time=naive_future,
+    )
+
+
 def test_manual_release_before_payout_time(monkeypatch):
     monkeypatch.setattr(
         StokvelContributionRepository,

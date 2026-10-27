@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import and_, func, select
@@ -89,8 +89,9 @@ def round_manual_release_allowed(
     a released, processing, or failed payout with its own codes before it
     calls this.
     """
-    when = utcnow() if now is None else now
-    if payout_time > when:
+    when = _as_utc(utcnow() if now is None else now)
+    # SQLite returns timestamps without an offset; they are stored in UTC.
+    if _as_utc(payout_time) > when:
         return False
     return _contributions_fully_paid(cycle_id, round_, total_rounds)
 
@@ -124,6 +125,12 @@ def admin_list_manual_release_allowed(
         payout_time=payout_time,
         now=now,
     )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _contributions_fully_paid(
