@@ -1,10 +1,12 @@
 import { ArrowClockwiseIcon, UsersFourIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import { Link } from "react-router"
 
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContributionAtTodaysRate } from "~/components/stokvels/contribution-at-rate"
 import { InvitationCard } from "~/components/stokvels/invitation-card"
+import { StokvelCoverThumb } from "~/components/stokvels/stokvel-cover"
 import {
   Alert,
   AlertAction,
@@ -152,40 +154,61 @@ export default function StokvelsPage() {
 
 function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
   const closed = stokvel.deactivated_at !== null
+  const [coverBroken, setCoverBroken] = useState(false)
+  const showCover = Boolean(stokvel.cover_url) && !coverBroken
+  const badge = closed ? (
+    <Badge variant="outline">Closed</Badge>
+  ) : stokvel.is_organiser ? (
+    <Badge variant="secondary">You organise</Badge>
+  ) : null
+  const rate = (
+    <CardDescription>
+      <ContributionAtTodaysRate
+        amount={stokvel.contribution_amount}
+        currency={stokvel.currency}
+      />{" "}
+      per member, per round
+    </CardDescription>
+  )
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle>
-            <Link to={stokvelPath(stokvel.stokvel_id)}>{stokvel.name}</Link>
-          </CardTitle>
-          {closed ? (
-            <Badge variant="outline">Closed</Badge>
-          ) : stokvel.is_organiser ? (
-            <Badge variant="secondary">You organise</Badge>
-          ) : null}
-        </div>
-        <CardDescription>
-          <ContributionAtTodaysRate
-            amount={stokvel.contribution_amount}
-            currency={stokvel.currency}
-          />{" "}
-          per member, per round
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {stokvel.member_count} of {stokvel.max_members} members
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link to={stokvelPath(stokvel.stokvel_id)} />}
-        >
-          Open
-        </Button>
-      </CardContent>
+    <Card
+      className={
+        showCover
+          ? "relative flex-row items-stretch px-(--card-spacing) hover:bg-muted/40"
+          : "relative hover:bg-muted/40"
+      }
+    >
+      {showCover && stokvel.cover_url ? (
+        <StokvelCoverThumb
+          coverUrl={stokvel.cover_url}
+          onBroken={() => setCoverBroken(true)}
+        />
+      ) : null}
+      <div
+        className={
+          showCover
+            ? "flex min-w-0 flex-1 flex-col gap-(--card-spacing)"
+            : "contents"
+        }
+      >
+        <CardHeader className={showCover ? "p-0" : undefined}>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>{stokvel.name}</CardTitle>
+            {badge}
+          </div>
+          {rate}
+        </CardHeader>
+        <CardContent className={showCover ? "p-0" : undefined}>
+          <span className="text-sm text-muted-foreground">
+            {stokvel.member_count} of {stokvel.max_members} members
+          </span>
+        </CardContent>
+      </div>
+      <Link
+        to={stokvelPath(stokvel.stokvel_id)}
+        aria-label={stokvel.name}
+        className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-ring"
+      />
     </Card>
   )
 }

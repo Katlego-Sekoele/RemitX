@@ -103,6 +103,9 @@ class StokvelRead(Schema):
     created_at: UtcDateTime
     # Null while the stokvel is in service.
     deactivated_at: UtcDateTime | None
+    # A short-lived read URL, or null when the stokvel has no cover photo.
+    # The next read mints a fresh one; nothing here is a permanent link.
+    cover_url: str | None = None
 
     @classmethod
     def from_view(cls, view: StokvelView) -> "StokvelRead":
@@ -116,7 +119,14 @@ class StokvelRead(Schema):
             max_members=view.max_members,
             created_at=view.created_at,
             deactivated_at=view.deactivated_at,
+            cover_url=view.cover_url,
         )
+
+
+class StokvelCoverRead(Schema):
+    """The cover photo just stored, as a short-lived read URL."""
+
+    cover_url: str
 
 
 class StokvelInvitationRead(Schema):
@@ -272,9 +282,12 @@ class StokvelDetailInvitationRead(SentStokvelInvitationRead):
     `account_reference` is set only for the Organiser, and null when the
     invitee no longer holds an account in the stokvel currency. `POST
     /stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where
-    the reference is always set.
+    the reference is always set. `invitee_user_id` is the person invited,
+    so an accepted invitation can be joined to that member without comparing
+    names.
     """
 
+    invitee_user_id: uuid.UUID
     account_reference: str | None
 
 
@@ -587,6 +600,7 @@ def _sent_invitation(
     return StokvelDetailInvitationRead(
         invitation_id=view.invitation_id,
         stokvel_id=view.stokvel_id,
+        invitee_user_id=view.invitee_user_id,
         invitee_name=view.invitee_name,
         account_reference=view.account_reference,
         status=view.status,

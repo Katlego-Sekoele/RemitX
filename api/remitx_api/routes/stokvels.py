@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 
 from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.stokvel_contribution_controller import (
@@ -12,6 +13,11 @@ from remitx_api.controllers.stokvel_invitation_controller import (
     StokvelInvitationController,
 )
 from remitx_api.controllers.stokvel_setup_controller import StokvelSetupController
+from remitx_api.errors.stokvels import CoverTooLargeError
+from remitx_api.models.orm.stokvel_cover import (
+    ALLOWED_COVER_CONTENT_TYPES,
+    MAX_COVER_BYTES,
+)
 from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.stokvel import (
     SentStokvelInvitationRead,
@@ -20,6 +26,7 @@ from remitx_api.models.schemas.stokvel import (
     StokvelContinuationRead,
     StokvelContinuationRequest,
     StokvelContributionRead,
+    StokvelCoverRead,
     StokvelCreateRequest,
     StokvelCycleRead,
     StokvelCycleStartRequest,
@@ -33,6 +40,7 @@ from remitx_api.models.schemas.stokvel import (
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_customer_router
 from remitx_api.services.exchange_rate_service import RateUnavailableError
+from remitx_api.services.upload_stream import read_upload
 
 router = create_customer_router(prefix="/stokvels", tags=[Tag.STOKVELS])
 controller = StokvelController()
@@ -102,6 +110,50 @@ def get_stokvel(
     the caller's own contributions. `pool_fiat_amount` is null.
     `remittance_id` is the payout reference."""
     return StokvelDetailRead.from_view(controller.get_stokvel(user.id, stokvel_id))
+
+
+@router.post(
+    "/{stokvel_id}/cover",
+    response_model=StokvelCoverRead,
+    summary="Set the stokvel's cover photo",
+    responses=error_responses(400, 404, 409, 413, 502, 503),
+    # The handler reads the stream itself, so FastAPI cannot infer the body.
+    # Declared by hand so the generated client takes a File and sends it raw.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in ALLOWED_COVER_CONTENT_TYPES
+            },
+        }
+    },
+)
+async def upload_stokvel_cover(
+    stokvel_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """The body is the photo itself, sent with its own ``Content-Type``.
+
+    Any current member may set it. The type is checked against the file's
+    leading bytes before it is stored, and a later upload replaces it.
+    404 for an unknown stokvel or one the caller is not a current member of.
+    """
+    body = await read_upload(
+        request.stream(),
+        limit=MAX_COVER_BYTES,
+        content_length=request.headers.get("content-length"),
+        on_too_large=CoverTooLargeError,
+    )
+    cover_url = await run_in_threadpool(
+        controller.set_cover,
+        user.id,
+        stokvel_id,
+        request.headers.get("content-type", ""),
+        body,
+    )
+    return StokvelCoverRead(cover_url=cover_url)
 
 
 @router.post(

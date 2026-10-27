@@ -43,6 +43,14 @@ Table stokvels {
   deactivated_at timestamptz [note: 'null while in service']
 }
 
+Table stokvel_covers {
+  stokvel_id uuid [pk, ref: - stokvels.id]
+  object_key text [not null, note: 'stokvel-covers/<stokvel id>']
+  content_type text [not null, note: 'image/jpeg | image/png | image/webp']
+  updated_by_user_id uuid [not null, ref: > users.id]
+  updated_at timestamptz [not null]
+}
+
 Table stokvel_members {
   id uuid [pk, note: 'on-chain memberId']
   stokvel_id uuid [not null, ref: > stokvels.id]

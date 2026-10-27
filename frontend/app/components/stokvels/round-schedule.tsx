@@ -5,6 +5,14 @@ import { Avatar, AvatarFallback } from "~/components/ui/avatar"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from "~/components/ui/item"
+import {
   Card,
   CardContent,
   CardDescription,
@@ -23,67 +31,99 @@ import {
 
 type MemberLookup = (memberId: string) => StokvelMemberRead | undefined
 
-/** Member avatars in payout order; the current round's recipient is marked
- * and, when it is the viewer, says "You're next!" (product docx §3). */
+/** Payout order and who still owes the open round, on one card. The pot
+ * already shows how much of this round is in. */
 export function PayoutQueue({
   cycle,
   openRound,
   member,
   myMemberId,
+  paidIds,
 }: {
   cycle: StokvelDetailCycleRead
   /** Collecting round. Null when none is open, including a finished cycle. */
   openRound: number | null
   member: MemberLookup
   myMemberId: string
+  /** Members who have paid the open round. */
+  paidIds: ReadonlySet<string>
 }) {
+  const releasedCount = cycle.rounds.filter(
+    (round) => round.release_status === "released"
+  ).length
+  const total = cycle.total_rounds ?? cycle.payout_order.length
+  const waiting =
+    openRound == null
+      ? []
+      : cycle.payout_order.filter((memberId) => !paidIds.has(memberId))
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Payout order</CardTitle>
         <CardDescription>
-          {cycle.rounds.filter((r) => r.release_status === "released").length}{" "}
-          of {cycle.total_rounds ?? cycle.payout_order.length} paid out
+          {releasedCount} of {total} paid out
+          {openRound != null
+            ? waiting.length === 0
+              ? " · everyone has paid this round"
+              : ` · still to pay: ${waiting
+                  .map((memberId) => {
+                    const person = member(memberId)
+                    return memberId === myMemberId
+                      ? "you"
+                      : (person?.full_name?.split(" ")[0] ?? "a member")
+                  })
+                  .join(", ")}`
+            : ""}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ol className="flex gap-2 overflow-x-auto pb-1">
+        <ol className="flex flex-col gap-2">
           {cycle.payout_order.map((memberId, round) => {
-            const m = member(memberId)
-            const name = m?.full_name ?? "Member"
+            const person = member(memberId)
+            const name = person?.full_name ?? "Member"
             const isMe = memberId === myMemberId
-            const isNext = openRound != null && round === openRound
+            const isOpen = openRound != null && round === openRound
             const released = cycle.rounds[round]?.release_status === "released"
+            const paid = paidIds.has(memberId)
+            const when = cycle.rounds[round]
+              ? format(new Date(cycle.rounds[round].payout_time), "d MMM")
+              : null
             return (
-              <li
-                key={memberId}
-                className="flex min-w-24 flex-1 flex-col items-center gap-1 text-center"
-              >
-                <Avatar
-                  className={
-                    isNext
-                      ? "size-10 ring-2 ring-primary ring-offset-2"
-                      : "size-10"
-                  }
-                >
-                  <AvatarFallback>
-                    {beneficiaryInitials({ full_name: name })}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium">
-                  {isMe ? "You" : name.split(" ")[0]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Round {round + 1}
-                  {cycle.rounds[round]
-                    ? ` · ${format(new Date(cycle.rounds[round].payout_time), "d MMM")}`
-                    : ""}
-                </span>
-                {released ? (
-                  <Badge variant="outline">Paid out</Badge>
-                ) : isNext ? (
-                  <Badge>{isMe ? "You're next!" : "Next"}</Badge>
-                ) : null}
+              <li key={memberId}>
+                <Item variant="outline">
+                  <ItemMedia>
+                    <Avatar>
+                      <AvatarFallback>
+                        {beneficiaryInitials({ full_name: name })}
+                      </AvatarFallback>
+                    </Avatar>
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>
+                      {isMe ? "You" : name}
+                      {person?.is_organiser ? " · organiser" : ""}
+                    </ItemTitle>
+                    <ItemDescription>
+                      Round {round + 1}
+                      {when ? ` · ${when}` : ""}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    {openRound != null && !released ? (
+                      <Badge variant={paid ? "default" : "secondary"}>
+                        {paid ? "Paid" : "Waiting"}
+                      </Badge>
+                    ) : null}
+                    {released ? (
+                      <Badge variant="outline">Paid out</Badge>
+                    ) : isOpen ? (
+                      <Badge>{isMe ? "You're next!" : "Next"}</Badge>
+                    ) : (
+                      <Badge variant="outline">Upcoming</Badge>
+                    )}
+                  </ItemActions>
+                </Item>
               </li>
             )
           })}

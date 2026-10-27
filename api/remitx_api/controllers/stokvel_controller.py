@@ -1,4 +1,5 @@
-"""Creating stokvels, listing the caller's (R2-07) and reading one (R2-14).
+"""Creating stokvels, listing the caller's (R2-07), reading one (R2-14)
+and setting its cover photo.
 
 A new stokvel opens its first cycle as `forming` (R2-09), so the Organiser
 can set the payout order and members can choose their beneficiaries before
@@ -8,20 +9,38 @@ Every query names the caller: Postgres row-level security would scope them
 anyway, but SQLite (tests) has none, and the two must return the same rows.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from remitx_api.clock import utcnow
 from remitx_api.config import Config
 from remitx_api.db.transaction import db_transaction
 from remitx_api.errors.stokvels import (
+    CoverNotStoredError,
+    CoverTooLargeError,
     KycNotApprovedToCreateStokvelError,
     StokvelCurrencyAccountMissingError,
+    StokvelDeactivatedError,
     StokvelNotFoundError,
+    UnsupportedCoverTypeError,
 )
+from remitx_api.errors.storage import (
+    ObjectStorageError,
+    ObjectStorageNotConfiguredError,
+)
+from remitx_api.extensions import db
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_contribution import STATUS_FAILED
+from remitx_api.models.orm.stokvel_cover import (
+    ALLOWED_COVER_CONTENT_TYPES,
+    COVER_URL_TTL_SECONDS,
+    MAX_COVER_BYTES,
+    StokvelCover,
+    cover_object_key,
+)
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle
 from remitx_api.models.orm.stokvel_cycle_member import StokvelCycleMember
 from remitx_api.models.orm.stokvel_member import StokvelMember
@@ -34,6 +53,7 @@ from remitx_api.repositories.kyc_application_repository import KycApplicationRep
 from remitx_api.repositories.stokvel_contribution_repository import (
     StokvelContributionRepository,
 )
+from remitx_api.repositories.stokvel_cover_repository import StokvelCoverRepository
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
 from remitx_api.repositories.stokvel_invitation_repository import (
     StokvelInvitationRepository,
@@ -44,15 +64,55 @@ from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 from remitx_api.services.exchange_rate_service import RateUnavailableError
+from remitx_api.services.file_signatures import (
+    CONTENT_TYPE_SVG,
+    SNIFF_LENGTH,
+    sniff_content_type,
+)
+from remitx_api.services.object_storage import object_storage
 from remitx_api.services.quote_service import round_amount, token_rates, token_to_fiat
 
 # `stokvels.contribution_amount` is Numeric(20, 8). A new stokvel reports the
 # amount the way the column stores it, so POST and GET print it alike.
 AMOUNT_QUANTUM = Decimal("0.00000001")
 
+logger = logging.getLogger(__name__)
+
 
 def _amount(value: Decimal) -> Decimal:
     return value.quantize(AMOUNT_QUANTUM)
+
+
+def _cover_type(body: bytes, declared_content_type: str) -> str:
+    """The content type of these bytes, or a refusal that says why.
+
+    A declared type is a client assertion. The leading bytes decide, and
+    the declaration has to name the same type.
+    """
+    sniffed = sniff_content_type(body[:SNIFF_LENGTH])
+    if sniffed == CONTENT_TYPE_SVG:
+        raise UnsupportedCoverTypeError(
+            "SVG files are not accepted: they can carry scripts, and a cover "
+            "photo is shown to every member."
+        )
+
+    declared = declared_content_type.split(";", 1)[0].strip().lower()
+    if declared not in ALLOWED_COVER_CONTENT_TYPES:
+        accepted = ", ".join(ALLOWED_COVER_CONTENT_TYPES)
+        raise UnsupportedCoverTypeError(
+            f"{declared or 'An unnamed content type'} is not an accepted "
+            f"cover photo. Upload one of: {accepted}."
+        )
+
+    if sniffed is None or sniffed not in ALLOWED_COVER_CONTENT_TYPES:
+        raise UnsupportedCoverTypeError(
+            "The cover photo has to be a JPEG, PNG or WebP image."
+        )
+    if sniffed != declared:
+        raise UnsupportedCoverTypeError(
+            f"The uploaded file is {sniffed}, not the declared {declared}."
+        )
+    return sniffed
 
 
 @dataclass(frozen=True)
@@ -67,6 +127,9 @@ class StokvelView:
     max_members: int
     created_at: datetime
     deactivated_at: datetime | None
+    # Short-lived read URL. None when the stokvel has no cover, or when the
+    # stored key is not the one this stokvel is allowed to show.
+    cover_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +223,10 @@ class StokvelDetailContributionView:
 class StokvelDetailInvitationView:
     invitation_id: uuid.UUID
     stokvel_id: uuid.UUID
+    # The person invited. Members already expose `user_id` once they join;
+    # this is how an accepted invitation is tied to that member when names
+    # match or are missing.
+    invitee_user_id: uuid.UUID
     invitee_name: str | None
     # The Organiser sees it. Other members do not: it is an EFT reference.
     account_reference: str | None
@@ -206,7 +273,36 @@ def stokvel_view(
         max_members=Config().MAX_STOKVEL_MEMBERS,
         created_at=stokvel.created_at,
         deactivated_at=stokvel.deactivated_at,
+        cover_url=cover_url_for(stokvel.id),
     )
+
+
+def cover_url_for(stokvel_id: uuid.UUID) -> str | None:
+    """A short-lived URL for this stokvel's cover, or None.
+
+    None when there is no photo, when the stored key is not the one fixed
+    key for this stokvel (so a row cannot be pointed at another object),
+    and when the bucket cannot sign one. A missing bucket must not take
+    the member screen down: the photo is decoration.
+    """
+    cover = StokvelCoverRepository().get_by_id(stokvel_id)
+    if cover is None:
+        return None
+    if (
+        cover.object_key != cover_object_key(stokvel_id)
+        or cover.content_type not in ALLOWED_COVER_CONTENT_TYPES
+    ):
+        logger.warning("Ignoring a stokvel cover that does not match %s", stokvel_id)
+        return None
+    try:
+        return object_storage().presign_get(
+            cover.object_key,
+            content_type=cover.content_type,
+            expires_in=COVER_URL_TTL_SECONDS,
+        )
+    except (ObjectStorageNotConfiguredError, ObjectStorageError):
+        logger.warning("Could not sign the cover for stokvel %s", stokvel_id)
+        return None
 
 
 def open_forming_cycle(stokvel: Stokvel) -> StokvelCycle:
@@ -229,6 +325,7 @@ class StokvelController:
         self._accounts = AccountRepository()
         self._applications = KycApplicationRepository()
         self._stokvels = StokvelRepository()
+        self._covers = StokvelCoverRepository()
         self._members = StokvelMemberRepository()
         self._invitations = StokvelInvitationRepository()
         self._cycles = StokvelCycleRepository()
@@ -385,6 +482,7 @@ class StokvelController:
                 StokvelDetailInvitationView(
                     invitation_id=invitation.id,
                     stokvel_id=invitation.stokvel_id,
+                    invitee_user_id=invitation.invitee_user_id,
                     invitee_name=_display(invitee),
                     account_reference=reference,
                     status=invitation.status,
@@ -405,6 +503,60 @@ class StokvelController:
                 else None
             ),
             contributions=contributions,
+        )
+
+    @db_transaction
+    def set_cover(
+        self,
+        user_id: uuid.UUID,
+        stokvel_id: uuid.UUID,
+        declared_content_type: str,
+        body: bytes,
+    ) -> str:
+        """Store a cover photo for a stokvel the caller currently belongs to.
+
+        The body is the file. Its type is taken from its leading bytes, and
+        the declared type has to agree. The object key is fixed, so a second
+        upload replaces the first. A caller who is not a current member gets
+        the same 404 as an unknown id.
+        """
+        stokvel, _member = self._visible_stokvel(user_id, stokvel_id)
+        if stokvel.deactivated_at is not None:
+            raise StokvelDeactivatedError()
+
+        content_type = _cover_type(body, declared_content_type)
+        if len(body) > MAX_COVER_BYTES:
+            raise CoverTooLargeError()
+
+        key = cover_object_key(stokvel.id)
+        storage = object_storage()
+        storage.put_object(key, body, content_type=content_type)
+        stored = storage.stat(key)
+        if stored is None or stored.size_bytes != len(body):
+            raise CoverNotStoredError()
+
+        row = self._covers.get_by_id(stokvel.id)
+        if row is None:
+            self._covers.add(
+                StokvelCover(
+                    stokvel_id=stokvel.id,
+                    object_key=key,
+                    content_type=content_type,
+                    updated_by_user_id=user_id,
+                    updated_at=utcnow(),
+                )
+            )
+        else:
+            row.object_key = key
+            row.content_type = content_type
+            row.updated_by_user_id = user_id
+            row.updated_at = utcnow()
+            db.session.flush()
+
+        return storage.presign_get(
+            key,
+            content_type=content_type,
+            expires_in=COVER_URL_TTL_SECONDS,
         )
 
     def _visible_stokvel(

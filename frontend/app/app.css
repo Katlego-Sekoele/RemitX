@@ -175,6 +175,8 @@
     @apply bg-background font-sans text-foreground antialiased;
   }
   html {
+    /* 22px root. 18px still read small on a desktop window. */
+    font-size: 137.5%;
     @apply font-sans;
   }
   h1,
