@@ -6684,7 +6684,7 @@
                 "type": "null"
               }
             ],
-            "description": "The other person's verified name: the recipient of a sent transfer, the sender of a received one.",
+            "description": "The other person's verified name: the recipient of a sent transfer, the sender of a received one. For a stokvel's payout, the stokvel's name. Null when neither is known.",
             "title": "Counterparty Name"
           },
           "counterparty_user_id": {

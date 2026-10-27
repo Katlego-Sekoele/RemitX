@@ -11,6 +11,7 @@ from remitx_api.repositories.remittance_repository import (
     RemittanceRecord,
     RemittanceRepository,
 )
+from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import remittance_service
 from remitx_api.services.transfer_timeline import TimelineStage, transfer_timeline
@@ -82,7 +83,9 @@ def _full_name(user: User | None) -> str | None:
     return " ".join(part for part in (user.first_name, user.last_name) if part) or None
 
 
-def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferView:
+def _transfer_view(
+    record: RemittanceRecord, caller_id: uuid.UUID, stokvel_name: str | None
+) -> TransferView:
     quote = record.quote
     sent = quote.sender_user_id == caller_id
     leg = record.settlement_leg
@@ -101,7 +104,7 @@ def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferVi
         quote_id=quote.quote_id,
         direction=DIRECTION_SENT if sent else DIRECTION_RECEIVED,
         counterparty_user_id=counterparty.id if counterparty else None,
-        counterparty_name=_full_name(counterparty),
+        counterparty_name=_full_name(counterparty) if counterparty else stokvel_name,
         status=leg.status,
         created_at=record.remittance.created_at,
         processed_at=leg.processed_at,
@@ -129,12 +132,17 @@ class RemittanceController:
         self._quotes = QuoteRepository()
         self._transactions = TransactionRepository()
         self._remittances = RemittanceRepository()
+        self._stokvels = StokvelRepository()
 
     def list_transfers(self, user_id: uuid.UUID, limit: int) -> list[TransferView]:
         """The caller's transfers, sent and received, newest first."""
+        records = self._remittances.list_for_user(user_id, limit)
+        names = self._stokvels.get_stokvel_names(
+            {r.quote.stokvel_id for r in records if r.quote.stokvel_id}
+        )
         return [
-            _transfer_view(record, user_id)
-            for record in self._remittances.list_for_user(user_id, limit)
+            _transfer_view(record, user_id, names.get(record.quote.stokvel_id))
+            for record in records
         ]
 
     def get_transfer(
@@ -144,7 +152,9 @@ class RemittanceController:
         record = self._remittances.get_for_user(remittance_id, user_id)
         if record is None:
             raise UnknownRemittanceError(remittance_id)
-        return _transfer_view(record, user_id)
+        stokvel_id = record.quote.stokvel_id
+        names = self._stokvels.get_stokvel_names({stokvel_id} if stokvel_id else set())
+        return _transfer_view(record, user_id, names.get(stokvel_id))
 
     def confirm(self, sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> RemittanceView:
         remittance = remittance_service.confirm_remittance(sender_user_id, quote_id)
