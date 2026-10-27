@@ -21,11 +21,17 @@ const member = (id: string, extra: Record<string, unknown> = {}) =>
     ...extra,
   }) as never
 
-const invitation = (id: string, status: string, name: string) =>
+const invitation = (
+  id: string,
+  status: string,
+  name: string | null,
+  userId: string | null = null
+) =>
   ({
     invitation_id: id,
     status,
     invitee_name: name,
+    invitee_user_id: userId,
   }) as never
 
 test("cycleRoster lists members going in, then pending invitations", () => {
@@ -35,7 +41,7 @@ test("cycleRoster lists members going in, then pending invitations", () => {
       member("thandi", { full_name: "Thandi M." }),
     ],
     invitations: [
-      invitation("inv-thandi", "accepted", "Thandi M."),
+      invitation("inv-thandi", "accepted", "Thandi M.", "user-thandi"),
       invitation("inv-sipho", "pending", "Sipho K."),
       invitation("inv-no", "declined", "No P."),
     ],
@@ -70,7 +76,9 @@ test("arrangeRoster keeps a pending invite's place once they join", () => {
       member("org", { is_organiser: true }),
       member("thandi", { full_name: "Thandi M." }),
     ],
-    invitations: [invitation("inv-thandi", "accepted", "Thandi M.")],
+    invitations: [
+      invitation("inv-thandi", "accepted", "Thandi M.", "user-thandi"),
+    ],
     cycle: { status: "forming", payout_order: ["org"] } as never,
   })
   const arranged = arrangeRoster(after, ["org"], draft)
@@ -79,6 +87,31 @@ test("arrangeRoster keeps a pending invite's place once they join", () => {
     ["thandi", "org"]
   )
   assert.deepEqual(joinedMemberIds(arranged), ["thandi", "org"])
+})
+
+test("cycleRoster matches an accepted invitation by user id", () => {
+  const roster = cycleRoster({
+    members: [
+      member("a", { full_name: "Thandi M.", user_id: "user-a" }),
+      member("b", { full_name: "Thandi M.", user_id: "user-b" }),
+      member("c", { full_name: null, user_id: "user-c" }),
+    ],
+    invitations: [
+      invitation("inv-b", "accepted", "Thandi M.", "user-b"),
+      invitation("inv-a", "accepted", "Thandi M.", "user-a"),
+      invitation("inv-c", "accepted", null, "user-c"),
+    ],
+    cycle: { status: "forming", payout_order: [] } as never,
+  })
+
+  assert.deepEqual(
+    roster.map((person) => [person.key, person.invitationId]),
+    [
+      ["a", "inv-a"],
+      ["b", "inv-b"],
+      ["c", "inv-c"],
+    ]
+  )
 })
 
 test("arrangeRoster falls back to the saved member order", () => {

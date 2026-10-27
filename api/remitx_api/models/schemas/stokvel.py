@@ -282,9 +282,12 @@ class StokvelDetailInvitationRead(SentStokvelInvitationRead):
     `account_reference` is set only for the Organiser, and null when the
     invitee no longer holds an account in the stokvel currency. `POST
     /stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where
-    the reference is always set.
+    the reference is always set. `invitee_user_id` is the person invited,
+    so an accepted invitation can be joined to that member without comparing
+    names.
     """
 
+    invitee_user_id: uuid.UUID
     account_reference: str | None
 
 
@@ -597,6 +600,7 @@ def _sent_invitation(
     return StokvelDetailInvitationRead(
         invitation_id=view.invitation_id,
         stokvel_id=view.stokvel_id,
+        invitee_user_id=view.invitee_user_id,
         invitee_name=view.invitee_name,
         account_reference=view.account_reference,
         status=view.status,

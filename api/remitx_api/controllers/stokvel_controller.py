@@ -223,6 +223,10 @@ class StokvelDetailContributionView:
 class StokvelDetailInvitationView:
     invitation_id: uuid.UUID
     stokvel_id: uuid.UUID
+    # The person invited. Members already expose `user_id` once they join;
+    # this is how an accepted invitation is tied to that member when names
+    # match or are missing.
+    invitee_user_id: uuid.UUID
     invitee_name: str | None
     # The Organiser sees it. Other members do not: it is an EFT reference.
     account_reference: str | None
@@ -478,6 +482,7 @@ class StokvelController:
                 StokvelDetailInvitationView(
                     invitation_id=invitation.id,
                     stokvel_id=invitation.stokvel_id,
+                    invitee_user_id=invitation.invitee_user_id,
                     invitee_name=_display(invitee),
                     account_reference=reference,
                     status=invitation.status,

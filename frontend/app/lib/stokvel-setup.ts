@@ -5,8 +5,9 @@
  * have already joined, so the Organiser can place someone who is still
  * deciding. The API stores member ids (`PUT /stokvels/{id}/payout-order`),
  * so a person who hasn't accepted yet is kept in this draft and written once
- * they have a `member_id`. Starting stays closed until every invite on the
- * list has been accepted.
+ * they have a `member_id`. That draft lives in this tab's sessionStorage:
+ * another tab starts from the saved member order. Starting stays closed
+ * until every invite on the list has been accepted.
  */
 
 import type { StokvelDetailRead, StokvelMemberRead } from "~/client"
@@ -71,8 +72,8 @@ export function cycleRoster(detail: RosterDetail): RosterPerson[] {
       : accepted.find(
           (candidate) =>
             !claimed.has(candidate.invitation_id) &&
-            candidate.invitee_name != null &&
-            candidate.invitee_name === member.full_name
+            candidate.invitee_user_id != null &&
+            candidate.invitee_user_id === member.user_id
         )
     if (invitation) claimed.add(invitation.invitation_id)
     return personFromMember(member, invitation?.invitation_id ?? null)
@@ -214,6 +215,8 @@ export function readRosterDraft(stokvelId: string): string[] | null {
   }
 }
 
+/** This tab only. Pending invitees have no member id, so their place is not
+ * sent to the server and a new tab does not see it. */
 export function writeRosterDraft(stokvelId: string, keys: readonly string[]) {
   if (typeof sessionStorage === "undefined") return
   sessionStorage.setItem(DRAFT_PREFIX + stokvelId, JSON.stringify(keys))

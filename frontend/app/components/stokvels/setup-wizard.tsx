@@ -150,7 +150,7 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
             <CardDescription>
               {waiting === 0
                 ? "Everyone you've invited has joined."
-                : `${waiting} still to accept. You can arrange the order while you wait.`}
+                : `${waiting} still to accept. You can arrange their place in this tab while you wait.`}
             </CardDescription>
           </CardHeader>
           <CardContent>
