@@ -41,6 +41,7 @@ export const queryClient = new QueryClient({
         return failureCount < 1
       },
       refetchOnWindowFocus: false,
+      staleTime: 30_000,
     },
   },
 })
