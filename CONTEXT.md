@@ -129,7 +129,7 @@ One ledger row moving an amount from one **Account** to another, in one of the p
 _Avoid_: Transfer, payment
 
 **Deposit**:
-Fiat paid into the platform's bank account and credited to a user's fiat **Account**, now authorised through **TrustMeBank**.
+Fiat paid into the platform's bank account and credited to a user's fiat **Account**, reconciled from the bank's CSV statement.
 _Avoid_: Contribution, top-up, cash-in
 
 **Withdrawal**:
@@ -137,7 +137,7 @@ Fiat moved from a user's **Account** to a verified bank account of theirs.
 _Avoid_: Cash-out, payout (that is a stokvel **Payout**)
 
 **TrustMeBank**:
-The mock bank whose authorised payments stand in for real fiat movement into and out of the platform.
+The mock bank whose authorised payments would stand in for real fiat movement into and out of the platform. An optional extension in the brief; not built (#274 and #275 closed as not planned).
 _Avoid_: Bank API, mock bank
 
 ### Compliance
