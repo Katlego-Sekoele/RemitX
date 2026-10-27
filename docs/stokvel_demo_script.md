@@ -65,13 +65,18 @@ Tick each off as it happens. The IDs match `docs/stokvel_test_plan.md`.
 
 ## Who does what
 
-| Person | Shows | Window | Signed in as |
-|---|---|---|---|
-| 1 | The platform: sign-in, verification, account, beneficiaries | A | Organiser |
-| 2 | Creating the stokvel, inviting, revoking, starting | A | Organiser |
-| 3 | The members joining and paying | B and C | Member 2 (B), Member 3 (C) |
-| 4 | The payout and the blocked round | A and E | Organiser; the explorer |
-| 5 | The admin side | D | Admin |
+Proposed: each person presents the part they built most of, so they can answer the markers' questions on it (from the repo's commit history). Change any name the team disagrees with.
+
+| Person | Who (proposed) | Shows | Why them | Window | Signed in as |
+|---|---|---|---|---|---|
+| 1 | Katlego | The platform: sign-in, verification, account, beneficiaries | Built the platform screens | A | Organiser |
+| 2 | Claire | Creating the stokvel, inviting, revoking, starting | Built invitations, revoke, setup and start cycle | A | Organiser |
+| 3 | Kerry | Member 2 paying, including the duplicate | Built the contract and the contributions | B | Member 2 |
+| 3 | Mridula | Member 3 paying; step 0; keeps the clock and calls the cues from the run sheet | Wrote the refusal tests, the demo data and this script | C | Member 3 |
+| 4 | Sian | The payout and the blocked round | Built the release and the payout settlement | A and E | Organiser; the explorer |
+| 5 | Karabo | The admin side | Built the admin Rounds and Contract pages | D | Admin |
+
+Alternative: Katlego built the admin backend (pause, manual release, #390), so Katlego and Karabo could swap Persons 1 and 5.
 
 Window **E** is the explorer page for the stokvel contract:
 `https://explorer.testnet.xrplevm.org/address/0x2f240705314BB79780522635eA47d20072CB8Fe1`
