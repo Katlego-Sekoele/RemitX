@@ -4,7 +4,7 @@ Record of what happened when a round's pool was paid out.
 - `release_status`: `pending → processing → released | failed`
   the contract releases the pool to the Treasury Wallet, and the ledger books
   the `stokvel_pool_release` leg `STOKVEL` → Treasury Wallet, so the stokvel's
-  balance keeps equalling its unreleased pools (R2-11). A pending row has
+  balance keeps equalling its unreleased pools. A pending row has
   sent nothing, so it has no release hash or block; a released row has its
   hash, block, ledger leg (`release_tx_id`) and `released_at`.
 - `remittance_status`: the ledger's `pending → processing → confirmed | failed`
@@ -116,56 +116,61 @@ class StokvelPayout(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    # References stokvel_rounds and stokvel_cycle_members through the
-    # composite foreign keys above
+    # The cycle this payout belongs to
     cycle_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    # The round being paid out, 0-based
+    # The round being paid out, counting from 0
     round: Mapped[int] = mapped_column(Integer, nullable=False)
-    # The member the round pays: their payout_position is `round`
+    # The member who receives this round's pool
     member_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    # Status for whether the contract has released the round's pool to the
+    # Treasury Wallet. Starts `pending`, becomes `processing` while the worker
+    # sends `finalise`, and `released` once the release is recorded.
     release_status: Mapped[str] = mapped_column(
         Text,
         nullable=False,
         default=StokvelPayoutReleaseStatus.PENDING.value,
         server_default=StokvelPayoutReleaseStatus.PENDING.value,
     )
-    # The on-chain hash of the pool release. Not unique: one `contribute`
-    # releases every round that has become due (the contract's
-    # `_releaseDue`), so rounds left unfinalised after their payout time are
-    # released together and share its hash
+    # The on-chain transaction that released the pool. Not unique: one
+    # transaction can release several overdue rounds at once
     release_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # The block the pool release (RoundFinalised) was mined in
+    # The block the release transaction was mined in
     release_block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # The `stokvel_pool_release` ledger leg, `STOKVEL` → Treasury Wallet
+    # The ledger entry moving the pool from the stokvel to the Treasury Wallet
     release_tx_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
     )
+    # Status of whether the released pool has been paid on to the member's
+    # beneficiary. Stays `pending` payout is `released`, becomes
+    # `processing` when the worker creates the remittance, then `confirmed`
+    # once the token burn settles, or `failed` if the burn fails or the
+    # beneficiary can no longer be paid
     remittance_status: Mapped[str] = mapped_column(
         Text,
         nullable=False,
         default=TransactionStatus.PENDING.value,
         server_default=TransactionStatus.PENDING.value,
     )
-    # The stokvel-sender quote the payout was priced from
+    # The FX quote used to price the payout
     quote_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("quotes.quote_id"), nullable=True, unique=True
     )
-    # The payout remittance: the reference shown to the member
+    # The remittance that pays the member
     remittance_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("remittances.remittance_id"), nullable=True, unique=True
     )
-    # The on-chain hash of the token burn during settlement
+    # The on-chain transaction that burnt the tokens 
     burn_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
-    # Set exactly when the release is
+    # When we recorded the release (not the block's time). Set only once
+    # `release_status` is `released`
     released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # When the event sync last queued `stokvel.settle_payout` for this payout
-    # (R3-05): it queues again only some minutes later. Its own column, so
-    # other writes to the row do not delay the payout
+    # When the worker last queued a payout for remittance, so it waits a few minutes before
+    # queueing it again
     settle_queued_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
