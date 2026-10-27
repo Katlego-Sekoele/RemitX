@@ -77,7 +77,8 @@ class AccountTransactionRead(Schema):
     # "Transfer fee", "Sent to Tendai M.", "Received from Sipho K.",
     # "Converted to ZWL".
     description: str
-    # The other customer, on the legs of a transfer.
+    # The other customer on the legs of a transfer, or the stokvel that paid
+    # a payout.
     counterparty_name: str | None
     # The transfer this leg belongs to, if any.
     remittance_id: uuid.UUID | None
