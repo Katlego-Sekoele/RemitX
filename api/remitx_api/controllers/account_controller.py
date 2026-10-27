@@ -142,7 +142,7 @@ class AccountTransactionView:
     # What the leg was, from this account's owner's point of view.
     description: str
     # The other customer in a transfer, or the stokvel that paid a payout;
-    # None off a transfer, or when that person has no name on file.
+    # None off a transfer, or when neither has a name the caller may see.
     counterparty_name: str | None
     remittance_id: uuid.UUID | None
     # The transfer's burn hash on the XRPL Testnet, on every leg of a
