@@ -15,12 +15,14 @@ has passed.
 # ruff: noqa: F401, F811
 
 import time
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from remitx_api.extensions import db
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.stokvel_contribution import StokvelContribution
+from remitx_api.models.orm.stokvel_round import StokvelRound
 from sqlalchemy import select
 from tests.rbac_helpers import grant_permissions, seed_rbac_catalogue
 from tests.test_stokvel_setup_route import _in_session, _person, _refused
@@ -61,6 +63,19 @@ def _contributions(session_factory, member_id) -> list[StokvelContribution]:
         ).all()
         session.expunge_all()
         return rows
+
+
+def _let_round_payout_time_pass(session_factory, round_: int) -> None:
+    """The manual-release gate reads `stokvel_rounds.payout_time`. The fake
+    vault has its own clock, so a test that moves only that clock still
+    looks early to the database."""
+    past = datetime.now(UTC) - timedelta(minutes=1)
+    with session_factory() as session:
+        row = session.scalar(select(StokvelRound).where(StokvelRound.round == round_))
+        row.start_time = past - timedelta(minutes=4)
+        row.deadline = past - timedelta(minutes=1)
+        row.payout_time = past
+        session.commit()
 
 
 def _settled_to(platform, group, member, payout) -> None:
@@ -169,6 +184,7 @@ def test_an_early_finalise_is_refused_until_the_payout_time(
     assert _payouts(platform.session) == {}
 
     vault.now = lambda: time.time() + 2 * 60 * 60
+    _let_round_payout_time_pass(platform.session, 0)
     released = api.finalise(admin, group.stokvel_id, 0)
     assert released.status_code == 202, released.text
     assert [name for name, _ in broker.deliver()] == ["release_pool"]

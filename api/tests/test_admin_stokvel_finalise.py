@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -13,6 +13,7 @@ from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
+from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.services import queue_service
 from remitx_api.services.stokvel_contract_read import (
     FinaliseReadiness,
@@ -53,6 +54,20 @@ def _seed(organiser_id, *, status="active", registered=True, rounds=2):
     db.session.add(cycle)
     db.session.flush()
     stokvel.current_cycle_id = cycle.id
+    if not forming and rounds:
+        due = now - timedelta(hours=1)
+        start = due - timedelta(days=1)
+        deadline = due - timedelta(minutes=1)
+        for round_ in range(rounds):
+            db.session.add(
+                StokvelRound(
+                    cycle_id=cycle.id,
+                    round=round_,
+                    start_time=start,
+                    deadline=deadline,
+                    payout_time=due,
+                )
+            )
     db.session.commit()
     return stokvel, cycle
 
@@ -66,12 +81,18 @@ def _hold_payout(monkeypatch, status, tx_hash=None):
     )
 
 
-def _patch(monkeypatch, readiness, paused=False):
+def _patch(monkeypatch, readiness, paused=False, *, db_ready=True):
     queued = []
     monkeypatch.setattr(
         "remitx_api.controllers.stokvel_admin_controller.is_paused",
         lambda: paused,
     )
+    if db_ready:
+        monkeypatch.setattr(
+            "remitx_api.controllers.stokvel_admin_controller"
+            ".round_manual_release_allowed",
+            lambda **kwargs: True,
+        )
     monkeypatch.setattr(
         "remitx_api.controllers.stokvel_admin_controller.finalise_readiness",
         lambda *args: readiness(*args) if callable(readiness) else readiness,
@@ -241,6 +262,35 @@ def test_a_payout_that_is_not_pending_is_not_queued(monkeypatch, status):
             )
             is None
         )
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (StokvelPayoutReleaseStatus.RELEASED.value, "round_already_finalised"),
+        (StokvelPayoutReleaseStatus.PROCESSING.value, "round_release_not_pending"),
+        (StokvelPayoutReleaseStatus.FAILED.value, "round_release_not_pending"),
+    ],
+)
+def test_release_status_keeps_its_code_without_patching_the_gate(
+    monkeypatch, status, code
+):
+    """The time and contribution gate must not swallow these 409s. The
+    payout row is enough: contributions are not seeded, and the gate is
+    left to run."""
+
+    def readiness(*_args):
+        raise AssertionError("payout status is answered before the chain")
+
+    queued = _patch(monkeypatch, readiness, db_ready=False)
+    _hold_payout(monkeypatch, status, "0xabc" if status == "released" else None)
+    user = make_user(f"finalise-status-unpatched-{status}")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        response = client.post(_url(stokvel.id))
+    assert response.status_code == 409
+    assert response.json()["code"] == code
+    assert queued == []
 
 
 def test_a_released_payout_row_is_already_finalised(monkeypatch):

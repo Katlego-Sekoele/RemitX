@@ -8,7 +8,10 @@ from remitx_api.auth.dependencies import get_current_user
 from remitx_api.controllers.stokvel_admin_controller import StokvelAdminController
 from remitx_api.models.orm.permission import PermissionCode
 from remitx_api.models.orm.user import User
-from remitx_api.models.schemas.stokvel_contract import StokvelRoundFinaliseResponse
+from remitx_api.models.schemas.stokvel_contract import (
+    AdminStokvelRoundRead,
+    StokvelRoundFinaliseResponse,
+)
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
 
@@ -18,6 +21,17 @@ router = create_admin_router(
     tags=[Tag.ADMIN_STOKVELS],
 )
 controller = StokvelAdminController()
+
+
+@router.get(
+    "/rounds",
+    response_model=list[AdminStokvelRoundRead],
+    summary="List stokvel rounds for manual release",
+)
+def list_admin_stokvel_rounds():
+    """Each active cycle's next unreleased round: paid counts, payout time and
+    release status. Needs ``stokvel:round:finalise``."""
+    return controller.list_rounds()
 
 
 @router.post(

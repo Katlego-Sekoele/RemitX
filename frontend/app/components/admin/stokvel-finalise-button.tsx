@@ -24,10 +24,8 @@ import {
 } from "~/lib/stokvel-admin"
 
 /**
- * Release one round by hand (R4-11, #260): the fallback when the automatic
- * release fails. It asks first, and the contract still checks the round is
- * fully paid and past its payout time, so an early try is refused with
- * "This round can't be paid out yet." (the demo's rejected early release).
+ * Release one round by hand (R4-11, #260): only when the API marks the round
+ * `manual_release_allowed` (fully paid, payout time passed, release pending).
  */
 export function StokvelFinaliseButton({
   round,
@@ -42,7 +40,7 @@ export function StokvelFinaliseButton({
       setOpen(false)
       await invalidateAdminRounds(queryClient)
       toast.success(
-        `${round.stokvel_name}, round ${round.round + 1}: payout released`
+        `${round.stokvel_name}, round ${round.round + 1}: release queued`
       )
     },
   })
@@ -70,8 +68,8 @@ export function StokvelFinaliseButton({
             <AlertDialogDescription>
               The pool goes to {round.recipient_name}&apos;s beneficiary. Use
               this only when the automatic release hasn&apos;t happened. The
-              contract still checks that everyone has paid and the payout time
-              has passed, and your name is recorded in the audit log.
+              contract still has the last word, and your name is recorded in the
+              audit log.
               {round.release_status === "failed"
                 ? " The automatic release failed for this round."
                 : ""}

@@ -8,6 +8,7 @@ from remitx_api.models.orm.user import User
 from remitx_api.models.schemas.stokvel_contract import (
     StokvelContractActionResponse,
     StokvelContractPauseRequest,
+    StokvelContractRead,
 )
 from remitx_api.openapi import Tag, error_responses
 from remitx_api.routes.routers import create_admin_router
@@ -18,6 +19,18 @@ router = create_admin_router(
     tags=[Tag.ADMIN_STOKVEL_CONTRACT],
 )
 controller = StokvelAdminController()
+
+
+@router.get(
+    "",
+    response_model=StokvelContractRead,
+    summary="Read the shared stokvel vault",
+    responses=error_responses(503),
+)
+def get_stokvel_contract():
+    """The vault address, pause state (from chain plus the latest pause audit
+    entry), and treasury UCTUSD balance. Needs ``stokvel:contract:pause``."""
+    return controller.get_contract()
 
 
 @router.post(

@@ -28,7 +28,9 @@ from remitx_api.models.orm.audit_log import (
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
 from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
 from remitx_api.models.schemas.stokvel_contract import (
+    AdminStokvelRoundRead,
     StokvelContractActionResponse,
+    StokvelContractRead,
     StokvelRoundFinaliseResponse,
 )
 from remitx_api.repositories.stokvel_cycle_repository import StokvelCycleRepository
@@ -36,6 +38,11 @@ from remitx_api.repositories.stokvel_payout_repository import StokvelPayoutRepos
 from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.services import queue_service
 from remitx_api.services.audit_service import record_audit
+from remitx_api.services.stokvel_admin_read import (
+    list_admin_rounds,
+    read_contract_status,
+    round_manual_release_allowed,
+)
 from remitx_api.services.stokvel_contract_read import (
     FinaliseReadiness,
     finalise_readiness,
@@ -59,6 +66,35 @@ _CHAIN_MISMATCH = frozenset(
 
 
 class StokvelAdminController:
+    def get_contract(self) -> StokvelContractRead:
+        view = read_contract_status()
+        return StokvelContractRead(
+            address=view.address,
+            network=view.network,
+            paused=view.paused,
+            paused_at=view.paused_at,
+            paused_reason=view.paused_reason,
+            treasury_token_balance=view.treasury_token_balance,
+        )
+
+    def list_rounds(self) -> list[AdminStokvelRoundRead]:
+        return [
+            AdminStokvelRoundRead(
+                stokvel_id=row.stokvel_id,
+                stokvel_name=row.stokvel_name,
+                round=row.round,
+                total_rounds=row.total_rounds,
+                recipient_name=row.recipient_name,
+                paid_count=row.paid_count,
+                member_count=row.member_count,
+                payout_time=row.payout_time,
+                release_status=row.release_status,
+                release_tx_hash=row.release_tx_hash,
+                manual_release_allowed=row.manual_release_allowed,
+            )
+            for row in list_admin_rounds()
+        ]
+
     def pause(
         self, actor_user_id: uuid.UUID, reason: str
     ) -> StokvelContractActionResponse:
@@ -87,12 +123,15 @@ class StokvelAdminController:
         self, actor_user_id: uuid.UUID, stokvel_id: uuid.UUID, round_: int
     ) -> StokvelRoundFinaliseResponse:
         """Queue `stokvel.release_pool` for one round of the stokvel's open
-        cycle. The worker sends `finalise`; this does not. The chain is read
-        first, so a round that is not ready or already released is refused
-        and nothing is queued. A payout that is not `pending` is refused too:
-        the worker only claims `pending`. A second queue for a round the
-        chain still calls ready, whose payout is still `pending`, is
-        harmless: `release_pool` claims the payout once."""
+        cycle. The worker sends `finalise`; this does not. A payout that is
+        not `pending` is refused first (`round_already_finalised` or
+        `round_release_not_pending`): the worker only claims `pending`. The
+        time and contribution rules (D5, D12) then refuse with
+        `round_not_finalisable`. The chain is read after that, so a round
+        that is not ready or already released there is refused and nothing
+        is queued. A second queue for a round the chain still calls ready,
+        whose payout is still `pending`, is harmless: `release_pool` claims
+        the payout once."""
         stokvel = StokvelRepository().get_by_id(stokvel_id)
         if stokvel is None:
             raise StokvelNotFoundError()
@@ -114,10 +153,14 @@ class StokvelAdminController:
             raise RoundNotFinalisableError()
         if is_paused():
             raise StokvelPausedError()
-        readiness = finalise_readiness(stokvel_id, cycle.cycle_number, round_)
-        if readiness is not FinaliseReadiness.READY:
-            self._refuse_chain(stokvel_id, cycle.cycle_number, round_, readiness)
+        rounds = StokvelCycleRepository().get_cycle_rounds(cycle.id)
+        schedule = next((row for row in rounds if row.round == round_), None)
+        if schedule is None:
+            raise RoundNotFinalisableError()
         payout = StokvelPayoutRepository().get_round_payout(cycle.id, round_)
+        # Status before the time and contribution gate, so a released or
+        # in-flight payout keeps `round_already_finalised` /
+        # `round_release_not_pending` even when that gate would also fail.
         if (
             payout is not None
             and payout.release_status != StokvelPayoutReleaseStatus.PENDING.value
@@ -125,6 +168,16 @@ class StokvelAdminController:
             if payout.release_status == StokvelPayoutReleaseStatus.RELEASED.value:
                 raise RoundAlreadyFinalisedError()
             raise RoundReleaseNotPendingError()
+        if not round_manual_release_allowed(
+            cycle_id=cycle.id,
+            round_=round_,
+            total_rounds=cycle.total_rounds,
+            payout_time=schedule.payout_time,
+        ):
+            raise RoundNotFinalisableError()
+        readiness = finalise_readiness(stokvel_id, cycle.cycle_number, round_)
+        if readiness is not FinaliseReadiness.READY:
+            self._refuse_chain(stokvel_id, cycle.cycle_number, round_, readiness)
         self._enqueue_and_audit(
             actor_user_id,
             stokvel_id,
