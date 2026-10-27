@@ -11,6 +11,7 @@ from remitx_api.db.rls import bound_row_security_context
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import CURRENCY_TOKEN, CURRENCY_ZAR
 from remitx_api.models.orm.permission import PermissionCode
+from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.transaction import STATUS_CONFIRMED, STATUS_PENDING
 from remitx_api.repositories.stokvel_repository import StokvelRepository
@@ -132,10 +133,11 @@ def test_a_recipient_outside_the_stokvel_sees_only_its_name(postgres_app):
     token = db.open_session()
     try:
         recipient, outsider = make_user(), make_user()
-        _record_payout(recipient)
+        quote_id = _record_payout(recipient).quote_id
         db.session.commit()
+        # By its quote, not its name: other tests' stokvels share the database.
         stokvel_id = db.session.scalar(
-            select(Stokvel.id).where(Stokvel.name == "Savings club")
+            select(Quote.stokvel_id).where(Quote.quote_id == quote_id)
         )
 
         with bound_row_security_context(recipient.id, is_admin_route=False):
