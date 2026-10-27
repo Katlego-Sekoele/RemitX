@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { ArrowSquareOutIcon, CheckCircleIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
@@ -69,6 +70,7 @@ export function ContributionPanel({
   mine,
   outstanding,
   availableBalance,
+  bare = false,
 }: {
   stokvel: StokvelDetailRead
   round: StokvelRoundRead
@@ -77,6 +79,8 @@ export function ContributionPanel({
   /** Members still to pay, the member included while unpaid. */
   outstanding: number
   availableBalance: string | undefined
+  /** Sit inside another card (the pot) instead of drawing its own. */
+  bare?: boolean
 }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -152,7 +156,7 @@ export function ContributionPanel({
 
   if (!amount && !paid && !confirming) {
     return (
-      <Card>
+      <Frame bare={bare}>
         <CardHeader>
           <CardTitle>Your contribution</CardTitle>
           <CardDescription>
@@ -160,7 +164,7 @@ export function ContributionPanel({
             be paid yet.
           </CardDescription>
         </CardHeader>
-      </Card>
+      </Frame>
     )
   }
 
@@ -174,7 +178,7 @@ export function ContributionPanel({
 
   if (paid || confirming) {
     return (
-      <Card>
+      <Frame bare={bare}>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <CardTitle>Your contribution</CardTitle>
@@ -227,7 +231,7 @@ export function ContributionPanel({
             </Button>
           ) : null}
         </CardContent>
-      </Card>
+      </Frame>
     )
   }
 
@@ -236,7 +240,7 @@ export function ContributionPanel({
   const late = Date.now() > Date.parse(round.deadline)
 
   return (
-    <Card>
+    <Frame bare={bare}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <CardTitle>Your contribution</CardTitle>
@@ -380,6 +384,18 @@ export function ContributionPanel({
           </SheetFooter>
         </SheetContent>
       </Sheet>
-    </Card>
+    </Frame>
   )
+}
+
+/** Own card, or the right-hand side of the pot card. */
+function Frame({ bare, children }: { bare: boolean; children: ReactNode }) {
+  if (bare) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-(--card-spacing)">
+        {children}
+      </div>
+    )
+  }
+  return <Card>{children}</Card>
 }

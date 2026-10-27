@@ -279,20 +279,27 @@ function StokvelDetail({
 
           <div className="flex min-w-0 flex-col gap-4">
             {active && currentRound ? (
-              <>
-                <Card>
-                  <CardContent className="flex flex-col items-center gap-3">
-                    {pool && collected ? (
-                      <PotRing
-                        paid={paid.size}
-                        total={fillCount}
-                        collected={collected}
-                        pool={pool}
-                        currency={stokvel.currency}
-                      />
-                    ) : null}
-                  </CardContent>
+              pool && collected ? (
+                <Card className="sm:flex-row sm:items-center">
+                  <div className="flex shrink-0 justify-center px-(--card-spacing) sm:pr-0">
+                    <PotRing
+                      paid={paid.size}
+                      total={fillCount}
+                      collected={collected}
+                      pool={pool}
+                      currency={stokvel.currency}
+                    />
+                  </div>
+                  <ContributionPanel
+                    bare
+                    stokvel={stokvel}
+                    round={currentRound}
+                    mine={mine}
+                    outstanding={outstanding.length}
+                    availableBalance={availableBalance}
+                  />
                 </Card>
+              ) : (
                 <ContributionPanel
                   stokvel={stokvel}
                   round={currentRound}
@@ -300,7 +307,7 @@ function StokvelDetail({
                   outstanding={outstanding.length}
                   availableBalance={availableBalance}
                 />
-              </>
+              )
             ) : null}
 
             {stokvel.phase === "forming" ? (
