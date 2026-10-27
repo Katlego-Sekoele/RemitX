@@ -105,6 +105,12 @@ class Transaction(Base):
             postgresql_where=text("type = 'token_burn'"),
             sqlite_where=text("type = 'token_burn'"),
         ),
+        Index(
+            "ix_transactions_credit_inflight",
+            "credit_account_id",
+            postgresql_where=text("status IN ('pending', 'processing')"),
+            sqlite_where=text("status IN ('pending', 'processing')"),
+        ),
     )
 
     tx_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

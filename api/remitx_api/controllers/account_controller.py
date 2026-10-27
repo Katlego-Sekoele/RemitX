@@ -249,6 +249,9 @@ class AccountController:
         accounts = sorted(
             self._accounts.list_user_accounts(user_id), key=_display_order
         )
+        in_flight = self._accounts.available_balances_for_accounts(
+            [account.account_id for account in accounts]
+        )
         return [
             AccountView(
                 account_id=account.account_id,
@@ -257,7 +260,8 @@ class AccountController:
                 kind=account_kind(account.account_currency),
                 balance=_money(account.account_balance),
                 available_balance=_money(
-                    self._accounts.get_available_balance(account.account_id)
+                    account.account_balance
+                    - in_flight.get(account.account_id, Decimal("0"))
                 ),
             )
             for account in accounts
