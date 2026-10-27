@@ -264,6 +264,35 @@ def test_a_payout_that_is_not_pending_is_not_queued(monkeypatch, status):
         )
 
 
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (StokvelPayoutReleaseStatus.RELEASED.value, "round_already_finalised"),
+        (StokvelPayoutReleaseStatus.PROCESSING.value, "round_release_not_pending"),
+        (StokvelPayoutReleaseStatus.FAILED.value, "round_release_not_pending"),
+    ],
+)
+def test_release_status_keeps_its_code_without_patching_the_gate(
+    monkeypatch, status, code
+):
+    """The time and contribution gate must not swallow these 409s. The
+    payout row is enough: contributions are not seeded, and the gate is
+    left to run."""
+
+    def readiness(*_args):
+        raise AssertionError("payout status is answered before the chain")
+
+    queued = _patch(monkeypatch, readiness, db_ready=False)
+    _hold_payout(monkeypatch, status, "0xabc" if status == "released" else None)
+    user = make_user(f"finalise-status-unpatched-{status}")
+    with rbac_client(user, permissions=(PERMISSION,)) as client:
+        stokvel, _cycle = _seed(user.id)
+        response = client.post(_url(stokvel.id))
+    assert response.status_code == 409
+    assert response.json()["code"] == code
+    assert queued == []
+
+
 def test_a_released_payout_row_is_already_finalised(monkeypatch):
     queued = _patch(monkeypatch, FinaliseReadiness.READY)
     _hold_payout(monkeypatch, StokvelPayoutReleaseStatus.RELEASED.value, "0xabc")

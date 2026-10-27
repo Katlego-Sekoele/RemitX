@@ -81,22 +81,49 @@ def round_manual_release_allowed(
     round_: int,
     total_rounds: int,
     payout_time: datetime,
+    now: datetime | None = None,
+) -> bool:
+    """Whether the round meets the time and contribution rules (D5, D12).
+
+    Payout release status is not part of this check. `finalise_round` answers
+    a released, processing, or failed payout with its own codes before it
+    calls this.
+    """
+    when = utcnow() if now is None else now
+    if payout_time > when:
+        return False
+    return _contributions_fully_paid(cycle_id, round_, total_rounds)
+
+
+def admin_list_manual_release_allowed(
+    *,
+    cycle_id: uuid.UUID,
+    round_: int,
+    total_rounds: int,
+    payout_time: datetime,
     release_status: str | None,
     now: datetime | None = None,
 ) -> bool:
-    """Whether an admin may queue manual release (D5, D12): payout time
-    passed, every member confirmed for this round and the next (unless last),
-    and the payout is missing or still `pending`."""
-    when = utcnow() if now is None else now
+    """Whether the rounds list offers the Release payout button.
+
+    Same time and contribution rules as `round_manual_release_allowed`, and
+    the payout is missing or still `pending`. A released, processing, or
+    failed row stays off the button; finalise still names those with
+    `round_already_finalised` or `round_release_not_pending`.
+    """
     if release_status in (
         StokvelPayoutReleaseStatus.RELEASED.value,
         StokvelPayoutReleaseStatus.PROCESSING.value,
         StokvelPayoutReleaseStatus.FAILED.value,
     ):
         return False
-    if payout_time > when:
-        return False
-    return _contributions_fully_paid(cycle_id, round_, total_rounds)
+    return round_manual_release_allowed(
+        cycle_id=cycle_id,
+        round_=round_,
+        total_rounds=total_rounds,
+        payout_time=payout_time,
+        now=now,
+    )
 
 
 def _contributions_fully_paid(
@@ -201,7 +228,7 @@ def list_admin_rounds() -> list[AdminStokvelRoundView]:
                 payout_time=payout_time,
                 release_status=release_status,
                 release_tx_hash=None if payout is None else payout.release_tx_hash,
-                manual_release_allowed=round_manual_release_allowed(
+                manual_release_allowed=admin_list_manual_release_allowed(
                     cycle_id=cycle_id,
                     round_=int(round_),
                     total_rounds=member_count,

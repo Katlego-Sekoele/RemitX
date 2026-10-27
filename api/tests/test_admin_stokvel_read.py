@@ -100,4 +100,3 @@ def test_rounds_list_returns_admin_rows(monkeypatch):
             "manual_release_allowed": True,
         }
     ]
-
