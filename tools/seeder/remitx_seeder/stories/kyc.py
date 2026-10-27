@@ -337,6 +337,7 @@ class KycStory:
         application = KycApplicationRepository().get_by_id(person.application_id)
         if person.force_override or (
             not person.force_tier_two
+            and not person.scripted
             and self.ctx.rng.random() < self.ctx.scenario.kyc.override_rate
         ):
             computed = application.effective_risk_rating or "medium"

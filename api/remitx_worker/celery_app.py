@@ -26,10 +26,19 @@ celery.conf.beat_schedule = {
         "task": "stokvel.register_started_cycles",
         "schedule": schedule(run_every=Config.STOKVEL_START_SWEEP_INTERVAL_SECONDS),
     },
+    # Releases rounds that became due with time rather than a payment (R3-11).
+    "stokvel-release-due-rounds": {
+        "task": "stokvel.release_due_rounds",
+        "schedule": schedule(run_every=Config.STOKVEL_RELEASE_INTERVAL_SECONDS),
+    },
 }
 celery.autodiscover_tasks(["remitx_worker"])
 # The stokvel tasks (doc section 4) live in their own module.
 celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_tasks")
+# `stokvel.release_pool` (R3-04), apart from #232's cycle tasks.
+celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_release")
+# `stokvel.settle_payout` (R3-05).
+celery.autodiscover_tasks(["remitx_worker"], related_name="stokvel_payouts")
 
 
 @worker_ready.connect

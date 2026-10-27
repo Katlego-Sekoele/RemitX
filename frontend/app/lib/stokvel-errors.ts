@@ -13,12 +13,39 @@ export const STOKVEL_ERROR_MESSAGES = {
   contribution_amount_mismatch: "Something went wrong. Please try again.",
   round_not_finalisable: "This round can't be paid out yet.",
   round_already_finalised: "This round has already been paid out.",
+  round_release_not_pending:
+    "This round's payout is already in progress or has failed, so it can't be queued again.",
+  stokvel_chain_mismatch:
+    "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out.",
   cycle_not_open: "This stokvel has no active cycle right now.",
   too_many_members: "This stokvel already has as many members as it can.",
   stokvel_paused: "Stokvels are temporarily paused.",
   treasury_allowance_missing: "Something went wrong. Please try again.",
   treasury_funds_low:
     "Contributions are temporarily unavailable. Please try again later.",
+  // Invitations (R2-08, #230): doc section 6, "Refusals for invitations".
+  not_organiser: "Only the stokvel's organiser can invite members.",
+  invitee_not_verified:
+    "This person isn't verified yet, so they can't be invited.",
+  invitee_currency_mismatch:
+    "The account's currency must match the stokvel's currency.",
+  already_a_member: "This person is already a member of the stokvel.",
+  invitation_already_pending: "This person already has a pending invitation.",
+  stokvel_deactivated: "This stokvel is no longer active.",
+  not_invitee: "Only the person invited can answer this invitation.",
+  invitation_not_pending:
+    "This invitation has already been answered or has expired.",
+  // Payout order, beneficiary and starting a cycle (#231, #232). Not here:
+  // cycle_not_ready and invalid_schedule, whose `detail` says which part is
+  // missing or wrong, so the API's message is shown as is.
+  cycle_locked:
+    "The payout order and beneficiaries are locked while a cycle is running.",
+  cycle_not_forming: "This stokvel's next cycle hasn't been opened yet.",
+  cycle_in_progress: "This stokvel's cycle has already started.",
+  too_few_members: "A cycle needs at least 2 members.",
+  // Continue or leave after a cycle (#237).
+  organiser_cannot_leave:
+    "As Organiser you can't leave. Closing the stokvel ends it for everyone.",
   // #232: a cycle has started but is not on-chain yet; worth a retry.
   cycle_starting:
     "This stokvel's cycle is still being set up. Try again in a minute.",
@@ -52,6 +79,26 @@ export function stokvelErrorCode(error: unknown): StokvelErrorCode | null {
 export function stokvelErrorMessage(error: unknown): string {
   const code = stokvelErrorCode(error)
   return code ? STOKVEL_ERROR_MESSAGES[code] : errorMessage(error)
+}
+
+/** A refused revoke (#297). `not_organiser` is shared with the invite
+ * route, whose wording says "invite", so this one says what was refused. */
+export function revokeErrorMessage(error: unknown): string {
+  return stokvelErrorCode(error) === "not_organiser"
+    ? "Only the stokvel's organiser can revoke invitations."
+    : stokvelErrorMessage(error)
+}
+
+/** An invitation that can't be answered any more: lapsed or answered
+ * (`invitation_not_pending`), its stokvel deactivated, or gone (404). The
+ * card refreshes the list on these so it disappears. */
+export function isGoneInvitationError(error: unknown): boolean {
+  const code = stokvelErrorCode(error)
+  return (
+    code === "invitation_not_pending" ||
+    code === "stokvel_deactivated" ||
+    statusOf(error) === 404
+  )
 }
 
 /** Why a contribution was refused, including the ledger's own refusals that

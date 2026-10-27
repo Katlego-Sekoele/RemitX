@@ -114,14 +114,7 @@ class MoneyStory:
     def _add_beneficiaries(self, person: SeededPerson) -> None:
         corridor = person.persona.corridor
         wanted = self.ctx.rng.randint(*corridor["beneficiaries"])
-        pool = [
-            p
-            for p in self.ctx.people_with_role("recipient")
-            if p.persona.nationality == corridor["recipient_country"]
-            and p.user_id is not None
-            and p.user_id != person.user_id
-            and all(b["user_id"] != p.user_id for b in person.beneficiaries)
-        ]
+        pool = self.recipient_pool(person)
         if not pool:
             # Nobody from home has signed up yet; try again tomorrow.
             self.sim.schedule(
@@ -132,6 +125,29 @@ class MoneyStory:
             return
         for recipient in self.ctx.rng.sample(pool, k=min(wanted, len(pool))):
             self._add_beneficiary(person, recipient)
+
+    def recipient_pool(
+        self, person: SeededPerson, exclude: set | frozenset = frozenset()
+    ) -> list[SeededPerson]:
+        """Recipients who may become `person`'s beneficiary: signed up, from
+        their corridor's country, not themselves, not already one of theirs,
+        and not in `exclude` (user ids)."""
+        country = person.persona.corridor["recipient_country"]
+        return [
+            p
+            for p in self.ctx.people_with_role("recipient")
+            if p.persona.nationality == country
+            and p.user_id is not None
+            and p.user_id != person.user_id
+            and p.user_id not in exclude
+            and all(b["user_id"] != p.user_id for b in person.beneficiaries)
+        ]
+
+    def add_beneficiary(self, person: SeededPerson, recipient: SeededPerson) -> dict:
+        """Add `recipient` as `person`'s beneficiary, in a payout currency of
+        their corridor. The new entry in `person.beneficiaries`."""
+        self._add_beneficiary(person, recipient)
+        return person.beneficiaries[-1]
 
     def _add_beneficiary(self, person: SeededPerson, recipient: SeededPerson) -> None:
         from remitx_api.controllers.beneficiary_controller import BeneficiaryController
@@ -361,6 +377,24 @@ class MoneyStory:
                 },
             )
 
+    def deposit_to_keep(self, person: SeededPerson, amount: Decimal) -> None:
+        """One correctly referenced deposit of `amount` on tomorrow's
+        statement, reconciled the next working morning like any other, and
+        then kept: nothing is sent from it and it is not cashed out. The
+        stokvel demo funds its members' contributions this way."""
+        day = (self.ctx.clock.now() + timedelta(days=1)).astimezone(SAST).date()
+        self._add_statement_line(
+            waking_time(self.ctx.rng, day),
+            {
+                "reference": person.zar_reference,
+                "amount": amount,
+                "person": person,
+                "sends": [],
+                "mistyped": False,
+                "keep": True,
+            },
+        )
+
     def _split(self, budget: Decimal, parts: int) -> list[Decimal]:
         weights = [self.ctx.rng.uniform(0.6, 1.4) for _ in range(parts)]
         total = sum(weights)
@@ -467,6 +501,9 @@ class MoneyStory:
                 "send.quote",
                 lambda amount=amount: self._quote(person, amount),
             )
+        if line.get("keep"):
+            self.ctx.count("deposits.kept")
+            return
         # Cash out from this deposit while it is still intact. Sends are
         # scheduled over the following days; the amount is capped under the
         # reserve _plan_deposits added.

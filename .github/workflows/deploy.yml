@@ -143,6 +143,7 @@ jobs:
       TF_VAR_object_storage_secret_access_key: ${{ secrets.TF_VAR_object_storage_secret_access_key }}
       TF_VAR_evm_encryption_key: ${{ secrets.TF_VAR_evm_encryption_key }}
       TF_VAR_evm_treasury_key_encrypted: ${{ secrets.TF_VAR_evm_treasury_key_encrypted }}
+      TF_VAR_evm_stokvel_admin_key_encrypted: ${{ secrets.TF_VAR_evm_stokvel_admin_key_encrypted }}
     steps:
       - uses: actions/checkout@v4
 

@@ -251,6 +251,49 @@ def _beneficiary_exists(beneficiary_id: uuid.UUID) -> bool:
     return _in_session(lambda: db.session.get(Beneficiary, beneficiary_id)) is not None
 
 
+def _lock_closed_rows(group: Group, beneficiaries: dict[Person, uuid.UUID]) -> None:
+    """Give each member a locked row in the stokvel's closed cycle 1, paying
+    their beneficiary: the members it ran with."""
+
+    def insert():
+        cycle_id = db.session.scalar(
+            select(StokvelCycle.id).where(
+                StokvelCycle.stokvel_id == group.stokvel_id,
+                StokvelCycle.cycle_number == 1,
+            )
+        )
+        for position, (person, beneficiary_id) in enumerate(beneficiaries.items()):
+            db.session.add(
+                StokvelCycleMember(
+                    cycle_id=cycle_id,
+                    member_id=group.member_id(person),
+                    payout_position=position,
+                    payout_beneficiary_id=beneficiary_id,
+                    payout_currency=CURRENCY_ZAR,
+                    locked=True,
+                )
+            )
+        db.session.commit()
+
+    _in_session(insert)
+
+
+def _continued(stokvel_id, cycle_number: int) -> dict[uuid.UUID, bool | None]:
+    """Each row's continuation choice in the stokvel's cycle `cycle_number`."""
+    return dict(
+        _in_session(
+            lambda: db.session.execute(
+                select(StokvelCycleMember.member_id, StokvelCycleMember.continued)
+                .join(StokvelCycle, StokvelCycle.id == StokvelCycleMember.cycle_id)
+                .where(
+                    StokvelCycle.stokvel_id == stokvel_id,
+                    StokvelCycle.cycle_number == cycle_number,
+                )
+            ).all()
+        )
+    )
+
+
 def _choices(stokvel_id) -> dict[uuid.UUID, tuple[uuid.UUID | None, str | None]]:
     """Each open-cycle row's (beneficiary, payout currency), by member id."""
     return {
@@ -495,15 +538,17 @@ def test_the_order_is_locked_once_the_cycle_has_started(api):
     )
 
 
-def test_after_the_last_cycle_closes_there_is_nothing_to_order(api):
-    """The next cycle is opened by #237, not on demand."""
+def test_after_a_cycle_closes_the_organisers_order_opens_the_next(api):
+    """The worker opens the next cycle when one closes (R2-15). One that
+    closed before then has none: the Organiser's first order opens it."""
     organiser, thandi = _person("sipho"), _person()
     group = _stokvel(organiser, thandi, cycle=StokvelCycleStatus.CLOSED)
     order = [group.member_id(organiser), group.member_id(thandi)]
 
-    _refused(
-        api.payout_order(organiser, group.stokvel_id, order), 409, "cycle_not_forming"
-    )
+    response = api.payout_order(organiser, group.stokvel_id, order)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle_number"] == 2
 
 
 def test_a_deactivated_stokvel_takes_no_order(api):
@@ -666,13 +711,25 @@ def test_the_beneficiary_is_locked_once_the_cycle_has_started(api):
     )
 
 
-def test_after_the_last_cycle_closes_there_is_no_beneficiary_to_choose(api):
+def test_after_a_cycle_closes_the_organisers_beneficiary_opens_the_next(api):
     organiser = _person("sipho")
     group = _stokvel(organiser, cycle=StokvelCycleStatus.CLOSED)
     beneficiary_id = _beneficiary(organiser, _person("mother"))
 
+    response = api.beneficiary(organiser, group.stokvel_id, beneficiary_id)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle_number"] == 2
+
+
+def test_after_a_cycle_closes_a_member_waits_for_the_next_to_open(api):
+    """Only the Organiser may insert a cycle (row-level security)."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, cycle=StokvelCycleStatus.CLOSED)
+    beneficiary_id = _beneficiary(thandi, _person("mother"))
+
     _refused(
-        api.beneficiary(organiser, group.stokvel_id, beneficiary_id),
+        api.beneficiary(thandi, group.stokvel_id, beneficiary_id),
         409,
         "cycle_not_forming",
     )
@@ -830,6 +887,37 @@ def test_under_row_security_the_organiser_opens_a_missing_first_cycle(pg_api):
 
     assert response.status_code == 200, response.text
     assert _positions(group.stokvel_id) == {order[0]: 0, order[1]: 1}
+
+
+@pytest.mark.postgres
+def test_under_row_security_the_organiser_opens_the_cycle_after_a_closed_one(
+    pg_api,
+):
+    """A cycle that closed before the worker opened successors (R2-15): the
+    Organiser's first setup call opens cycle 2, carries their own choice
+    over and marks them as continuing, all under row-level security."""
+    organiser, thandi = _person("sipho"), _person()
+    group = _stokvel(organiser, thandi, cycle=StokvelCycleStatus.CLOSED)
+    _lock_closed_rows(
+        group,
+        {
+            organiser: _beneficiary(organiser, _person("mother")),
+            thandi: _beneficiary(thandi, organiser),
+        },
+    )
+    new_choice = _beneficiary(organiser, _person("brother"))
+
+    response = pg_api.beneficiary(organiser, group.stokvel_id, new_choice)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cycle_number"] == 2
+    assert _choices(group.stokvel_id) == {
+        group.member_id(organiser): (new_choice, CURRENCY_ZAR)
+    }
+    assert _continued(group.stokvel_id, 1) == {
+        group.member_id(organiser): True,
+        group.member_id(thandi): None,
+    }
 
 
 @pytest.mark.postgres

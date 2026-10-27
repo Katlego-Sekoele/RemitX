@@ -41,13 +41,23 @@ locals {
     PLATFORM_WALLET_ADDRESS    = var.platform_wallet_address
   }
 
+  # Empty values are dropped. The three stokvel settings default to the
+  # testnet deployment, so an unset GitHub variable still deploys them.
   evm_env = { for name, value in {
-    EVM_RPC_URL             = var.evm_rpc_url
-    EVM_CHAIN_ID            = var.evm_chain_id
-    EVM_EXPLORER_URL        = var.evm_explorer_url
-    UCTUSD_CONTRACT_ADDRESS = var.uctusd_contract_address
-    UCTUSD_EVM_DECIMALS     = var.uctusd_evm_decimals
-    EVM_TREASURY_ADDRESS    = var.evm_treasury_address
+    EVM_RPC_URL              = var.evm_rpc_url
+    EVM_CHAIN_ID             = var.evm_chain_id
+    EVM_EXPLORER_URL         = var.evm_explorer_url
+    UCTUSD_CONTRACT_ADDRESS  = var.uctusd_contract_address
+    UCTUSD_EVM_DECIMALS      = var.uctusd_evm_decimals
+    EVM_TREASURY_ADDRESS     = var.evm_treasury_address
+    STOKVEL_CONTRACT_ADDRESS = var.stokvel_contract_address
+    MAX_STOKVEL_MEMBERS      = var.max_stokvel_members
+    STOKVEL_SYNC_START_BLOCK = var.stokvel_sync_start_block
+  } : name => value if value != "" }
+
+  # Pause/unpause only. The API must not see the admin address or its key.
+  stokvel_admin_env = { for name, value in {
+    EVM_STOKVEL_ADMIN_ADDRESS = var.evm_stokvel_admin_address
   } : name => value if value != "" }
 
   quote_env = {
@@ -65,7 +75,9 @@ locals {
     MONTHLY_LIMIT_ZAR            = var.monthly_limit_zar
   }
 
-  worker_env = merge(local.runtime_env, local.xrpl_env, local.evm_env)
+  worker_env = merge(
+    local.runtime_env, local.xrpl_env, local.evm_env, local.stokvel_admin_env,
+  )
 
   api_env = merge(local.runtime_env, local.xrpl_env, local.evm_env, local.quote_env, {
     CORS_ORIGINS                = local.cors_origins

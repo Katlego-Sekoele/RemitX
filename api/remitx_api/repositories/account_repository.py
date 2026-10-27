@@ -238,6 +238,16 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             .values(account_balance=Account.account_balance - amount)
         )
 
+    def sum_stokvel_balances(self) -> Decimal:
+        """Token on every `STOKVEL` account: unreleased pools, in the
+        contract, not in the Treasury Wallet."""
+        total = db.session.scalar(
+            select(func.coalesce(func.sum(Account.account_balance), 0)).where(
+                Account.type == TYPE_STOKVEL,
+            )
+        )
+        return Decimal(str(total))
+
     def sum_user_balances(self, currency: str) -> Decimal:
         """Ledger balances of every customer account in `currency`.
 

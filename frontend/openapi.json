@@ -855,6 +855,14 @@
         "title": "BeneficiaryUpdateRequest",
         "type": "object"
       },
+      "ContinuationChoice": {
+        "enum": [
+          "continue",
+          "leave"
+        ],
+        "title": "ContinuationChoice",
+        "type": "string"
+      },
       "CountRead": {
         "properties": {
           "count": {
@@ -4981,6 +4989,37 @@
         "title": "SkippedStatementLineReason",
         "type": "string"
       },
+      "StokvelBeneficiaryChoiceRead": {
+        "description": "The beneficiary the caller chose for this cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "payout_currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          }
+        },
+        "required": [
+          "beneficiary_id",
+          "full_name",
+          "payout_currency"
+        ],
+        "title": "StokvelBeneficiaryChoiceRead",
+        "type": "object"
+      },
       "StokvelBeneficiaryRead": {
         "description": "The caller's payout beneficiary for the stokvel's forming cycle.",
         "properties": {
@@ -5033,6 +5072,120 @@
           "beneficiary_id"
         ],
         "title": "StokvelBeneficiaryRequest",
+        "type": "object"
+      },
+      "StokvelContinuationRead": {
+        "description": "The caller's recorded choice for the stokvel's next cycle.",
+        "properties": {
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The beneficiary paid in the next cycle. Null on leaving, or until the member chooses one.",
+            "title": "Beneficiary Id"
+          },
+          "choice": {
+            "$ref": "#/components/schemas/ContinuationChoice"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "payout_currency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoutCurrency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_number",
+          "member_id",
+          "choice",
+          "beneficiary_id",
+          "payout_currency"
+        ],
+        "title": "StokvelContinuationRead",
+        "type": "object"
+      },
+      "StokvelContinuationRequest": {
+        "additionalProperties": false,
+        "description": "The caller's choice after a cycle closes: continue into the next\ncycle, optionally paying a new beneficiary, or leave the stokvel.",
+        "properties": {
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When continuing: one of the caller's own beneficiaries (`GET /beneficiaries`) to pay in the next cycle. Leave it out to keep the current choice. Not allowed when leaving.",
+            "title": "Beneficiary Id"
+          },
+          "choice": {
+            "$ref": "#/components/schemas/ContinuationChoice",
+            "description": "`continue` into the next cycle, or `leave` the stokvel. Leaving is final: coming back needs a new invitation."
+          }
+        },
+        "required": [
+          "choice"
+        ],
+        "title": "StokvelContinuationRequest",
+        "type": "object"
+      },
+      "StokvelContractActionResponse": {
+        "description": "On-chain pause or unpause completed.",
+        "properties": {
+          "tx_hash": {
+            "title": "Tx Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx_hash"
+        ],
+        "title": "StokvelContractActionResponse",
+        "type": "object"
+      },
+      "StokvelContractPauseRequest": {
+        "additionalProperties": false,
+        "description": "Why the administrator is pausing; recorded in the audit log.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StokvelContractPauseRequest",
         "type": "object"
       },
       "StokvelContributionRead": {
@@ -5103,6 +5256,17 @@
         ],
         "title": "StokvelContributionRead",
         "type": "object"
+      },
+      "StokvelContributionStatus": {
+        "description": "The ledger's states (doc section 3); a contribution moves through them\nlike its legs do.",
+        "enum": [
+          "pending",
+          "processing",
+          "confirmed",
+          "failed"
+        ],
+        "title": "StokvelContributionStatus",
+        "type": "string"
       },
       "StokvelCreateRequest": {
         "additionalProperties": false,
@@ -5310,21 +5474,405 @@
         "title": "StokvelCycleStatus",
         "type": "string"
       },
-      "StokvelInvitationCreateRequest": {
-        "additionalProperties": false,
-        "description": "Invite the owner of an account to the stokvel.",
+      "StokvelDetailCycleRead": {
+        "description": "A cycle on `GET /stokvels/{id}`: the current one (`cycle`), and the\none that closed while the next is forming (`previous_cycle`).\n\nDistinct from `StokvelCycleRead`, which is the body `POST\n/stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.",
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "current_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Round"
+          },
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "payout_order": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Payout Order",
+            "type": "array"
+          },
+          "registered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered At"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelRoundRead"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelCycleStatus"
+          },
+          "total_rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rounds"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "cycle_number",
+          "status",
+          "current_round",
+          "total_rounds",
+          "started_at",
+          "closed_at",
+          "registered_at",
+          "payout_order",
+          "rounds"
+        ],
+        "title": "StokvelDetailCycleRead",
+        "type": "object"
+      },
+      "StokvelDetailInvitationRead": {
+        "description": "An invitation on `GET /stokvels/{id}`, of any status.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set.",
         "properties": {
           "account_reference": {
-            "description": "The invitee's account reference, e.g. `thandi2-zar`. The account must be in the Stokvel currency: the invitee's contributions are paid from it.",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Account Reference",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Reference"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "invitation_id": {
+            "format": "uuid",
+            "title": "Invitation Id",
+            "type": "string"
+          },
+          "invitee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitee Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelInvitationStatus"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
             "type": "string"
           }
         },
         "required": [
-          "account_reference"
+          "invitation_id",
+          "stokvel_id",
+          "invitee_name",
+          "account_reference",
+          "status",
+          "created_at"
         ],
+        "title": "StokvelDetailInvitationRead",
+        "type": "object"
+      },
+      "StokvelDetailRead": {
+        "description": "`GET /stokvels/{id}`: the member screen for one stokvel.",
+        "properties": {
+          "contribution_amount": {
+            "description": "Fixed UCTUSD (token) amount each member contributes per round, for the stokvel's life (D13). Members pay it from their account in the Stokvel currency at the live rate when they contribute.",
+            "title": "Contribution Amount",
+            "type": "string"
+          },
+          "contribution_fiat_estimate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution Fiat Estimate"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelRoundContributionRead"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/PayoutCurrency"
+          },
+          "current_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Round"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelDetailCycleRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "invitations": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelDetailInvitationRead"
+            },
+            "title": "Invitations",
+            "type": "array"
+          },
+          "is_organiser": {
+            "title": "Is Organiser",
+            "type": "boolean"
+          },
+          "max_members": {
+            "title": "Max Members",
+            "type": "integer"
+          },
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/StokvelMemberRead"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "my_beneficiary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelBeneficiaryChoiceRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "my_contribution_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelContributionStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "my_member_id": {
+            "format": "uuid",
+            "title": "My Member Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_payout_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Payout Time"
+          },
+          "open_round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Round"
+          },
+          "organiser_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organiser Name"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/StokvelCycleStatus"
+          },
+          "previous_cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelDetailCycleRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          },
+          "total_rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rounds"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "name",
+          "currency",
+          "contribution_amount",
+          "is_organiser",
+          "member_count",
+          "max_members",
+          "created_at",
+          "deactivated_at",
+          "organiser_name",
+          "contribution_fiat_estimate",
+          "phase",
+          "current_round",
+          "open_round",
+          "total_rounds",
+          "next_payout_time",
+          "my_contribution_status",
+          "my_member_id",
+          "my_beneficiary",
+          "members",
+          "invitations",
+          "cycle",
+          "previous_cycle",
+          "contributions"
+        ],
+        "title": "StokvelDetailRead",
+        "type": "object"
+      },
+      "StokvelInvitationCreateRequest": {
+        "additionalProperties": false,
+        "description": "Invite someone to the stokvel, by their account reference or as one of\nthe Organiser's beneficiaries. Exactly one of the two.",
+        "properties": {
+          "account_reference": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The invitee's account reference, e.g. `thandi2-zar`. The account must be in the Stokvel currency: the invitee's contributions are paid from it.",
+            "title": "Account Reference"
+          },
+          "beneficiary_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One of the Organiser's beneficiaries. The invitee is the person it links to, paying from their account in the Stokvel currency.",
+            "title": "Beneficiary Id"
+          }
+        },
         "title": "StokvelInvitationCreateRequest",
         "type": "object"
       },
@@ -5417,6 +5965,60 @@
         "title": "StokvelListRead",
         "type": "object"
       },
+      "StokvelMemberRead": {
+        "description": "A current member of a stokvel, as another member may see them.",
+        "properties": {
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "in_cycle": {
+            "description": "Has a place in the current cycle. From cycle 2, while it is forming: the Organiser, members who chose to continue and anyone who joined since; false for a member who hasn't answered yet.",
+            "title": "In Cycle",
+            "type": "boolean"
+          },
+          "is_me": {
+            "title": "Is Me",
+            "type": "boolean"
+          },
+          "is_organiser": {
+            "title": "Is Organiser",
+            "type": "boolean"
+          },
+          "joined_at": {
+            "title": "Joined At",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "user_id",
+          "full_name",
+          "is_organiser",
+          "is_me",
+          "joined_at",
+          "in_cycle"
+        ],
+        "title": "StokvelMemberRead",
+        "type": "object"
+      },
       "StokvelPayoutOrderRead": {
         "description": "The payout order of the stokvel's forming cycle, first paid first.",
         "properties": {
@@ -5498,6 +6100,16 @@
         "title": "StokvelPayoutPlaceRead",
         "type": "object"
       },
+      "StokvelPayoutReleaseStatus": {
+        "enum": [
+          "pending",
+          "processing",
+          "released",
+          "failed"
+        ],
+        "title": "StokvelPayoutReleaseStatus",
+        "type": "string"
+      },
       "StokvelRead": {
         "description": "A stokvel the caller is a current member of.",
         "properties": {
@@ -5558,6 +6170,225 @@
           "deactivated_at"
         ],
         "title": "StokvelRead",
+        "type": "object"
+      },
+      "StokvelRoundContributionRead": {
+        "description": "A contribution in the current cycle. `fee_amount` is set only on the\ncaller's own rows.",
+        "properties": {
+          "amount_fiat": {
+            "title": "Amount Fiat",
+            "type": "string"
+          },
+          "amount_token": {
+            "title": "Amount Token",
+            "type": "string"
+          },
+          "contribution_id": {
+            "format": "uuid",
+            "title": "Contribution Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "evm_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evm Tx Hash"
+          },
+          "fee_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StokvelContributionStatus"
+          }
+        },
+        "required": [
+          "contribution_id",
+          "cycle_id",
+          "round",
+          "member_id",
+          "amount_fiat",
+          "amount_token",
+          "fee_amount",
+          "status",
+          "evm_tx_hash",
+          "created_at"
+        ],
+        "title": "StokvelRoundContributionRead",
+        "type": "object"
+      },
+      "StokvelRoundFinaliseResponse": {
+        "description": "The round's release was queued. The worker sends `finalise`; the\ntransaction hash is not known until that send.",
+        "properties": {
+          "cycle_id": {
+            "format": "uuid",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "cycle_number": {
+            "title": "Cycle Number",
+            "type": "integer"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "stokvel_id": {
+            "format": "uuid",
+            "title": "Stokvel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stokvel_id",
+          "cycle_id",
+          "cycle_number",
+          "round"
+        ],
+        "title": "StokvelRoundFinaliseResponse",
+        "type": "object"
+      },
+      "StokvelRoundRead": {
+        "description": "One round of the current cycle, with its payout once one exists.",
+        "properties": {
+          "burn_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burn Tx Hash"
+          },
+          "deadline": {
+            "title": "Deadline",
+            "type": "string"
+          },
+          "payout_time": {
+            "title": "Payout Time",
+            "type": "string"
+          },
+          "pool_fiat_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Fiat Amount"
+          },
+          "recipient_member_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Member Id"
+          },
+          "release_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StokvelPayoutReleaseStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "release_tx_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Tx Hash"
+          },
+          "remittance_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remittance Id"
+          },
+          "remittance_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransactionStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "round",
+          "start_time",
+          "deadline",
+          "payout_time",
+          "recipient_member_id",
+          "release_status",
+          "remittance_status",
+          "remittance_id",
+          "release_tx_hash",
+          "burn_tx_hash",
+          "pool_fiat_amount"
+        ],
+        "title": "StokvelRoundRead",
         "type": "object"
       },
       "StokvelRoundTimesRequest": {
@@ -9023,6 +9854,270 @@
         ]
       }
     },
+    "/admin/stokvel-contract/pause": {
+      "post": {
+        "description": "Sends `pause()` on the vault and writes `stokvel.contract.paused` to the\naudit log. Needs ``stokvel:contract:pause``.",
+        "operationId": "pause_stokvel_contract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelContractPauseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContractActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upstream call did not finish in time."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Pause every stokvel on the contract",
+        "tags": [
+          "admin.stokvel_contract"
+        ]
+      }
+    },
+    "/admin/stokvel-contract/unpause": {
+      "post": {
+        "description": "Sends `unpause()` on the vault and writes `stokvel.contract.unpaused`.\nNeeds ``stokvel:contract:pause``.",
+        "operationId": "unpause_stokvel_contract",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContractActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upstream call did not finish in time."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Resume every stokvel on the contract",
+        "tags": [
+          "admin.stokvel_contract"
+        ]
+      }
+    },
+    "/admin/stokvels/{stokvel_id}/rounds/{round}/finalise": {
+      "post": {
+        "description": "Queue `finalise` for round `round` (0-based) of the stokvel's open\ncycle, and write `stokvel.round.finalised_manually` in that same\ntransaction. The contract still decides: a round that is not ready\nanswers 409 `round_not_finalisable`, and one already released answers\n409 `round_already_finalised`. A payout left `processing` or `failed`\nanswers 409 `round_release_not_pending`. A registered cycle the vault\ndoes not have open answers 503 `stokvel_chain_mismatch`. Needs\n``stokvel:round:finalise``.",
+        "operationId": "finalise_stokvel_round",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "round",
+            "required": true,
+            "schema": {
+              "maximum": 255,
+              "minimum": 0,
+              "title": "Round",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelRoundFinaliseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Release one stokvel round by hand",
+        "tags": [
+          "admin.stokvels"
+        ]
+      }
+    },
     "/admin/users/admins": {
       "get": {
         "description": "Everyone with at least one active admin role, with those roles.",
@@ -10456,6 +11551,88 @@
           }
         ],
         "summary": "Decline a stokvel invitation",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/invitations/{invitation_id}/revoke": {
+      "post": {
+        "description": "Take back a pending invitation, as the stokvel's Organiser. The\ninvitee may be invited again.\n\nRefusals: 404 for an unknown invitation, or one the caller cannot see;\n403 `not_organiser` for the invitee or a fellow member, who can see it\nbut not revoke it; 409 `invitation_not_pending` once it has been\naccepted, declined, revoked or lapsed.",
+        "operationId": "revoke_stokvel_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Revoke a stokvel invitation",
         "tags": [
           "stokvels"
         ]
@@ -11986,6 +13163,75 @@
         ]
       }
     },
+    "/stokvels/{stokvel_id}": {
+      "get": {
+        "description": "The member screen for one stokvel: the group, its current cycle,\nwho has paid, and each round's payout once one exists. `invitations`\nholds every invitation of the stokvel, whatever its status, newest first.\n\n404 for an unknown stokvel or one the caller is not a current member of,\nthe same answer, so an id reveals nothing. `contribution_fiat_estimate`\nis null when no exchange rate is available. `fee_amount` is set only on\nthe caller's own contributions. `pool_fiat_amount` is null.\n`remittance_id` is the payout reference.",
+        "operationId": "get_stokvel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Read one stokvel",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
     "/stokvels/{stokvel_id}/contributions": {
       "post": {
         "description": "Pay the caller's fixed contribution into their stokvel's open round:\nthe first round that does not yet have a contribution from every member,\nas on the contract. No body: the member, round and amount are the\nstokvel's. The member is debited the UCTUSD contribution at the live rate\nfrom their account in the Stokvel currency, and it counts toward their\nown sending limits. Returns the contribution `pending`; it is confirmed\nonce the worker's on-chain `contribute` is mined.\n\nRefusals carry a `code` (doc section 6): 404 for an unknown stokvel or\none the caller is not a current member of (the same answer, so an id\nreveals nothing); 403 `not_a_member` for a member outside its current\ncycle; 409\n`cycle_not_open` with no active cycle, `cycle_starting` while a started\ncycle is not yet open on-chain (try again shortly), `wrong_round` once\nevery round is paid, `contribution_already_paid` for a second payment to\nthe open round.\nPlain 400 / 403 refusals, without a code, as for `POST /remittances`: a\nshort available balance, a send over the daily or monthly limit, or a\ncaller who is not verified. 503 when no exchange rate is available, as\nfor a quote: nothing is recorded.",
@@ -12196,7 +13442,7 @@
     },
     "/stokvels/{stokvel_id}/invitations": {
       "post": {
-        "description": "Invite the owner of `account_reference` to the caller's stokvel. They\nbecome a Member only if they accept. Invitations may outnumber the free\nplaces: the member cap holds when an invitation is accepted.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an unknown\nstokvel or one the caller is not a member of, and for an unknown\nreference; 403 `not_organiser` for a member who is not the Organiser;\n403 `invitee_not_verified` for an invitee who is not KYC-verified; 422\n`invitee_currency_mismatch` for an account not in the Stokvel currency;\n422 `too_many_members` when the stokvel is full; 409 `already_a_member`,\n`invitation_already_pending` or `stokvel_deactivated`; 400 for the\ncaller's own reference.",
+        "description": "Invite someone to the caller's stokvel: the owner of\n`account_reference`, or the person one of the caller's beneficiaries\nlinks to (`beneficiary_id`). They become a Member only if they accept.\nInvitations may outnumber the free places: the member cap holds when an\ninvitation is accepted.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an unknown\nstokvel or one the caller is not a member of, for an unknown reference,\nand for a beneficiary that isn't the caller's; 403 `not_organiser` for a\nmember who is not the Organiser; 403 `invitee_not_verified` for an\ninvitee who is not KYC-verified; 422 `invitee_currency_mismatch` for an\naccount not in the Stokvel currency, or a beneficiary with no account in\nit; 422 `too_many_members` when the stokvel is full; 409\n`already_a_member`, `invitation_already_pending` or\n`stokvel_deactivated`; 400 for the caller's own reference.",
         "operationId": "invite_to_stokvel",
         "parameters": [
           {
@@ -12397,6 +13643,105 @@
           }
         ],
         "summary": "Choose my payout beneficiary",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/members/me/continuation": {
+      "post": {
+        "description": "After a cycle closes, continue into the stokvel's next cycle or leave\nit. Allowed until the Organiser starts the next cycle; a member who has\nnot chosen by then is treated as leaving.\n\nContinuing can name a new beneficiary (checked as for `PUT\n/members/me/beneficiary`); without one, the current choice is kept or\ncarried over from the closed cycle. It can be repeated. Leaving is\nfinal. The Organiser is always continued and cannot leave.\n\nRefusals carry a `code` where doc section 6 gives one: 404 for an\nunknown stokvel or one the caller is not a current member of, and for a\nbeneficiary that is unknown or not the caller's; 400 if the recipient\nno longer holds an account in the beneficiary's payout currency; 409\n`stokvel_deactivated`, `nothing_to_continue` before any cycle has\nfinished, `cycle_locked` once the next cycle has started,\n`cycle_not_forming` while the Organiser has not opened it, or\n`organiser_cannot_leave`; 422 for an invalid request body.",
+        "operationId": "continue_or_leave_stokvel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StokvelContinuationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelContinuationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body failed validation."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Continue or leave after a cycle",
         "tags": [
           "stokvels"
         ]
@@ -12710,6 +14055,14 @@
     {
       "description": "Privileged actions and sensitive reads \u2014 who did what, to whom, and when.",
       "name": "admin.audit"
+    },
+    {
+      "description": "Emergency pause and resume for every stokvel on the vault.",
+      "name": "admin.stokvel_contract"
+    },
+    {
+      "description": "Administrator actions on one stokvel.",
+      "name": "admin.stokvels"
     }
   ]
 }

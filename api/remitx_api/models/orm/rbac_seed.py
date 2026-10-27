@@ -157,6 +157,14 @@ PERMISSION_SEEDS: tuple[PermissionSeed, ...] = (
         PermissionCode.AUDIT_READ,
         "Read the immutable activity and change log.",
     ),
+    PermissionSeed(
+        PermissionCode.STOKVEL_CONTRACT_PAUSE,
+        "Pause and resume every stokvel on the shared vault contract.",
+    ),
+    PermissionSeed(
+        PermissionCode.STOKVEL_ROUND_FINALISE,
+        "Release one stokvel round by hand when the automatic release has not.",
+    ),
 )
 
 
@@ -208,6 +216,8 @@ ROLE_SEEDS: tuple[RoleSeed, ...] = (
             PermissionCode.USER_READ,
             PermissionCode.TRANSACTION_READ_ANY,
             PermissionCode.AUDIT_READ,
+            PermissionCode.STOKVEL_CONTRACT_PAUSE,
+            PermissionCode.STOKVEL_ROUND_FINALISE,
         ),
     ),
     RoleSeed(

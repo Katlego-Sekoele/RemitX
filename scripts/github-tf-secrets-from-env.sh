@@ -39,5 +39,6 @@ export_if_empty TF_VAR_object_storage_access_key_id "${OBJECT_STORAGE_ACCESS_KEY
 export_if_empty TF_VAR_object_storage_secret_access_key "${OBJECT_STORAGE_SECRET_ACCESS_KEY:-}"
 export_if_empty TF_VAR_evm_encryption_key "${EVM_ENCRYPTION_KEY:-}"
 export_if_empty TF_VAR_evm_treasury_key_encrypted "${EVM_TREASURY_KEY_ENCRYPTED:-}"
+export_if_empty TF_VAR_evm_stokvel_admin_key_encrypted "${EVM_STOKVEL_ADMIN_KEY_ENCRYPTED:-}"
 export_if_empty TF_VAR_upstash_email "${UPSTASH_EMAIL:-}"
 export_if_empty TF_VAR_upstash_api_key "${UPSTASH_API_KEY:-}"

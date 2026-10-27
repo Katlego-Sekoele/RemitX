@@ -66,7 +66,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from web3 import Web3
 
-from remitx_worker import evm_service, stokvel_contract, stokvel_sync
+from remitx_worker import evm_service, stokvel_contract, stokvel_payouts, stokvel_sync
 from remitx_worker.celery_app import celery
 from remitx_worker.db import session_scope
 from remitx_worker.stokvel_ledger import (
@@ -589,6 +589,17 @@ def sync_events() -> str:
             )
             break
         last, has_cursor = to_block, True
+
+    # Every release recorded so far, by this run or `release_pool`, is paid
+    # out (R3-05). After the commits above, so only recorded releases go.
+    try:
+        queued = stokvel_payouts.queue_released_payouts()
+        if queued:
+            outcomes["payouts_queued"] = queued
+    except Exception as exc:
+        logger.warning(
+            "event=stokvel.payout_queue_failed (%s): queued on the next run", exc
+        )
 
     summary = ", ".join(f"{count} {name}" for name, count in sorted(outcomes.items()))
     logger.info(
@@ -1260,3 +1271,21 @@ def register_started_cycles() -> int:
             queued,
         )
     return queued
+
+
+@celery.task(name="stokvel.pause_contract")
+def pause_contract() -> str:
+    """Send `pause()` from the vault admin key and wait for it to mine."""
+    w3 = evm_service.get_web3()
+    tx_hash = stokvel_contract.pause(w3=w3)
+    evm_service.wait_for_receipt(tx_hash, w3=w3)
+    return tx_hash
+
+
+@celery.task(name="stokvel.unpause_contract")
+def unpause_contract() -> str:
+    """Send `unpause()` from the vault admin key and wait for it to mine."""
+    w3 = evm_service.get_web3()
+    tx_hash = stokvel_contract.unpause(w3=w3)
+    evm_service.wait_for_receipt(tx_hash, w3=w3)
+    return tx_hash

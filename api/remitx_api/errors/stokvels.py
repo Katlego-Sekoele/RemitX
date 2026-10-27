@@ -112,10 +112,10 @@ class ContributionInsufficientBalanceError(DomainError):
 
 
 class NotStokvelOrganiserError(ForbiddenError):
-    """Only the Organiser invites, or sets the payout order (R2-09). A
-    fellow member can see the stokvel, so gets this rather than
-    `StokvelNotFoundError`. `action` completes "Only the stokvel's organiser
-    can ..."."""
+    """Only the Organiser invites, revokes an invitation (R2-16), or sets the
+    payout order (R2-09). A fellow member can see the stokvel, so gets this
+    rather than `StokvelNotFoundError`. `action` completes "Only the
+    stokvel's organiser can ..."."""
 
     code = "not_organiser"
 
@@ -256,10 +256,9 @@ class PayoutSetupLockedError(ConflictError):
 
 
 class CycleNotFormingError(ConflictError):
-    """The stokvel has no `forming` cycle to set up. Its last cycle has
-    closed and the next has not been opened (#237), or, for a member who is
-    not the Organiser, a stokvel from before cycles opened at creation has
-    none yet: only the Organiser may open one."""
+    """The stokvel has no `forming` cycle to set up, and only the Organiser
+    may open one: a stokvel from before cycles opened at creation, or one
+    whose last cycle closed before the worker opened the next (R2-15)."""
 
     code = "cycle_not_forming"
 
@@ -268,8 +267,9 @@ class CycleNotFormingError(ConflictError):
 
 
 class InvalidPayoutOrderError(DomainError):
-    """The payout order is not every current member exactly once. `detail`
-    says which rule it breaks."""
+    """The payout order is not every member going into the cycle exactly
+    once (every current member for cycle 1). `detail` says which rule it
+    breaks."""
 
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "invalid_payout_order"
@@ -291,6 +291,47 @@ class InvalidPayoutOrderError(DomainError):
     @classmethod
     def missing_member(cls) -> InvalidPayoutOrderError:
         return cls("The payout order must include every current member.")
+
+    @classmethod
+    def missing_continuing_member(cls) -> InvalidPayoutOrderError:
+        """From cycle 2 (R2-15)."""
+        return cls(
+            "The payout order must include every member continuing into the next cycle."
+        )
+
+    @classmethod
+    def not_continuing(cls) -> InvalidPayoutOrderError:
+        """From cycle 2: a member of the closed cycle who has not chosen to
+        continue (R2-15)."""
+        return cls(
+            "The payout order includes a member who hasn't chosen to continue "
+            "into the next cycle."
+        )
+
+
+# --- Continuing after a cycle (R2-15). Codes and wording are doc section 6's.
+
+
+class NothingToContinueError(ConflictError):
+    """The stokvel's forming cycle is its first: no cycle has finished for
+    the caller to continue from or leave after."""
+
+    code = "nothing_to_continue"
+
+    def __init__(self) -> None:
+        super().__init__("There's no finished cycle to continue from yet.")
+
+
+class OrganiserCannotLeaveError(ConflictError):
+    """The Organiser continues into every cycle; getting out means closing
+    the stokvel for everyone."""
+
+    code = "organiser_cannot_leave"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "As Organiser you can't leave. Closing the stokvel ends it for everyone."
+        )
 
 
 # --- Starting a cycle (R2-10). Codes and wording are doc section 6's.
@@ -365,6 +406,104 @@ class InvalidCycleScheduleError(DomainError):
         return cls(
             f"Round {round_ + 1} can't start or pay out before the round before it."
         )
+
+
+class StokvelContractUnavailableError(DomainError):
+    """The API could not read the vault's pause state from the chain."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The stokvel contract cannot be reached right now. Try again shortly."
+        )
+
+
+class StokvelPausedError(DomainError):
+    """The vault's emergency pause is active (OpenZeppelin `EnforcedPause`)."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "stokvel_paused"
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels are temporarily paused.")
+
+
+class StokvelContractAlreadyPausedError(ConflictError):
+    """`pause()` was called while the vault is already paused."""
+
+    code = "stokvel_paused"
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels are already paused.")
+
+
+class StokvelContractActionTimedOutError(DomainError):
+    """The worker did not confirm the on-chain send before the API gave up
+    waiting. The transaction may still land; the audit log records the attempt."""
+
+    status_code = status.HTTP_504_GATEWAY_TIMEOUT
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The contract action is still being sent on-chain. Check the audit "
+            "log and the vault's paused state."
+        )
+
+
+class RoundNotFinalisableError(ConflictError):
+    """The contract would revert `NotYetFinalisable`: the round is not the
+    next to release, it is not fully paid, or its payout time has not passed."""
+
+    code = "round_not_finalisable"
+
+    def __init__(self) -> None:
+        super().__init__("This round can't be paid out yet.")
+
+
+class RoundAlreadyFinalisedError(ConflictError):
+    """The contract would revert `AlreadyFinalised`."""
+
+    code = "round_already_finalised"
+
+    def __init__(self) -> None:
+        super().__init__("This round has already been paid out.")
+
+
+class RoundReleaseNotPendingError(ConflictError):
+    """The payout is `processing` or `failed`. `release_pool` only claims a
+    `pending` row, so queueing again would record a send that never happens.
+    Handing a `processing` claim back could pay the round twice."""
+
+    code = "round_release_not_pending"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This round's payout is already in progress or has failed, so it "
+            "can't be queued again."
+        )
+
+
+class StokvelChainMismatchError(DomainError):
+    """The database says this cycle is registered, but the vault has no open
+    cycle for it, or does not know the stokvel. Retrying will not fix a
+    redeployed vault or a wrong contract address."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "stokvel_chain_mismatch"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This stokvel's records don't match the contract. An operator "
+            "needs to check the vault before this round can be paid out."
+        )
+
+
+class StokvelContractNotPausedError(ConflictError):
+    """`unpause()` was called while the vault is running."""
+
+    def __init__(self) -> None:
+        super().__init__("Stokvels aren't paused.")
 
 
 class CycleStartingError(ConflictError):

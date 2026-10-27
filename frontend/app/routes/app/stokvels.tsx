@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router"
 
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
+import { ContributionAtTodaysRate } from "~/components/stokvels/contribution-at-rate"
+import { InvitationCard } from "~/components/stokvels/invitation-card"
 import {
   Alert,
   AlertAction,
@@ -33,14 +35,10 @@ import {
 } from "~/components/ui/page-header"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { useTokenRate } from "~/hooks/use-token-rate"
-import { formatMoney } from "~/lib/money"
 import {
   stokvelNewPath,
   stokvelPath,
   stokvelQueries,
-  tokenToFiat,
-  type StokvelInvitationRead,
   type StokvelRead,
 } from "~/lib/stokvels"
 import type { Route } from "./+types/stokvels"
@@ -55,11 +53,10 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * The member's stokvels and pending invitations (R4-02 scaffold, #251),
- * from `GET /stokvels` (#229); in development the mock's demo stokvels are
- * added. The create wizard is at app/stokvels/new (#252), invitation actions
- * are R4-04 (#253). Round and payout details live on each stokvel's own
- * page.
+ * The member's stokvels and pending invitations (R4-02, #251), from
+ * `GET /stokvels` (#229). The create wizard is at app/stokvels/new (#252);
+ * invitations are accepted or declined here (#253). Round and payout
+ * details live on each stokvel's own page.
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
@@ -151,26 +148,6 @@ export default function StokvelsPage() {
   )
 }
 
-/** "R500.00 at today's rate", from the fixed token amount (D13). The token is
- * never named on screen. */
-function ContributionAtTodaysRate({
-  amount,
-  currency,
-}: {
-  amount: string
-  currency: string
-}) {
-  const rate = useTokenRate(currency)
-  if (rate.isPending) return <Skeleton className="inline-block h-3 w-24" />
-  if (!rate.data) return <>Amount unavailable</>
-  return (
-    <>
-      {formatMoney(tokenToFiat(amount, rate.data), currency)} at today&apos;s
-      rate
-    </>
-  )
-}
-
 function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
   const closed = stokvel.deactivated_at !== null
   return (
@@ -206,39 +183,6 @@ function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
         >
           Open
         </Button>
-      </CardContent>
-    </Card>
-  )
-}
-
-function InvitationCard({ invitation }: { invitation: StokvelInvitationRead }) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle>{invitation.stokvel_name}</CardTitle>
-          <Badge variant="secondary">Invitation</Badge>
-        </div>
-        <CardDescription>
-          {invitation.invited_by_name ?? "A RemitX member"} invited you ·{" "}
-          <ContributionAtTodaysRate
-            amount={invitation.contribution_amount}
-            currency={invitation.currency}
-          />{" "}
-          per round
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-2">
-        {/* Accept and decline arrive in #253. */}
-        <Button size="sm" disabled>
-          Accept
-        </Button>
-        <Button size="sm" variant="ghost" disabled>
-          Decline
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          Invitations lapse when the organiser starts the cycle.
-        </span>
       </CardContent>
     </Card>
   )

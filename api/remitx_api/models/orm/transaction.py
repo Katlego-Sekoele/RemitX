@@ -18,7 +18,16 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    Text,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.clock import utcnow
@@ -32,8 +41,10 @@ TYPE_WITHDRAWAL = "withdrawal"
 TYPE_TOKEN_BURN = "token_burn"
 # The beneficiary's fiat payout from the platform's fiat account.
 TYPE_BENEFICIARY_PAYOUT = "beneficiary_payout"
-# A member's contribution into a stokvel round, and a round's pool released
-# into the stokvel's `STOKVEL` account (docs/stokvel_integration.md §3).
+# A member's contribution into a stokvel round (Treasury -> the stokvel's
+# `STOKVEL` account), and a round's pool released back out of it (`STOKVEL`
+# -> Treasury), so `STOKVEL` holds what the contract holds
+# (docs/stokvel_integration.md §3).
 TYPE_STOKVEL_CONTRIBUTION = "stokvel_contribution"
 TYPE_STOKVEL_POOL_RELEASE = "stokvel_pool_release"
 
@@ -83,6 +94,17 @@ class Transaction(Base):
         # Amount must be positive — negative amounts are represented by swapping
         # the debit/credit accounts instead.
         CheckConstraint("amount > 0", name="transactions_amount_positive"),
+        # `transactions` has no round. A payout already has one quote per
+        # round, so one burn leg per quote is the second burn a retry would
+        # insert. A failed burn stays on that row; another attempt is a new
+        # quote (docs/stokvel_integration.md §3, §8).
+        Index(
+            "uq_transactions_one_token_burn_per_quote",
+            "quote_id",
+            unique=True,
+            postgresql_where=text("type = 'token_burn'"),
+            sqlite_where=text("type = 'token_burn'"),
+        ),
     )
 
     tx_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

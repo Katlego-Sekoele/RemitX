@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import select, update
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.account import TYPE_USER, Account
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_invitation import (
     StokvelInvitation,
@@ -42,6 +43,35 @@ class StokvelInvitationRepository(Repository[StokvelInvitation, uuid.UUID]):
             .order_by(StokvelInvitation.created_at.desc(), StokvelInvitation.id)
         ).all()
         return [(invitation, stokvel, inviter) for invitation, stokvel, inviter in rows]
+
+    def list_for_stokvel(
+        self, stokvel_id: uuid.UUID, currency: str, *, include_reference: bool
+    ) -> list[tuple[StokvelInvitation, User, str | None]]:
+        """The stokvel's invitations, of every status, newest first, each with
+        the invitee. The account reference in `currency` is included only when
+        `include_reference` is set (the Organiser); otherwise it is None and
+        `accounts` is not read. None also when they no longer hold one.
+        Scoped by `stokvel_id` so SQLite matches Postgres row-level security."""
+        stmt = select(StokvelInvitation, User).join(
+            User, User.id == StokvelInvitation.invitee_user_id
+        )
+        if include_reference:
+            stmt = stmt.add_columns(Account.reference).outerjoin(
+                Account,
+                (Account.user_id == User.id)
+                & (Account.type == TYPE_USER)
+                & (Account.account_currency == currency),
+            )
+        stmt = stmt.where(StokvelInvitation.stokvel_id == stokvel_id).order_by(
+            StokvelInvitation.created_at.desc(), StokvelInvitation.id
+        )
+        rows = db.session.execute(stmt).all()
+        if include_reference:
+            return [
+                (invitation, invitee, reference)
+                for invitation, invitee, reference in rows
+            ]
+        return [(invitation, invitee, None) for invitation, invitee in rows]
 
     def set_status_if_pending(
         self,

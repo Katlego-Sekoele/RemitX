@@ -20,6 +20,8 @@ _session_factory = None
 # (`treasury_send_lock`). Any constant works as long as every sender uses the
 # same one; these eight bytes spell "REMITXTR".
 TREASURY_SEND_LOCK_KEY = 0x52454D4954585452
+# Serialises pause/unpause from the contract admin key (R3-07, #244).
+ADMIN_SEND_LOCK_KEY = 0x52454D4954584144
 
 
 @worker_process_init.connect
@@ -116,5 +118,19 @@ def treasury_send_lock():
     with bind.connect() as connection, connection.begin():
         connection.execute(
             text("SELECT pg_advisory_xact_lock(:key)"), {"key": TREASURY_SEND_LOCK_KEY}
+        )
+        yield
+
+
+@contextmanager
+def admin_send_lock():
+    """Like `treasury_send_lock`, for the vault admin key's nonce."""
+    bind = getattr(get_session_factory(), "kw", {}).get("bind")
+    if bind is None or bind.dialect.name != "postgresql":
+        yield
+        return
+    with bind.connect() as connection, connection.begin():
+        connection.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_SEND_LOCK_KEY}
         )
         yield

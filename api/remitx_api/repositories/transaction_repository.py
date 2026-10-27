@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import case, func, or_, select, update
 
 from remitx_api.extensions import db
 from remitx_api.models.orm.account import TYPE_USER, Account
@@ -10,6 +11,7 @@ from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_FAILED,
     STATUS_PENDING,
+    STATUS_PROCESSING,
     TYPE_TOKEN_BURN,
     Transaction,
 )
@@ -19,6 +21,80 @@ from remitx_api.repositories.repository import Repository
 class TransactionRepository(Repository[Transaction, uuid.UUID]):
     def __init__(self) -> None:
         super().__init__(Transaction)
+
+    def confirmed_net(self, account_id: uuid.UUID, currency: str) -> Decimal:
+        """Confirmed amount into `account_id` minus confirmed amount out, in
+        `currency`. Pending, processing and failed legs are not included: a
+        balance moves only when a leg is confirmed."""
+        net = db.session.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.debit_account_id == account_id,
+                                Transaction.amount,
+                            ),
+                            else_=-Transaction.amount,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                Transaction.currency == currency,
+                Transaction.status == STATUS_CONFIRMED,
+                or_(
+                    Transaction.debit_account_id == account_id,
+                    Transaction.credit_account_id == account_id,
+                ),
+            )
+        )
+        return Decimal(str(net))
+
+    def in_flight_net(self, account_id: uuid.UUID, currency: str) -> Decimal:
+        """Net of `processing` legs on `account_id` that already have an
+        `evm_tx_hash`, same sign as `confirmed_net`.
+
+        The hash is stored after signing and before the send, so a row here
+        may not be mined. A mined burn left `processing` (`burn_unconfirmed`)
+        is in this figure too. It is not part of `confirmed_net`.
+        """
+        net = db.session.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.debit_account_id == account_id,
+                                Transaction.amount,
+                            ),
+                            else_=-Transaction.amount,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                Transaction.currency == currency,
+                Transaction.status == STATUS_PROCESSING,
+                Transaction.evm_tx_hash.is_not(None),
+                or_(
+                    Transaction.debit_account_id == account_id,
+                    Transaction.credit_account_id == account_id,
+                ),
+            )
+        )
+        return Decimal(str(net))
+
+    def amounts(self, tx_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """`amount` of each transaction in `tx_ids`. Missing ids are absent."""
+        if not tx_ids:
+            return {}
+        rows = db.session.execute(
+            select(Transaction.tx_id, Transaction.amount).where(
+                Transaction.tx_id.in_(tx_ids)
+            )
+        ).all()
+        return dict(rows)
 
     def add(self, transaction: Transaction) -> Transaction:
         """Insert a transaction. Flushes only — caller commits."""

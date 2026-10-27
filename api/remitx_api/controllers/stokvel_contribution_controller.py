@@ -45,6 +45,7 @@ from remitx_api.errors.stokvels import (
     NoOpenRoundError,
     NotACycleMemberError,
     StokvelNotFoundError,
+    StokvelPausedError,
 )
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
@@ -81,6 +82,7 @@ from remitx_api.services.quote_service import (
     token_to_fiat,
 )
 from remitx_api.services.send_limits import require_can_send
+from remitx_api.services.stokvel_contract_read import is_paused
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +195,8 @@ class StokvelContributionController:
     def _record(
         self, user_id: uuid.UUID, stokvel_id: uuid.UUID
     ) -> StokvelContributionView:
+        if is_paused():
+            raise StokvelPausedError()
         stokvel = self._stokvels.get_by_id(stokvel_id)
         if stokvel is None:
             raise StokvelNotFoundError()

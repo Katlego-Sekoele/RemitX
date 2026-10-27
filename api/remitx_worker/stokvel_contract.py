@@ -2,9 +2,13 @@
 
 R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
 (#235) reads the events the sync applies (`fetch_logs`, `decode_log`); R2-10
-(#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241) will add
-`finalise`. Every send goes through `evm_service.submit_transaction`, so it
-holds the Treasury send lock and can store its hash before the send.
+(#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241)
+`finalise` and `round_finalised`; R3-07 (#244) `pause`, `unpause` and
+`paused`; R3-11 (#248) `isFinalisable`. Treasury sends go through
+`evm_service.submit_transaction`; pause and unpause use
+`submit_admin_transaction`. Every send goes through
+`evm_service.submit_transaction`, so it holds the Treasury send lock and can
+store its hash before the send.
 
 The ABI is a copy of `contracts/abi/StokvelVault.json`
 (`remitx_worker/abi/StokvelVault.json`): the worker image is built from
@@ -69,7 +73,17 @@ _ERROR_NAMES: dict[str, str] = {
 
 def error_name(data: Any) -> str | None:
     """The name of the custom error `data` encodes (its first four bytes), or
-    None if it is not one the vault or the token defines."""
+    None if it is not one the vault or the token defines.
+
+    A node may hand the revert back as the hex string itself, or as the object
+    Hardhat (and web3's dict branch) uses: ``{"message": "...", "data": "0x..."}``.
+    The selector is in that inner ``data``.
+    """
+    if isinstance(data, dict):
+        inner = data.get("data")
+        if inner is None or inner is data:
+            return None
+        return error_name(inner)
     if isinstance(data, bytes | bytearray):
         hex_data = bytes(data).hex()
     elif isinstance(data, str):
@@ -105,6 +119,39 @@ def _submit(tx: dict[str, Any], w3: Web3, on_signed) -> str:
         raise ContractRefused(error_name(exc.data), str(exc)) from exc
     except ContractLogicError as exc:
         raise ContractRefused(error_name(exc.data), str(exc)) from exc
+
+
+def _submit_admin(tx: dict[str, Any], w3: Web3, on_signed) -> str:
+    """`evm_service.submit_admin_transaction`, with the same revert handling
+    as `_submit`."""
+    try:
+        return evm_service.submit_admin_transaction(tx, w3=w3, on_signed=on_signed)
+    except ContractCustomError as exc:
+        raise ContractRefused(error_name(exc.data), str(exc)) from exc
+    except ContractLogicError as exc:
+        raise ContractRefused(error_name(exc.data), str(exc)) from exc
+
+
+def paused(w3: Web3 | None = None) -> bool:
+    """OpenZeppelin `paused()` on the vault."""
+    w3 = w3 or evm_service.get_web3()
+    return bool(vault(w3).functions.paused().call())
+
+
+def pause(*, on_signed=None, w3: Web3 | None = None) -> str:
+    """Send `pause()` from the vault admin key and return its hash."""
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi("pause", args=[])
+    return _submit_admin({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def unpause(*, on_signed=None, w3: Web3 | None = None) -> str:
+    """Send `unpause()` from the vault admin key and return its hash."""
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi("unpause", args=[])
+    return _submit_admin({"to": contract.address, "data": data}, w3, on_signed)
 
 
 def ensure_allowance(amount: Decimal, w3: Web3 | None = None) -> str | None:
@@ -161,6 +208,44 @@ def contribute(
         ],
     )
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def finalise(
+    stokvel_id: UUID,
+    round_: int,
+    *,
+    on_signed=None,
+    w3: Web3 | None = None,
+) -> str:
+    """Send `finalise(id, round)` from the Treasury Wallet and return its hash
+    (R3-04). Submits only: the caller waits on the hash with
+    `evm_service.wait_for_receipt`, then reads the release from the receipt
+    with `round_finalised`.
+
+    The contract releases the round's pool to the Treasury Wallet only if it
+    is the next round to release, it and the next round are fully paid, and
+    its payout time has passed. Otherwise the gas estimate reverts and this
+    raises `ContractRefused` before anything is signed: `AlreadyFinalised`
+    (a `contribute` released it first) or `NotYetFinalisable` (not due).
+    """
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    data = contract.encode_abi(
+        "finalise", args=[evm_service.uuid_to_bytes32(stokvel_id), round_]
+    )
+    return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def is_finalisable(stokvel_id: UUID, round_: int, w3: Web3 | None = None) -> bool:
+    """`isFinalisable(id, round)`: whether `finalise` would succeed now, by
+    the latest block's time (R3-11). Ignores the pause. A read: nothing is
+    sent."""
+    w3 = w3 or evm_service.get_web3()
+    return bool(
+        vault(w3)
+        .functions.isFinalisable(evm_service.uuid_to_bytes32(stokvel_id), round_)
+        .call()
+    )
 
 
 # The events `stokvel.sync_events` applies (doc section 4, "Contract event →
@@ -303,3 +388,16 @@ def start_cycle(
         ],
     )
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
+
+
+def round_finalised(receipt, w3: Web3) -> list[ContractEvent]:
+    """The vault's `RoundFinalised` events in a mined receipt, in log order.
+    A `finalise` releases exactly one round; a `contribute` may release
+    several. Logs from other contracts in the receipt are ignored."""
+    address = vault(w3).address.lower()
+    return [
+        decode_log(log, w3)
+        for log in receipt["logs"]
+        if str(log["address"]).lower() == address
+        and _TOPIC_EVENTS.get(bytes(log["topics"][0])) == "RoundFinalised"
+    ]

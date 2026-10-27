@@ -2,8 +2,11 @@ import { assert, test } from "vitest"
 
 import {
   contributeRefusal,
+  isGoneInvitationError,
+  STOKVEL_ERROR_MESSAGES,
   contributeRefusalMessage,
   isFinalRefusal,
+  revokeErrorMessage,
   stokvelErrorCode,
   stokvelErrorMessage,
 } from "./stokvel-errors"
@@ -91,4 +94,53 @@ test("final refusals are the ones a retry cannot fix", () => {
     ),
     "This stokvel's cycle is still being set up. Try again in a minute."
   )
+})
+
+test("the invitation codes carry section 6's wording", () => {
+  for (const code of [
+    "not_organiser",
+    "invitee_not_verified",
+    "invitee_currency_mismatch",
+    "already_a_member",
+    "invitation_already_pending",
+    "stokvel_deactivated",
+    "not_invitee",
+    "invitation_not_pending",
+  ]) {
+    assert.ok(code in STOKVEL_ERROR_MESSAGES, code)
+  }
+  assert.equal(
+    stokvelErrorMessage(apiError("raw", 409, { code: "already_a_member" })),
+    "This person is already a member of the stokvel."
+  )
+})
+
+test("an invitation that can't be answered any more is spotted", () => {
+  assert.ok(
+    isGoneInvitationError(
+      apiError("x", 409, { code: "invitation_not_pending" })
+    )
+  )
+  assert.ok(
+    isGoneInvitationError(apiError("x", 409, { code: "stokvel_deactivated" }))
+  )
+  assert.ok(isGoneInvitationError(apiError("Invitation not found.", 404)))
+  assert.ok(!isGoneInvitationError(apiError("x", 403, { code: "not_invitee" })))
+  assert.ok(!isGoneInvitationError(apiError("Server error", 500)))
+})
+
+test("revoke refusals say what was refused", () => {
+  assert.equal(
+    revokeErrorMessage(apiError("x", 403, { code: "not_organiser" })),
+    "Only the stokvel's organiser can revoke invitations."
+  )
+  // Answered or lapsed meanwhile: the shared wording, and the list refreshes.
+  const answered = apiError("x", 409, { code: "invitation_not_pending" })
+  assert.equal(
+    revokeErrorMessage(answered),
+    STOKVEL_ERROR_MESSAGES.invitation_not_pending
+  )
+  assert.equal(isGoneInvitationError(answered), true)
+  assert.equal(revokeErrorMessage(apiError("Not found", 404)), "Not found")
+  assert.equal(isGoneInvitationError(apiError("Not found", 404)), true)
 })

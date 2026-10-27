@@ -278,6 +278,37 @@ variable "uctusd_evm_decimals" {
   default = ""
 }
 
+variable "stokvel_contract_address" {
+  type        = string
+  default     = "0x2f240705314BB79780522635eA47d20072CB8Fe1"
+  description = "StokvelVault on XRPL EVM Testnet (contracts/deployments/xrplEvmTestnet.json). Empty omits it."
+}
+
+variable "max_stokvel_members" {
+  type        = string
+  default     = "3"
+  description = "Must equal the deployed contract's maxMembers. Empty omits it."
+}
+
+variable "stokvel_sync_start_block" {
+  type        = string
+  default     = "8995825"
+  description = "Deployment block of stokvel_contract_address. Required when that address is set. Empty omits it."
+}
+
+variable "evm_stokvel_admin_address" {
+  type        = string
+  default     = ""
+  description = "Vault admin address. Worker only. Empty omits it."
+}
+
+variable "evm_stokvel_admin_key_encrypted" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Fernet-encrypted vault admin key (EVM_ENCRYPTION_KEY). Worker secret only."
+}
+
 variable "api_container_image" {
   type        = string
   description = "Artifact Registry image for the API Cloud Run service."

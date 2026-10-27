@@ -1,12 +1,11 @@
 /**
  * The admin's manual release of a stokvel round (R4-11, #260), the fallback
  * when the automatic release fails (D5, P5: approved by product, 19 Oct).
- * The route is R3-10 (#247), not built yet:
- * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which asks the contract to
- * release the round and writes `stokvel.round.finalised_manually` to the
- * audit log. No admin route lists stokvels and their rounds yet either, so
- * the page reads `stokvel-admin.mock.ts` for both; R4-09 swaps them for the
- * generated client and deletes the mock.
+ * The route is R3-10 (#247):
+ * `POST /admin/stokvels/{id}/rounds/{n}/finalise`, which queues the release
+ * and writes `stokvel.round.finalised_manually` to the audit log. No admin
+ * route lists stokvels and their rounds yet, so the page still reads
+ * `stokvel-admin.mock.ts` for both.
  */
 
 import { queryOptions, type QueryClient } from "@tanstack/react-query"
@@ -16,8 +15,8 @@ import {
   listAdminRoundsMock,
 } from "~/lib/stokvel-admin.mock"
 
-/** One round as the admin page lists it. R4-09: replace with `~/client`
- * once #247 (or its list route) is built; the shape is assumed. */
+/** One round as the admin page lists it. Assumed until an admin route
+ * lists rounds; no route returns this shape yet. */
 export type AdminStokvelRoundRead = {
   stokvel_id: string
   stokvel_name: string
@@ -36,6 +35,10 @@ export type AdminStokvelRoundRead = {
 export const FINALISE_REFUSALS = {
   round_not_finalisable: "This round can't be paid out yet.",
   round_already_finalised: "This round has already been paid out.",
+  round_release_not_pending:
+    "This round's payout is already in progress or has failed, so it can't be queued again.",
+  stokvel_chain_mismatch:
+    "This stokvel's records don't match the contract. An operator needs to check the vault before this round can be paid out.",
   stokvel_paused: "Stokvels are temporarily paused.",
 } as const
 
@@ -86,7 +89,8 @@ export function finaliseHint(
 /**
  * Whether the page offers Release payout for a round: not once it has been
  * released, and not while the worker's release is in flight. A failed
- * release keeps the button: that's the case the fallback exists for (P5).
+ * release keeps the button on this mock. The live route refuses both
+ * `processing` and `failed` with 409 `round_release_not_pending`.
  */
 export function canReleaseByHand(
   round: Pick<AdminStokvelRoundRead, "release_status">
@@ -107,7 +111,7 @@ export const stokvelAdminQueries = {
 }
 
 export const stokvelAdminMutations = {
-  /** `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247, assumed). */
+  /** `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247). Still the mock. */
   finalise: () => ({
     mutationFn: (round: { stokvel_id: string; round: number }) =>
       finaliseRoundMock(round.stokvel_id, round.round),

@@ -17,10 +17,13 @@ from remitx_api.models.schemas.stokvel import (
     SentStokvelInvitationRead,
     StokvelBeneficiaryRead,
     StokvelBeneficiaryRequest,
+    StokvelContinuationRead,
+    StokvelContinuationRequest,
     StokvelContributionRead,
     StokvelCreateRequest,
     StokvelCycleRead,
     StokvelCycleStartRequest,
+    StokvelDetailRead,
     StokvelInvitationCreateRequest,
     StokvelListRead,
     StokvelPayoutOrderRead,
@@ -79,6 +82,28 @@ def list_stokvels(user: User = Depends(get_current_user)):
     return StokvelListRead.from_view(controller.list_stokvels(user.id))
 
 
+@router.get(
+    "/{stokvel_id}",
+    response_model=StokvelDetailRead,
+    summary="Read one stokvel",
+    responses=error_responses(404),
+)
+def get_stokvel(
+    stokvel_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """The member screen for one stokvel: the group, its current cycle,
+    who has paid, and each round's payout once one exists. `invitations`
+    holds every invitation of the stokvel, whatever its status, newest first.
+
+    404 for an unknown stokvel or one the caller is not a current member of,
+    the same answer, so an id reveals nothing. `contribution_fiat_estimate`
+    is null when no exchange rate is available. `fee_amount` is set only on
+    the caller's own contributions. `pool_fiat_amount` is null.
+    `remittance_id` is the payout reference."""
+    return StokvelDetailRead.from_view(controller.get_stokvel(user.id, stokvel_id))
+
+
 @router.post(
     "/{stokvel_id}/contributions",
     response_model=StokvelContributionRead,
@@ -132,20 +157,28 @@ def invite_to_stokvel(
     payload: StokvelInvitationCreateRequest,
     user: User = Depends(get_current_user),
 ):
-    """Invite the owner of `account_reference` to the caller's stokvel. They
-    become a Member only if they accept. Invitations may outnumber the free
-    places: the member cap holds when an invitation is accepted.
+    """Invite someone to the caller's stokvel: the owner of
+    `account_reference`, or the person one of the caller's beneficiaries
+    links to (`beneficiary_id`). They become a Member only if they accept.
+    Invitations may outnumber the free places: the member cap holds when an
+    invitation is accepted.
 
     Refusals carry a `code` where doc section 6 gives one: 404 for an unknown
-    stokvel or one the caller is not a member of, and for an unknown
-    reference; 403 `not_organiser` for a member who is not the Organiser;
-    403 `invitee_not_verified` for an invitee who is not KYC-verified; 422
-    `invitee_currency_mismatch` for an account not in the Stokvel currency;
-    422 `too_many_members` when the stokvel is full; 409 `already_a_member`,
-    `invitation_already_pending` or `stokvel_deactivated`; 400 for the
-    caller's own reference."""
+    stokvel or one the caller is not a member of, for an unknown reference,
+    and for a beneficiary that isn't the caller's; 403 `not_organiser` for a
+    member who is not the Organiser; 403 `invitee_not_verified` for an
+    invitee who is not KYC-verified; 422 `invitee_currency_mismatch` for an
+    account not in the Stokvel currency, or a beneficiary with no account in
+    it; 422 `too_many_members` when the stokvel is full; 409
+    `already_a_member`, `invitation_already_pending` or
+    `stokvel_deactivated`; 400 for the caller's own reference."""
     return SentStokvelInvitationRead.from_view(
-        invitations.invite(user.id, stokvel_id, payload.account_reference)
+        invitations.invite(
+            user.id,
+            stokvel_id,
+            account_reference=payload.account_reference,
+            beneficiary_id=payload.beneficiary_id,
+        )
     )
 
 
@@ -236,4 +269,39 @@ def start_stokvel_cycle(
     or times out of order."""
     return StokvelCycleRead.from_view(
         cycles.start_cycle(user.id, stokvel_id, payload.schedule())
+    )
+
+
+@router.post(
+    "/{stokvel_id}/members/me/continuation",
+    response_model=StokvelContinuationRead,
+    summary="Continue or leave after a cycle",
+    responses=error_responses(400, 404, 409, 422),
+)
+def continue_or_leave_stokvel(
+    stokvel_id: uuid.UUID,
+    payload: StokvelContinuationRequest,
+    user: User = Depends(get_current_user),
+):
+    """After a cycle closes, continue into the stokvel's next cycle or leave
+    it. Allowed until the Organiser starts the next cycle; a member who has
+    not chosen by then is treated as leaving.
+
+    Continuing can name a new beneficiary (checked as for `PUT
+    /members/me/beneficiary`); without one, the current choice is kept or
+    carried over from the closed cycle. It can be repeated. Leaving is
+    final. The Organiser is always continued and cannot leave.
+
+    Refusals carry a `code` where doc section 6 gives one: 404 for an
+    unknown stokvel or one the caller is not a current member of, and for a
+    beneficiary that is unknown or not the caller's; 400 if the recipient
+    no longer holds an account in the beneficiary's payout currency; 409
+    `stokvel_deactivated`, `nothing_to_continue` before any cycle has
+    finished, `cycle_locked` once the next cycle has started,
+    `cycle_not_forming` while the Organiser has not opened it, or
+    `organiser_cannot_leave`; 422 for an invalid request body."""
+    return StokvelContinuationRead.from_view(
+        setup.continue_or_leave(
+            user.id, stokvel_id, payload.choice, payload.beneficiary_id
+        )
     )

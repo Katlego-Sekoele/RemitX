@@ -27,6 +27,7 @@ from decimal import Decimal
 
 import httpx
 
+from remitx_seeder.clerk import can_sign_in
 from remitx_seeder.context import RunContext, SeededPerson
 
 SEND_ZAR = Decimal("200")
@@ -47,14 +48,16 @@ class LiveSend:
 
 
 def _candidates(ctx: RunContext) -> list[SeededPerson]:
+    # Never someone a story owns: the stokvel demo keeps its members' balance
+    # for contributions.
     return [
         person
         for person in ctx.people.values()
         if person.persona.role == "sender"
+        and not person.scripted
         and person.verified
         and person.beneficiaries
-        and person.clerk_user_id
-        and person.clerk_user_id.startswith("user_")
+        and can_sign_in(person.clerk_user_id)
     ]
 
 

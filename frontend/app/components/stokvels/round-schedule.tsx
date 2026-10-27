@@ -17,7 +17,7 @@ import {
   payoutProofHash,
   PAYOUT_STAGE_LABELS,
   payoutStage,
-  type StokvelCycleRead,
+  type StokvelDetailCycleRead,
   type StokvelMemberRead,
 } from "~/lib/stokvels"
 
@@ -27,21 +27,23 @@ type MemberLookup = (memberId: string) => StokvelMemberRead | undefined
  * and, when it is the viewer, says "You're next!" (product docx §3). */
 export function PayoutQueue({
   cycle,
+  openRound,
   member,
   myMemberId,
 }: {
-  cycle: StokvelCycleRead
+  cycle: StokvelDetailCycleRead
+  /** Collecting round. Null when none is open, including a finished cycle. */
+  openRound: number | null
   member: MemberLookup
   myMemberId: string
 }) {
-  const active = cycle.status === "active"
   return (
     <Card>
       <CardHeader>
         <CardTitle>Payout order</CardTitle>
         <CardDescription>
           {cycle.rounds.filter((r) => r.release_status === "released").length}{" "}
-          of {cycle.total_rounds} paid out
+          of {cycle.total_rounds ?? cycle.payout_order.length} paid out
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -50,7 +52,7 @@ export function PayoutQueue({
             const m = member(memberId)
             const name = m?.full_name ?? "Member"
             const isMe = memberId === myMemberId
-            const isNext = active && round === cycle.current_round
+            const isNext = openRound != null && round === openRound
             const released = cycle.rounds[round]?.release_status === "released"
             return (
               <li
@@ -94,35 +96,40 @@ export function PayoutQueue({
 /** Every round of the cycle with who it pays, when, and how far it got. */
 export function RoundSchedule({
   cycle,
+  openRound,
   member,
   myMemberId,
   paidByRound,
   memberCount,
+  title = "Rounds",
 }: {
-  cycle: StokvelCycleRead
+  cycle: StokvelDetailCycleRead
+  /** Collecting round. Null when none is open, including a finished cycle. */
+  openRound: number | null
   member: MemberLookup
   myMemberId: string
   /** Confirmed contributions per round index. */
   paidByRound: (round: number) => number
   memberCount: number
+  title?: string
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Rounds</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col divide-y">
           {cycle.rounds.map((round) => {
-            const recipient = member(round.recipient_member_id)
+            const recipient = round.recipient_member_id
+              ? member(round.recipient_member_id)
+              : undefined
             const name =
               round.recipient_member_id === myMemberId
                 ? "you"
                 : (recipient?.full_name ?? "a member")
-            const isCurrent =
-              cycle.status === "active" && round.round === cycle.current_round
-            const upcoming =
-              cycle.status === "active" && round.round > cycle.current_round
+            const isCurrent = openRound != null && round.round === openRound
+            const upcoming = openRound != null && round.round > openRound
             const paid = paidByRound(round.round)
             const stage = payoutStage(round, paid >= memberCount)
             const proof = payoutProofHash(round)

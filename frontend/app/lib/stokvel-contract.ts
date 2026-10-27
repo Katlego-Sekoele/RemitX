@@ -1,10 +1,8 @@
 /**
- * The admin's emergency stop for every stokvel (R4-07, #256). The routes are
- * R3-07 (#244), not built yet: `POST /admin/stokvel-contract/pause` with a
- * required `reason` and `POST /admin/stokvel-contract/unpause`, each written
- * to the audit log. Until then this reads and writes
- * `stokvel-contract.mock.ts`; R4-09 swaps the three functions below for the
- * generated client and deletes the mock.
+ * The admin's emergency stop for every stokvel (R4-07, #256).
+ * `POST /admin/stokvel-contract/pause` and `/unpause` (#244) return only a
+ * transaction hash. No route reads the address, paused flag or treasury
+ * balance, so this page still reads and writes `stokvel-contract.mock.ts`.
  *
  * Pausing stops contributions and payouts on the contract; creating stokvels
  * and starting cycles keep working (doc §1, `pause()` / `unpause()`).
@@ -18,8 +16,8 @@ import {
   resumeStokvelContractMock,
 } from "~/lib/stokvel-contract.mock"
 
-/** The contract as the admin page shows it. R4-09: replace with `~/client`
- * once #244 is built; `paused_at` and `paused_reason` are assumed. */
+/** The contract as the admin page shows it. Assumed until a read route
+ * exists. `paused_at` and `paused_reason` are not on the pause response. */
 export type StokvelContractRead = {
   address: string
   network: string
@@ -31,7 +29,7 @@ export type StokvelContractRead = {
   treasury_token_balance: string
 }
 
-/** `POST /admin/stokvel-contract/pause` (#244, assumed). */
+/** `POST /admin/stokvel-contract/pause` (#244). The page still calls the mock. */
 export type StokvelPauseRequest = {
   reason: string
 }

@@ -113,3 +113,17 @@ test("the body sends the resolved currency, never the raw URL value", () => {
   const currency = resolveCreateCurrency(search.currency, ["ZAR"])
   assert.equal(createStokvelRequest(search, currency, "1").currency, "ZAR")
 })
+
+test("typing a name on a fresh wizard stays on the name step", () => {
+  // /app/stokvels/new has no ?step until Continue is pressed.
+  assert.equal(resolveCreateStep({ ...BLANK, name: "S" }, true, false), "name")
+  assert.equal(
+    resolveCreateStep({ ...BLANK, name: "Savings club" }, true, false),
+    "name"
+  )
+  // Continue still moves on.
+  assert.equal(
+    resolveCreateStep({ ...BLANK, name: "S", step: "amount" }, true, false),
+    "amount"
+  )
+})

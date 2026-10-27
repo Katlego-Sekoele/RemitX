@@ -1,5 +1,6 @@
-"""`POST /stokvels/{id}/invitations`, `POST /invitations/{id}/accept` and
-`POST /invitations/{id}/decline` (R2-08).
+"""`POST /stokvels/{id}/invitations`, `POST /invitations/{id}/accept`,
+`POST /invitations/{id}/decline` (R2-08) and `POST /invitations/{id}/revoke`
+(R2-16).
 
 On SQLite, which has no row-level security, except the tests marked
 `postgres`, which run the same routes under it (TEST_DATABASE_URL): the
@@ -29,6 +30,7 @@ from remitx_api.models.orm.account import (
     CURRENCY_ZAR,
     create_account_reference,
 )
+from remitx_api.models.orm.beneficiary import Beneficiary, BeneficiaryRelationship
 from remitx_api.models.orm.kyc_lifecycle import KYC_TIER_VERIFIED, KycStatus
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_cycle import StokvelCycle, StokvelCycleStatus
@@ -41,6 +43,7 @@ from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.models.orm.user import User
 from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.routes import stokvel_invitations as invitations_route
+from remitx_api.services.exchange_rate_service import RateUnavailableError
 from sqlalchemy import select
 from tests.kyc_helpers import insert_application, seed_kyc_reference_data
 
@@ -110,6 +113,23 @@ def _stokvel(organiser: Person, *, deactivated: bool = False) -> uuid.UUID:
     return _in_session(insert)
 
 
+def _beneficiary(sender: Person, linked: Person) -> uuid.UUID:
+    """`linked` saved as one of `sender`'s beneficiaries."""
+
+    def insert():
+        beneficiary = Beneficiary(
+            sender_user_id=sender.id,
+            linked_user_id=linked.id,
+            payout_currency=CURRENCY_ZAR,
+            relationship=BeneficiaryRelationship.FRIEND.value,
+        )
+        db.session.add(beneficiary)
+        db.session.commit()
+        return beneficiary.beneficiary_id
+
+    return _in_session(insert)
+
+
 def _add_member(stokvel_id, user_id, invitation_id=None) -> None:
     account = AccountRepository().get_user_account(user_id, CURRENCY_ZAR)
     db.session.add(
@@ -135,7 +155,8 @@ def _invitation_row(stokvel_id, invitee: Person, status, organiser_id):
             None
             if not answered
             else organiser_id
-            if status == StokvelInvitationStatus.REVOKED
+            if status
+            in (StokvelInvitationStatus.REVOKED, StokvelInvitationStatus.LAPSED)
             else invitee.id
         ),
     )
@@ -252,6 +273,13 @@ class Api:
             headers={USER_HEADER: str(as_.id)},
         )
 
+    def invite_beneficiary(self, as_: Person, stokvel_id, beneficiary_id):
+        return self.client.post(
+            f"/stokvels/{stokvel_id}/invitations",
+            json={"beneficiary_id": str(beneficiary_id)},
+            headers={USER_HEADER: str(as_.id)},
+        )
+
     def accept(self, as_: Person, invitation_id):
         return self.client.post(
             f"/invitations/{invitation_id}/accept",
@@ -264,8 +292,19 @@ class Api:
             headers={USER_HEADER: str(as_.id)},
         )
 
+    def revoke(self, as_: Person, invitation_id):
+        return self.client.post(
+            f"/invitations/{invitation_id}/revoke",
+            headers={USER_HEADER: str(as_.id)},
+        )
+
     def list(self, as_: Person):
         return self.client.get("/stokvels", headers={USER_HEADER: str(as_.id)})
+
+    def detail(self, as_: Person, stokvel_id):
+        return self.client.get(
+            f"/stokvels/{stokvel_id}", headers={USER_HEADER: str(as_.id)}
+        )
 
 
 @pytest.fixture
@@ -752,9 +791,106 @@ def test_declining_records_who_answered_and_adds_no_member(api):
 
 
 def test_answering_anonymously_is_rejected(anonymous_client):
-    for action in ("accept", "decline"):
+    for action in ("accept", "decline", "revoke"):
         response = anonymous_client.post(f"/invitations/{uuid.uuid4()}/{action}")
         assert response.status_code == 401
+
+
+# --- revoke --------------------------------------------------------------------
+
+
+def test_revoking_records_who_and_when_and_the_invitee_cannot_accept(api):
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    response = api.revoke(organiser, invitation_id)
+
+    assert response.status_code == 204, response.text
+    invitation = _get_invitation(invitation_id)
+    assert invitation.status == "revoked"
+    assert invitation.status_changed_by_user_id == organiser.id
+    assert invitation.status_changed_at is not None
+    _refused(api.accept(invitee, invitation_id), 409, "invitation_not_pending")
+    assert api.list(invitee).json()["invitations"] == []
+    assert _members(stokvel_id) == {organiser.id}
+
+
+def test_a_revoked_invitee_can_be_invited_again(api):
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, invitee)
+    api.revoke(organiser, invitation_id)
+
+    assert api.invite(organiser, stokvel_id, invitee.ref()).status_code == 201
+    assert sorted(i.status for i in _invitations(stokvel_id)) == [
+        "pending",
+        "revoked",
+    ]
+
+
+def test_revoking_twice_is_refused(api):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person())
+
+    assert api.revoke(organiser, invitation_id).status_code == 204
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        StokvelInvitationStatus.ACCEPTED,
+        StokvelInvitationStatus.DECLINED,
+        StokvelInvitationStatus.LAPSED,
+    ],
+)
+def test_an_answered_invitation_cannot_be_revoked(api, status):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person(), status)
+
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
+    assert _get_invitation(invitation_id).status == status.value
+
+
+def test_only_the_organiser_revokes(api):
+    """The invitee and fellow members can see the invitation, so get 403;
+    anyone else gets 404."""
+    organiser, member, invitee = _person("sipho"), _person("member"), _person()
+    stokvel_id = _stokvel(organiser)
+    _member_of(stokvel_id, member)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    _refused(api.revoke(member, invitation_id), 403, "not_organiser")
+    _refused(api.revoke(invitee, invitation_id), 403, "not_organiser")
+    _refused(api.revoke(_person("outsider"), invitation_id), 404)
+    assert _get_invitation(invitation_id).status == "pending"
+
+
+def test_revoking_an_unknown_invitation_is_not_found(api):
+    _refused(api.revoke(_person(), uuid.uuid4()), 404)
+
+
+def test_an_invitation_to_a_deactivated_stokvel_can_be_revoked(api):
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser, deactivated=True)
+    invitation_id = _invitation(stokvel_id, _person())
+
+    assert api.revoke(organiser, invitation_id).status_code == 204
+
+
+def test_a_concurrent_answer_beats_the_revoke(api, monkeypatch):
+    """The guarded update refuses a revoke when the invitee answered after
+    the invitation was read."""
+    organiser = _person("sipho")
+    stokvel_id = _stokvel(organiser)
+    invitation_id = _invitation(stokvel_id, _person())
+    repo = invitations_route.controller._invitations
+    monkeypatch.setattr(repo, "set_status_if_pending", lambda *_, **__: False)
+
+    _refused(api.revoke(organiser, invitation_id), 409, "invitation_not_pending")
 
 
 # --- under Postgres row-level security --------------------------------------
@@ -797,6 +933,43 @@ def test_under_row_security_an_invitee_accepts_and_declines(pg_api):
     assert accepted.json()["member_count"] == 2
     assert declined.status_code == 204, declined.text
     assert _members(stokvel_id) == {organiser.id, joiner.id}
+
+
+@pytest.mark.postgres
+def test_under_row_security_members_see_every_invitation(pg_api, monkeypatch):
+    """`GET /stokvels/{id}` returns answered invitations too (R2-17, #375),
+    with the reference for the Organiser only."""
+
+    def unavailable(currency):
+        raise RateUnavailableError(currency)
+
+    monkeypatch.setattr(
+        "remitx_api.controllers.stokvel_controller.token_rates", unavailable
+    )
+    organiser, joiner = _person("sipho"), _person()
+    decliner, revoked, waiting = _person("decliner"), _person("revoked"), _person()
+    stokvel_id = _stokvel(organiser)
+    _invitation(stokvel_id, _person("lapsed"), StokvelInvitationStatus.LAPSED)
+    to_join = _invitation(stokvel_id, joiner)
+    to_decline = _invitation(stokvel_id, decliner)
+    to_revoke = _invitation(stokvel_id, revoked)
+    _invitation(stokvel_id, waiting)
+    assert pg_api.accept(joiner, to_join).status_code == 200
+    assert pg_api.decline(decliner, to_decline).status_code == 204
+    assert pg_api.revoke(organiser, to_revoke).status_code == 204
+
+    as_organiser = pg_api.detail(organiser, stokvel_id)
+    as_member = pg_api.detail(joiner, stokvel_id)
+
+    statuses = {"pending", "accepted", "declined", "revoked", "lapsed"}
+    assert as_organiser.status_code == 200, as_organiser.text
+    assert as_member.status_code == 200, as_member.text
+    seen = as_organiser.json()["invitations"]
+    assert {row["status"] for row in seen} == statuses
+    assert all(row["account_reference"] for row in seen)
+    hidden = as_member.json()["invitations"]
+    assert {row["status"] for row in hidden} == statuses
+    assert all(row["account_reference"] is None for row in hidden)
 
 
 @pytest.mark.postgres
@@ -871,8 +1044,118 @@ def test_under_row_security_two_accepts_for_the_last_place_admit_one(
 
 
 @pytest.mark.postgres
+def test_under_row_security_the_organiser_revokes(pg_api):
+    """The Organiser's revoke passes `stokvel_invitations_update`; a member,
+    who can see the invitation, is refused; an outsider cannot see it."""
+    organiser, member, invitee = _person("sipho"), _person("member"), _person()
+    stokvel_id = _stokvel(organiser)
+    _member_of(stokvel_id, member)
+    invitation_id = _invitation(stokvel_id, invitee)
+
+    _refused(pg_api.revoke(member, invitation_id), 403, "not_organiser")
+    _refused(pg_api.revoke(_person("outsider"), invitation_id), 404)
+    revoked = pg_api.revoke(organiser, invitation_id)
+    invited_again = pg_api.invite(organiser, stokvel_id, invitee.ref())
+
+    assert revoked.status_code == 204, revoked.text
+    invitation = _get_invitation(invitation_id)
+    assert invitation.status == "revoked"
+    assert invitation.status_changed_by_user_id == organiser.id
+    assert invited_again.status_code == 201, invited_again.text
+
+
+@pytest.mark.postgres
 def test_under_row_security_an_outsider_cannot_see_an_invitation(pg_api):
     stokvel_id = _stokvel(_person("sipho"))
     invitation_id = _invitation(stokvel_id, _person())
 
     _refused(pg_api.accept(_person("outsider"), invitation_id), 404)
+
+
+# --- invite by beneficiary --------------------------------------------------
+
+
+def test_invite_a_beneficiary_by_id(api):
+    """The person the beneficiary links to is invited, paying from their
+    account in the Stokvel currency; the response carries its reference."""
+    organiser, invitee = _person("sipho"), _person("thandi", last_name="Moyo")
+    stokvel_id = _stokvel(organiser)
+
+    response = api.invite_beneficiary(
+        organiser, stokvel_id, _beneficiary(organiser, invitee)
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["account_reference"] == invitee.ref()
+    assert body["invitee_name"] == "Thandi M."
+    [invitation] = _invitations(stokvel_id)
+    assert invitation.invitee_user_id == invitee.id
+    assert invitation.status == "pending"
+    # The same person again, by reference, is already invited.
+    _refused(
+        api.invite(organiser, stokvel_id, invitee.ref()),
+        409,
+        "invitation_already_pending",
+    )
+
+
+def test_someone_elses_beneficiary_is_not_found(api):
+    organiser, other = _person("sipho"), _person("other")
+    beneficiary_id = _beneficiary(other, _person())
+
+    _refused(
+        api.invite_beneficiary(organiser, _stokvel(organiser), beneficiary_id), 404
+    )
+    _refused(api.invite_beneficiary(organiser, _stokvel(organiser), uuid.uuid4()), 404)
+
+
+def test_a_beneficiary_without_the_stokvel_currency_is_refused(api):
+    """No account in the Stokvel currency to pay from: the same refusal as a
+    reference in another currency."""
+    organiser, invitee = _person("sipho"), _person()
+    stokvel_id = _stokvel(organiser)
+
+    def to_usd():
+        db.session.get(Stokvel, stokvel_id).currency = CURRENCY_USD
+        db.session.commit()
+
+    _in_session(to_usd)
+
+    _refused(
+        api.invite_beneficiary(organiser, stokvel_id, _beneficiary(organiser, invitee)),
+        422,
+        "invitee_currency_mismatch",
+    )
+
+
+def test_an_unverified_beneficiary_is_refused(api):
+    organiser = _person("sipho")
+    unverified = _person("unverified", verified=False)
+
+    _refused(
+        api.invite_beneficiary(
+            organiser, _stokvel(organiser), _beneficiary(organiser, unverified)
+        ),
+        403,
+        "invitee_not_verified",
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"account_reference": "thandi1-zar", "beneficiary_id": str(uuid.uuid4())},
+    ],
+)
+def test_invite_needs_exactly_one_of_reference_and_beneficiary(api, body):
+    organiser = _person("sipho")
+
+    response = api.client.post(
+        f"/stokvels/{_stokvel(organiser)}/invitations",
+        json=body,
+        headers={USER_HEADER: str(organiser.id)},
+    )
+
+    assert response.status_code == 422

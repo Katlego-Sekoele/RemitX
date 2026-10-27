@@ -138,7 +138,7 @@ Repeat with `remitx-gcp-prod` + `stable` for production. Same GCP project as QA:
 
 ## GitHub environments catalog
 
-**Single source of truth:** non-secret **variables** and **secrets** for cloud deploy live in GitHub Environments `qa` / `prod` only — not in `common.tfvars` or duplicated product defaults in Terraform.
+**Single source of truth:** non-secret **variables** and **secrets** for cloud deploy live in GitHub Environments `qa` / `prod` only — not in `common.tfvars` or duplicated product defaults in Terraform. Exception: `stokvel_contract_address`, `max_stokvel_members` and `stokvel_sync_start_block` default to the XRPL EVM Testnet deployment, so Cloud Run still gets them when the GitHub variable is unset. A `TF_VAR_*` overrides.
 
 | Kind | How Terraform gets it |
 |------|------------------------|
@@ -175,6 +175,7 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `TF_VAR_object_storage_secret_access_key` | O   | Neon storage `s3_secret_access_key`; **API only**.                                                                                                               |
 | `TF_VAR_evm_encryption_key`               | O   | EVM treasury encryption key; **worker only** when EVM settlement is enabled.                                                                                     |
 | `TF_VAR_evm_treasury_key_encrypted`       | O   | Encrypted EVM treasury private key; **worker only**.                                                                                                             |
+| `TF_VAR_evm_stokvel_admin_key_encrypted`  | O   | Fernet-encrypted StokvelVault admin key; **worker only**. Pause and unpause. No default.                                                                         |
 
 
 
@@ -222,6 +223,10 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `TF_VAR_evm_explorer_url`             | O   | Block explorer base URL.                                                                                                          |
 | `TF_VAR_uctusd_contract_address`      | O   | UCTUSD ERC-20 contract.                                                                                                           |
 | `TF_VAR_uctusd_evm_decimals`          | O   | Token decimals on EVM.                                                                                                            |
+| `TF_VAR_stokvel_contract_address`     | O   | StokvelVault address. Default `0x2f240705314BB79780522635eA47d20072CB8Fe1`. API and worker.                                       |
+| `TF_VAR_max_stokvel_members`          | O   | Member cap. Default `3`. Must equal the contract `maxMembers`. API and worker.                                                    |
+| `TF_VAR_stokvel_sync_start_block`     | O   | Event-sync start block. Default `8995825`. Required with the contract address. API and worker.                                    |
+| `TF_VAR_evm_stokvel_admin_address`    | O   | Vault admin address. **Worker only**. No default.                                                                                 |
 
 
 Required on rollouts for the environment you deploy; storing both branch ids on both GitHub environments avoids duplicating workflow logic.

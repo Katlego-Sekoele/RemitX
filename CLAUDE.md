@@ -10,7 +10,7 @@ Hard constraints:
 
 - **XRPL EVM Testnet only** (chain 1449000). The whole system moved off the XRP Ledger to the EVM chain (decision D1 in the stokvel doc); settlement now burns UCTUSD, an ERC-20 standing in for RLUSD. No mainnet, no real funds, no production blockchain credentials.
 - **XRPL is switched off, not deleted** (D11). XRPL files, settings (`XRPL_*`, `PLATFORM_WALLET_*`, `UCTUSD_ISSUER*`) and the `xrpl-py` package stay where they are, marked as no longer used; change only what the EVM path needs. An old migration still imports `xrpl-py`.
-- The Treasury Wallet's private key is Fernet-encrypted in the environment (`EVM_TREASURY_KEY_ENCRYPTED`), and the key that decrypts it (`EVM_ENCRYPTION_KEY`) is a separate setting. Only `remitx_worker` decrypts it, reading `os.environ` directly so the API's `Config` can never hand it out. Keys must never be returned via the API, logged, or committed. The contract deployer key lives only in `contracts/.env`, so the API and worker containers never load it.
+- The Treasury Wallet's private key is Fernet-encrypted in the environment (`EVM_TREASURY_KEY_ENCRYPTED`), and the key that decrypts it (`EVM_ENCRYPTION_KEY`) is a separate setting. Only `remitx_worker` decrypts it, reading `os.environ` directly so the API's `Config` can never hand it out. Keys must never be returned via the API, logged, or committed. The contract deployer's plaintext key (`DEPLOYER_PRIVATE_KEY`) stays only in `contracts/.env`; the API never loads it. The worker loads a Fernet copy of that key (`EVM_STOKVEL_ADMIN_KEY_ENCRYPTED`, decrypted with `EVM_ENCRYPTION_KEY`) for pause and unpause only (#244).
 - Uploaded KYC documents live in object storage, never in Postgres. Uploads are POSTed to the API, which identifies the file by its leading bytes before writing it to the bucket; reads are signed URLs that expire in minutes, and every one is written to the audit log.
 - Settlement must run asynchronously through a message queue with duplicate-message protection (no double-crediting), and may not start until the simulated ZAR cash-in is confirmed.
 
@@ -104,7 +104,7 @@ npx hardhat test       # all tests, hand-written and randomised
 npm run export:abi     # after any interface change; commit abi/ (a test fails on drift)
 ```
 
-Neither CI nor pre-commit runs the contract tests, so run them yourself after touching `contracts/`. Deploying is in the [README](contracts/README.md#deploy).
+Pre-commit runs `npm test` in `contracts/` when that tree changes; CI runs the same on every PR. Deploying is in the [README](contracts/README.md#deploy).
 
 ### Seeder (local only)
 
@@ -141,7 +141,7 @@ timings, CPU/memory, and optional `compute` sweep (`LOADTEST_PROFILE`, default
 python3 -m pre_commit run --all-files
 ```
 
-Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
+Pre-commit regenerates `frontend/openapi.json` when `api/remitx_api/` changes, and runs gitleaks (config: [.gitleaks.toml](.gitleaks.toml), with custom XRPL-seed and DB-URL rules), the `.env` block, ruff fix+format on staged Python, `pytest`, Hardhat tests when `contracts/` changes, and prettier + `npm run typecheck` on the frontend. Hooks re-`git add` files they auto-fix.
 
 ## API architecture
 
@@ -214,7 +214,7 @@ Rules:
 
 **Do not edit [docs/Transaction_Flow_Context.md](docs/Transaction_Flow_Context.md).** It records the original RemitX project from before the Stokvel work and is kept unchanged for reference. It can be read for context (fees, ledger model), but Stokvel changes, including the EVM switch-over, go in the stokvel docs below.
 
-[docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. **Update it before opening a PR** that touches stokvel work: add the changelog row, record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
+[docs/stokvel_integration.md](docs/stokvel_integration.md) is the shared contract and progress log for the Stokvel integration. Its database model (section 3) lives in [docs/stokvel_database_model.md](docs/stokvel_database_model.md) and its changelog in [docs/stokvel_changelog.md](docs/stokvel_changelog.md). **Update them before opening a PR** that touches stokvel work: add the changelog row (at the bottom; rows run oldest first), record new or changed features, files, functions, statuses, endpoints, worker tasks or contract interfaces, and resolve or add open questions. Take function names, status values and API shapes from it rather than inventing them. Interface changes need approval from the owners listed in that file.
 
 ## Agent skills
 

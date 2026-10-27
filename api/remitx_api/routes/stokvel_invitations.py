@@ -57,3 +57,23 @@ def decline_stokvel_invitation(
     409 `invitation_not_pending` once it has been accepted, declined, revoked
     or lapsed."""
     controller.decline(user.id, invitation_id)
+
+
+@router.post(
+    "/{invitation_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a stokvel invitation",
+    responses=error_responses(403, 404, 409),
+)
+def revoke_stokvel_invitation(
+    invitation_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+):
+    """Take back a pending invitation, as the stokvel's Organiser. The
+    invitee may be invited again.
+
+    Refusals: 404 for an unknown invitation, or one the caller cannot see;
+    403 `not_organiser` for the invitee or a fellow member, who can see it
+    but not revoke it; 409 `invitation_not_pending` once it has been
+    accepted, declined, revoked or lapsed."""
+    controller.revoke(user.id, invitation_id)

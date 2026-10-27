@@ -65,6 +65,8 @@ class Tag:
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
     ADMIN_AUDIT = "admin.audit"
+    ADMIN_STOKVEL_CONTRACT = "admin.stokvel_contract"
+    ADMIN_STOKVELS = "admin.stokvels"
 
 
 TAGS: list[dict[str, str]] = [
@@ -156,6 +158,14 @@ TAGS: list[dict[str, str]] = [
             "Privileged actions and sensitive reads — who did what, to whom, and when."
         ),
     },
+    {
+        "name": Tag.ADMIN_STOKVEL_CONTRACT,
+        "description": "Emergency pause and resume for every stokvel on the vault.",
+    },
+    {
+        "name": Tag.ADMIN_STOKVELS,
+        "description": "Administrator actions on one stokvel.",
+    },
 ]
 
 
@@ -201,6 +211,7 @@ def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         422: "The request body failed validation.",
         502: "Object storage failed.",
         503: "A service the request depends on is unavailable.",
+        504: "The upstream call did not finish in time.",
     }
     return {
         code: {"model": ErrorResponse, "description": descriptions[code]}

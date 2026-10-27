@@ -1,6 +1,6 @@
 """Request/response schemas for creating and listing stokvels (R2-07),
-inviting members (R2-08), setting up a cycle (R2-09), starting it (R2-10)
-and contributing (R2-11)."""
+inviting members (R2-08), setting up a cycle (R2-09), starting it (R2-10),
+contributing (R2-11) and continuing or leaving after a cycle (R2-15)."""
 
 import uuid
 from datetime import UTC, datetime
@@ -12,14 +12,22 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 from remitx_api.controllers.stokvel_contribution_controller import (
     StokvelContributionView,
 )
 from remitx_api.controllers.stokvel_controller import (
+    StokvelBeneficiaryChoiceView,
+    StokvelCycleView,
+    StokvelDetailContributionView,
+    StokvelDetailInvitationView,
+    StokvelDetailView,
     StokvelInvitationView,
     StokvelListView,
+    StokvelMemberView,
+    StokvelRoundView,
     StokvelView,
 )
 from remitx_api.controllers.stokvel_cycle_controller import (
@@ -32,13 +40,18 @@ from remitx_api.controllers.stokvel_invitation_controller import (
     SentStokvelInvitationView,
 )
 from remitx_api.controllers.stokvel_setup_controller import (
+    ContinuationChoice,
+    ContinuationView,
     PayoutBeneficiaryView,
     PayoutOrderView,
     PayoutPlaceView,
 )
 from remitx_api.models.orm.account import PayoutCurrency
+from remitx_api.models.orm.stokvel_contribution import StokvelContributionStatus
 from remitx_api.models.orm.stokvel_cycle import StokvelCycleStatus
 from remitx_api.models.orm.stokvel_invitation import StokvelInvitationStatus
+from remitx_api.models.orm.stokvel_payout import StokvelPayoutReleaseStatus
+from remitx_api.models.orm.transaction import TransactionStatus
 from remitx_api.models.schemas.base import Amount, LedgerDecimal, Schema, UtcDateTime
 
 # A Stokvel currency is any fiat currency a customer can hold an account in.
@@ -197,19 +210,37 @@ class StokvelContributionRead(Schema):
 
 
 class StokvelInvitationCreateRequest(Schema):
-    """Invite the owner of an account to the stokvel."""
+    """Invite someone to the stokvel, by their account reference or as one of
+    the Organiser's beneficiaries. Exactly one of the two."""
 
     model_config = ConfigDict(extra="forbid")
 
-    account_reference: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
-    ] = Field(
+    account_reference: (
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+        ]
+        | None
+    ) = Field(
+        default=None,
         description=(
             "The invitee's account reference, e.g. `thandi2-zar`. The account "
             "must be in the Stokvel currency: the invitee's contributions are "
             "paid from it."
-        )
+        ),
     )
+    beneficiary_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "One of the Organiser's beneficiaries. The invitee is the person "
+            "it links to, paying from their account in the Stokvel currency."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_invitee(self) -> "StokvelInvitationCreateRequest":
+        if (self.account_reference is None) == (self.beneficiary_id is None):
+            raise ValueError("Give an account_reference or a beneficiary_id, not both")
+        return self
 
 
 class SentStokvelInvitationRead(Schema):
@@ -233,6 +264,18 @@ class SentStokvelInvitationRead(Schema):
             status=view.status,
             created_at=view.created_at,
         )
+
+
+class StokvelDetailInvitationRead(SentStokvelInvitationRead):
+    """An invitation on `GET /stokvels/{id}`, of any status.
+
+    `account_reference` is set only for the Organiser, and null when the
+    invitee no longer holds an account in the stokvel currency. `POST
+    /stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where
+    the reference is always set.
+    """
+
+    account_reference: str | None
 
 
 class StokvelPayoutOrderRequest(Schema):
@@ -322,6 +365,233 @@ class StokvelBeneficiaryRead(Schema):
             beneficiary_id=view.beneficiary_id,
             payout_currency=view.payout_currency,
         )
+
+
+class StokvelMemberRead(Schema):
+    """A current member of a stokvel, as another member may see them."""
+
+    member_id: uuid.UUID
+    user_id: uuid.UUID
+    # "Tendai M."; null when the member has no first name on file.
+    full_name: str | None
+    is_organiser: bool
+    is_me: bool
+    joined_at: UtcDateTime
+    in_cycle: bool = Field(
+        description=(
+            "Has a place in the current cycle. From cycle 2, while it is "
+            "forming: the Organiser, members who chose to continue and anyone "
+            "who joined since; false for a member who hasn't answered yet."
+        )
+    )
+
+    @classmethod
+    def from_view(cls, view: StokvelMemberView) -> "StokvelMemberRead":
+        return cls(
+            member_id=view.member_id,
+            user_id=view.user_id,
+            full_name=view.full_name,
+            is_organiser=view.is_organiser,
+            is_me=view.is_me,
+            joined_at=view.joined_at,
+            in_cycle=view.in_cycle,
+        )
+
+
+class StokvelBeneficiaryChoiceRead(Schema):
+    """The beneficiary the caller chose for this cycle."""
+
+    beneficiary_id: uuid.UUID
+    full_name: str | None
+    payout_currency: StokvelCurrency
+
+    @classmethod
+    def from_view(
+        cls, view: StokvelBeneficiaryChoiceView
+    ) -> "StokvelBeneficiaryChoiceRead":
+        return cls(
+            beneficiary_id=view.beneficiary_id,
+            full_name=view.full_name,
+            payout_currency=view.payout_currency,
+        )
+
+
+class StokvelRoundRead(Schema):
+    """One round of the current cycle, with its payout once one exists."""
+
+    round: int
+    start_time: UtcDateTime
+    deadline: UtcDateTime
+    payout_time: UtcDateTime
+    recipient_member_id: uuid.UUID | None
+    release_status: StokvelPayoutReleaseStatus | None
+    remittance_status: TransactionStatus | None
+    # The reference the member sees. There is no separate display code.
+    remittance_id: uuid.UUID | None
+    release_tx_hash: str | None
+    burn_tx_hash: str | None
+    # shortcut: null until members can read the payout quote (#241).
+    pool_fiat_amount: LedgerDecimal | None = None
+
+    @classmethod
+    def from_view(cls, view: StokvelRoundView) -> "StokvelRoundRead":
+        return cls(
+            round=view.round,
+            start_time=view.start_time,
+            deadline=view.deadline,
+            payout_time=view.payout_time,
+            recipient_member_id=view.recipient_member_id,
+            release_status=view.release_status,
+            remittance_status=view.remittance_status,
+            remittance_id=view.remittance_id,
+            release_tx_hash=view.release_tx_hash,
+            burn_tx_hash=view.burn_tx_hash,
+            pool_fiat_amount=None,
+        )
+
+
+class StokvelDetailCycleRead(Schema):
+    """A cycle on `GET /stokvels/{id}`: the current one (`cycle`), and the
+    one that closed while the next is forming (`previous_cycle`).
+
+    Distinct from `StokvelCycleRead`, which is the body `POST
+    /stokvels/{id}/cycles` returns. Rounds are empty until the cycle starts.
+    """
+
+    cycle_id: uuid.UUID
+    cycle_number: int
+    status: StokvelCycleStatus
+    current_round: int | None
+    total_rounds: int | None
+    started_at: UtcDateTime | None
+    closed_at: UtcDateTime | None
+    # Null while forming, and after the start until startCycle is mined.
+    # Contributions are refused (409 cycle_starting) until this is set.
+    registered_at: UtcDateTime | None
+    payout_order: list[uuid.UUID]
+    rounds: list[StokvelRoundRead]
+
+    @classmethod
+    def from_view(cls, view: StokvelCycleView) -> "StokvelDetailCycleRead":
+        return cls(
+            cycle_id=view.cycle_id,
+            cycle_number=view.cycle_number,
+            status=view.status,
+            current_round=view.current_round,
+            total_rounds=view.total_rounds,
+            started_at=view.started_at,
+            closed_at=view.closed_at,
+            registered_at=view.registered_at,
+            payout_order=view.payout_order,
+            rounds=[StokvelRoundRead.from_view(rnd) for rnd in view.rounds],
+        )
+
+
+class StokvelRoundContributionRead(Schema):
+    """A contribution in the current cycle. `fee_amount` is set only on the
+    caller's own rows."""
+
+    contribution_id: uuid.UUID
+    cycle_id: uuid.UUID
+    round: int
+    member_id: uuid.UUID
+    amount_fiat: LedgerDecimal
+    amount_token: LedgerDecimal
+    fee_amount: LedgerDecimal | None
+    status: StokvelContributionStatus
+    evm_tx_hash: str | None
+    created_at: UtcDateTime
+
+    @classmethod
+    def from_view(
+        cls, view: StokvelDetailContributionView
+    ) -> "StokvelRoundContributionRead":
+        return cls(
+            contribution_id=view.contribution_id,
+            cycle_id=view.cycle_id,
+            round=view.round,
+            member_id=view.member_id,
+            amount_fiat=view.amount_fiat,
+            amount_token=view.amount_token,
+            fee_amount=view.fee_amount,
+            status=view.status,
+            evm_tx_hash=view.evm_tx_hash,
+            created_at=view.created_at,
+        )
+
+
+class StokvelDetailRead(StokvelRead):
+    """`GET /stokvels/{id}`: the member screen for one stokvel."""
+
+    organiser_name: str | None
+    contribution_fiat_estimate: LedgerDecimal | None
+    phase: StokvelCycleStatus
+    current_round: int | None
+    # Round a contribution joins (`StokvelContributionRepository.open_round`).
+    # Null while the cycle is not active, and null once every round is full.
+    open_round: int | None
+    total_rounds: int | None
+    next_payout_time: UtcDateTime | None
+    my_contribution_status: StokvelContributionStatus | None
+    my_member_id: uuid.UUID
+    my_beneficiary: StokvelBeneficiaryChoiceRead | None
+    members: list[StokvelMemberRead]
+    invitations: list[StokvelDetailInvitationRead]
+    cycle: StokvelDetailCycleRead | None
+    # The closed cycle while the next one is forming (R2-15, #237), so its
+    # rounds' release status, hashes and remittances stay visible.
+    previous_cycle: StokvelDetailCycleRead | None
+    contributions: list[StokvelRoundContributionRead]
+
+    @classmethod
+    def from_view(cls, view: StokvelDetailView) -> "StokvelDetailRead":
+        base = StokvelRead.from_view(view.stokvel)
+        return cls(
+            **base.model_dump(),
+            organiser_name=view.organiser_name,
+            contribution_fiat_estimate=view.contribution_fiat_estimate,
+            phase=view.phase,
+            current_round=view.current_round,
+            open_round=view.open_round,
+            total_rounds=view.total_rounds,
+            next_payout_time=view.next_payout_time,
+            my_contribution_status=view.my_contribution_status,
+            my_member_id=view.my_member_id,
+            my_beneficiary=(
+                None
+                if view.my_beneficiary is None
+                else StokvelBeneficiaryChoiceRead.from_view(view.my_beneficiary)
+            ),
+            members=[StokvelMemberRead.from_view(row) for row in view.members],
+            invitations=[_sent_invitation(row) for row in view.invitations],
+            cycle=(
+                None
+                if view.cycle is None
+                else StokvelDetailCycleRead.from_view(view.cycle)
+            ),
+            previous_cycle=(
+                None
+                if view.previous_cycle is None
+                else StokvelDetailCycleRead.from_view(view.previous_cycle)
+            ),
+            contributions=[
+                StokvelRoundContributionRead.from_view(row)
+                for row in view.contributions
+            ],
+        )
+
+
+def _sent_invitation(
+    view: StokvelDetailInvitationView,
+) -> StokvelDetailInvitationRead:
+    return StokvelDetailInvitationRead(
+        invitation_id=view.invitation_id,
+        stokvel_id=view.stokvel_id,
+        invitee_name=view.invitee_name,
+        account_reference=view.account_reference,
+        status=view.status,
+        created_at=view.created_at,
+    )
 
 
 class StokvelRoundTimesRequest(Schema):
@@ -464,4 +734,61 @@ class StokvelCycleRead(Schema):
             rounds=[StokvelCycleRoundRead.from_view(item) for item in view.rounds],
             order=[StokvelCyclePlaceRead.from_view(place) for place in view.order],
             lapsed_invitations=view.lapsed_invitations,
+        )
+
+
+class StokvelContinuationRequest(Schema):
+    """The caller's choice after a cycle closes: continue into the next
+    cycle, optionally paying a new beneficiary, or leave the stokvel."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    choice: ContinuationChoice = Field(
+        description=(
+            "`continue` into the next cycle, or `leave` the stokvel. Leaving "
+            "is final: coming back needs a new invitation."
+        )
+    )
+    beneficiary_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "When continuing: one of the caller's own beneficiaries "
+            "(`GET /beneficiaries`) to pay in the next cycle. Leave it out to "
+            "keep the current choice. Not allowed when leaving."
+        ),
+    )
+
+    @field_validator("beneficiary_id")
+    @classmethod
+    def _only_when_continuing(cls, value, info):
+        if value is not None and info.data.get("choice") == ContinuationChoice.LEAVE:
+            raise ValueError("a beneficiary is chosen only when continuing")
+        return value
+
+
+class StokvelContinuationRead(Schema):
+    """The caller's recorded choice for the stokvel's next cycle."""
+
+    stokvel_id: uuid.UUID
+    # The cycle the choice is for: 2 after the first cycle closes.
+    cycle_number: int
+    member_id: uuid.UUID
+    choice: ContinuationChoice
+    beneficiary_id: uuid.UUID | None = Field(
+        description=(
+            "The beneficiary paid in the next cycle. Null on leaving, or "
+            "until the member chooses one."
+        )
+    )
+    payout_currency: PayoutCurrency | None
+
+    @classmethod
+    def from_view(cls, view: ContinuationView) -> "StokvelContinuationRead":
+        return cls(
+            stokvel_id=view.stokvel_id,
+            cycle_number=view.cycle_number,
+            member_id=view.member_id,
+            choice=view.choice,
+            beneficiary_id=view.beneficiary_id,
+            payout_currency=view.payout_currency,
         )
