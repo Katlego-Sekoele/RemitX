@@ -157,12 +157,7 @@ function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
   const [coverBroken, setCoverBroken] = useState(false)
   const showCover = Boolean(stokvel.cover_url) && !coverBroken
   const badge = closed ? (
-    <Badge
-      variant="outline"
-      className={showCover ? "bg-background" : undefined}
-    >
-      Closed
-    </Badge>
+    <Badge variant="outline">Closed</Badge>
   ) : stokvel.is_organiser ? (
     <Badge variant="secondary">You organise</Badge>
   ) : null
@@ -176,42 +171,44 @@ function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
     </CardDescription>
   )
   return (
-    <Card>
+    <Card
+      className={
+        showCover
+          ? "relative flex-row items-stretch px-(--card-spacing) hover:bg-muted/40"
+          : "relative hover:bg-muted/40"
+      }
+    >
       {showCover && stokvel.cover_url ? (
         <StokvelCoverThumb
-          name={stokvel.name}
           coverUrl={stokvel.cover_url}
-          stokvelId={stokvel.stokvel_id}
-          badge={badge}
           onBroken={() => setCoverBroken(true)}
         />
-      ) : (
-        <CardHeader>
+      ) : null}
+      <div
+        className={
+          showCover
+            ? "flex min-w-0 flex-1 flex-col gap-(--card-spacing)"
+            : "contents"
+        }
+      >
+        <CardHeader className={showCover ? "p-0" : undefined}>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>
-              <Link to={stokvelPath(stokvel.stokvel_id)}>{stokvel.name}</Link>
-            </CardTitle>
+            <CardTitle>{stokvel.name}</CardTitle>
             {badge}
           </div>
           {rate}
         </CardHeader>
-      )}
-      <CardContent className="flex flex-col gap-3">
-        {showCover ? rate : null}
-        <div className="flex items-center justify-between gap-3">
+        <CardContent className={showCover ? "p-0" : undefined}>
           <span className="text-sm text-muted-foreground">
             {stokvel.member_count} of {stokvel.max_members} members
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<Link to={stokvelPath(stokvel.stokvel_id)} />}
-          >
-            Open
-          </Button>
-        </div>
-      </CardContent>
+        </CardContent>
+      </div>
+      <Link
+        to={stokvelPath(stokvel.stokvel_id)}
+        aria-label={stokvel.name}
+        className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-ring"
+      />
     </Card>
   )
 }

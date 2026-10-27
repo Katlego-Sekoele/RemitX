@@ -421,7 +421,7 @@ Customer route, tag `stokvels` (client: `api.stokvels.getStokvel`).
 | 401 | Not signed in |
 | 404 | Unknown stokvel, or the caller is not a current member (`StokvelNotFoundError`) |
 
-**`POST /stokvels/{id}/cover`** → `200 StokvelCoverRead`: `cover_url`, a short-lived read URL for the photo just stored. The body is the file itself, with its own `Content-Type` (`image/jpeg`, `image/png` or `image/webp`). The type is taken from the leading bytes, and the declared type has to agree. At most 5 MB. Any current member may set it, and a later upload replaces it: one object, `stokvel-covers/<stokvel id>`. The list and the member screen show that photo with the stokvel's name over a gradient (`api.stokvels.uploadStokvelCover`). `cover_url` on `StokvelRead` is null when there is no photo, when the stored key is not that fixed key, or when the bucket cannot sign one; a missing bucket does not take the screen down.
+**`POST /stokvels/{id}/cover`** → `200 StokvelCoverRead`: `cover_url`, a short-lived read URL for the photo just stored. The body is the file itself, with its own `Content-Type` (`image/jpeg`, `image/png` or `image/webp`). The type is taken from the leading bytes, and the declared type has to agree. At most 5 MB. Any current member may set it, and a later upload replaces it: one object, `stokvel-covers/<stokvel id>`. The list shows that photo on the left, inside the card padding, filling the height of the card content. The card itself opens the stokvel. The member screen shows it as a banner with the name over a gradient (`api.stokvels.uploadStokvelCover`). `cover_url` on `StokvelRead` is null when there is no photo, when the stored key is not that fixed key, or when the bucket cannot sign one; a missing bucket does not take the screen down.
 
 | Status | When |
 |---|---|
@@ -875,7 +875,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 6. Each round, every member contributes before the deadline (informational only).
 7. The contract finalises automatically once the round is fully paid and its payout time has passed (a scheduled task releases it if everyone paid early). An administrator can release that same round by hand if the automatic release has not (`POST /admin/stokvels/{id}/rounds/{n}/finalise`, P5). The payout remittance goes to the scheduled member's beneficiary; the member sees status, hashes and the remittance reference.
 8. After the last round the cycle closes and the next opens. Each member chooses to continue or leave, and may change their beneficiary; the Organiser always continues. The Organiser sets the payout order for those continuing and starts the new cycle; anyone who has not chosen by then leaves.
-9. Any current member can set a cover photo. The stokvel page and the list show that photo, with the name over a gradient so it stays readable.
+9. Any current member can set a cover photo. The list shows it on the left, inside the card padding, at the height of the card content, and the card opens the stokvel. The stokvel page shows it as a banner, with the name over a gradient so it stays readable.
 
 ## 13. Files created
 
@@ -953,7 +953,7 @@ Frontend → API route → controller → ledger legs (pending) → queue
 | `frontend/app/lib/stokvels.mock.ts` | Deleted (#258). It mocked `GET /stokvels`, `GET /stokvels/{id}` and a contract status the API does not return | #251 |
 | `frontend/app/lib/stokvels.test.ts` | Helper tests. Mock-scenario tests removed with the mock (#258) | #251, #258 |
 | `frontend/app/routes/app/stokvels.tsx`, `stokvel.tsx` | Member list (`GET /stokvels`) and detail (`GET /stokvels/{id}`). A cover photo is the list thumbnail and the detail banner | #251, #258 |
-| `frontend/app/components/stokvels/stokvel-cover.tsx` | Cover banner and list thumbnail, with the name on a gradient, and the upload | |
+| `frontend/app/components/stokvels/stokvel-cover.tsx` | Cover banner (name on a gradient) and an inset list thumbnail, and the upload | |
 | `frontend/app/routes/admin/stokvel-contract.tsx` | Admin contract page (state only; pause and resume in #256); nav group "Stokvels" in `admin.routes.ts` | #251 |
 | `frontend/app/lib/stokvel-contract.ts`, `stokvel-contract.mock.ts`, `stokvel-contract.test.ts` | Admin contract page wired to `GET /admin/stokvel-contract` and pause/unpause; mock kept for unit tests | #256 |
 | `api/tests/test_worker_treasury_send_lock.py` | The Treasury send lock: a no-op on SQLite; on Postgres (`postgres` lane) an exclusive transaction-level advisory lock, held only inside the block and released when the send raises | #278 |

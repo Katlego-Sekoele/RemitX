@@ -1,16 +1,22 @@
 import { ImageSquareIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useId, useRef, useState, type ReactNode } from "react"
-import { Link } from "react-router"
 import { toast } from "sonner"
 
 import { api } from "~/client"
 import { Button } from "~/components/ui/button"
 import { PageHeaderTitle } from "~/components/ui/page-header"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { stokvelPath, stokvelQueries } from "~/lib/stokvels"
+import { stokvelQueries } from "~/lib/stokvels"
 
 const MAX_COVER_BYTES = 5 * 1024 * 1024
+
+// Black at falling opacity, in srgb. A Tailwind `from-black/*` fade is
+// interpolated in oklab and paints a solid band instead of a scrim.
+const BANNER_SCRIM = [
+  "linear-gradient(to top, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0) 58%)",
+  "linear-gradient(to right, rgb(0 0 0 / 0.82), rgb(0 0 0 / 0.4) 46%, rgb(0 0 0 / 0) 78%)",
+].join(", ")
 
 function toastId(stokvelId: string) {
   return `stokvel-cover-${stokvelId}`
@@ -123,8 +129,12 @@ export function StokvelCoverBanner({
           className="aspect-[2.4/1] max-h-64 w-full object-cover"
           onError={() => setBroken(true)}
         />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/80 via-black/45 to-black/5" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
+        {/* srgb stops. Theme gradient utilities interpolate in oklab and
+            turn a fade into a hard band. */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: BANNER_SCRIM }}
+        />
         <div className="absolute inset-0 flex items-end p-5 sm:p-7">
           <PageHeaderTitle className="text-white drop-shadow-md">
             {name}
@@ -141,39 +151,22 @@ export function StokvelCoverBanner({
   )
 }
 
-/** The same photo as a list thumbnail, with the name on a dark gradient. */
+/** List thumbnail. Fills the height of the card content, inside its padding. */
 export function StokvelCoverThumb({
-  name,
   coverUrl,
-  stokvelId,
-  badge,
   onBroken,
 }: {
-  name: string
   coverUrl: string
-  stokvelId: string
-  badge: ReactNode
   onBroken: () => void
 }) {
   return (
-    <div className="relative -mt-(--card-spacing)">
-      <Link to={stokvelPath(stokvelId)} className="relative block">
-        <img
-          src={coverUrl}
-          alt=""
-          className="aspect-[2.4/1] w-full object-cover"
-          onError={onBroken}
-        />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10" />
-        <span className="absolute inset-x-0 bottom-0 p-4 font-heading text-lg font-semibold text-white drop-shadow-md">
-          {name}
-        </span>
-      </Link>
-      {badge ? (
-        <div className="pointer-events-none absolute top-3 right-3">
-          {badge}
-        </div>
-      ) : null}
+    <div className="relative w-20 shrink-0 self-stretch overflow-hidden rounded-lg">
+      <img
+        src={coverUrl}
+        alt=""
+        className="absolute inset-0 size-full object-cover"
+        onError={onBroken}
+      />
     </div>
   )
 }

@@ -175,8 +175,8 @@
     @apply bg-background font-sans text-foreground antialiased;
   }
   html {
-    /* A step up from the 16px root so body text is easier to read. */
-    font-size: 112.5%;
+    /* 22px root. 18px still read small on a desktop window. */
+    font-size: 137.5%;
     @apply font-sans;
   }
   h1,
