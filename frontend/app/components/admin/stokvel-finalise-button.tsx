@@ -68,8 +68,8 @@ export function StokvelFinaliseButton({
             <AlertDialogDescription>
               The pool goes to {round.recipient_name}&apos;s beneficiary. Use
               this only when the automatic release hasn&apos;t happened. The
-              contract still has the last word, and your name is recorded in
-              the audit log.
+              contract still has the last word, and your name is recorded in the
+              audit log.
               {round.release_status === "failed"
                 ? " The automatic release failed for this round."
                 : ""}

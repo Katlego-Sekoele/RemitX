@@ -54,10 +54,7 @@ export function finaliseHint(
   if (Date.parse(round.payout_time) > now.getTime()) {
     return "Its payout time hasn't come yet."
   }
-  if (
-    round.paid_count >= round.member_count &&
-    !round.manual_release_allowed
-  ) {
+  if (round.paid_count >= round.member_count && !round.manual_release_allowed) {
     return "Waiting for the next round to fill."
   }
   return null

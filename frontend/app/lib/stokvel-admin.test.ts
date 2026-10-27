@@ -114,7 +114,10 @@ test("the release button follows manual_release_allowed from the API", () => {
     manual_release_allowed: true,
   }
   assert.equal(canReleaseByHand(row), true)
-  assert.equal(canReleaseByHand({ ...row, manual_release_allowed: false }), false)
+  assert.equal(
+    canReleaseByHand({ ...row, manual_release_allowed: false }),
+    false
+  )
   assert.equal(
     finaliseHint({ ...ready, release_status: "processing" }, NOW),
     "Release in progress."
