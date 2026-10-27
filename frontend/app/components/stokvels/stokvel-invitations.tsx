@@ -1,9 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { api, type BeneficiaryRead } from "~/client"
 import { AccountReference } from "~/components/accounts/reference"
+import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +26,14 @@ import {
   CardTitle,
 } from "~/components/ui/card"
 import { FieldError } from "~/components/ui/field"
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemMedia,
+  ItemTitle,
+} from "~/components/ui/item"
+import { beneficiaryName, beneficiaryShortName } from "~/lib/beneficiaries"
 import { isGoneInvitationError, revokeErrorMessage } from "~/lib/stokvel-errors"
 import {
   INVITATION_STATUS_LABELS,
@@ -59,8 +69,10 @@ export function StokvelInvitations({
   stokvel: StokvelDetailRead
 }) {
   const invitations = invitationsByStatus(stokvel)
+  const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
   if (invitations.length === 0) return null
   const waiting = pendingInvitations(stokvel).length
+  const portraits = beneficiaries.data ?? []
 
   return (
     <Card>
@@ -74,11 +86,12 @@ export function StokvelInvitations({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-2">
           {invitations.map((invitation) => (
             <InvitationRow
               key={invitation.invitation_id}
               invitation={invitation}
+              portrait={inviteePortrait(invitation.invitee_name, portraits)}
               canRevoke={
                 stokvel.is_organiser &&
                 invitation.status === InvitationStatus.pending
@@ -91,14 +104,31 @@ export function StokvelInvitations({
   )
 }
 
+/** The Organiser's beneficiary photo when the invitee is one of them. */
+function inviteePortrait(
+  name: string | null,
+  beneficiaries: readonly BeneficiaryRead[]
+): BeneficiaryRead | { full_name: string; profile_image_url: null } {
+  const label = name ?? "Invited"
+  const match = name
+    ? beneficiaries.find((beneficiary) => {
+        const full = beneficiaryName(beneficiary)
+        return full === name || beneficiaryShortName(beneficiary) === name
+      })
+    : undefined
+  return match ?? { full_name: label, profile_image_url: null }
+}
+
 /** One invitation and its status. The detail route leaves the reference
  * null for anyone but the Organiser, or when the invitee no longer holds
  * the account, so it is shown only when there is one. */
 function InvitationRow({
   invitation,
+  portrait,
   canRevoke,
 }: {
   invitation: StokvelDetailInvitationRead
+  portrait: BeneficiaryRead | { full_name: string; profile_image_url: null }
   canRevoke: boolean
 }) {
   const queryClient = useQueryClient()
@@ -119,32 +149,41 @@ function InvitationRow({
   })
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2">
-      <span className="flex flex-wrap items-center gap-2">
-        {invitation.invitee_name ?? "Invited"}
-        {invitation.account_reference ? (
-          <AccountReference reference={invitation.account_reference} />
-        ) : null}
-      </span>
-      <span className="flex items-center gap-2">
-        {pending ? (
-          <Badge variant="secondary">
-            Invited{" "}
-            {formatDistanceToNow(new Date(invitation.created_at), {
-              addSuffix: true,
-            })}
-          </Badge>
-        ) : (
-          <Badge variant={STATUS_BADGES[invitation.status]}>
-            {INVITATION_STATUS_LABELS[invitation.status]}
-          </Badge>
-        )}
-        {canRevoke ? (
-          <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
-            Revoke
-          </Button>
-        ) : null}
-      </span>
+    <li>
+      <Item variant="outline">
+        <ItemMedia>
+          <BeneficiaryAvatar beneficiary={portrait} />
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle>{invitation.invitee_name ?? "Invited"}</ItemTitle>
+          {invitation.account_reference ? (
+            <AccountReference reference={invitation.account_reference} />
+          ) : null}
+        </ItemContent>
+        <ItemActions>
+          {pending ? (
+            <Badge variant="secondary">
+              Invited{" "}
+              {formatDistanceToNow(new Date(invitation.created_at), {
+                addSuffix: true,
+              })}
+            </Badge>
+          ) : (
+            <Badge variant={STATUS_BADGES[invitation.status]}>
+              {INVITATION_STATUS_LABELS[invitation.status]}
+            </Badge>
+          )}
+          {canRevoke ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(true)}
+            >
+              Revoke
+            </Button>
+          ) : null}
+        </ItemActions>
+      </Item>
 
       <AlertDialog
         open={confirming}
