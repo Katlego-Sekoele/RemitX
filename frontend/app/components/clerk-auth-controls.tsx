@@ -17,7 +17,7 @@ export function ClerkAuthControls() {
             nativeButton={false}
             render={<Link to="/sign-up" />}
           >
-            Start sending
+            Get started
           </Button>
           <Button
             size="sm"
