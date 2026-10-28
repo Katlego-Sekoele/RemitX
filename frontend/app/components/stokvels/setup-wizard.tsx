@@ -41,6 +41,8 @@ import {
   sameIds,
   SETUP_STEPS,
   setupMaxStep,
+  setupNotice,
+  setupPeopleHint,
   setupStepByNumber,
   setupStepNumber,
   writeRosterDraft,
@@ -49,11 +51,11 @@ import {
 } from "~/lib/stokvel-setup"
 import {
   canInvite,
-  goingIntoCycle,
   invalidateStokvels,
   pendingInvitations,
   startCycleBlockers,
   stokvelMutations,
+  undecidedMembers,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
 
@@ -141,7 +143,8 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
   }
 
   const waiting = pendingInvitations(stokvel).length
-  const joined = goingIntoCycle(stokvel).length
+  const deciding = undecidedMembers(stokvel).length
+  const notice = setupNotice(stokvel)
   const active = setupStepNumber(step)
 
   return (
@@ -151,9 +154,9 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
           <CardHeader>
             <CardTitle>Setup</CardTitle>
             <CardDescription>
-              {waiting === 0
+              {waiting + deciding === 0
                 ? "Everyone you've invited has joined."
-                : `${waiting} still to accept. You can arrange their place in this tab while you wait.`}
+                : "You can set the payout order and schedule while you wait for people to join."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -193,17 +196,10 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
       </aside>
 
       <div className="flex min-w-0 flex-col gap-4">
-        {joined < 2 || waiting > 0 ? (
-          <Alert>
-            <AlertTitle>
-              {joined} of {joined + waiting} joined
-            </AlertTitle>
-            <AlertDescription>
-              You can start the stokvel cycle once at least 2 members, you
-              included, have joined.
-            </AlertDescription>
-          </Alert>
-        ) : null}
+        <Alert>
+          <AlertTitle>{notice.title}</AlertTitle>
+          <AlertDescription>{notice.description}</AlertDescription>
+        </Alert>
         {step === "people" ? (
           <>
             {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
@@ -212,9 +208,7 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
               onBack={null}
               onNext={() => go("order")}
               nextDisabled={roster.length < 2}
-              nextHint={
-                roster.length < 2 ? "Invite at least one person." : null
-              }
+              nextHint={setupPeopleHint(stokvel, roster.length)}
             />
           </>
         ) : null}
@@ -252,7 +246,7 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
                 When each round opens, when members should pay, and when the
                 pool is paid out.
                 {waiting > 0
-                  ? " You can set this now. Starting waits until everyone has joined."
+                  ? " You can set this now, while you wait for invitations to be accepted."
                   : ""}
               </CardDescription>
             </CardHeader>

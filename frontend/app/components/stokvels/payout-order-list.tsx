@@ -201,10 +201,8 @@ export function PayoutOrderList({
   return (
     <div className="flex flex-col gap-3">
       <FieldDescription>
-        Drag to choose who is paid first. Someone who hasn&apos;t accepted can
-        be placed in this tab. Their place stays here until they join, and is
-        not kept in another tab. The cycle starts once everyone on this list has
-        joined.
+        Drag to choose who is paid first. You can place people who haven&apos;t
+        joined yet. Their place is saved once they join.
       </FieldDescription>
       <Sortable
         value={roster}

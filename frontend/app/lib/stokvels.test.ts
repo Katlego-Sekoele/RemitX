@@ -515,3 +515,55 @@ test("invitationsByStatus lists pending ones first, then the rest in order", asy
   )
   assert.deepEqual(invitationsByStatus({ invitations: [] }), [])
 })
+
+test("accepted invitations of undecided members await the next cycle", async () => {
+  const { invitationsAwaitingContinuation } = await import("./stokvels")
+  const member = (id: string, in_cycle: boolean) =>
+    ({ member_id: id, user_id: `user-${id}`, in_cycle }) as never
+  const invitation = (id: string, status: string, userId: string) =>
+    ({
+      invitation_id: id,
+      status,
+      invitee_user_id: userId,
+    }) as never
+  const detail = {
+    members: [
+      member("org", true),
+      member("petrus", false),
+      member("thandi", true),
+    ],
+    invitations: [
+      invitation("i-petrus", "accepted", "user-petrus"),
+      invitation("i-thandi", "accepted", "user-thandi"),
+      invitation("i-sam", "pending", "user-sam"),
+    ],
+    previous_cycle: { cycle_number: 1 } as never,
+  }
+  assert.deepEqual([...invitationsAwaitingContinuation(detail)], ["i-petrus"])
+  // Cycle 1: everyone who accepted is in.
+  assert.equal(
+    invitationsAwaitingContinuation({ ...detail, previous_cycle: null }).size,
+    0
+  )
+})
+
+test("formingCycleNumber is the cycle being set up", async () => {
+  const { formingCycleNumber } = await import("./stokvels")
+  // The forming cycle's own number wins.
+  assert.equal(
+    formingCycleNumber({
+      cycle: { cycle_number: 3 } as never,
+      previous_cycle: { cycle_number: 2 } as never,
+    }),
+    3
+  )
+  // Else the one after the closed cycle, or 1 for a new stokvel.
+  assert.equal(
+    formingCycleNumber({
+      cycle: null,
+      previous_cycle: { cycle_number: 2 } as never,
+    }),
+    3
+  )
+  assert.equal(formingCycleNumber({ cycle: null, previous_cycle: null }), 1)
+})
