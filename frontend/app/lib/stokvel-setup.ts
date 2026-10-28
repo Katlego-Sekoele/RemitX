@@ -12,10 +12,12 @@
 
 import type { StokvelDetailRead, StokvelMemberRead } from "~/client"
 import {
+  formingCycleNumber,
   goingIntoCycle,
   InvitationStatus,
   pendingInvitations,
   plannedPayoutOrder,
+  undecidedMembers,
 } from "~/lib/stokvels"
 
 export const SETUP_STEPS = [
@@ -188,6 +190,71 @@ export function setupMaxStep(input: {
   if (input.rosterCount < 2) return 1
   if (!input.scheduleReady || !input.canStart) return 3
   return 4
+}
+
+/**
+ * The notice above the setup step while people are still to answer: who has
+ * joined out of everyone on the invite list and, from cycle 2, the last
+ * cycle's members who haven't said whether they continue. The Organiser is
+ * included; declined, revoked and lapsed invitations don't count. Once
+ * nobody is left to answer and there are at least 2 members, it says there
+ * are enough to start (the other start checks are on the Start step).
+ */
+export function setupNotice(
+  detail: Pick<StokvelDetailRead, "members" | "invitations"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): { title: string; description: string } {
+  const joined = goingIntoCycle(detail).length
+  const waiting = pendingInvitations(detail).length
+  const deciding = undecidedMembers(detail)
+  if (waiting > 0 || deciding.length > 0) {
+    const parts = [
+      waiting > 0
+        ? "You can start the cycle once everyone you've invited has joined."
+        : null,
+      deciding.length > 0
+        ? `${deciding.length === 1 ? "1 member hasn't" : `${deciding.length} members haven't`} said yet whether they're joining this cycle. Anyone who hasn't by the time it starts is left out.`
+        : null,
+      "A cycle needs at least 2 members, you included.",
+    ]
+    return {
+      title: `${joined} of ${joined + waiting + deciding.length} joined`,
+      description: parts.filter(Boolean).join(" "),
+    }
+  }
+  if (joined < 2) {
+    return {
+      title: "Only you so far",
+      description:
+        "Invite at least one person. A cycle needs at least 2 members, you included.",
+    }
+  }
+  return {
+    title: `${joined} of ${joined} joined`,
+    description: "You have enough members to start the cycle.",
+  }
+}
+
+/** Why Next on the people step is closed, or null when it is open. */
+export function setupPeopleHint(
+  detail: Pick<StokvelDetailRead, "members" | "cycle"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>,
+  rosterCount: number
+): string | null {
+  if (rosterCount >= 2) return null
+  const deciding = undecidedMembers(detail)
+  if (deciding.length > 0) {
+    return `Waiting for ${memberNames(deciding)} to join cycle ${formingCycleNumber(detail)}.`
+  }
+  return "Invite at least one person."
+}
+
+/** "Petrus", "Petrus and Priya", "Petrus, Priya and Sam". Used mid-sentence,
+ * so a member with no name on file is "a member". */
+function memberNames(members: readonly StokvelMemberRead[]): string {
+  const names = members.map((member) => member.full_name ?? "a member")
+  if (names.length <= 1) return names.join("")
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
 }
 
 export function clampSetupStep(step: string, maxStep: number): SetupStep {
