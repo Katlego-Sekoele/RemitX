@@ -29,6 +29,7 @@ import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemMedia,
   ItemTitle,
 } from "~/components/ui/item"
@@ -37,7 +38,9 @@ import { isGoneInvitationError, revokeErrorMessage } from "~/lib/stokvel-errors"
 import {
   INVITATION_STATUS_LABELS,
   InvitationStatus,
+  formingCycleNumber,
   invalidateStokvels,
+  invitationsAwaitingContinuation,
   invitationsByStatus,
   pendingInvitations,
   stokvelMutations,
@@ -70,7 +73,9 @@ export function StokvelInvitations({
   const invitations = invitationsByStatus(stokvel)
   const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
   if (invitations.length === 0) return null
-  const waiting = pendingInvitations(stokvel).length
+  const deciding = invitationsAwaitingContinuation(stokvel)
+  const waiting = pendingInvitations(stokvel).length + deciding.size
+  const nextCycle = formingCycleNumber(stokvel)
   const portraits = beneficiaries.data ?? []
 
   return (
@@ -91,6 +96,12 @@ export function StokvelInvitations({
               key={invitation.invitation_id}
               invitation={invitation}
               portrait={inviteePortrait(invitation.invitee_name, portraits)}
+              awaitingCycle={
+                invitation.status === InvitationStatus.pending ||
+                deciding.has(invitation.invitation_id)
+                  ? nextCycle
+                  : null
+              }
               canRevoke={
                 stokvel.is_organiser &&
                 invitation.status === InvitationStatus.pending
@@ -120,14 +131,19 @@ function inviteePortrait(
 
 /** One invitation and its status. The detail route leaves the reference
  * null for anyone but the Organiser, or when the invitee no longer holds
- * the account, so it is shown only when there is one. */
+ * the account, so it is shown only when there is one. `awaitingCycle` is
+ * the number of the cycle being set up, for an invitation still waiting for
+ * an answer and for one accepted for the closed cycle whose member hasn't
+ * said yet whether they join this one. */
 function InvitationRow({
   invitation,
   portrait,
+  awaitingCycle,
   canRevoke,
 }: {
   invitation: StokvelDetailInvitationRead
   portrait: BeneficiaryRead | { full_name: string; profile_image_url: null }
+  awaitingCycle: number | null
   canRevoke: boolean
 }) {
   const queryClient = useQueryClient()
@@ -161,15 +177,18 @@ function InvitationRow({
           {invitation.account_reference ? (
             <AccountReference reference={invitation.account_reference} />
           ) : null}
-        </ItemContent>
-        <ItemActions>
           {pending ? (
-            <Badge variant="secondary">
+            <ItemDescription>
               Invited{" "}
               {formatDistanceToNow(new Date(invitation.created_at), {
                 addSuffix: true,
               })}
-            </Badge>
+            </ItemDescription>
+          ) : null}
+        </ItemContent>
+        <ItemActions>
+          {awaitingCycle != null ? (
+            <Badge variant="secondary">Pending for cycle {awaitingCycle}</Badge>
           ) : (
             <Badge variant={STATUS_BADGES[invitation.status]}>
               {INVITATION_STATUS_LABELS[invitation.status]}

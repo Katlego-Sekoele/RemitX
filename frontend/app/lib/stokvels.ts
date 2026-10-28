@@ -437,6 +437,36 @@ export function undecidedMembers(
     : []
 }
 
+/** The number of the cycle being set up: the forming cycle's own number,
+ * else the one after the closed cycle. */
+export function formingCycleNumber(
+  detail: Pick<StokvelDetailRead, "cycle"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): number {
+  return (
+    detail.cycle?.cycle_number ?? (detail.previous_cycle?.cycle_number ?? 0) + 1
+  )
+}
+
+/** Accepted invitations of `undecidedMembers`, by invitation id. Their
+ * invitation was for the closed cycle, so the invitations card shows them
+ * as still to answer for the next one rather than accepted. */
+export function invitationsAwaitingContinuation(
+  detail: Pick<StokvelDetailRead, "members" | "invitations"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): Set<string> {
+  const undecided = new Set(undecidedMembers(detail).map((m) => m.user_id))
+  return new Set(
+    detail.invitations
+      .filter(
+        (invitation) =>
+          invitation.status === InvitationStatus.accepted &&
+          undecided.has(invitation.invitee_user_id)
+      )
+      .map((invitation) => invitation.invitation_id)
+  )
+}
+
 /**
  * Where the signed-in member stands after a cycle closes (R4-10, #259):
  * `none` when no cycle has closed into a forming one, `organiser` (always
