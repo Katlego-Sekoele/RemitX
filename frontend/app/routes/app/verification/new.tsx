@@ -4,7 +4,8 @@ import {
   ScalesIcon,
   ShieldCheckIcon,
 } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { Navigate, useNavigate } from "react-router"
 
 import { SetupWizardIllustration } from "~/components/illustrations/setup-wizard"

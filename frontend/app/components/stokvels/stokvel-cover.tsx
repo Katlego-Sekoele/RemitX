@@ -1,12 +1,12 @@
 import { ImageSquareIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { api } from "~/client"
 import { Button } from "~/components/ui/button"
 import { PageHeaderTitle } from "~/components/ui/page-header"
-import { errorMessage } from "~/hooks/use-onboarding"
 import { stokvelQueries } from "~/lib/stokvels"
 
 const MAX_COVER_BYTES = 5 * 1024 * 1024
@@ -17,10 +17,6 @@ const BANNER_SCRIM = [
   "linear-gradient(to top, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0) 58%)",
   "linear-gradient(to right, rgb(0 0 0 / 0.82), rgb(0 0 0 / 0.4) 46%, rgb(0 0 0 / 0) 78%)",
 ].join(", ")
-
-function toastId(stokvelId: string) {
-  return `stokvel-cover-${stokvelId}`
-}
 
 function CoverPhotoButton({
   stokvelId,
@@ -34,17 +30,17 @@ function CoverPhotoButton({
   const queryClient = useQueryClient()
   const upload = useMutation({
     ...api.stokvels.uploadStokvelCover(),
+    toast: {
+      loading: "Saving the cover photo…",
+      success: "Cover photo saved",
+    },
     onSuccess: () => {
-      toast.success("Cover photo saved", { id: toastId(stokvelId) })
       void queryClient.invalidateQueries({
         queryKey: stokvelQueries.list().queryKey,
       })
       void queryClient.invalidateQueries({
         queryKey: stokvelQueries.detail(stokvelId).queryKey,
       })
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error), { id: toastId(stokvelId) })
     },
   })
 
@@ -54,7 +50,6 @@ function CoverPhotoButton({
       toast.error("Cover photos are limited to 5 MB.")
       return
     }
-    toast.loading("Saving the cover photo…", { id: toastId(stokvelId) })
     upload.mutate({
       path: { stokvel_id: stokvelId },
       body: file,

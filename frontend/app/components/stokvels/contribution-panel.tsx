@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { ArrowSquareOutIcon, CheckCircleIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { format } from "date-fns"
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router"
@@ -84,8 +85,10 @@ export function ContributionPanel({
 }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  // The toast follows the chain, which settles after this request returns.
   const contribute = useMutation({
     ...stokvelMutations.contribute(stokvel.stokvel_id),
+    toast: false,
     onSuccess: async () => {
       await invalidateStokvels(queryClient)
     },

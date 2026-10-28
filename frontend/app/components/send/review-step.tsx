@@ -1,9 +1,8 @@
 import { ClockIcon, WarningCircleIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router"
-import { toast } from "sonner"
-
 import { api, sdk, type BeneficiaryRead as Beneficiary } from "~/client"
 import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import {
@@ -115,6 +114,13 @@ export function ReviewStep({
   const confirming = useRef(false)
   const confirm = useMutation({
     ...api.remittances.confirmRemittance(),
+    toast: {
+      success: "Transfer sent",
+      // Known refusals render their own alert. Anything else is announced
+      // here as well as inline, so a 500 or a network failure is not silent.
+      error: (error) =>
+        confirmRefusal(error) === "other" ? errorMessage(error) : false,
+    },
     onSettled: (_data, error) => {
       if (error) confirming.current = false
     },
@@ -131,7 +137,6 @@ export function ReviewStep({
       queryClient.invalidateQueries({
         queryKey: api.remittances.listRemittances().queryKey,
       })
-      toast.success("Transfer sent")
       navigate(transferPath(remittance.remittance_id))
     },
     onError: (error) => {
@@ -142,11 +147,7 @@ export function ReviewStep({
         queryClient.invalidateQueries({
           queryKey: api.kyc.onboarding.getApplication().queryKey,
         })
-        return
       }
-      // Known refusals render their own alert. Anything else is announced
-      // here as well as inline, so a 500 or a network failure is not silent.
-      if (refusal === "other") toast.error(errorMessage(error))
     },
   })
 

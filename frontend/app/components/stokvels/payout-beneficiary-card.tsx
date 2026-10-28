@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { Link } from "react-router"
-import { toast } from "sonner"
-
 import { api, type BeneficiaryRead } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
 import { BeneficiaryCombobox } from "~/components/beneficiaries/beneficiary-combobox"
@@ -60,10 +59,13 @@ export function PayoutBeneficiaryCard({
 
   const save = useMutation({
     ...stokvelMutations.setMyBeneficiary(stokvel.stokvel_id),
-    onSuccess: async (_, beneficiary) => {
+    toast: {
+      success: (_, beneficiary) =>
+        `Your payout goes to ${beneficiaryName(beneficiary)}`,
+    },
+    onSuccess: async () => {
       setEditing(false)
       await invalidateStokvels(queryClient)
-      toast.success(`Your payout goes to ${beneficiaryName(beneficiary)}`)
     },
   })
 
