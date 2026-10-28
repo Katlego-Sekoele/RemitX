@@ -1,5 +1,6 @@
 import { ClockIcon, WarningCircleIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router"
 import { api, sdk, type BeneficiaryRead as Beneficiary } from "~/client"
@@ -32,7 +33,6 @@ import {
 import { Skeleton } from "~/components/ui/skeleton"
 import { useNow } from "~/hooks/use-now"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { mutationToast } from "~/lib/mutation-toast"
 import { beneficiaryName } from "~/lib/beneficiaries"
 import {
   confirmRefusal,
@@ -113,13 +113,14 @@ export function ReviewStep({
   // before React re-renders the button disabled.
   const confirming = useRef(false)
   const confirm = useMutation({
-    ...mutationToast(api.remittances.confirmRemittance(), {
+    ...api.remittances.confirmRemittance(),
+    toast: {
       success: "Transfer sent",
       // Known refusals render their own alert. Anything else is announced
       // here as well as inline, so a 500 or a network failure is not silent.
       error: (error) =>
         confirmRefusal(error) === "other" ? errorMessage(error) : false,
-    }),
+    },
     onSettled: (_data, error) => {
       if (error) confirming.current = false
     },

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ApiError } from "~/lib/api"
+import { applyToastOption } from "~/lib/mutation-toast"
 import { createQueryClient } from "~/lib/query-client"
 
 const toast = vi.hoisted(() => ({
@@ -11,6 +12,29 @@ const toast = vi.hoisted(() => ({
 }))
 
 vi.mock("sonner", () => ({ toast }))
+
+describe("applyToastOption", () => {
+  it("keeps the summary when a call does not set toast", () => {
+    expect(
+      applyToastOption({ meta: { summary: "Grant a role to a user" } })
+    ).toEqual({ meta: { summary: "Grant a role to a user" } })
+  })
+
+  it("turns a string into the success line and false into an opt-out", () => {
+    expect(
+      applyToastOption({
+        meta: { summary: "Grant a role to a user" },
+        toast: "Role granted",
+      })
+    ).toEqual({
+      meta: {
+        summary: "Grant a role to a user",
+        toast: { success: "Role granted" },
+      },
+    })
+    expect(applyToastOption({ toast: false }).meta?.toast).toBe(false)
+  })
+})
 
 describe("mutation toasts", () => {
   beforeEach(() => {

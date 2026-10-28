@@ -1,9 +1,8 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { Link } from "react-router"
-import { mutationToast } from "~/lib/mutation-toast"
-
 import { api, TransactionStatus, type StuckSettlementRead } from "~/client"
 import { CopyButton } from "~/components/accounts/copy-button"
 import { QueryError } from "~/components/accounts/query-error"
@@ -96,14 +95,15 @@ function StuckSettlementsPage() {
     queryClient.invalidateQueries({ queryKey: stuckQuery().queryKey })
 
   const reclaim = useMutation({
-    ...mutationToast(api.admin.operations.reclaimPendingSettlements(), {
+    ...api.admin.operations.reclaimPendingSettlements(),
+    toast: {
       success: (data) => {
         const count = data.requeued_quote_ids.length
         return count === 0
           ? "No fully pending groups were re-enqueued"
           : `Re-enqueued ${count} settlement${count === 1 ? "" : "s"}`
       },
-    }),
+    },
     onSuccess: () => {
       refresh()
     },
@@ -253,9 +253,8 @@ function StuckSettlementRow({
   const retryAllowed = canRetry && canRetryEnqueue(row.recovery_kind)
 
   const retry = useMutation({
-    ...mutationToast(api.admin.operations.retrySettlementEnqueue(), {
-      success: "Settlement job re-enqueued",
-    }),
+    ...api.admin.operations.retrySettlementEnqueue(),
+    toast: "Settlement job re-enqueued",
     onSuccess: () => {
       onRetried()
     },

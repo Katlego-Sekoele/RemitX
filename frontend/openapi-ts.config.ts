@@ -31,8 +31,8 @@ export default defineConfig({
     {
       name: "@tanstack/react-query",
       includeInEntry: false,
-      // The global mutation toast reads these. A call opts out with
-      // `meta.toast: false`, or replaces the summary with `meta.toast.success`.
+      // `useMutation` reads `summary` for the success toast. A call passes
+      // `toast` to replace it, or `toast: false` to stay quiet.
       mutationOptions: {
         meta: (operation) => ({
           method: operation.method,

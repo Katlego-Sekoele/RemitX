@@ -1,8 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import { mutationToast } from "~/lib/mutation-toast"
-
 import { ContributionAtTodaysRate } from "~/components/stokvels/contribution-at-rate"
 import {
   AlertDialog,
@@ -57,9 +56,10 @@ export function InvitationCard({
     if (isGoneInvitationError(error)) await invalidateStokvels(queryClient)
   }
   const accept = useMutation({
-    ...mutationToast(stokvelMutations.acceptInvitation(), {
+    ...stokvelMutations.acceptInvitation(),
+    toast: {
       success: (stokvel) => `You've joined ${stokvel.name}`,
-    }),
+    },
     onSuccess: async (stokvel) => {
       await invalidateStokvels(queryClient)
       navigate(stokvelPath(stokvel.stokvel_id))
@@ -67,9 +67,8 @@ export function InvitationCard({
     onError: refreshIfGone,
   })
   const decline = useMutation({
-    ...mutationToast(stokvelMutations.declineInvitation(), {
-      success: `Invitation to ${invitation.stokvel_name} declined`,
-    }),
+    ...stokvelMutations.declineInvitation(),
+    toast: `Invitation to ${invitation.stokvel_name} declined`,
     onSuccess: async () => {
       setConfirmDecline(false)
       await invalidateStokvels(queryClient)

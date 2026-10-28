@@ -1,12 +1,12 @@
 import { ImageSquareIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { api } from "~/client"
 import { Button } from "~/components/ui/button"
 import { PageHeaderTitle } from "~/components/ui/page-header"
-import { mutationToast } from "~/lib/mutation-toast"
 import { stokvelQueries } from "~/lib/stokvels"
 
 const MAX_COVER_BYTES = 5 * 1024 * 1024
@@ -29,10 +29,11 @@ function CoverPhotoButton({
   const input = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const upload = useMutation({
-    ...mutationToast(api.stokvels.uploadStokvelCover(), {
+    ...api.stokvels.uploadStokvelCover(),
+    toast: {
       loading: "Saving the cover photo…",
       success: "Cover photo saved",
-    }),
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: stokvelQueries.list().queryKey,

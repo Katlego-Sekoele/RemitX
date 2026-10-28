@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import { mutationToast } from "~/lib/mutation-toast"
-
 import { api } from "~/client"
 import {
   AlertDialog,
@@ -75,12 +74,13 @@ export function ContinueOrLeaveCard({
   })
 
   const decide = useMutation({
-    ...mutationToast(stokvelMutations.continueOrLeave(stokvel.stokvel_id), {
+    ...stokvelMutations.continueOrLeave(stokvel.stokvel_id),
+    toast: {
       success: (result) =>
         result.choice === "leave"
           ? `You've left ${stokvel.name}`
           : `You're in for cycle ${result.cycle_number}`,
-    }),
+    },
     onSuccess: async (result) => {
       if (result.choice === "leave") {
         setConfirmLeave(false)

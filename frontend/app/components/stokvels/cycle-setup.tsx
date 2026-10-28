@@ -1,4 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { format } from "date-fns"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -301,7 +302,7 @@ export function CycleStartCard({
 
   // Two requests, one toast. The global toast would announce the wrapper too.
   const start = useMutation({
-    meta: { toast: false },
+    toast: false,
     mutationFn: async () => {
       const rounds = plan.demo ? plan.scheduleFor(new Date()) : plan.schedule
       if (!rounds) return

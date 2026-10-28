@@ -5,7 +5,8 @@ import {
   UploadSimpleIcon,
   WarningIcon,
 } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useId, useState } from "react"
 import { Link } from "react-router"
 
@@ -47,7 +48,6 @@ import {
   type PendingDepositRead as PendingDeposit,
   type SkippedStatementLineRead,
 } from "~/client"
-import { skipMutationToast } from "~/lib/mutation-toast"
 import {
   missingStatementColumns,
   parseStatementCsv,
@@ -189,7 +189,8 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
 
   // A successful run can still skip lines. The alert below says which.
   const process = useMutation({
-    ...skipMutationToast(api.admin.deposits.processDeposits()),
+    ...api.admin.deposits.processDeposits(),
+    toast: false,
     onSuccess: (data) => {
       onProcessed()
       setSkippedLines(data.skipped ?? [])

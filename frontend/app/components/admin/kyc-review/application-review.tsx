@@ -1,5 +1,6 @@
 import { ArrowLeftIcon, EyeIcon, WarningIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router"
 
@@ -36,7 +37,6 @@ import {
   type KycRiskRulesRead,
 } from "~/client"
 import { useHasPermission } from "~/hooks/use-permissions"
-import { mutationToast, skipMutationToast } from "~/lib/mutation-toast"
 import { PERMISSIONS } from "~/lib/permissions"
 
 /** One application, laid out for a decision: the evidence on the left, the
@@ -62,7 +62,8 @@ export function ApplicationReview({
 
   // Opening the page claims it. That is not a result the reviewer asked for.
   const claim = useMutation({
-    ...skipMutationToast(api.admin.kyc.applications.startApplicationReview()),
+    ...api.admin.kyc.applications.startApplicationReview(),
+    toast: false,
     onSuccess: (data) => {
       queryClient.setQueryData(
         api.admin.kyc.applications.getReviewApplication(path).queryKey,
@@ -234,9 +235,8 @@ function RevealButton({
 }) {
   const canReveal = useHasPermission(PERMISSIONS.kycApplicationReadPii)
   const reveal = useMutation({
-    ...mutationToast(api.admin.kyc.applications.revealApplicationPii(), {
-      success: "Details revealed",
-    }),
+    ...api.admin.kyc.applications.revealApplicationPii(),
+    toast: "Details revealed",
     onSuccess: onRevealed,
   })
 

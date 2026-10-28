@@ -131,69 +131,19 @@ export function showMutationError(
   toast.error(message, { id })
 }
 
-function metaOf(options: object): MutationToastMeta | undefined {
-  if (
-    !("meta" in options) ||
-    !options.meta ||
-    typeof options.meta !== "object"
-  ) {
-    return undefined
-  }
-  return options.meta as MutationToastMeta
-}
+/** What `useMutation({ toast })` accepts. A string is the success line. */
+export type MutationToastOption = false | string | MutationToastConfig
 
-type MutationData<T> = T extends {
-  mutationFn?: (...args: never[]) => Promise<infer R>
-}
-  ? R
-  : unknown
-
-type MutationVars<T> = T extends {
-  mutationFn?: (variables: infer V, ...args: never[]) => unknown
-}
-  ? V
-  : unknown
-
-/** This call does not toast. Inline UI, or a toast of its own, already talks. */
-export function skipMutationToast<T extends object>(options: T): T {
+/** Fold `toast` into `meta` and drop it, so React Query never sees the field. */
+export function applyToastOption<
+  T extends { meta?: MutationToastMeta; toast?: MutationToastOption },
+>(options: T): Omit<T, "toast"> {
+  const { toast: toastOption, ...rest } = options
+  if (toastOption === undefined) return rest
+  const toast =
+    typeof toastOption === "string" ? { success: toastOption } : toastOption
   return {
-    ...options,
-    meta: { ...metaOf(options), toast: false },
-  } as T
-}
-
-/**
- * Keep the global loading → success/error transition, with this call's copy.
- * Spread the result into `useMutation`.
- */
-export function mutationToast<T extends object>(
-  options: T,
-  toastConfig: {
-    loading?: string
-    success?:
-      | string
-      | ((data: MutationData<T>, variables: MutationVars<T>) => string | false)
-    description?:
-      | string
-      | ((
-          data: MutationData<T>,
-          variables: MutationVars<T>
-        ) => string | undefined)
-    error?:
-      string | ((error: unknown, variables: MutationVars<T>) => string | false)
+    ...rest,
+    meta: { ...rest.meta, toast },
   }
-): T {
-  return {
-    ...options,
-    meta: {
-      ...metaOf(options),
-      toast: {
-        loading: toastConfig.loading,
-        success: toastConfig.success as MutationToastConfig["success"],
-        description:
-          toastConfig.description as MutationToastConfig["description"],
-        error: toastConfig.error as MutationToastConfig["error"],
-      },
-    },
-  } as T
 }

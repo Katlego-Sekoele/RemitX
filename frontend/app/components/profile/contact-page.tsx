@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { PlusIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { formatPhoneNumberIntl } from "react-phone-number-input"
@@ -25,8 +26,6 @@ import {
   SettingsTitle,
 } from "~/components/ui/settings"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { mutationToast } from "~/lib/mutation-toast"
-
 const schema = z.object({
   // Same rule as the API: E.164.
   mobile_number: z
@@ -94,12 +93,13 @@ function MobileForm({
     defaultValues: { mobile_number: mobile ?? "" },
   })
   const update = useMutation({
-    ...mutationToast(api.me.updateMyProfile(), {
+    ...api.me.updateMyProfile(),
+    toast: {
       success: (_data, variables) =>
         variables.body?.mobile_number
           ? "Mobile number saved"
           : "Mobile number removed",
-    }),
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(api.me.getMyProfile().queryKey, data)
       onDone()

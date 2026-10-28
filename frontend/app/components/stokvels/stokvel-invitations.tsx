@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { formatDistanceToNow } from "date-fns"
 import { useState } from "react"
-import { mutationToast } from "~/lib/mutation-toast"
-
 import { api, type BeneficiaryRead } from "~/client"
 import { AccountReference } from "~/components/accounts/reference"
 import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
@@ -136,10 +135,11 @@ function InvitationRow({
   const name = invitation.invitee_name ?? "this person"
   const pending = invitation.status === InvitationStatus.pending
   const revoke = useMutation({
-    ...mutationToast(stokvelMutations.revokeInvitation(), {
+    ...stokvelMutations.revokeInvitation(),
+    toast: {
       success: `Invitation to ${name} revoked`,
       error: (error) => revokeErrorMessage(error),
-    }),
+    },
     onSuccess: async () => {
       setConfirming(false)
       await invalidateStokvels(queryClient)

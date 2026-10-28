@@ -1,6 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { mutationToast } from "~/lib/mutation-toast"
-
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { api, type BeneficiaryRead } from "~/client"
 import {
   AlertDialog,
@@ -34,9 +33,8 @@ export function RemoveBeneficiaryDialog({
   const queryClient = useQueryClient()
   const name = beneficiaryShortName(beneficiary)
   const remove = useMutation({
-    ...mutationToast(api.beneficiaries.deleteBeneficiary(), {
-      success: `${name} removed`,
-    }),
+    ...api.beneficiaries.deleteBeneficiary(),
+    toast: `${name} removed`,
     onSuccess: async () => {
       onOpenChange(false)
       await invalidateBeneficiaries(queryClient)

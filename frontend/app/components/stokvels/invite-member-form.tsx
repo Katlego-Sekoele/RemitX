@@ -1,7 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
-import { mutationToast } from "~/lib/mutation-toast"
-
 import { api, type BeneficiaryRead } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
 import { BeneficiaryCombobox } from "~/components/beneficiaries/beneficiary-combobox"
@@ -60,10 +59,11 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   const [inviteBy, setInviteBy] = useState<InviteBy>("beneficiary")
   const [adding, setAdding] = useState(false)
   const invite = useMutation({
-    ...mutationToast(stokvelMutations.invite(stokvel.stokvel_id), {
+    ...stokvelMutations.invite(stokvel.stokvel_id),
+    toast: {
       success: (invitation) =>
         `Invitation sent to ${invitation.invitee_name ?? invitation.account_reference}`,
-    }),
+    },
     onSuccess: async () => {
       setBeneficiaryId("")
       setReference("")
