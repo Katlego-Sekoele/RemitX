@@ -11,8 +11,8 @@ are re-enqueued — groups in ``processing`` may have an EVM burn in flight
 and are never blindly retried here.
 
 A stokvel's payout remittance is one of these groups: ``stokvel.settle_payout``
-queues ``settle_remittance`` itself (R3-06), and this is the fallback when that
-message is lost. Both may reach the same group; its guards settle it once.
+queues ``settle_remittance`` itself, and this is the fallback if that message
+is lost. The group's guards make sure it settles only once.
 """
 
 import logging

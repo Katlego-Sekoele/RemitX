@@ -271,28 +271,28 @@ def settle_payout(payout_id: str) -> str:
 
 
 def record_settlement(session, quote_id: uuid.UUID, burn_tx_hash: str | None):
-    """Finish the payout behind remittance `quote_id`, in `session`.
+    """Mark the payout for remittance `quote_id` as confirmed or failed.
 
-    Called by `confirm_treasury_burn` as it settles or fails the legs. With a
-    `burn_tx_hash` the payout goes `processing -> confirmed` and keeps the
-    hash beside the remittance reference; with None it goes
-    `processing -> failed` for a person to resolve. The release is not
-    touched.
+    Called by `confirm_treasury_burn`. With a `burn_tx_hash` the payout
+    becomes `confirmed` and stores the hash; with None it becomes `failed`.
 
     Only a `processing` payout changes, so a replay does nothing. Returns the
-    payout's id, or None if nothing changed (which includes every remittance
-    that is not a stokvel payout). The caller commits.
+    payout's id, or None if nothing changed (including any remittance that
+    is not a stokvel payout). The caller commits.
     """
+    # Get stokvel payout id based on the quote_id.
     payout_id = session.scalar(
         select(StokvelPayout.id).where(StokvelPayout.quote_id == quote_id)
     )
     if payout_id is None:
         return None
+    # Payout is failed or confirmed based on the presence of burn_tx_hash.
     values = (
         {"remittance_status": STATUS_FAILED}
         if burn_tx_hash is None
         else {"remittance_status": STATUS_CONFIRMED, "burn_tx_hash": burn_tx_hash}
     )
+    # Update the payout's remittance_status and burn_tx_hash in the database.
     finished = session.execute(
         update(StokvelPayout)
         .where(
