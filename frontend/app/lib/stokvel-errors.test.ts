@@ -106,6 +106,7 @@ test("the invitation codes carry section 6's wording", () => {
     "stokvel_deactivated",
     "not_invitee",
     "invitation_not_pending",
+    "monthly_limit_too_low",
   ]) {
     assert.ok(code in STOKVEL_ERROR_MESSAGES, code)
   }
