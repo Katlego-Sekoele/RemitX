@@ -141,7 +141,7 @@ class StokvelPayout(Base):
         Uuid, ForeignKey("transactions.tx_id"), nullable=True, unique=True
     )
     # Status of whether the released pool has been paid on to the member's
-    # beneficiary. Stays `pending` payout is `released`, becomes
+    # beneficiary. Stays `pending` until the payout is `released`, becomes
     # `processing` when the worker creates the remittance, then `confirmed`
     # once the token burn settles, or `failed` if the burn fails or the
     # beneficiary can no longer be paid

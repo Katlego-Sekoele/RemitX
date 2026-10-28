@@ -28,7 +28,18 @@ export default defineConfig({
     // Flat functions stay out of the entry file: app code reaches operations
     // through the `api` and `sdk` namespaces instead.
     { name: "@hey-api/sdk", includeInEntry: false },
-    { name: "@tanstack/react-query", includeInEntry: false },
+    {
+      name: "@tanstack/react-query",
+      includeInEntry: false,
+      // `useMutation` reads `summary` for the success toast. A call passes
+      // `toast` to replace it, or `toast: false` to stay quiet.
+      mutationOptions: {
+        meta: (operation) => ({
+          method: operation.method,
+          ...(operation.summary ? { summary: operation.summary } : {}),
+        }),
+      },
+    },
     defineNamespacesPlugin(),
   ],
 })

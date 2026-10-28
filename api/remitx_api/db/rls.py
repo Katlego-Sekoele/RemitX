@@ -2,14 +2,17 @@
 
 Authenticated routes stamp ``current_user_id`` and ``is_admin_route`` on the
 session. ``is_admin_route`` is true when the route requires a permission
-(admin), false for a customer route. Each cursor then copies those onto the
-connection as ``SET LOCAL`` settings, and clears them again after the
-statement; FORCE ROW LEVEL SECURITY on ``kyc_applications``, ``quotes``,
-``remittances``, ``transactions``, ``stokvels``, ``stokvel_members`` and
-``stokvel_invitations`` does the filtering. Unbound sessions
-(workers, migrations, tests) leave the settings empty and see every row.
-None of it applies unless the transaction runs as a role that RLS binds —
-see ``adopt_row_security_role``.
+(admin), false for a customer route. The first statement of a transaction
+copies those onto the connection with ``set_config(..., is_local := true)``.
+Later statements in that transaction reuse them. ``SET LOCAL`` ends with the
+transaction, and a rolled-back savepoint undoes a copy made inside it, so
+the next statement copies again. FORCE ROW LEVEL SECURITY on
+``kyc_applications``, ``quotes``, ``remittances``, ``transactions``,
+``stokvels``, ``stokvel_members`` and ``stokvel_invitations`` does the
+filtering. Unbound sessions (workers, migrations, and the auth query before
+the stamp) leave the settings unset and see every row. None of it applies
+unless the transaction runs as a role that RLS binds — see
+``adopt_row_security_role``.
 """
 
 from collections.abc import Iterator
@@ -31,8 +34,18 @@ _CURRENT_USER_ID_SETTING = "app.current_user_id"
 _IS_ADMIN_ROUTE_SETTING = "app.is_admin_route"
 _ROW_SECURITY_CURRENT_USER_ID_KEY = "row_security_current_user_id"
 _ROW_SECURITY_IS_ADMIN_ROUTE_KEY = "row_security_is_admin_route"
+# Values copied onto this pooled connection for the current transaction.
+# SET LOCAL dies at commit, rollback, and savepoint rollback; this does not,
+# so those events drop it.
+_APPLIED_ROW_SECURITY_KEY = "row_security_applied"
 _ROW_SECURITY_LISTENERS_REGISTERED = False
 _SET_CONFIG_SQL = "SELECT set_config(%s, %s, true), set_config(%s, %s, true)"
+_UNBOUND_ROW_SECURITY_ARGUMENTS = (
+    _CURRENT_USER_ID_SETTING,
+    "",
+    _IS_ADMIN_ROUTE_SETTING,
+    "false",
+)
 
 
 def bind_row_security_context(user_id: UUID, *, is_admin_route: bool) -> None:
@@ -64,7 +77,7 @@ def bound_row_security_context(
 
 
 def register_row_security_listeners() -> None:
-    """Install the cursor hooks once per process so every query carries the request."""
+    """Install the cursor hook once per process so a transaction carries the request."""
     global _ROW_SECURITY_LISTENERS_REGISTERED
     if _ROW_SECURITY_LISTENERS_REGISTERED:
         return
@@ -72,7 +85,9 @@ def register_row_security_listeners() -> None:
         Engine, "before_cursor_execute", _copy_row_security_context_to_connection
     )
     event.listen(
-        Engine, "after_cursor_execute", _clear_row_security_context_from_connection
+        Engine,
+        "rollback_savepoint",
+        _forget_applied_row_security_on_savepoint_rollback,
     )
     _ROW_SECURITY_LISTENERS_REGISTERED = True
 
@@ -96,6 +111,9 @@ def adopt_row_security_role(engine: Engine) -> None:
     def _set_local_role(conn) -> None:
         if conn.dialect.name != "postgresql":
             return
+        # The copied settings live on the pooled connection. SET LOCAL does
+        # not survive the previous transaction, so drop them before this one.
+        _forget_applied_row_security(conn)
         # The raw DBAPI cursor opens the transaction SQLAlchemy is beginning,
         # so the role holds for every statement in it and ends with it.
         cursor = conn.connection.dbapi_connection.cursor()
@@ -118,58 +136,76 @@ def _copy_row_security_context_to_connection(
     _context,
     _executemany,
 ) -> None:
-    """Copy the bound user onto the connection before the statement runs.
+    """Copy the bound user onto the connection once per transaction.
 
-    ``set_config(..., is_local := true)`` only lasts for the current
-    transaction, so this must run on the same cursor SQLAlchemy is about to
-    use. A second cursor can autocommit, in which case ``SET LOCAL`` is a
-    no-op and the policy sees an empty user — every KYC row, including the
-    caller's. ``fetchall`` drains this result so the real statement can
-    reuse the cursor. SQLite has no row-level security, so this is a no-op
-    there. The ``set_config`` guard stops the hook from recursing into itself.
+    ``set_config(..., is_local := true)`` lasts until commit, rollback, or
+    the rollback of a savepoint that contains it. It has to run on this
+    cursor: a second cursor can autocommit, and the policy then sees an
+    empty user. An unbound transaction leaves the settings unset, which
+    Postgres already treats as every row. ``fetchall`` drains the
+    ``set_config`` result so the statement can reuse the cursor. SQLite has
+    no row-level security. The ``set_config`` guard stops the hook from
+    recursing into itself.
     """
-    if conn.dialect.name != "postgresql" or _is_set_config_statement(statement):
+    if (
+        conn.dialect.name != "postgresql"
+        or _is_set_config_statement(statement)
+        or _is_transaction_control(statement)
+    ):
         return
-    cursor.execute(_SET_CONFIG_SQL, _row_security_set_config_arguments())
+    arguments = _row_security_set_config_arguments()
+    applied = _applied_row_security(conn)
+    if applied == arguments or (
+        applied is None and arguments == _UNBOUND_ROW_SECURITY_ARGUMENTS
+    ):
+        return
+    cursor.execute(_SET_CONFIG_SQL, arguments)
     cursor.fetchall()
+    _remember_applied_row_security(conn, arguments)
 
 
-def _clear_row_security_context_from_connection(
-    conn,
-    _cursor,
-    statement,
-    _parameters,
-    _context,
-    _executemany,
-) -> None:
-    """Clear the connection settings after the statement, even if the next
-    caller would overwrite them.
-
-    Must not use ``cursor``: that is the statement's result cursor, and
-    executing on it would replace the query result (so ``users.id`` becomes
-    a ``set_config`` column and the request 500s).
-    """
-    if conn.dialect.name != "postgresql" or _is_set_config_statement(statement):
-        return
-    _execute_set_config_on_connection(
-        conn, _cleared_row_security_set_config_arguments()
-    )
+def _forget_applied_row_security_on_savepoint_rollback(conn, _name, _context) -> None:
+    """A rolled-back savepoint undoes ``SET LOCAL`` done inside it."""
+    _forget_applied_row_security(conn)
 
 
-def _execute_set_config_on_connection(
-    conn, arguments: tuple[str, str, str, str]
-) -> None:
-    """Run ``set_config`` on a fresh DBAPI cursor on this connection."""
-    extra = conn.connection.cursor()
-    try:
-        extra.execute(_SET_CONFIG_SQL, arguments)
-        extra.fetchall()
-    finally:
-        extra.close()
+def _applied_row_security(conn) -> tuple[str, str, str, str] | None:
+    info = getattr(conn, "info", None)
+    if not isinstance(info, dict):
+        return None
+    applied = info.get(_APPLIED_ROW_SECURITY_KEY)
+    if applied is None:
+        return None
+    return applied
+
+
+def _remember_applied_row_security(conn, arguments: tuple[str, str, str, str]) -> None:
+    info = getattr(conn, "info", None)
+    if isinstance(info, dict):
+        info[_APPLIED_ROW_SECURITY_KEY] = arguments
+
+
+def _forget_applied_row_security(conn) -> None:
+    info = getattr(conn, "info", None)
+    if isinstance(info, dict):
+        info.pop(_APPLIED_ROW_SECURITY_KEY, None)
 
 
 def _is_set_config_statement(statement) -> bool:
     return "set_config(" in "".join(str(statement).split()).lower()
+
+
+def _is_transaction_control(statement) -> bool:
+    """Savepoint and commit statements must not copy settings.
+
+    ``ROLLBACK TO SAVEPOINT`` runs through this hook. Copying before it
+    would be undone by that rollback while the connection still remembered
+    the copy, and later statements would skip.
+    """
+    text = "".join(str(statement).split()).lower()
+    return text.startswith(
+        ("begin", "commit", "rollback", "savepoint", "releasesavepoint")
+    )
 
 
 def _row_security_set_config_arguments() -> tuple[str, str, str, str]:
@@ -189,13 +225,4 @@ def _row_security_set_config_arguments() -> tuple[str, str, str, str]:
         user_id,
         _IS_ADMIN_ROUTE_SETTING,
         "true" if is_admin_route else "false",
-    )
-
-
-def _cleared_row_security_set_config_arguments() -> tuple[str, str, str, str]:
-    return (
-        _CURRENT_USER_ID_SETTING,
-        "",
-        _IS_ADMIN_ROUTE_SETTING,
-        "false",
     )

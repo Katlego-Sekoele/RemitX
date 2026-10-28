@@ -8,3 +8,11 @@ variable "env" {
 variable "secret_env" { type = map(string) }
 variable "allow_unauthenticated" { type = bool }
 variable "min_instance_count" { type = number }
+variable "cpu" {
+  type    = string
+  default = "1000m"
+}
+variable "memory" {
+  type    = string
+  default = "512Mi"
+}

@@ -25,7 +25,7 @@ document's metadata travels in the query string.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from remitx_api.errors.kyc_documents import (
     DocumentTooLargeError,
@@ -48,6 +48,7 @@ async def read_upload(
     *,
     limit: int,
     content_length: str | None = None,
+    on_too_large: Callable[[], Exception] | None = None,
 ) -> bytes:
     """Buffer an upload of at most ``limit`` bytes, or refuse.
 
@@ -55,10 +56,19 @@ async def read_upload(
     object storage, and at 10 MB holding it is cheaper than a temporary file
     the request has to clean up. The limit is what makes that affordable, which
     is why it is enforced here and not by whoever reads the result.
+
+    ``on_too_large`` replaces the default document-sized refusal, so another
+    upload can name its own cap.
     """
+
+    def refuse() -> Exception:
+        if on_too_large is not None:
+            return on_too_large()
+        return _too_large(limit)
+
     declared = _parse_length(content_length)
     if declared is not None and declared > limit:
-        raise _too_large(limit)
+        raise refuse()
 
     chunks: list[bytes] = []
     total = 0
@@ -67,7 +77,7 @@ async def read_upload(
         if total > limit:
             # Stop reading. Draining the rest of the body to be polite about
             # the connection is exactly what an attacker sending 2 GB wants.
-            raise _too_large(limit)
+            raise refuse()
         chunks.append(chunk)
 
     if total == 0:

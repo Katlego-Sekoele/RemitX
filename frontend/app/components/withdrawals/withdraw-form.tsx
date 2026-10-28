@@ -1,9 +1,8 @@
 import { ArrowCircleUpIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useRef, useState } from "react"
 import { Link } from "react-router"
-import { toast } from "sonner"
-
 import {
   api,
   type AccountRead,
@@ -101,6 +100,10 @@ export function WithdrawForm({
   const sending = useRef(false)
   const withdraw = useMutation({
     ...api.withdrawals.requestWithdrawal(),
+    toast: {
+      success: (withdrawal) =>
+        `${formatMoney(withdrawal.net_amount, withdrawal.currency)} is on its way`,
+    },
     onSettled: () => {
       sending.current = false
     },
@@ -109,9 +112,6 @@ export function WithdrawForm({
       setAmount("")
       setSubmitted(false)
       await invalidateAfterWithdrawal(queryClient)
-      toast.success(
-        `${formatMoney(withdrawal.net_amount, withdrawal.currency)} is on its way`
-      )
     },
   })
 

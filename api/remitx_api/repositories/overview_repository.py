@@ -36,6 +36,7 @@ class TransferFact:
     confirmed_at: datetime | None
     # None when a stokvel sent it (`Quote.stokvel_id`).
     sender_user_id: uuid.UUID | None
+    stokvel_id: uuid.UUID | None
     beneficiary_user_id: uuid.UUID
     sender_amount: Decimal
     sender_currency: str
@@ -158,6 +159,7 @@ class OverviewRepository:
                 settlement.status,
                 settlement.confirmed_at,
                 Quote.sender_user_id,
+                Quote.stokvel_id,
                 Quote.beneficiary_user_id,
                 Quote.sender_amount,
                 Quote.sender_currency,
@@ -188,6 +190,7 @@ def _fact(row) -> TransferFact:
         status,
         confirmed_at,
         sender_user_id,
+        stokvel_id,
         beneficiary_user_id,
         sender_amount,
         sender_currency,
@@ -209,6 +212,7 @@ def _fact(row) -> TransferFact:
         status=status,
         confirmed_at=None if confirmed_at is None else _as_utc(confirmed_at),
         sender_user_id=sender_user_id,
+        stokvel_id=stokvel_id,
         beneficiary_user_id=beneficiary_user_id,
         sender_amount=_decimal(sender_amount),
         sender_currency=sender_currency,

@@ -6,9 +6,68 @@ import {
   fiatToToken,
   poolAmount,
   roundLabel,
+  STOKVEL_INFLIGHT_POLL_INTERVAL_MS,
+  STOKVEL_POLL_INTERVAL_MS,
+  stokvelDetailPollInterval,
   stokvelPath,
+  stokvelPollInterval,
   tokenToFiat,
 } from "./stokvels"
+
+test("stokvel screens poll while a read is on screen", () => {
+  assert.equal(stokvelPollInterval({ state: { data: undefined } }), false)
+  assert.equal(
+    stokvelPollInterval({ state: { data: { stokvels: [] } } }),
+    STOKVEL_POLL_INTERVAL_MS
+  )
+  const quiet = {
+    state: {
+      data: {
+        my_member_id: "me",
+        contributions: [
+          { member_id: "me", status: "confirmed" as const },
+          { member_id: "you", status: "pending" as const },
+        ],
+      },
+    },
+  }
+  assert.equal(stokvelDetailPollInterval(quiet), STOKVEL_POLL_INTERVAL_MS)
+  assert.equal(
+    stokvelDetailPollInterval({
+      state: {
+        data: {
+          my_member_id: "me",
+          contributions: [{ member_id: "me", status: "processing" as const }],
+        },
+      },
+    }),
+    STOKVEL_INFLIGHT_POLL_INTERVAL_MS
+  )
+  assert.equal(
+    stokvelDetailPollInterval({
+      state: {
+        data: {
+          my_member_id: "me",
+          contributions: [{ member_id: "me", status: "pending" as const }],
+        },
+      },
+    }),
+    STOKVEL_INFLIGHT_POLL_INTERVAL_MS
+  )
+  assert.equal(stokvelDetailPollInterval({ state: { data: undefined } }), false)
+  assert.equal(
+    stokvelDetailPollInterval({
+      state: {
+        data: {
+          my_member_id: "me",
+          contributions: [],
+          cycle: { status: "active", registered_at: null },
+        },
+      },
+    }),
+    STOKVEL_INFLIGHT_POLL_INTERVAL_MS
+  )
+})
 
 test("roundLabel shows the round 1-based", () => {
   assert.equal(roundLabel(0, 3), "Round 1 of 3")
@@ -332,6 +391,22 @@ test("startCycleBlockers lists what stops the cycle starting", async () => {
       cycle: null,
     }),
     []
+  )
+  assert.deepEqual(
+    startCycleBlockers(
+      {
+        phase: "forming",
+        my_beneficiary: beneficiary,
+        members: [me, thandi] as never,
+        cycle: { status: "forming", payout_order: ["m2", "m1"] } as never,
+        invitations: [
+          { status: "pending", invitee_name: "Sipho K." },
+          { status: "accepted", invitee_name: "Thandi M." },
+        ] as never,
+      },
+      ["m2", "m1"]
+    ),
+    ["Wait for Sipho K. to accept their invitation."]
   )
 })
 

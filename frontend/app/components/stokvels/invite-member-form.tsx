@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
-import { toast } from "sonner"
-
 import { api, type BeneficiaryRead } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
+import { BeneficiaryCombobox } from "~/components/beneficiaries/beneficiary-combobox"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -22,13 +22,6 @@ import {
   FieldSeparator,
 } from "~/components/ui/field"
 import { Input } from "~/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
@@ -67,13 +60,14 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
   const [adding, setAdding] = useState(false)
   const invite = useMutation({
     ...stokvelMutations.invite(stokvel.stokvel_id),
-    onSuccess: async (invitation) => {
+    toast: {
+      success: (invitation) =>
+        `Invitation sent to ${invitation.invitee_name ?? invitation.account_reference}`,
+    },
+    onSuccess: async () => {
       setBeneficiaryId("")
       setReference("")
       await invalidateStokvels(queryClient)
-      toast.success(
-        `Invitation sent to ${invitation.invitee_name ?? invitation.account_reference}`
-      )
     },
   })
 
@@ -81,11 +75,8 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
     beneficiaries.data ?? [],
     stokvel
   )
-  const chosen = invitable.find((b) => b.beneficiary_id === beneficiaryId)
-  const items = invitable.map((b) => ({
-    value: b.beneficiary_id,
-    label: beneficiaryName(b),
-  }))
+  const chosen =
+    invitable.find((b) => b.beneficiary_id === beneficiaryId) ?? null
   // References are stored lower-case and matched exactly.
   const normalised = normaliseReference(reference)
   const currency = stokvel.currency.toLowerCase()
@@ -146,25 +137,22 @@ export function InviteMemberForm({ stokvel }: { stokvel: StokvelDetailRead }) {
                   From your beneficiaries
                 </FieldLabel>
                 <div className="flex gap-2">
-                  <Select
-                    items={items}
-                    value={beneficiaryId || null}
-                    onValueChange={(next) => {
-                      setBeneficiaryId(next ?? "")
-                      if (invite.isError) invite.reset()
-                    }}
-                  >
-                    <SelectTrigger id="invite-beneficiary" className="w-full">
-                      <SelectValue placeholder="Choose who to invite" />
-                    </SelectTrigger>
-                    <SelectContent alignItemWithTrigger={false}>
-                      {items.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="min-w-0 flex-1">
+                    <BeneficiaryCombobox
+                      id="invite-beneficiary"
+                      beneficiaries={invitable}
+                      value={chosen}
+                      onValueChange={(next) => {
+                        setBeneficiaryId(next?.beneficiary_id ?? "")
+                        if (invite.isError) invite.reset()
+                      }}
+                      placeholder="Choose who to invite"
+                      description={() =>
+                        `Pays from their ${stokvel.currency} account`
+                      }
+                      invalid={refusal("beneficiary") !== null}
+                    />
+                  </div>
                   <Button type="submit" disabled={!chosen || invite.isPending}>
                     {invite.isPending && inviteBy === "beneficiary"
                       ? "Inviting…"

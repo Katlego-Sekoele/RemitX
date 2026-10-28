@@ -74,6 +74,14 @@ export default function SendPage() {
   const onboarding = useQuery(api.kyc.onboarding.getApplication())
   const standing = onboarding.data?.standing
   const verified = isKycVerified(standing)
+  useQuery({
+    ...api.beneficiaries.listMyBeneficiaries(),
+    enabled: onboarding.isPending || verified,
+  })
+  useQuery({
+    ...api.accounts.getAccounts(),
+    enabled: onboarding.isPending || verified,
+  })
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>

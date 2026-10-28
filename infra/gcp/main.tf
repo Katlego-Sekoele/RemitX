@@ -35,6 +35,7 @@ module "worker" {
   secret_env            = local.worker_secret_env
   allow_unauthenticated = true
   min_instance_count    = 1
+  memory                = "1Gi"
 
   depends_on = [
     google_project_service.this,

@@ -5,7 +5,8 @@ import {
   UserPlusIcon,
   WarningIcon,
 } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"

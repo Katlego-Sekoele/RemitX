@@ -233,7 +233,7 @@ def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypat
     client, user = verified_client
     created = client.post(STOKVELS, json=_body())
     stokvel_id = uuid.UUID(created.json()["stokvel_id"])
-    member_id, reference = _pending_invitation(stokvel_id, user.id)
+    member_id, reference, invitee_id = _pending_invitation(stokvel_id, user.id)
 
     as_organiser = client.get(f"{STOKVELS}/{stokvel_id}")
 
@@ -241,6 +241,7 @@ def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypat
     invitation = as_organiser.json()["invitations"][0]
     assert invitation["account_reference"] == reference
     assert invitation["invitee_name"] == "Thandi"
+    assert invitation["invitee_user_id"] == str(invitee_id)
 
     client.app.dependency_overrides[get_current_user] = lambda: User(id=member_id)
     as_member = client.get(f"{STOKVELS}/{stokvel_id}")
@@ -250,6 +251,7 @@ def test_only_the_organiser_sees_an_invitee_reference(verified_client, monkeypat
     assert hidden["invitation_id"] == invitation["invitation_id"]
     assert hidden["account_reference"] is None
     assert hidden["invitee_name"] == "Thandi"
+    assert hidden["invitee_user_id"] == str(invitee_id)
 
 
 def test_every_invitation_is_returned_whatever_its_status(verified_client, monkeypatch):
@@ -635,7 +637,11 @@ def _pending_invitation(stokvel_id: uuid.UUID, organiser_id: uuid.UUID):
             )
         )
         db.session.commit()
-        return member.id, create_account_reference(invitee.base_reference, CURRENCY_ZAR)
+        return (
+            member.id,
+            create_account_reference(invitee.base_reference, CURRENCY_ZAR),
+            invitee.id,
+        )
 
     return _in_session(write)
 

@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import func, select
 
 from remitx_api.extensions import db
+from remitx_api.models.orm.quote import Quote
 from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.stokvel_member import StokvelMember
 from remitx_api.repositories.repository import Repository
@@ -14,6 +15,30 @@ class StokvelRepository(Repository[Stokvel, uuid.UUID]):
 
     def __init__(self) -> None:
         super().__init__(Stokvel)
+
+    def get_stokvel_names(self, stokvel_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Names by stokvel id, in one query, for showing where a payout's
+        sender's name would go. A stokvel the caller may not see is left out.
+
+        The recipient is usually not a member, so row-level security hides the
+        stokvel from them. On Postgres this asks `stokvel_payout_name`
+        (`V20261027_1847`) through the payout quotes the caller can see; it
+        returns the name and nothing else, and only to someone the stokvel has
+        paid. SQLite (tests) reads the rows.
+        """
+        if not stokvel_ids:
+            return {}
+        if db.session.get_bind().dialect.name == "postgresql":
+            statement = (
+                select(Quote.stokvel_id, func.stokvel_payout_name(Quote.stokvel_id))
+                .where(Quote.stokvel_id.in_(stokvel_ids))
+                .distinct()
+            )
+        else:
+            statement = select(Stokvel.id, Stokvel.name).where(
+                Stokvel.id.in_(stokvel_ids)
+            )
+        return {id_: name for id_, name in db.session.execute(statement) if name}
 
     def lock(self, stokvel_id: uuid.UUID) -> Stokvel | None:
         """The stokvel, locked until the transaction ends, or None if the
