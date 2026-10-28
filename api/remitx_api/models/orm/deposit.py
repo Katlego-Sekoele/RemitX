@@ -27,11 +27,13 @@ from remitx_api.extensions import Base
 PAYMENT_METHOD_CASH = "cash"
 PAYMENT_METHOD_BANK_TRANSFER = "bank_transfer"
 PAYMENT_METHOD_CARD = "card"
+PAYMENT_METHOD_TRUSTMEBANK = "trustmebank"
 
 PAYMENT_METHODS = (
     PAYMENT_METHOD_CASH,
     PAYMENT_METHOD_BANK_TRANSFER,
     PAYMENT_METHOD_CARD,
+    PAYMENT_METHOD_TRUSTMEBANK,
 )
 
 CONFIRMED_BY_SYSTEM = "system"
@@ -66,7 +68,12 @@ class Deposit(Base):
         Uuid, primary_key=True, default=uuid.uuid4
     )
     # Identity of the statement line. See deposit_service.statement_fingerprint.
-    statement_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL for TrustMeBank-initiated deposits (see trustmebank_payment_id).
+    statement_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # TrustMeBank payment id; unique when set. Credits only after webhook or poll.
+    trustmebank_payment_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True, unique=True, index=True
+    )
     tx_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=False
     )

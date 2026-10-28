@@ -6974,6 +6974,216 @@
         "title": "TreasuryCoverageRead",
         "type": "object"
       },
+      "TrustMeBankAccountRead": {
+        "properties": {
+          "account_number": {
+            "title": "Account Number",
+            "type": "string"
+          },
+          "balance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "account_number",
+          "currency",
+          "balance"
+        ],
+        "title": "TrustMeBankAccountRead",
+        "type": "object"
+      },
+      "TrustMeBankConnectRead": {
+        "properties": {
+          "authorize_url": {
+            "title": "Authorize Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorize_url"
+        ],
+        "title": "TrustMeBankConnectRead",
+        "type": "object"
+      },
+      "TrustMeBankDepositStartRead": {
+        "properties": {
+          "authorisation_url": {
+            "title": "Authorisation Url",
+            "type": "string"
+          },
+          "deposit_id": {
+            "format": "uuid",
+            "title": "Deposit Id",
+            "type": "string"
+          },
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "payment_id",
+          "authorisation_url"
+        ],
+        "title": "TrustMeBankDepositStartRead",
+        "type": "object"
+      },
+      "TrustMeBankDepositStartRequest": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,21}0*$)\\d{0,12}\\.\\d{0,8}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "debtor_account_id": {
+            "title": "Debtor Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "debtor_account_id"
+        ],
+        "title": "TrustMeBankDepositStartRequest",
+        "type": "object"
+      },
+      "TrustMeBankDepositSyncRead": {
+        "properties": {
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_id",
+          "status"
+        ],
+        "title": "TrustMeBankDepositSyncRead",
+        "type": "object"
+      },
+      "TrustMeBankLinkRead": {
+        "properties": {
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "linked",
+          "customer_name"
+        ],
+        "title": "TrustMeBankLinkRead",
+        "type": "object"
+      },
+      "TrustMeBankOAuthCompleteRead": {
+        "properties": {
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          }
+        },
+        "required": [
+          "customer_id",
+          "customer_name"
+        ],
+        "title": "TrustMeBankOAuthCompleteRead",
+        "type": "object"
+      },
+      "TrustMeBankOAuthCompleteRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "state"
+        ],
+        "title": "TrustMeBankOAuthCompleteRequest",
+        "type": "object"
+      },
+      "TrustMeBankStatusRead": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "TrustMeBankStatusRead",
+        "type": "object"
+      },
       "UserAccessRead": {
         "description": "Everything the access page shows about one person's access.",
         "properties": {
@@ -14285,6 +14495,442 @@
         ]
       }
     },
+    "/trustmebank/accounts": {
+      "get": {
+        "operationId": "trustmebank_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrustMeBankAccountRead"
+                  },
+                  "title": "Response Trustmebank Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "List TrustMeBank accounts for the linked customer",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/connect": {
+      "post": {
+        "operationId": "trustmebank_connect",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankConnectRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Start TrustMeBank OAuth",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/deposits": {
+      "post": {
+        "operationId": "trustmebank_start_deposit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustMeBankDepositStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankDepositStartRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Start a TrustMeBank deposit",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/deposits/{payment_id}/sync": {
+      "post": {
+        "operationId": "trustmebank_sync_deposit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankDepositSyncRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Poll TrustMeBank for a deposit outcome",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/link": {
+      "get": {
+        "operationId": "trustmebank_link",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankLinkRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "TrustMeBank connection status for the caller",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/oauth/callback": {
+      "post": {
+        "operationId": "trustmebank_oauth_callback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustMeBankOAuthCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankOAuthCompleteRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Complete TrustMeBank OAuth after redirect",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/trustmebank/status": {
+      "get": {
+        "operationId": "trustmebank_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustMeBankStatusRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whether TrustMeBank deposits are enabled",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
+    "/webhooks/trustmebank": {
+      "post": {
+        "operationId": "trustmebank_webhook",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          }
+        },
+        "summary": "TrustMeBank payment webhook",
+        "tags": [
+          "trustmebank"
+        ]
+      }
+    },
     "/withdrawals": {
       "get": {
         "description": "List every withdrawal this user has ever made, newest first.",
@@ -14442,6 +15088,10 @@
     {
       "description": "Requesting a withdrawal from a fiat account to a bank account.",
       "name": "withdrawals"
+    },
+    {
+      "description": "Optional TrustMeBank Open Banking deposits (feature-flagged).",
+      "name": "trustmebank"
     },
     {
       "description": "Savings groups the caller organises or belongs to, and their invitations to join one.",

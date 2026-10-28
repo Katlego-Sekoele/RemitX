@@ -35,12 +35,19 @@ from remitx_api.routes.stokvel_invitations import (
     router as stokvel_invitations_router,
 )
 from remitx_api.routes.stokvels import router as stokvels_router
+from remitx_api.routes.trustmebank import (
+    customer_router as trustmebank_customer_router,
+    public_router as trustmebank_public_router,
+    webhook_router as trustmebank_webhook_router,
+)
 from remitx_api.routes.withdrawals import router as withdrawals_router
 
 
 def register_routers(app: FastAPI) -> None:
     # Public — no router-level auth gate.
     app.include_router(health_router)
+    app.include_router(trustmebank_public_router)
+    app.include_router(trustmebank_webhook_router)
 
     # Customer — every handler inherits get_current_user from the router.
     app.include_router(me_router)
@@ -54,6 +61,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(dashboard_router)
     app.include_router(bank_accounts_router)
     app.include_router(withdrawals_router)
+    app.include_router(trustmebank_customer_router)
     app.include_router(stokvels_router)
     app.include_router(stokvel_invitations_router)
 

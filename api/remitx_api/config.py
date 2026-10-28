@@ -306,6 +306,54 @@ class Config:
     DAILY_LIMIT_ZAR = Decimal(os.getenv("DAILY_LIMIT_ZAR", "3000"))
     MONTHLY_LIMIT_ZAR = Decimal(os.getenv("MONTHLY_LIMIT_ZAR", "25000"))
 
+    # --- TrustMeBank (mock Open Banking, optional — see docs/ftc_project_brief.md) ---
+    @property
+    def ENABLE_TRUSTMEBANK(self) -> bool:
+        return os.getenv("ENABLE_TRUSTMEBANK", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+    @property
+    def TRUSTMEBANK_URL(self) -> str:
+        return os.getenv(
+            "TRUSTMEBANK_URL",
+            "https://trustmebank.34-35-51-235.sslip.io",
+        ).rstrip("/")
+
+    @property
+    def TRUSTMEBANK_CLIENT_ID(self) -> str:
+        return os.getenv("TRUSTMEBANK_CLIENT_ID", "app_remitx_demo")
+
+    @property
+    def TRUSTMEBANK_CLIENT_SECRET(self) -> str:
+        return os.getenv("TRUSTMEBANK_CLIENT_SECRET", "tmbsk_remitx_demo_secret")
+
+    @property
+    def TRUSTMEBANK_WEBHOOK_SECRET(self) -> str:
+        return os.getenv("TRUSTMEBANK_WEBHOOK_SECRET", "whsec_remitx_demo_secret")
+
+    @property
+    def TRUSTMEBANK_SETTLEMENT_ACCOUNT(self) -> str:
+        return os.getenv("TRUSTMEBANK_SETTLEMENT_ACCOUNT", "1000987654")
+
+    @property
+    def TRUSTMEBANK_SCOPES(self) -> str:
+        return os.getenv(
+            "TRUSTMEBANK_SCOPES", "accounts balances transactions payments"
+        )
+
+    @property
+    def TRUSTMEBANK_OAUTH_REDIRECT_URI(self) -> str:
+        default = f"{os.getenv('VITE_SITE_URL', 'http://localhost:5173').rstrip('/')}/app/accounts/trustmebank/oauth"
+        return os.getenv("TRUSTMEBANK_OAUTH_REDIRECT_URI", default).strip()
+
+    @property
+    def TRUSTMEBANK_PAYMENT_REDIRECT_URI(self) -> str:
+        default = f"{os.getenv('VITE_SITE_URL', 'http://localhost:5173').rstrip('/')}/app/accounts/trustmebank/return"
+        return os.getenv("TRUSTMEBANK_PAYMENT_REDIRECT_URI", default).strip()
+
 
 class TestConfig(Config):
     TESTING = True

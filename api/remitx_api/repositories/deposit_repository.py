@@ -44,16 +44,27 @@ class DepositRepository(Repository[Deposit, uuid.UUID]):
         return db.session.scalars(
             select(Deposit)
             .join(Transaction, Deposit.tx_id == Transaction.tx_id)
-            .where(Transaction.status == STATUS_PENDING)
+            .where(
+                Transaction.status == STATUS_PENDING,
+                Deposit.user_id.is_(None),
+            )
             .order_by(Transaction.created_at)
         ).all()
+
+    def get_by_trustmebank_payment_id(self, payment_id: str) -> Deposit | None:
+        return db.session.scalars(
+            select(Deposit).where(Deposit.trustmebank_payment_id == payment_id)
+        ).first()
 
     def count_pending_deposits(self) -> int:
         """How many deposits are still unmatched, for the staff overview."""
         count = db.session.scalar(
             select(func.count(Deposit.deposit_id))
             .join(Transaction, Deposit.tx_id == Transaction.tx_id)
-            .where(Transaction.status == STATUS_PENDING)
+            .where(
+                Transaction.status == STATUS_PENDING,
+                Deposit.user_id.is_(None),
+            )
         )
         return int(count or 0)
 

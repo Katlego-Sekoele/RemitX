@@ -22,6 +22,14 @@ export default [
           path: "app/accounts/:accountId",
           module: "routes/app/account-history.tsx",
         },
+        {
+          path: "app/accounts/trustmebank/oauth",
+          module: "routes/app/trustmebank-oauth.tsx",
+        },
+        {
+          path: "app/accounts/trustmebank/return",
+          module: "routes/app/trustmebank-return.tsx",
+        },
       ]).map(({ path, module }) => route(path, module)),
       route("app/transfers/:remittanceId", "routes/app/transfer.tsx"),
       route("app/stokvels/new", "routes/app/stokvel-new.tsx"),

@@ -237,6 +237,15 @@ class TransactionRepository(Repository[Transaction, uuid.UUID]):
         )
         return result.rowcount == 1
 
+    def mark_failed(self, tx_id: uuid.UUID) -> bool:
+        """Guarded pending -> failed. Returns True iff a row changed."""
+        result = db.session.execute(
+            update(Transaction)
+            .where(Transaction.tx_id == tx_id, Transaction.status == STATUS_PENDING)
+            .values(status=STATUS_FAILED)
+        )
+        return result.rowcount == 1
+
     def confirm_pending_transactions(
         self, tx_ids: list[uuid.UUID], confirmed_at: datetime
     ) -> bool:
