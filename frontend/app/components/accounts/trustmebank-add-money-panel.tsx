@@ -59,11 +59,14 @@ export function TrustMeBankAddMoneyPanel({ reference, verified }: Props) {
   }
 
   const onConnect = () => {
-    connect.mutate({}, {
-      onSuccess: (data) => {
-        window.location.href = data.authorize_url
-      },
-    })
+    connect.mutate(
+      {},
+      {
+        onSuccess: (data) => {
+          window.location.href = data.authorize_url
+        },
+      }
+    )
   }
 
   const onDeposit = () => {
@@ -105,11 +108,15 @@ export function TrustMeBankAddMoneyPanel({ reference, verified }: Props) {
         </Alert>
 
         {!verified ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Complete verification before adding money through TrustMeBank.
           </p>
         ) : link.data?.linked === false ? (
-          <Button type="button" onClick={onConnect} disabled={connect.isPending}>
+          <Button
+            type="button"
+            onClick={onConnect}
+            disabled={connect.isPending}
+          >
             <BankIcon />
             Connect TrustMeBank
           </Button>
@@ -159,7 +166,7 @@ export function TrustMeBankAddMoneyPanel({ reference, verified }: Props) {
         )}
 
         <div className="border-t pt-4">
-          <p className="text-muted-foreground mb-3 text-sm font-medium">
+          <p className="mb-3 text-sm font-medium text-muted-foreground">
             Or pay by EFT (statement reconciliation)
           </p>
           <LegacyEftPanel reference={reference} embedded />

@@ -20,7 +20,15 @@ from tests.rbac_helpers import (
 # Paths reachable with no credentials. Everything else the OpenAPI schema
 # lists has to answer 401 to an anonymous caller. (/docs, /redoc and
 # /openapi.json are FastAPI's own and never appear in the schema.)
-PUBLIC_ALLOWLIST = frozenset({"/health"})
+PUBLIC_ALLOWLIST = frozenset(
+    {
+        "/health",
+        # Feature flag the SPA reads before a session exists.
+        "/trustmebank/status",
+        # TrustMeBank posts here with an HMAC, not a Clerk session.
+        "/webhooks/trustmebank",
+    }
+)
 
 PERMISSION_VALUES = frozenset(code.value for code in PermissionCode)
 
