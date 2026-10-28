@@ -60,6 +60,9 @@ from remitx_api.models.orm.stokvel_round import StokvelRound
 from remitx_api.models.orm.stokvel_sync_state import StokvelSyncState
 from remitx_api.models.orm.toxic_combination import ToxicCombination
 from remitx_api.models.orm.transaction import Transaction
+from remitx_api.models.orm.trustmebank_link import TrustMeBankLink
+from remitx_api.models.orm.trustmebank_oauth_state import TrustMeBankOAuthState
+from remitx_api.models.orm.trustmebank_webhook_event import TrustMeBankWebhookEvent
 from remitx_api.models.orm.user import User
 from remitx_api.models.orm.user_role import UserRole
 from remitx_api.models.orm.withdrawal import Withdrawal
@@ -118,6 +121,9 @@ __all__ = [
     "StokvelSyncState",
     "ToxicCombination",
     "Transaction",
+    "TrustMeBankLink",
+    "TrustMeBankOAuthState",
+    "TrustMeBankWebhookEvent",
     "User",
     "UserRole",
     "Withdrawal",

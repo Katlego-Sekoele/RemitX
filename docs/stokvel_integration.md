@@ -66,7 +66,7 @@ The brief (§2, §7, §9) describes one stokvel, three members, an administrator
 - A round releases only when fully paid **and** its Organiser-set payout time has passed (D12), matching brief §7.1. The contribution deadline stays informational.
 - Finalisation is automatic (D5), with a manual Administrator finalise as a fallback (P5); the brief has the administrator do it every round. A round that becomes due with time rather than with a payment is released by the scheduled release (R3-11, #248) within `STOKVEL_RELEASE_INTERVAL_SECONDS` of its payout time; the Administrator's finalise stays as the fallback.
 - Cancellation and refunds (P4) are not in v1 (section 8), so the brief's "refunds out of scope" still holds.
-- TrustMeBank deposits and withdrawals (#202, #203, then #274, #275), optional in the brief, are not built: #274 and #275 were closed as not planned. Deposits stay on CSV reconciliation (section 7), so the brief's optional extension is simply not taken.
+- TrustMeBank deposits are optional in the brief and ship **behind `ENABLE_TRUSTMEBANK` (default off)**; withdrawals through TrustMeBank are not built (#275 closed as not planned). With the flag off, deposits stay on CSV reconciliation (section 7).
 - The XRP Ledger is replaced by the EVM chain (D1).
 - A payout's remittance keeps the existing ledger states (`pending`, `processing`, `confirmed`, `failed`) rather than the brief's `created → burning → burnt → credited` (section 8).
 
@@ -597,7 +597,19 @@ _Roles 1, 2 and 4 to confirm codes and wording._
 
 ## 7. TrustMeBank touchpoints (Role 5)
 
-**Not built.** TrustMeBank is an optional extension in the brief. This build first planned it as required: deposits authorised through TrustMeBank (#202, then #274) and withdrawals paid out through it (#203, then #275). Both tickets were closed as not planned, so there is no webhook, no TrustMeBank event handling and no TrustMeBank deposit status. Deposits are still reconciled from CSV statements in `services/deposit_service.py`. Stokvel contributions draw from the member's existing fiat account, so the stokvel path never depended on it.
+**Built behind `ENABLE_TRUSTMEBANK` (default off).** When the flag is on and credentials are set, customers can link TrustMeBank through OAuth, initiate a ZAR payment to RemitX's settlement account, approve on TrustMeBank, and receive a credit after a signed `payment.completed` webhook or an authenticated poll. When the flag is off, behaviour is unchanged: deposits come only from CSV reconciliation in `services/deposit_service.py`. Withdrawals through TrustMeBank are not built (#275 closed as not planned).
+
+Cloud Run reads the flag from Terraform (`enable_trustmebank`, default `false`). Set GitHub environment variable `TF_VAR_enable_trustmebank` to `true` on `qa` or `prod` and redeploy to turn it on. The API's OAuth and payment return URLs are that environment's frontend (`/app/accounts/trustmebank/oauth` and `/return`). Those URIs must be registered on the TrustMeBank application.
+
+| Touchpoint | Route / function | Notes |
+|---|---|---|
+| Feature flag | `Config.ENABLE_TRUSTMEBANK` | Also exposed as `GET /trustmebank/status` |
+| OAuth start | `POST /trustmebank/connect` → `TrustMeBankService.connect_authorize_url` | One-time `state` in `trustmebank_oauth_states` |
+| OAuth finish | `POST /trustmebank/oauth/callback` → `TrustMeBankService.complete_oauth` | Stores tokens in `trustmebank_links` |
+| Payment start | `POST /trustmebank/deposits` → `TrustMeBankService.start_deposit` | Pending ledger row + `deposits.trustmebank_payment_id` |
+| Customer return | Frontend `/app/accounts/trustmebank/return` → `POST /trustmebank/deposits/{payment_id}/sync` | Poll only; never credits on redirect alone |
+| Webhook | `POST /webhooks/trustmebank` → `TrustMeBankService.handle_webhook` | HMAC `X-TrustMeBank-Signature`; dedupe on `trustmebank_webhook_events.event_id` |
+| Credit | `TrustMeBankService._confirm_deposit` | Idempotent; unique `trustmebank_payment_id` |
 
 ---
 
@@ -711,7 +723,7 @@ Milestones (Katlego-Sekoele/RemitX): *EVM wallet setup and switch over*, *Bank A
 | API routes | Done | #229, #230, #231, #232, #233, #236, #237, #244, #297, #247 | Section 5. Built: `POST /stokvels`, `GET /stokvels` (#229); `GET /stokvels/{id}` (#236); `POST /stokvels/{id}/cycles` (#232); `POST /stokvels/{id}/contributions` (#233); invitations (#230); revoking an invitation (#297); payout order and beneficiary (#231, PR #347); `POST /stokvels/{id}/members/me/continuation` (#237); `POST /admin/stokvel-contract/pause` and `/unpause` (#244); `POST /admin/stokvels/{id}/rounds/{n}/finalise` (#247); `GET /admin/stokvel-contract` and `GET /admin/stokvels/rounds` (2026-10-27); `POST /stokvels/{id}/cover`. Cancel is not in v1 (P4) |
 | Stokvel audit log (admin actions) | Done | #249, #244, #247 | Section 5. Actions and subjects on the existing audit log. Pause (R3-07) and manual finalise (R3-10) call `record_audit` |
 | Frontend screens | Done | #250–#261, #299, #370 | Routes and nav (#251); list and create (#252); invitations (#253, #299); detail and contribute (#254); beneficiary and Organiser setup (#255, #370); admin pause and resume (#256); explorer links and error messages (#257); continue or leave (#259); admin release button (#260); audit filter (#261). Member and admin screens call the API (#258; admin reads wired 2026-10-27) |
-| TrustMeBank deposits and withdrawals | Not planned | #274, #275 (were #202, #203) | Both closed as not planned; optional in the brief. Deposits stay on CSV reconciliation (section 7) |
+| TrustMeBank deposits | Done (flagged) | #274 (deposits only) | `ENABLE_TRUSTMEBANK`; section 7. Withdrawals (#275) not planned |
 | Stokvel cancellation | Not in v1 | #208 | P4 |
 | Seeder and load test for EVM | Done | #267 (R6-02) | Builds on #278 |
 | Cloud EVM and contract settings | Done | #263 (R5-02) | GCP API and worker get the testnet contract address, member cap and sync start block. Vault admin key is a worker-only secret. XRPL settings stay (D11). Legacy Render was not changed |

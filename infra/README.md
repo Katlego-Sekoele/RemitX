@@ -227,6 +227,7 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `TF_VAR_max_stokvel_members`          | O   | Member cap. Default `3`. Must equal the contract `maxMembers`. API and worker.                                                    |
 | `TF_VAR_stokvel_sync_start_block`     | O   | Event-sync start block. Default `8995825`. Required with the contract address. API and worker.                                    |
 | `TF_VAR_evm_stokvel_admin_address`    | O   | Vault admin address. **Worker only**. No default.                                                                                 |
+| `TF_VAR_enable_trustmebank`           | O   | `true` or `false` (default **false**). **API only.** Turns TrustMeBank deposits on. OAuth return URLs are the deployed frontend. |
 
 
 Required on rollouts for the environment you deploy; storing both branch ids on both GitHub environments avoids duplicating workflow logic.

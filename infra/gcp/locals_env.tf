@@ -79,7 +79,15 @@ locals {
     local.runtime_env, local.xrpl_env, local.evm_env, local.stokvel_admin_env,
   )
 
-  api_env = merge(local.runtime_env, local.xrpl_env, local.evm_env, local.quote_env, {
+  # API only. Redirects follow the deployed frontend so flipping the flag
+  # does not send customers back to localhost.
+  trustmebank_env = {
+    ENABLE_TRUSTMEBANK               = lower(var.enable_trustmebank)
+    TRUSTMEBANK_OAUTH_REDIRECT_URI   = "${trimsuffix(local.frontend_public, "/")}/app/accounts/trustmebank/oauth"
+    TRUSTMEBANK_PAYMENT_REDIRECT_URI = "${trimsuffix(local.frontend_public, "/")}/app/accounts/trustmebank/return"
+  }
+
+  api_env = merge(local.runtime_env, local.xrpl_env, local.evm_env, local.quote_env, local.trustmebank_env, {
     CORS_ORIGINS                = local.cors_origins
     WORKER_WAKE_URL             = "${trimsuffix(module.worker.service_url, "/")}/health"
     OBJECT_STORAGE_ENDPOINT_URL = var.object_storage_endpoint_url

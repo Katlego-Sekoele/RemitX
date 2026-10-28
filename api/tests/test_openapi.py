@@ -10,6 +10,15 @@ from remitx_api.openapi import SPEC_PATH, TAGS, render
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
+# Public routes that intentionally omit the bearer scheme in OpenAPI.
+PUBLIC_OPERATIONS = frozenset(
+    {
+        "GET /health",
+        "GET /trustmebank/status",
+        "POST /webhooks/trustmebank",
+    }
+)
+
 
 def _operations():
     spec = create_app(TestConfig).openapi()
@@ -50,7 +59,7 @@ def test_every_operation_has_one_declared_tag_and_a_summary():
 
 def test_authenticated_operations_declare_the_bearer_scheme():
     for name, operation in _operations():
-        if name == "GET /health":
+        if name in PUBLIC_OPERATIONS:
             assert "security" not in operation
         else:
             assert operation.get("security") == [{"ClerkSession": []}], name

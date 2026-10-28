@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { api } from "~/client"
 import { AccountCard } from "~/components/accounts/account-card"
-import { AddMoneyPanel } from "~/components/accounts/add-money-panel"
+import { TrustMeBankAddMoneyPanel } from "~/components/accounts/trustmebank-add-money-panel"
 import { OpenAccountCard } from "~/components/accounts/open-account-form"
 import { QueryError } from "~/components/accounts/query-error"
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
@@ -77,7 +77,10 @@ export default function AccountsPage() {
             </div>
             {zar ? (
               <CollapsibleContent>
-                <AddMoneyPanel reference={zar.reference} />
+                <TrustMeBankAddMoneyPanel
+                  reference={zar.reference}
+                  verified={verified}
+                />
               </CollapsibleContent>
             ) : null}
           </Collapsible>

@@ -137,7 +137,7 @@ Fiat moved from a user's **Account** to a verified bank account of theirs.
 _Avoid_: Cash-out, payout (that is a stokvel **Payout**)
 
 **TrustMeBank**:
-The mock bank whose authorised payments would stand in for real fiat movement into and out of the platform. An optional extension in the brief; not built (#274 and #275 closed as not planned).
+The mock bank whose authorised payments stand in for real fiat movement into the platform when `ENABLE_TRUSTMEBANK` is on (deposits only; withdrawals not built).
 _Avoid_: Bank API, mock bank
 
 ### Compliance

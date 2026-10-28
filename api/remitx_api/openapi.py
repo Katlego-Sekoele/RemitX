@@ -52,6 +52,7 @@ class Tag:
     ACCOUNTS = "accounts"
     BANK_ACCOUNTS = "bank_accounts"
     WITHDRAWALS = "withdrawals"
+    TRUSTMEBANK = "trustmebank"
     STOKVELS = "stokvels"
     KYC_ONBOARDING = "kyc.onboarding"
     KYC_DOCUMENTS = "kyc.documents"
@@ -103,6 +104,10 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.WITHDRAWALS,
         "description": "Requesting a withdrawal from a fiat account to a bank account.",
+    },
+    {
+        "name": Tag.TRUSTMEBANK,
+        "description": "Optional TrustMeBank Open Banking deposits (feature-flagged).",
     },
     {
         "name": Tag.STOKVELS,

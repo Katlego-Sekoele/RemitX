@@ -309,6 +309,17 @@ variable "evm_stokvel_admin_key_encrypted" {
   description = "Fernet-encrypted vault admin key (EVM_ENCRYPTION_KEY). Worker secret only."
 }
 
+variable "enable_trustmebank" {
+  type        = string
+  default     = "false"
+  description = "ENABLE_TRUSTMEBANK on the API. true turns on TrustMeBank deposits. Set TF_VAR_enable_trustmebank on the GitHub environment and redeploy."
+
+  validation {
+    condition     = contains(["true", "false", "1", "0", "yes", "no"], lower(var.enable_trustmebank))
+    error_message = "enable_trustmebank must be true or false."
+  }
+}
+
 variable "api_container_image" {
   type        = string
   description = "Artifact Registry image for the API Cloud Run service."
