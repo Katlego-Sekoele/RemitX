@@ -13,6 +13,7 @@ import {
   useCyclePlan,
 } from "~/components/stokvels/cycle-setup"
 import { StokvelInvitations } from "~/components/stokvels/stokvel-invitations"
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
 import {
   Card,
@@ -48,6 +49,7 @@ import {
 } from "~/lib/stokvel-setup"
 import {
   canInvite,
+  goingIntoCycle,
   invalidateStokvels,
   pendingInvitations,
   startCycleBlockers,
@@ -139,6 +141,7 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
   }
 
   const waiting = pendingInvitations(stokvel).length
+  const joined = goingIntoCycle(stokvel).length
   const active = setupStepNumber(step)
 
   return (
@@ -190,6 +193,17 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
       </aside>
 
       <div className="flex min-w-0 flex-col gap-4">
+        {joined < 2 || waiting > 0 ? (
+          <Alert>
+            <AlertTitle>
+              {joined} of {joined + waiting} joined
+            </AlertTitle>
+            <AlertDescription>
+              You can start the stokvel cycle once at least 2 members, you
+              included, have joined.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {step === "people" ? (
           <>
             {canInvite(stokvel) ? <InviteMemberForm stokvel={stokvel} /> : null}
