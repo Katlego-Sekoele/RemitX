@@ -15,6 +15,7 @@ import { Badge } from "~/components/ui/badge"
 
 export function LandingHero() {
   const pointerRef = useRef(createAsciiPointer())
+  const sectionRef = useRef<HTMLElement>(null)
 
   function onPointerMove(event: PointerEvent<HTMLElement>) {
     const bounds = event.currentTarget.getBoundingClientRect()
@@ -29,13 +30,22 @@ export function LandingHero() {
 
   return (
     <section
+      ref={sectionRef}
       className="relative isolate min-h-[calc(100svh-4rem)] overflow-hidden border-b border-border bg-background"
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
     >
-      <AsciiTextField pointerRef={pointerRef} className="absolute inset-0" />
-      <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-12 px-6 py-16 lg:min-h-[calc(100svh-4rem)] lg:grid-cols-2 lg:py-20">
-        <FadeIn className="flex flex-col gap-6">
+      <AsciiTextField
+        pointerRef={pointerRef}
+        boundsRef={sectionRef}
+        className="absolute inset-0"
+      />
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-16 px-6 py-16 lg:min-h-[calc(100svh-4rem)] lg:grid-cols-2 lg:py-20">
+        <FadeIn
+          data-ascii-safe
+          data-ascii-pad="48"
+          className="flex flex-col gap-6"
+        >
           <Badge variant="outline" className="w-fit">
             Remittance and stokvels
           </Badge>
@@ -56,9 +66,13 @@ export function LandingHero() {
         </FadeIn>
 
         <FadeIn delay={0.12} className="grid items-start gap-4 sm:grid-cols-2">
-          <ProductScreen screen={SEND_PREVIEW} glass />
+          <div data-ascii-safe data-ascii-pad="28">
+            <ProductScreen screen={SEND_PREVIEW} />
+          </div>
           <div className="sm:pt-14">
-            <ProductScreen screen={STOKVEL_PREVIEW} glass />
+            <div data-ascii-safe data-ascii-pad="28">
+              <ProductScreen screen={STOKVEL_PREVIEW} />
+            </div>
           </div>
         </FadeIn>
       </div>
