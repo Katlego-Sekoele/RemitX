@@ -199,8 +199,8 @@ export function SetupWizard({ stokvel }: { stokvel: StokvelDetailRead }) {
               {joined} of {joined + waiting} joined
             </AlertTitle>
             <AlertDescription>
-              You can start the stokvel cycle once at least 2 members, you included,
-              have joined.
+              You can start the stokvel cycle once at least 2 members, you
+              included, have joined.
             </AlertDescription>
           </Alert>
         ) : null}
