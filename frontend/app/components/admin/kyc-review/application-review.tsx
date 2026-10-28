@@ -1,5 +1,6 @@
 import { ArrowLeftIcon, EyeIcon, WarningIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router"
 
@@ -59,8 +60,10 @@ export function ApplicationReview({
   const rules = useQuery(api.admin.kyc.applications.getRiskRules())
   const codes = useQuery(api.admin.kyc.applications.listReasonCodes())
 
+  // Opening the page claims it. That is not a result the reviewer asked for.
   const claim = useMutation({
     ...api.admin.kyc.applications.startApplicationReview(),
+    toast: false,
     onSuccess: (data) => {
       queryClient.setQueryData(
         api.admin.kyc.applications.getReviewApplication(path).queryKey,
@@ -233,6 +236,7 @@ function RevealButton({
   const canReveal = useHasPermission(PERMISSIONS.kycApplicationReadPii)
   const reveal = useMutation({
     ...api.admin.kyc.applications.revealApplicationPii(),
+    toast: "Details revealed",
     onSuccess: onRevealed,
   })
 

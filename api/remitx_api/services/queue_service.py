@@ -28,9 +28,9 @@ CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
 SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
 CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
 START_CYCLE = "stokvel.start_cycle"
-# Registered in `remitx_worker.stokvel_release` (R3-04, #241).
+# Registered in `remitx_worker.stokvel_release`.
 RELEASE_POOL = "stokvel.release_pool"
-# Registered in `remitx_worker.stokvel_payouts` (R3-05, #242).
+# Registered in `remitx_worker.stokvel_payouts`.
 SETTLE_PAYOUT = "stokvel.settle_payout"
 PAUSE_CONTRACT = "stokvel.pause_contract"
 UNPAUSE_CONTRACT = "stokvel.unpause_contract"
@@ -231,10 +231,10 @@ def enqueue_start_cycle(cycle_id: str) -> None:
 
 
 def enqueue_release_pool(cycle_id: str, round_: int) -> None:
-    """Ask the worker to send `finalise` for a round that became due with
-    time rather than with a contribution: queued by the scheduled release
-    (R3-11) and the Administrator's manual release (R3-10). Harmless to
-    repeat: a released or claimed round is never sent twice."""
+    """Ask the worker to call `finalise` on-chain for a round that became due
+    with time rather than with a contribution. Queued by the scheduled release
+    and by an Administrator's manual release. Safe to send more than once: a
+    round already released or claimed is never sent again."""
     producer.send_task(
         RELEASE_POOL,
         args=[cycle_id, round_],
@@ -245,8 +245,7 @@ def enqueue_release_pool(cycle_id: str, round_: int) -> None:
 
 def enqueue_settle_payout(payout_id: str) -> None:
     """Ask the worker to create a released payout's quote and remittance.
-    Queued by the event sync for every released payout not yet started, so
-    repeating it is harmless: only one delivery creates anything."""
+    Safe to send more than once: only one delivery creates anything."""
     producer.send_task(
         SETTLE_PAYOUT,
         args=[payout_id],

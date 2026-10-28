@@ -1,10 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { Link } from "react-router"
-import { toast } from "sonner"
-
 import { api, type BeneficiaryRead } from "~/client"
 import { AddBeneficiaryForm } from "~/components/beneficiaries/add-beneficiary-form"
+import { BeneficiaryCombobox } from "~/components/beneficiaries/beneficiary-combobox"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
@@ -22,13 +22,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "~/components/ui/field"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select"
 import { Skeleton } from "~/components/ui/skeleton"
 import { errorMessage } from "~/hooks/use-onboarding"
 import { beneficiaryName } from "~/lib/beneficiaries"
@@ -66,15 +59,18 @@ export function PayoutBeneficiaryCard({
 
   const save = useMutation({
     ...stokvelMutations.setMyBeneficiary(stokvel.stokvel_id),
-    onSuccess: async (_, beneficiary) => {
+    toast: {
+      success: (_, beneficiary) =>
+        `Your payout goes to ${beneficiaryName(beneficiary)}`,
+    },
+    onSuccess: async () => {
       setEditing(false)
       await invalidateStokvels(queryClient)
-      toast.success(`Your payout goes to ${beneficiaryName(beneficiary)}`)
     },
   })
 
   const list = beneficiaries.data ?? []
-  const chosen = list.find((b) => b.beneficiary_id === beneficiaryId)
+  const chosen = list.find((b) => b.beneficiary_id === beneficiaryId) ?? null
 
   if (adding) {
     return (
@@ -112,11 +108,6 @@ export function PayoutBeneficiaryCard({
     )
   }
 
-  const items = list.map((b) => ({
-    value: b.beneficiary_id,
-    label: `${beneficiaryName(b)} · ${b.payout_currency}`,
-  }))
-
   return (
     <Card>
       <form
@@ -146,22 +137,18 @@ export function PayoutBeneficiaryCard({
                   <FieldLabel htmlFor="payout-beneficiary">
                     Beneficiary
                   </FieldLabel>
-                  <Select
-                    items={items}
-                    value={beneficiaryId || null}
-                    onValueChange={(next) => setBeneficiaryId(next ?? "")}
-                  >
-                    <SelectTrigger id="payout-beneficiary" className="w-full">
-                      <SelectValue placeholder="Choose a beneficiary" />
-                    </SelectTrigger>
-                    <SelectContent alignItemWithTrigger={false}>
-                      {items.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <BeneficiaryCombobox
+                    id="payout-beneficiary"
+                    beneficiaries={list}
+                    value={chosen}
+                    onValueChange={(next) =>
+                      setBeneficiaryId(next?.beneficiary_id ?? "")
+                    }
+                    placeholder="Choose a beneficiary"
+                    description={(beneficiary) =>
+                      `Paid in ${beneficiary.payout_currency} (${currencyName(beneficiary.payout_currency)})`
+                    }
+                  />
                   {chosen ? (
                     <FieldDescription>
                       Paid in {chosen.payout_currency} (

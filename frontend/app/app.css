@@ -175,6 +175,7 @@
     @apply bg-background font-sans text-foreground antialiased;
   }
   html {
+    font-size: 115%;
     @apply font-sans;
   }
   h1,

@@ -154,30 +154,40 @@ class KycApplicationRepository(Repository[KycApplication, uuid.UUID]):
         return status is not None and KycStatus(status) in VERIFIED_STATUSES
 
     def get_standing(self, user_id: uuid.UUID) -> KycStanding:
-        latest = self.get_latest_for_user(user_id)
-        verified = db.session.scalars(
+        applications = db.session.scalars(
             select(KycApplication)
             .where(KycApplication.user_id == user_id)
-            .where(
-                KycApplication.status.in_(status.value for status in VERIFIED_STATUSES)
-            )
             .order_by(KycApplication.created_at.desc())
-        ).first()
+        ).all()
+        latest = applications[0] if applications else None
+        verified_statuses = {status.value for status in VERIFIED_STATUSES}
+        verified = next(
+            (row for row in applications if row.status in verified_statuses), None
+        )
 
         tier_number = (
             KYC_TIER_NONE
             if verified is None or verified.tier_granted is None
             else verified.tier_granted
         )
-        tier = db.session.get(KycTier, tier_number)
+        rating = None if verified is None else verified.effective_risk_rating
+        if rating is None:
+            tier = db.session.scalars(
+                select(KycTier).where(KycTier.tier == tier_number)
+            ).first()
+            rating_record = None
+        else:
+            row = db.session.execute(
+                select(KycTier, KycRiskRatingRecord)
+                .select_from(KycTier)
+                .outerjoin(KycRiskRatingRecord, KycRiskRatingRecord.rating == rating)
+                .where(KycTier.tier == tier_number)
+            ).first()
+            tier, rating_record = (None, None) if row is None else row
         if tier is None:
             raise KycRiskRulesMisconfiguredError(
                 f"kyc_tiers has no tier {tier_number} to take limits from"
             )
-        rating = None if verified is None else verified.effective_risk_rating
-        rating_record = (
-            None if rating is None else db.session.get(KycRiskRatingRecord, rating)
-        )
         allowance = allowance_for(
             limits_from_tier(tier),
             None if rating_record is None else band_from_record(rating_record),

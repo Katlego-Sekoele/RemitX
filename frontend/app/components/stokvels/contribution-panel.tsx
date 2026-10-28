@@ -1,7 +1,9 @@
+import type { ReactNode } from "react"
 import { ArrowSquareOutIcon, CheckCircleIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { format } from "date-fns"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
 
@@ -69,6 +71,7 @@ export function ContributionPanel({
   mine,
   outstanding,
   availableBalance,
+  bare = false,
 }: {
   stokvel: StokvelDetailRead
   round: StokvelRoundRead
@@ -77,16 +80,17 @@ export function ContributionPanel({
   /** Members still to pay, the member included while unpaid. */
   outstanding: number
   availableBalance: string | undefined
+  /** Sit inside another card (the pot) instead of drawing its own. */
+  bare?: boolean
 }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  // The toast follows the chain, which settles after this request returns.
   const contribute = useMutation({
     ...stokvelMutations.contribute(stokvel.stokvel_id),
+    toast: false,
     onSuccess: async () => {
       await invalidateStokvels(queryClient)
-      toast.success(
-        `Paid ${roundLabel(round.round, stokvel.total_rounds ?? 0)}`
-      )
     },
     onSettled: async () => {
       // A refusal may still have changed what the API knows (e.g. already
@@ -101,10 +105,39 @@ export function ContributionPanel({
   const amount = stokvel.contribution_fiat_estimate
   const currency = stokvel.currency
   const paid = mine?.status === "confirmed"
+  const toastId = `contribution-${stokvel.stokvel_id}-${round.round}`
+  const sawInflight = useRef(false)
   const confirming =
     contribute.isPending ||
     mine?.status === "pending" ||
     mine?.status === "processing"
+  useEffect(() => {
+    if (confirming) {
+      sawInflight.current = true
+      toast.loading("Confirming your contribution…", { id: toastId })
+      return
+    }
+    if (!sawInflight.current) return
+    sawInflight.current = false
+    if (paid) {
+      toast.success(
+        `Paid ${roundLabel(round.round, stokvel.total_rounds ?? round.round + 1)}`,
+        { id: toastId }
+      )
+    } else if (mine?.status === "failed") {
+      toast.error("The contribution didn't go through", { id: toastId })
+    } else if (contribute.isError) {
+      toast.dismiss(toastId)
+    }
+  }, [
+    confirming,
+    contribute.isError,
+    mine?.status,
+    paid,
+    round.round,
+    stokvel.total_rounds,
+    toastId,
+  ])
   const refusal = contribute.isError
     ? contributeRefusal(contribute.error)
     : null
@@ -126,7 +159,7 @@ export function ContributionPanel({
 
   if (!amount && !paid && !confirming) {
     return (
-      <Card>
+      <Frame bare={bare}>
         <CardHeader>
           <CardTitle>Your contribution</CardTitle>
           <CardDescription>
@@ -134,7 +167,7 @@ export function ContributionPanel({
             be paid yet.
           </CardDescription>
         </CardHeader>
-      </Card>
+      </Frame>
     )
   }
 
@@ -148,7 +181,7 @@ export function ContributionPanel({
 
   if (paid || confirming) {
     return (
-      <Card>
+      <Frame bare={bare}>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <CardTitle>Your contribution</CardTitle>
@@ -201,7 +234,7 @@ export function ContributionPanel({
             </Button>
           ) : null}
         </CardContent>
-      </Card>
+      </Frame>
     )
   }
 
@@ -210,7 +243,7 @@ export function ContributionPanel({
   const late = Date.now() > Date.parse(round.deadline)
 
   return (
-    <Card>
+    <Frame bare={bare}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <CardTitle>Your contribution</CardTitle>
@@ -354,6 +387,18 @@ export function ContributionPanel({
           </SheetFooter>
         </SheetContent>
       </Sheet>
-    </Card>
+    </Frame>
   )
+}
+
+/** Own card, or the right-hand side of the pot card. */
+function Frame({ bare, children }: { bare: boolean; children: ReactNode }) {
+  if (bare) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-(--card-spacing)">
+        {children}
+      </div>
+    )
+  }
+  return <Card>{children}</Card>
 }

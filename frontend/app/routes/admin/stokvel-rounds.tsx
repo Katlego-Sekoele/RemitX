@@ -48,6 +48,7 @@ export function meta(): Route.MetaDescriptors {
  */
 export default function StokvelRoundsPage() {
   const rounds = useQuery(stokvelAdminQueries.rounds())
+  const rows = rounds.data
 
   return (
     <AdminPageFrame module={ROUTE_MODULE}>
@@ -69,14 +70,16 @@ export default function StokvelRoundsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {rounds.isPending ? (
-              <Skeleton className="h-48 w-full" />
-            ) : rounds.isError ? (
-              <QueryError
-                title="Couldn't load the rounds"
-                error={rounds.error}
-                onRetry={() => rounds.refetch()}
-              />
+            {rows == null ? (
+              rounds.isError ? (
+                <QueryError
+                  title="Couldn't load the rounds"
+                  error={rounds.error}
+                  onRetry={() => rounds.refetch()}
+                />
+              ) : (
+                <Skeleton className="h-48 w-full" />
+              )
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -92,7 +95,7 @@ export default function StokvelRoundsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rounds.data.length === 0 ? (
+                    {rows.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={7}
@@ -102,7 +105,7 @@ export default function StokvelRoundsPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      rounds.data.map((round) => {
+                      rows.map((round) => {
                         const hint = finaliseHint(round)
                         return (
                           <TableRow key={`${round.stokvel_id}-${round.round}`}>

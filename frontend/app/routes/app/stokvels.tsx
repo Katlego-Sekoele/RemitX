@@ -1,10 +1,12 @@
 import { ArrowClockwiseIcon, UsersFourIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import { Link } from "react-router"
 
 import { AppPageFrame } from "~/components/app-dashboard/app-page-frame"
 import { ContributionAtTodaysRate } from "~/components/stokvels/contribution-at-rate"
 import { InvitationCard } from "~/components/stokvels/invitation-card"
+import { StokvelCoverThumb } from "~/components/stokvels/stokvel-cover"
 import {
   Alert,
   AlertAction,
@@ -60,6 +62,7 @@ export function meta(): Route.MetaDescriptors {
  */
 export default function StokvelsPage() {
   const list = useQuery(stokvelQueries.list())
+  const loaded = list.data
 
   return (
     <AppPageFrame module={ROUTE_MODULE}>
@@ -76,26 +79,27 @@ export default function StokvelsPage() {
           </Button>
         </div>
 
-        {list.isPending ? (
-          <StokvelListSkeleton />
-        ) : list.isError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Couldn&apos;t load your stokvels</AlertTitle>
-            <AlertDescription>{errorMessage(list.error)}</AlertDescription>
-            <AlertAction>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={list.isFetching}
-                onClick={() => list.refetch()}
-              >
-                <ArrowClockwiseIcon data-icon="inline-start" />
-                Retry
-              </Button>
-            </AlertAction>
-          </Alert>
-        ) : list.data.stokvels.length === 0 &&
-          list.data.invitations.length === 0 ? (
+        {loaded == null ? (
+          list.isError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Couldn&apos;t load your stokvels</AlertTitle>
+              <AlertDescription>{errorMessage(list.error)}</AlertDescription>
+              <AlertAction>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={list.isFetching}
+                  onClick={() => list.refetch()}
+                >
+                  <ArrowClockwiseIcon data-icon="inline-start" />
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
+          ) : (
+            <StokvelListSkeleton />
+          )
+        ) : loaded.stokvels.length === 0 && loaded.invitations.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -118,12 +122,12 @@ export default function StokvelsPage() {
           </Empty>
         ) : (
           <>
-            {list.data.invitations.length > 0 ? (
+            {loaded.invitations.length > 0 ? (
               <section className="flex flex-col gap-3">
                 <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   Invitations
                 </h2>
-                {list.data.invitations.map((invitation) => (
+                {loaded.invitations.map((invitation) => (
                   <InvitationCard
                     key={invitation.invitation_id}
                     invitation={invitation}
@@ -136,7 +140,7 @@ export default function StokvelsPage() {
                 Your stokvels
               </h2>
               <div className="grid gap-3 md:grid-cols-2">
-                {list.data.stokvels.map((stokvel) => (
+                {loaded.stokvels.map((stokvel) => (
                   <StokvelCard key={stokvel.stokvel_id} stokvel={stokvel} />
                 ))}
               </div>
@@ -150,40 +154,61 @@ export default function StokvelsPage() {
 
 function StokvelCard({ stokvel }: { stokvel: StokvelRead }) {
   const closed = stokvel.deactivated_at !== null
+  const [coverBroken, setCoverBroken] = useState(false)
+  const showCover = Boolean(stokvel.cover_url) && !coverBroken
+  const badge = closed ? (
+    <Badge variant="outline">Closed</Badge>
+  ) : stokvel.is_organiser ? (
+    <Badge variant="secondary">You organise</Badge>
+  ) : null
+  const rate = (
+    <CardDescription>
+      <ContributionAtTodaysRate
+        amount={stokvel.contribution_amount}
+        currency={stokvel.currency}
+      />{" "}
+      per member, per round
+    </CardDescription>
+  )
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle>
-            <Link to={stokvelPath(stokvel.stokvel_id)}>{stokvel.name}</Link>
-          </CardTitle>
-          {closed ? (
-            <Badge variant="outline">Closed</Badge>
-          ) : stokvel.is_organiser ? (
-            <Badge variant="secondary">You organise</Badge>
-          ) : null}
-        </div>
-        <CardDescription>
-          <ContributionAtTodaysRate
-            amount={stokvel.contribution_amount}
-            currency={stokvel.currency}
-          />{" "}
-          per member, per round
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {stokvel.member_count} of {stokvel.max_members} members
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link to={stokvelPath(stokvel.stokvel_id)} />}
-        >
-          Open
-        </Button>
-      </CardContent>
+    <Card
+      className={
+        showCover
+          ? "relative flex-row items-stretch px-(--card-spacing) hover:bg-muted/40"
+          : "relative hover:bg-muted/40"
+      }
+    >
+      {showCover && stokvel.cover_url ? (
+        <StokvelCoverThumb
+          coverUrl={stokvel.cover_url}
+          onBroken={() => setCoverBroken(true)}
+        />
+      ) : null}
+      <div
+        className={
+          showCover
+            ? "flex min-w-0 flex-1 flex-col gap-(--card-spacing)"
+            : "contents"
+        }
+      >
+        <CardHeader className={showCover ? "p-0" : undefined}>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>{stokvel.name}</CardTitle>
+            {badge}
+          </div>
+          {rate}
+        </CardHeader>
+        <CardContent className={showCover ? "p-0" : undefined}>
+          <span className="text-sm text-muted-foreground">
+            {stokvel.member_count} of {stokvel.max_members} members
+          </span>
+        </CardContent>
+      </div>
+      <Link
+        to={stokvelPath(stokvel.stokvel_id)}
+        aria-label={stokvel.name}
+        className="absolute inset-0 z-10 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-ring"
+      />
     </Card>
   )
 }

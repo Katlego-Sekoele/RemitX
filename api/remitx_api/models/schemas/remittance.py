@@ -60,7 +60,8 @@ class TransferRead(Schema):
     )
     counterparty_name: str | None = Field(
         description="The other person's verified name: the recipient of a "
-        "sent transfer, the sender of a received one."
+        "sent transfer, the sender of a received one. For a stokvel's "
+        "payout, the stokvel's name. Null when neither is known."
     )
     status: TransactionStatus
     created_at: UtcDateTime

@@ -2,6 +2,11 @@ import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query"
 
 import { ApiError } from "~/lib/api"
 import { notifyForbidden } from "~/lib/forbidden-notifier"
+import {
+  showMutationError,
+  showMutationLoading,
+  showMutationSuccess,
+} from "~/lib/mutation-toast"
 
 // Set by <AuthErrorBridge /> once Clerk context exists. The QueryClient is a
 // module singleton built outside React — QueryClientProvider lives in root's
@@ -23,24 +28,40 @@ function handleError(error: unknown) {
   }
 }
 
-export const queryClient = new QueryClient({
-  queryCache: new QueryCache({ onError: handleError }),
-  mutationCache: new MutationCache({ onError: handleError }),
-  defaultOptions: {
-    queries: {
-      // Never retry a 4xx: the answer will not change, and retrying a 401
-      // doubles every request made with a dead session.
-      retry: (failureCount, error) => {
-        if (
-          error instanceof ApiError &&
-          error.status >= 400 &&
-          error.status < 500
-        ) {
-          return false
-        }
-        return failureCount < 1
+export function createQueryClient() {
+  return new QueryClient({
+    queryCache: new QueryCache({ onError: handleError }),
+    mutationCache: new MutationCache({
+      onMutate: (_variables, mutation) => {
+        showMutationLoading(mutation)
       },
-      refetchOnWindowFocus: false,
+      onSuccess: (data, variables, _context, mutation) => {
+        showMutationSuccess(data, variables, mutation)
+      },
+      onError: (error, variables, _context, mutation) => {
+        handleError(error)
+        showMutationError(error, variables, mutation)
+      },
+    }),
+    defaultOptions: {
+      queries: {
+        // Never retry a 4xx: the answer will not change, and retrying a 401
+        // doubles every request made with a dead session.
+        retry: (failureCount, error) => {
+          if (
+            error instanceof ApiError &&
+            error.status >= 400 &&
+            error.status < 500
+          ) {
+            return false
+          }
+          return failureCount < 1
+        },
+        refetchOnWindowFocus: false,
+        staleTime: 30_000,
+      },
     },
-  },
-})
+  })
+}
+
+export const queryClient = createQueryClient()

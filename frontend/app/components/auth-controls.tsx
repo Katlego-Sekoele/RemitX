@@ -19,7 +19,7 @@ function GuestAuthLinks() {
         nativeButton={false}
         render={<Link to="/sign-up" />}
       >
-        Start sending
+        Get started
       </Button>
       <Button size="sm" nativeButton={false} render={<Link to="/sign-in" />}>
         Sign in

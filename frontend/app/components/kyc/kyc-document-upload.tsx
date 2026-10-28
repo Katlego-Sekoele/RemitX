@@ -7,7 +7,8 @@ import {
   TrashIcon,
   UploadSimpleIcon,
 } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useId, useState } from "react"
 
 import {
@@ -33,8 +34,6 @@ import {
 import { FieldError } from "~/components/ui/field"
 import { api, sdk, type KycDocumentRead as KycDocument } from "~/client"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { toast } from "sonner"
-
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf"
 const MAX_BYTES = 10 * 1024 * 1024
 
@@ -72,8 +71,8 @@ function StoredAttachment({
   const label = typeLabel(document.content_type)
   const remove = useMutation({
     ...api.kyc.documents.removeMyDocument(),
+    toast: `${label} removed`,
     onSuccess: () => {
-      toast.success(`${label} removed`)
       onRemoved()
     },
     onError: (error) => setOpenError(errorMessage(error)),

@@ -5,7 +5,7 @@ it first:
 
 - a mined contribution (`record_mined`): `stokvel_tasks.confirm_contribution`
   after a receipt, or the event sync (`stokvel_sync`) from `ContributionMade`
-- a released pool (`record_pool_release`, R3-04): the event sync from
+- a released pool (`record_pool_release`): the event sync from
   `RoundFinalised`, or `stokvel_release.release_pool` after the receipt of
   the `finalise` it sent
 """
@@ -58,12 +58,11 @@ ALREADY_RECORDED = "already_recorded"
 
 class ReleaseConflict(Exception):
     """A release on-chain and the database disagree in a way the worker must
-    not guess at: the round pays a different member, it is recorded with a
-    different hash, or a person has marked it failed. Raised before anything
-    is written."""
+    not guess at. Raised before anything is written."""
 
 
 def contribution_legs(contribution: StokvelContribution) -> list[uuid.UUID]:
+    """The transaction legs of a contribution"""
     return [
         tx_id
         for tx_id in (
@@ -142,8 +141,9 @@ def record_mined(
 
 
 def scheduled_member(session, cycle_id: uuid.UUID, round_: int) -> uuid.UUID | None:
-    """The cycle member round `round_` pays: the one whose payout position is
-    the round. None if the round pays nobody in this cycle."""
+    """Looks in the cycle's member list for the member whose payout_position
+    equals the round number and returns that member's ID. If nobody holds that
+    position, it returns None"""
     return session.scalar(
         select(StokvelCycleMember.member_id).where(
             StokvelCycleMember.cycle_id == cycle_id,
@@ -153,38 +153,46 @@ def scheduled_member(session, cycle_id: uuid.UUID, round_: int) -> uuid.UUID | N
 
 
 def ensure_payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout:
-    """The round's payout row, created `pending` for its scheduled member if
-    there is none yet. The release owns payout creation: a round released
-    inside a `contribute` has had no row until it is recorded.
+    """Get the round's payout row, creating it as `pending` if it does not
+    exist yet. A round released by a `contribute` has no payout row until its
+    release is recorded, so the release creates it.
 
-    Two workers can create it at once (the event sync and `release_pool` on
-    the same round). The insert runs in a savepoint; if it fails and the row
-    now exists, the other worker made it and that row is returned. Any other
-    failure is raised. Raises `ReleaseConflict` if the round pays no member.
+    The event sync and `release_pool` can both try to create the row at once.
+    If an insert fails because the other got there first, its row is
+    returned. Raises `ReleaseConflict` if no member is scheduled for the round.
     """
+    # Check if the payout already exists
     existing = _payout(session, cycle_id, round_)
     if existing is not None:
         return existing
+    # Check if a member is scheduled for the round
     member_id = scheduled_member(session, cycle_id, round_)
     if member_id is None:
         raise ReleaseConflict(
             f"cycle {cycle_id} has no member in payout position {round_}"
         )
+    # Create a savepoint to allow rollback if the insert fails
     savepoint = session.begin_nested()
+    # Try to create the payout row
     try:
         session.add(StokvelPayout(cycle_id=cycle_id, round=round_, member_id=member_id))
         session.flush()
     except IntegrityError:
         savepoint.rollback()
+        # If the insert fails, check if another worker created the row first.
         existing = _payout(session, cycle_id, round_)
         if existing is None:
             raise
+        # Return the existing row if it was created by another worker
         return existing
     savepoint.commit()
+    # Return the newly created payout row
     return _payout(session, cycle_id, round_)
 
 
 def _payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout | None:
+    """Get the round's payout row, or None if it does not exist yet. Does not
+    create it."""
     return session.scalar(
         select(StokvelPayout)
         .where(StokvelPayout.cycle_id == cycle_id, StokvelPayout.round == round_)
@@ -202,49 +210,38 @@ def record_pool_release(
     tx_hash: str,
     block_number: int,
 ) -> str:
-    """Record a pool the contract released (`RoundFinalised`) in `session`:
-    the round's payout becomes `released` with the release's hash and block,
-    and the `stokvel_pool_release` leg moves `pool` UCTUSD from the stokvel's
-    `STOKVEL` account to the Treasury Wallet, confirmed at once, since it is
-    already mined (doc section 3: the `STOKVEL` balance always equals the
-    stokvel's unreleased pools in the contract).
+    """Record a round the contract released: mark its payout `released` and
+    move pool amount from the stokvel's `STOKVEL` account to the Treasury.
 
-    The payout row is created if missing (`ensure_payout`). Guarded on it
-    being `pending` or `processing`, so it happens once whoever calls it: the
-    event sync from the event, or `release_pool` from its receipt. Only the
-    caller whose guarded update succeeds books the leg; the leg is written in
-    a savepoint that is rolled back if the update matches nothing.
+    Called by the event sync and by `release_pool`. Only the first call
+    records it; a later one gets `ALREADY_RECORDED`. Raises
+    `ReleaseConflict`, writing nothing, if the chain's release does not match
+    the database. The caller commits.
 
-    The hash given wins over one `release_pool` stored: the contract releases
-    a round once, so if a `contribute` released it before our `finalise` was
-    mined, the release is the `contribute`'s and our transaction reverts.
-
-    Returns `RECORDED`, or `ALREADY_RECORDED` if the round is already
-    released with this hash. Raises `ReleaseConflict`, before writing
-    anything, if the round pays a different member, is released with another
-    hash, or is `failed`. The caller commits.
-
-    The payout itself (quote, remittance, settlement) is paid from the Treasury Wallet
-    to the beneficiary, so the pool does not pass back through `STOKVEL`, and
-    `remittance_status` stays `pending` here.
+    The member is paid later, from the Treasury, by `settle_payout`.
     """
-    # Checked before the row is created, so a conflict writes nothing.
+    # Checked a member is scheduled for the round
     scheduled = scheduled_member(session, cycle_id, round_)
     if scheduled is not None and scheduled != member_id:
         raise ReleaseConflict(
             f"round {round_} of cycle {cycle_id} pays member {scheduled}, "
             f"but the chain released it to {member_id}"
         )
+    # Check the payout row exists (or create it) and that it is for the right member
     payout = ensure_payout(session, cycle_id, round_)
     if payout.member_id != member_id:
         raise ReleaseConflict(
             f"round {round_} of cycle {cycle_id} pays member {payout.member_id}, "
             f"but the chain released it to {member_id}"
         )
+    # If the payout is already released, check the chain's release matches the
+    # database
     if payout.release_status not in RELEASE_IN_FLIGHT:
         return _already_released(payout, tx_hash)
-
+    # Get the accounts the release moves between and the expected pool amount.
     stokvel_account_id, treasury_id, expected = _release_accounts(session, cycle_id)
+    # If the pool amount differs from the expected, log a warning but continue
+    # to record the release.
     if expected is not None and pool != expected:
         logger.warning(
             "event=stokvel.release_amount_differs cycle_id=%s round=%s "
@@ -256,14 +253,18 @@ def record_pool_release(
         )
 
     now = utcnow()
+    # Create a savepoint to allow rollback if the update fails
     savepoint = session.begin_nested()
+
+    # Create a transaction leg for the pool release
     leg = Transaction(
         tx_id=uuid.uuid4(),
         type=TYPE_STOKVEL_POOL_RELEASE,
-        credit_account_id=stokvel_account_id,
-        debit_account_id=treasury_id,
-        amount=pool,
+        credit_account_id=stokvel_account_id,  # From the stokvel's STOKVEL account
+        debit_account_id=treasury_id,  # to the Treasury Wallet's UCTUSD account
+        amount=pool,  # amount released from the pool in UCTUSD
         currency=CURRENCY_TOKEN,
+        # Confirmed, since the release has been mined on-chain
         status=TX_STATUS_CONFIRMED,
         processed_at=now,
         confirmed_at=now,
@@ -271,8 +272,13 @@ def record_pool_release(
     try:
         session.add(leg)
         session.flush()
+        # Check if the payout is still pending or processing, and mark it as
+        # released if so. If another worker has already recorded the release,
+        # this will return None.
         outcome = _release(session, payout, leg, tx_hash, block_number, now)
         if outcome == RECORDED:
+            # Move the pool from the stokvel's STOKVEL account to the Treasury
+            # Wallet's UCTUSD account
             _move_pool(session, stokvel_account_id, treasury_id, pool)
     except Exception:
         savepoint.rollback()
@@ -286,14 +292,17 @@ def record_pool_release(
 
 
 def _release(session, payout, leg, tx_hash, block_number, now) -> str | None:
-    """The guarded `pending|processing -> released`. `RECORDED` if this caller
-    made it, None if the payout had left those statuses meanwhile."""
+    """Mark the payout `released` if it is still `pending` or `processing`.
+    Returns `RECORDED` if this call changed it, or None if another worker
+    recorded it first."""
     released = session.execute(
         update(StokvelPayout)
         .where(
             StokvelPayout.id == payout.id,
+            # Pending or processing
             StokvelPayout.release_status.in_(RELEASE_IN_FLIGHT),
         )
+        # Add the release transaction leg data to the payout row
         .values(
             release_status=RELEASED,
             release_tx_hash=tx_hash,
@@ -308,15 +317,14 @@ def _release(session, payout, leg, tx_hash, block_number, now) -> str | None:
 
 
 def _move_pool(session, stokvel_account_id, treasury_id, pool: Decimal) -> None:
-    # `STOKVEL` before the Treasury: the order `record_mined` takes the same
-    # two row locks in (its `STOKVEL` is a destination, updated before its
-    # sources, the Treasury among them). Taking them in the other order
-    # deadlocks on Postgres against a contribution of the same stokvel being
-    # confirmed at the same time.
-    #
-    # The `STOKVEL` balance can never go below zero (accounts_stokvel_
-    # balance_nonneg): if a contribution in this pool is not recorded yet,
-    # this raises and the caller leaves the release to be recorded later.
+    """Move `pool` from the stokvel's `STOKVEL` account to the Treasury
+    (updates both account balances).
+
+    `STOKVEL` account balance is updated before the Treasury, the same order
+    `record_mined` locks these two rows in.
+
+    `STOKVEL` can never go below zero (accounts_stokvel_balance_nonneg).
+    """
     session.execute(
         update(Account)
         .where(Account.account_id == stokvel_account_id)
@@ -331,6 +339,8 @@ def _move_pool(session, stokvel_account_id, treasury_id, pool: Decimal) -> None:
 
 
 def _already_released(payout: StokvelPayout, tx_hash: str) -> str:
+    """Check if the chain's release matches the database. Returns
+    `ALREADY_RECORDED` if it does, or raises `ReleaseConflict` if it does not."""
     if payout.release_status == RELEASED and (
         (payout.release_tx_hash or "").lower() == tx_hash.lower()
     ):
@@ -344,21 +354,29 @@ def _already_released(payout: StokvelPayout, tx_hash: str) -> str:
 def _release_accounts(
     session, cycle_id: uuid.UUID
 ) -> tuple[uuid.UUID, uuid.UUID, Decimal | None]:
-    """(the stokvel's `STOKVEL` account, the Treasury Wallet's UCTUSD
-    account, the pool the cycle should release: the contribution times the
-    number of rounds, or None if the cycle has no round count)."""
+    """The accounts a release moves between, and the pool expected:
+
+    - the stokvel's `STOKVEL` account
+    - the Treasury Wallet's UCTUSD account
+    - the expected pool (contribution amount times the number of rounds), or
+      None if the cycle has no round count
+    """
+    # Get the stokvel's `STOKVEL` account and the cycle's total rounds.
     stokvel, total_rounds = session.execute(
         select(Stokvel, StokvelCycle.total_rounds)
         .join(StokvelCycle, StokvelCycle.stokvel_id == Stokvel.id)
         .where(StokvelCycle.id == cycle_id)
     ).one()
+    # Check the stokvel has a `STOKVEL` account and the Treasury Wallet's UCTUSD
+    # account exists.
     if stokvel.account_id is None:
-        # Created with the stokvel (R2-07); never missing once in service.
+        # Every stokvel gets one when it is created, so this should not happen.
         raise RuntimeError(f"stokvel {stokvel.id} has no STOKVEL account")
     treasury_id = treasury_account_id(session)
     expected = (
         None if total_rounds is None else stokvel.contribution_amount * total_rounds
     )
+    # Return the accounts and the expected pool amount.
     return stokvel.account_id, treasury_id, expected
 
 

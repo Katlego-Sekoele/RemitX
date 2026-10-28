@@ -5413,6 +5413,20 @@
         "title": "StokvelContributionStatus",
         "type": "string"
       },
+      "StokvelCoverRead": {
+        "description": "The cover photo just stored, as a short-lived read URL.",
+        "properties": {
+          "cover_url": {
+            "title": "Cover Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cover_url"
+        ],
+        "title": "StokvelCoverRead",
+        "type": "object"
+      },
       "StokvelCreateRequest": {
         "additionalProperties": false,
         "description": "A new stokvel. The caller becomes its Organiser and first Member.",
@@ -5721,7 +5735,7 @@
         "type": "object"
       },
       "StokvelDetailInvitationRead": {
-        "description": "An invitation on `GET /stokvels/{id}`, of any status.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set.",
+        "description": "An invitation on `GET /stokvels/{id}`, of any status.\n\n`account_reference` is set only for the Organiser, and null when the\ninvitee no longer holds an account in the stokvel currency. `POST\n/stokvels/{id}/invitations` returns `SentStokvelInvitationRead`, where\nthe reference is always set. `invitee_user_id` is the person invited,\nso an accepted invitation can be joined to that member without comparing\nnames.",
         "properties": {
           "account_reference": {
             "anyOf": [
@@ -5754,6 +5768,11 @@
             ],
             "title": "Invitee Name"
           },
+          "invitee_user_id": {
+            "format": "uuid",
+            "title": "Invitee User Id",
+            "type": "string"
+          },
           "status": {
             "$ref": "#/components/schemas/StokvelInvitationStatus"
           },
@@ -5769,7 +5788,8 @@
           "invitee_name",
           "account_reference",
           "status",
-          "created_at"
+          "created_at",
+          "invitee_user_id"
         ],
         "title": "StokvelDetailInvitationRead",
         "type": "object"
@@ -5799,6 +5819,17 @@
             },
             "title": "Contributions",
             "type": "array"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
           },
           "created_at": {
             "title": "Created At",
@@ -5967,6 +5998,7 @@
           "max_members",
           "created_at",
           "deactivated_at",
+          "cover_url",
           "organiser_name",
           "contribution_fiat_estimate",
           "phase",
@@ -6263,6 +6295,17 @@
             "title": "Contribution Amount",
             "type": "string"
           },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -6312,7 +6355,8 @@
           "member_count",
           "max_members",
           "created_at",
-          "deactivated_at"
+          "deactivated_at",
+          "cover_url"
         ],
         "title": "StokvelRead",
         "type": "object"
@@ -6684,7 +6728,7 @@
                 "type": "null"
               }
             ],
-            "description": "The other person's verified name: the recipient of a sent transfer, the sender of a received one.",
+            "description": "The other person's verified name: the recipient of a sent transfer, the sender of a received one. For a stokvel's payout, the stokvel's name. Null when neither is known.",
             "title": "Counterparty Name"
           },
           "counterparty_user_id": {
@@ -13599,6 +13643,148 @@
           }
         ],
         "summary": "Contribute to the stokvel's current round",
+        "tags": [
+          "stokvels"
+        ]
+      }
+    },
+    "/stokvels/{stokvel_id}/cover": {
+      "post": {
+        "description": "The body is the photo itself, sent with its own ``Content-Type``.\n\nAny current member may set it. The type is checked against the file's\nleading bytes before it is stored, and a later upload replaces it.\n404 for an unknown stokvel or one the caller is not a current member of.",
+        "operationId": "upload_stokvel_cover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stokvel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stokvel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StokvelCoverRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The current state refuses the request."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upload is too large."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object storage failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A service the request depends on is unavailable."
+          }
+        },
+        "security": [
+          {
+            "ClerkSession": []
+          }
+        ],
+        "summary": "Set the stokvel's cover photo",
         "tags": [
           "stokvels"
         ]

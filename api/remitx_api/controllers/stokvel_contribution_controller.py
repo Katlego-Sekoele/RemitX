@@ -198,6 +198,7 @@ class StokvelContributionController:
     def _record(
         self, user_id: uuid.UUID, stokvel_id: uuid.UUID
     ) -> StokvelContributionView:
+        """Record the caller's contribution to their stokvel's open round, pending"""
         if is_paused():
             raise StokvelPausedError()
         stokvel = self._stokvels.get_by_id(stokvel_id)

@@ -1,4 +1,4 @@
-"""The payout of a released pool (R3-05, #242): `stokvel.settle_payout`,
+"""The payout of a released pool: `stokvel.settle_payout`,
 `quote_service.price_stokvel_payout` and `queue_released_payouts`.
 
 Same conventions as test_worker_stokvel_release.py, whose fixtures this
@@ -6,8 +6,8 @@ reuses: a scratch SQLite file, a round 0 released through
 `record_pool_release`, and rates from a fake provider instead of the live
 API.
 
-The ticket's "done when": a released round produces one quote and one
-remittance, paid to the recipient's beneficiary.
+The goal: a released round produces one quote and one remittance, paid to
+the recipient's beneficiary.
 """
 
 # The shared fixtures are imported by name, which pytest needs and ruff
@@ -83,6 +83,7 @@ class FakeRates:
         }
 
     def get_rate(self, base_currency, quote_currency):
+        """The fixed rate for the pair, or an error while `fail` is set."""
         if self.fail:
             raise RateFetchError("rate API down")
         return self.rates[(base_currency, quote_currency)]
@@ -90,6 +91,7 @@ class FakeRates:
 
 @pytest.fixture
 def rates():
+    """`FakeRates` in place of the live API for one test."""
     fake = FakeRates()
     use_rate_provider(fake)
     yield fake
@@ -151,7 +153,7 @@ def payee(session_factory, cycle):
 
 @pytest.fixture
 def released(session_factory, cycle, payee):
-    """Round 0's pool released and recorded: the payout R3-05 pays out."""
+    """Round 0's pool released and recorded: the payout under test."""
     _fund(session_factory, cycle)
     _record(session_factory, cycle)
     with session_factory() as session:
@@ -160,6 +162,7 @@ def released(session_factory, cycle, payee):
 
 @pytest.fixture
 def queued(monkeypatch):
+    """`enqueue_settle_payout` calls, captured instead of sent."""
     calls = []
     monkeypatch.setattr(
         queue_service,
@@ -171,14 +174,15 @@ def queued(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def handed_off(monkeypatch):
-    """`settle_payout`'s hand-off to `settle_remittance` (R3-06), captured:
-    CI has no Redis. test_stokvel_payout_retry.py settles it."""
+    """`settle_payout`'s hand-off to `settle_remittance`, captured because CI
+    has no Redis. test_stokvel_payout_retry.py covers settling it."""
     calls = []
     monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
     return calls
 
 
 def _payout(session_factory, payout_id):
+    """The payout row, detached so it can be read after the session closes."""
     with session_factory() as session:
         row = session.get(StokvelPayout, payout_id)
         session.expunge(row)
@@ -186,6 +190,7 @@ def _payout(session_factory, payout_id):
 
 
 def _counts(session_factory):
+    """How many quotes and remittances exist."""
     with session_factory() as session:
         return {
             "quotes": session.scalar(select(func.count()).select_from(Quote)),
@@ -194,6 +199,7 @@ def _counts(session_factory):
 
 
 def _balances(session_factory):
+    """Every account's balance, to check that nothing moved."""
     with session_factory() as session:
         return sorted(
             (str(a.account_id), a.account_balance)
@@ -235,7 +241,7 @@ def test_a_released_round_becomes_one_quote_and_one_remittance(
         treasury = cycle["accounts"]["treasury"]
         bank = cycle["accounts"]["bank"]
         # Paid from the Treasury, where the release put the pool: not back
-        # through STOKVEL (#241)
+        # through STOKVEL
         assert sorted(
             (leg.type, leg.credit_account_id, leg.debit_account_id, leg.amount)
             for leg in legs
@@ -254,7 +260,7 @@ def test_a_released_round_becomes_one_quote_and_one_remittance(
             treasury,
             payee["token"],
         )
-    # Pending legs move nothing; settlement (R3-06) does
+    # Pending legs move nothing; settlement does
     assert _balances(session_factory) == before
 
 
@@ -306,6 +312,7 @@ def test_a_round_not_released_is_not_paid_out(session_factory, cycle, payee, rat
 
 
 def _no_beneficiary(session, cycle, payee):
+    """The member has no payout beneficiary chosen."""
     session.execute(
         update(StokvelCycleMember)
         .where(StokvelCycleMember.member_id == cycle["members"][0])
@@ -314,6 +321,7 @@ def _no_beneficiary(session, cycle, payee):
 
 
 def _beneficiary_now_paid_in_nad(session, cycle, payee):
+    """The beneficiary's payout currency changed after the member chose it."""
     session.execute(
         update(Beneficiary)
         .where(Beneficiary.beneficiary_id == payee["beneficiary"])
@@ -322,6 +330,7 @@ def _beneficiary_now_paid_in_nad(session, cycle, payee):
 
 
 def _no_account_to_credit(session, cycle, payee):
+    """The recipient's ZAR account is gone."""
     session.execute(delete(Account).where(Account.account_id == payee["fiat"]))
 
 
@@ -380,6 +389,8 @@ def test_unknown_and_invalid_ids_are_skipped(session_factory, rates):
 
 
 def _price(session_factory, *args):
+    """`price_stokvel_payout` with a request session bound, as the worker
+    calls it."""
     with session_factory() as session:
         token = set_request_db_session(session)
         try:
@@ -493,7 +504,7 @@ def test_another_write_to_the_payout_does_not_delay_it(
 ):
     """Queuing is marked by `settle_queued_at`, not `updated_at`, so an
     unrelated write to the row (an Administrator action, say) leaves a
-    payout due (#360 review)."""
+    payout due."""
     with session_factory() as session:
         session.execute(
             update(StokvelPayout)

@@ -58,16 +58,39 @@ function MarketingChrome() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6">
-        <Link
-          to="/"
-          className="flex items-center gap-2.5 text-foreground"
-          aria-label={`${SITE_NAME} home`}
-        >
-          <RemitXLogo className="size-7" />
-          <span className="font-heading text-sm font-semibold tracking-tight">
-            {SITE_NAME}
-          </span>
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 text-foreground"
+            aria-label={`${SITE_NAME} home`}
+          >
+            <RemitXLogo className="size-7" />
+            <span className="font-heading text-sm font-semibold tracking-tight">
+              {SITE_NAME}
+            </span>
+          </Link>
+          <nav
+            aria-label="On this page"
+            className="hidden items-center md:flex"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              render={<a href="#send" />}
+            >
+              Send
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              render={<a href="#stokvel" />}
+            >
+              Stokvels
+            </Button>
+          </nav>
+        </div>
         <div className="flex items-center gap-2">
           <AuthControls />
           <ThemeToggle />

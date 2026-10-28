@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { format } from "date-fns"
 import { useState } from "react"
-import { toast } from "sonner"
-
 import { QueryError } from "~/components/accounts/query-error"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import {
@@ -194,12 +193,12 @@ function PauseDialog({
   const issue = pauseReasonIssue(reason)
   const pause = useMutation({
     ...stokvelContractMutations.pause(),
+    toast: "Stokvels paused",
     onSuccess: async () => {
       onOpenChange(false)
       setReason("")
       setTouched(false)
       await invalidateStokvelContract(queryClient)
-      toast.success("Stokvels paused")
     },
   })
 
@@ -272,10 +271,10 @@ function ResumeDialog({
   const queryClient = useQueryClient()
   const resume = useMutation({
     ...stokvelContractMutations.resume(),
+    toast: "Stokvels resumed",
     onSuccess: async () => {
       onOpenChange(false)
       await invalidateStokvelContract(queryClient)
-      toast.success("Stokvels resumed")
     },
   })
 

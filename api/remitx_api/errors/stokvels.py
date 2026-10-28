@@ -52,6 +52,28 @@ class StokvelNotFoundError(NotFoundError):
         super().__init__("Stokvel not found.")
 
 
+class UnsupportedCoverTypeError(DomainError):
+    """The cover is not a JPEG, PNG or WebP, or the bytes disagree with the
+    declared type. An SVG is refused by name: a cover is shown to every
+    member, and an SVG can carry scripts."""
+
+
+class CoverTooLargeError(DomainError):
+    """Bigger than the cover-photo cap, declared or actual."""
+
+    status_code = 413
+
+    def __init__(self) -> None:
+        super().__init__("Cover photos are limited to 5 MB.")
+
+
+class CoverNotStoredError(ConflictError):
+    """The bucket does not hold the bytes that were just sent."""
+
+    def __init__(self) -> None:
+        super().__init__("The cover photo did not store correctly. Please try again.")
+
+
 class NotACycleMemberError(ForbiddenError):
     """The caller is a current member of the stokvel but not of its current
     cycle, so they have no round to pay into (contract error `NotMember`).

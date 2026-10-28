@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { format, parseISO } from "date-fns"
 import { Controller, useForm } from "react-hook-form"
 import { Link, useNavigate } from "react-router"

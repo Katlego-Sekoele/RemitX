@@ -34,6 +34,13 @@ resource "google_cloud_run_v2_service" "this" {
         }
       }
 
+      resources {
+        limits = {
+          cpu    = var.cpu
+          memory = var.memory
+        }
+      }
+
       ports {
         container_port = 4200
       }
