@@ -588,7 +588,7 @@ test("accepted invitations of members who left are picked out", async () => {
   )
 })
 
-test("invitationBadges shows a member who left as declined", async () => {
+test("invitationBadges shows a member who left as declined for the cycle", async () => {
   const { invitationBadges } = await import("./stokvels")
   const member = (id: string, in_cycle: boolean) =>
     ({ member_id: id, user_id: `user-${id}`, in_cycle }) as never
@@ -618,7 +618,7 @@ test("invitationBadges shows a member who left as declined", async () => {
   assert.deepEqual(Object.fromEntries(invitationBadges(detail)), {
     "i-thandi": { label: "Accepted", variant: "default" },
     "i-petrus": { label: "Pending for cycle 2", variant: "secondary" },
-    "i-bongi": { label: "Declined", variant: "outline" },
+    "i-bongi": { label: "Declined for cycle 2", variant: "outline" },
     "i-lee": { label: "Pending for cycle 2", variant: "secondary" },
     "i-sam": { label: "Declined", variant: "outline" },
     "i-ana": { label: "Revoked", variant: "outline" },
@@ -626,7 +626,8 @@ test("invitationBadges shows a member who left as declined", async () => {
   })
 
   // Bongi invited again: the new invitation is pending, the old one still
-  // reads as declined until she joins.
+  // reads as declined until she joins. Sam turned the invitation itself
+  // down, so his has no cycle.
   const reinvited = invitationBadges({
     ...detail,
     invitations: [
@@ -635,15 +636,16 @@ test("invitationBadges shows a member who left as declined", async () => {
     ],
   })
   assert.equal(reinvited.get("i-bongi-again")?.label, "Pending for cycle 2")
-  assert.equal(reinvited.get("i-bongi")?.label, "Declined")
+  assert.equal(reinvited.get("i-bongi")?.label, "Declined for cycle 2")
 
-  // Cycle 3 forming: someone who left after cycle 1 still reads as declined.
+  // Cycle 3 forming: the detail doesn't say when someone left, so Bongi,
+  // who left after cycle 1, is shown against the cycle being set up.
   const cycle3 = invitationBadges({
     ...detail,
     cycle: { cycle_number: 3 } as never,
     previous_cycle: { cycle_number: 2 } as never,
   })
-  assert.equal(cycle3.get("i-bongi")?.label, "Declined")
+  assert.equal(cycle3.get("i-bongi")?.label, "Declined for cycle 3")
   assert.equal(cycle3.get("i-lee")?.label, "Pending for cycle 3")
 
   // Cycle 1, before anyone could leave: accepted means accepted.

@@ -508,7 +508,9 @@ const INVITATION_STATUS_BADGES: Record<
  * An invitation still waiting for an answer, or accepted by a member of the
  * closed cycle who hasn't said whether they continue, is pending for the
  * cycle being set up. One accepted by a member who has since left reads as
- * declined. Any other shows its own status.
+ * declined for the cycle being set up: the detail doesn't say when they
+ * left, so someone who left in an earlier setup is shown against this one
+ * too. Any other shows its own status.
  */
 export function invitationBadges(
   detail: Pick<StokvelDetailRead, "members" | "invitations" | "cycle"> &
@@ -526,14 +528,20 @@ export function invitationBadges(
           { label: `Pending for cycle ${nextCycle}`, variant: "secondary" },
         ]
       }
-      const status = left.has(id)
-        ? InvitationStatus.declined
-        : invitation.status
+      if (left.has(id)) {
+        return [
+          id,
+          {
+            label: `Declined for cycle ${nextCycle}`,
+            variant: INVITATION_STATUS_BADGES.declined,
+          },
+        ]
+      }
       return [
         id,
         {
-          label: INVITATION_STATUS_LABELS[status],
-          variant: INVITATION_STATUS_BADGES[status],
+          label: INVITATION_STATUS_LABELS[invitation.status],
+          variant: INVITATION_STATUS_BADGES[invitation.status],
         },
       ]
     })
