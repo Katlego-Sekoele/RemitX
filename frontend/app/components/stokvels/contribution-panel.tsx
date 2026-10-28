@@ -41,6 +41,7 @@ import {
   subtractMoney,
   sumMoney,
 } from "~/lib/money"
+import { skipMutationToast } from "~/lib/mutation-toast"
 import {
   contributeRefusal,
   contributeRefusalMessage,
@@ -84,8 +85,9 @@ export function ContributionPanel({
 }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  // The toast follows the chain, which settles after this request returns.
   const contribute = useMutation({
-    ...stokvelMutations.contribute(stokvel.stokvel_id),
+    ...skipMutationToast(stokvelMutations.contribute(stokvel.stokvel_id)),
     onSuccess: async () => {
       await invalidateStokvels(queryClient)
     },

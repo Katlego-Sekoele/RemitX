@@ -1,7 +1,7 @@
 import { CheckIcon, WarningIcon, XIcon } from "@phosphor-icons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import { api, type BankAccountRead } from "~/client"
 import { QueryError } from "~/components/accounts/query-error"
@@ -175,16 +175,18 @@ function PendingBankAccountRow({
   const holder = account.account_holder_name
 
   const verify = useMutation({
-    ...api.admin.bank_accounts.verifyBankAccount(),
+    ...mutationToast(api.admin.bank_accounts.verifyBankAccount(), {
+      success: `${holder}'s ${account.bank_name} account verified`,
+    }),
     onSuccess: () => {
-      toast.success(`${holder}'s ${account.bank_name} account verified`)
       onDecided()
     },
   })
   const reject = useMutation({
-    ...api.admin.bank_accounts.rejectBankAccount(),
+    ...mutationToast(api.admin.bank_accounts.rejectBankAccount(), {
+      success: `${holder}'s ${account.bank_name} account rejected`,
+    }),
     onSuccess: () => {
-      toast.success(`${holder}'s ${account.bank_name} account rejected`)
       onDecided()
     },
   })

@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, PlusIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import {
   api,
@@ -106,7 +106,9 @@ function FindStep({
   onCancel: () => void
 }) {
   const [reference, setReference] = useState("")
+  // Finding someone is the next step of the form, not a saved change.
   const lookup = useMutation({
+    meta: { toast: false },
     mutationFn: async (accountReference: string) => {
       const { data } = await sdk.beneficiaries.lookupBeneficiaryByReference({
         query: { account_reference: accountReference },
@@ -205,10 +207,11 @@ function ConfirmStep({
   const [relationship, setRelationship] =
     useState<BeneficiaryRelationship | null>(null)
   const create = useMutation({
-    ...api.beneficiaries.createBeneficiary(),
+    ...mutationToast(api.beneficiaries.createBeneficiary(), {
+      success: `${found.display_name ?? "Beneficiary"} added`,
+    }),
     onSuccess: async (beneficiary) => {
       await invalidateBeneficiaries(queryClient)
-      toast.success(`${found.display_name ?? "Beneficiary"} added`)
       onAdded?.(beneficiary)
     },
   })

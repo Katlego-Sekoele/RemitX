@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import { api } from "~/client"
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert"
@@ -46,10 +46,11 @@ export function CreateReviewStep({
   // can't be created until the rate has loaded.
   const rate = useTokenRate(currency)
   const create = useMutation({
-    ...api.stokvels.createStokvel(),
+    ...mutationToast(api.stokvels.createStokvel(), {
+      success: (stokvel) => `${stokvel.name} created`,
+    }),
     onSuccess: async (stokvel) => {
       await invalidateStokvels(queryClient)
-      toast.success(`${stokvel.name} created`)
       navigate(stokvelPath(stokvel.stokvel_id))
     },
   })

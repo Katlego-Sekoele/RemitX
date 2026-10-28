@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import { api } from "~/client"
 import {
@@ -75,18 +75,21 @@ export function ContinueOrLeaveCard({
   })
 
   const decide = useMutation({
-    ...stokvelMutations.continueOrLeave(stokvel.stokvel_id),
+    ...mutationToast(stokvelMutations.continueOrLeave(stokvel.stokvel_id), {
+      success: (result) =>
+        result.choice === "leave"
+          ? `You've left ${stokvel.name}`
+          : `You're in for cycle ${result.cycle_number}`,
+    }),
     onSuccess: async (result) => {
       if (result.choice === "leave") {
         setConfirmLeave(false)
-        toast.success(`You've left ${stokvel.name}`)
         // No longer a member: the page would answer 404.
         await navigate(stokvelsPath())
         await invalidateStokvels(queryClient)
         return
       }
       await invalidateStokvels(queryClient)
-      toast.success(`You're in for cycle ${result.cycle_number}`)
     },
   })
 

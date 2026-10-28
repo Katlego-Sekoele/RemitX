@@ -47,6 +47,7 @@ import {
   type PendingDepositRead as PendingDeposit,
   type SkippedStatementLineRead,
 } from "~/client"
+import { skipMutationToast } from "~/lib/mutation-toast"
 import {
   missingStatementColumns,
   parseStatementCsv,
@@ -186,8 +187,9 @@ function StatementUpload({ onProcessed }: { onProcessed: () => void }) {
     []
   )
 
+  // A successful run can still skip lines. The alert below says which.
   const process = useMutation({
-    ...api.admin.deposits.processDeposits(),
+    ...skipMutationToast(api.admin.deposits.processDeposits()),
     onSuccess: (data) => {
       onProcessed()
       setSkippedLines(data.skipped ?? [])

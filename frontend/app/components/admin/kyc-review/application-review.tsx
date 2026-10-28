@@ -36,6 +36,7 @@ import {
   type KycRiskRulesRead,
 } from "~/client"
 import { useHasPermission } from "~/hooks/use-permissions"
+import { mutationToast, skipMutationToast } from "~/lib/mutation-toast"
 import { PERMISSIONS } from "~/lib/permissions"
 
 /** One application, laid out for a decision: the evidence on the left, the
@@ -59,8 +60,9 @@ export function ApplicationReview({
   const rules = useQuery(api.admin.kyc.applications.getRiskRules())
   const codes = useQuery(api.admin.kyc.applications.listReasonCodes())
 
+  // Opening the page claims it. That is not a result the reviewer asked for.
   const claim = useMutation({
-    ...api.admin.kyc.applications.startApplicationReview(),
+    ...skipMutationToast(api.admin.kyc.applications.startApplicationReview()),
     onSuccess: (data) => {
       queryClient.setQueryData(
         api.admin.kyc.applications.getReviewApplication(path).queryKey,
@@ -232,7 +234,9 @@ function RevealButton({
 }) {
   const canReveal = useHasPermission(PERMISSIONS.kycApplicationReadPii)
   const reveal = useMutation({
-    ...api.admin.kyc.applications.revealApplicationPii(),
+    ...mutationToast(api.admin.kyc.applications.revealApplicationPii(), {
+      success: "Details revealed",
+    }),
     onSuccess: onRevealed,
   })
 

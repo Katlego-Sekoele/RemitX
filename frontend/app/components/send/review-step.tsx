@@ -2,8 +2,6 @@ import { ClockIcon, WarningCircleIcon } from "@phosphor-icons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router"
-import { toast } from "sonner"
-
 import { api, sdk, type BeneficiaryRead as Beneficiary } from "~/client"
 import { BeneficiaryAvatar } from "~/components/beneficiaries/beneficiary-avatar"
 import {
@@ -34,6 +32,7 @@ import {
 import { Skeleton } from "~/components/ui/skeleton"
 import { useNow } from "~/hooks/use-now"
 import { errorMessage } from "~/hooks/use-onboarding"
+import { mutationToast } from "~/lib/mutation-toast"
 import { beneficiaryName } from "~/lib/beneficiaries"
 import {
   confirmRefusal,
@@ -114,7 +113,13 @@ export function ReviewStep({
   // before React re-renders the button disabled.
   const confirming = useRef(false)
   const confirm = useMutation({
-    ...api.remittances.confirmRemittance(),
+    ...mutationToast(api.remittances.confirmRemittance(), {
+      success: "Transfer sent",
+      // Known refusals render their own alert. Anything else is announced
+      // here as well as inline, so a 500 or a network failure is not silent.
+      error: (error) =>
+        confirmRefusal(error) === "other" ? errorMessage(error) : false,
+    }),
     onSettled: (_data, error) => {
       if (error) confirming.current = false
     },
@@ -131,7 +136,6 @@ export function ReviewStep({
       queryClient.invalidateQueries({
         queryKey: api.remittances.listRemittances().queryKey,
       })
-      toast.success("Transfer sent")
       navigate(transferPath(remittance.remittance_id))
     },
     onError: (error) => {
@@ -142,11 +146,7 @@ export function ReviewStep({
         queryClient.invalidateQueries({
           queryKey: api.kyc.onboarding.getApplication().queryKey,
         })
-        return
       }
-      // Known refusals render their own alert. Anything else is announced
-      // here as well as inline, so a 500 or a network failure is not silent.
-      if (refusal === "other") toast.error(errorMessage(error))
     },
   })
 

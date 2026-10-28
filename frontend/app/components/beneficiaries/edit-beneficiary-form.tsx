@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import {
   api,
@@ -59,10 +59,11 @@ export function EditBeneficiaryForm({
     beneficiary.relationship
   )
   const update = useMutation({
-    ...api.beneficiaries.updateBeneficiary(),
+    ...mutationToast(api.beneficiaries.updateBeneficiary(), {
+      success: `${name} updated`,
+    }),
     onSuccess: async () => {
       await invalidateBeneficiaries(queryClient)
-      toast.success(`${name} updated`)
       onSaved()
     },
   })

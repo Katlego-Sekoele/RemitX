@@ -299,7 +299,9 @@ export function CycleStartCard({
   const undecided = undecidedMembers(stokvel)
   const canStart = blockers.length === 0 && plan.ready && lapsing === 0
 
+  // Two requests, one toast. The global toast would announce the wrapper too.
   const start = useMutation({
+    meta: { toast: false },
     mutationFn: async () => {
       const rounds = plan.demo ? plan.scheduleFor(new Date()) : plan.schedule
       if (!rounds) return

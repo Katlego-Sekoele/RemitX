@@ -55,7 +55,9 @@ export function useSaveStep(current: string) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
+  // Each step moves on. A toast on every Continue would stack down the wizard.
   return useMutation({
+    meta: { toast: false },
     mutationFn: async (
       fields: Omit<KycApplicationPatch, "expected_version">
     ) => {

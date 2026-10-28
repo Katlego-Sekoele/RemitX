@@ -25,6 +25,7 @@ import {
   SettingsTitle,
 } from "~/components/ui/settings"
 import { errorMessage } from "~/hooks/use-onboarding"
+import { mutationToast } from "~/lib/mutation-toast"
 
 const schema = z.object({
   // Same rule as the API: E.164.
@@ -93,7 +94,12 @@ function MobileForm({
     defaultValues: { mobile_number: mobile ?? "" },
   })
   const update = useMutation({
-    ...api.me.updateMyProfile(),
+    ...mutationToast(api.me.updateMyProfile(), {
+      success: (_data, variables) =>
+        variables.body?.mobile_number
+          ? "Mobile number saved"
+          : "Mobile number removed",
+    }),
     onSuccess: (data) => {
       queryClient.setQueryData(api.me.getMyProfile().queryKey, data)
       onDone()

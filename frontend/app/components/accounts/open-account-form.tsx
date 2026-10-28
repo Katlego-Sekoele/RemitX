@@ -2,7 +2,7 @@ import { PlusIcon } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import { api, PayoutCurrency } from "~/client"
 import { Button } from "~/components/ui/button"
@@ -126,10 +126,11 @@ function OpenAccountCardForm({
   }, [options])
 
   const openAccount = useMutation({
-    ...api.accounts.openAccount(),
-    onSuccess: async (account) => {
+    ...mutationToast(api.accounts.openAccount(), {
+      success: (account) => `${currencyName(account.currency)} account opened`,
+    }),
+    onSuccess: async () => {
       await invalidateAccounts(queryClient)
-      toast.success(`${currencyName(account.currency)} account opened`)
       onOpened?.()
     },
   })

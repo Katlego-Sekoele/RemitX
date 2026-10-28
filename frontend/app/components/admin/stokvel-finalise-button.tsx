@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 import {
   AlertDialog,
@@ -35,13 +35,13 @@ export function StokvelFinaliseButton({
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const finalise = useMutation({
-    ...stokvelAdminMutations.finalise(),
+    ...mutationToast(stokvelAdminMutations.finalise(), {
+      success: `${round.stokvel_name}, round ${round.round + 1}: release queued`,
+      error: (error) => finaliseRefusalMessage(error),
+    }),
     onSuccess: async () => {
       setOpen(false)
       await invalidateAdminRounds(queryClient)
-      toast.success(
-        `${round.stokvel_name}, round ${round.round + 1}: release queued`
-      )
     },
   })
   const hint = finaliseHint(round)

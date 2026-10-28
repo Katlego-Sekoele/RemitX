@@ -33,7 +33,7 @@ import {
 import { FieldError } from "~/components/ui/field"
 import { api, sdk, type KycDocumentRead as KycDocument } from "~/client"
 import { errorMessage } from "~/hooks/use-onboarding"
-import { toast } from "sonner"
+import { mutationToast } from "~/lib/mutation-toast"
 
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf"
 const MAX_BYTES = 10 * 1024 * 1024
@@ -71,9 +71,10 @@ function StoredAttachment({
   const uploaded = new Date(document.uploaded_at).toLocaleDateString()
   const label = typeLabel(document.content_type)
   const remove = useMutation({
-    ...api.kyc.documents.removeMyDocument(),
+    ...mutationToast(api.kyc.documents.removeMyDocument(), {
+      success: `${label} removed`,
+    }),
     onSuccess: () => {
-      toast.success(`${label} removed`)
       onRemoved()
     },
     onError: (error) => setOpenError(errorMessage(error)),
