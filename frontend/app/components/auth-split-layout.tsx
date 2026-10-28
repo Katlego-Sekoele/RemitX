@@ -30,7 +30,8 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
 
         <div className="relative z-20 mt-auto p-8">
           <p className="text-sm text-muted-foreground">
-            ZAR → RLUSD on XRPL Testnet. Academic prototype — no real funds.
+            Remittance and stokvels on the XRPL EVM Testnet. Academic prototype
+            — no real funds.
           </p>
         </div>
       </div>
@@ -47,7 +48,8 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
         <div className="flex w-full max-w-sm flex-col items-center gap-4">
           {children}
           <p className="text-center text-xs text-muted-foreground">
-            XRPL Testnet only. No real remittances or customer funds.
+            XRPL EVM Testnet only. No real transfers, stokvel pools, or customer
+            funds.
           </p>
         </div>
       </div>

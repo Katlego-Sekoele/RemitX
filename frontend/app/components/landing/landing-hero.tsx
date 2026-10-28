@@ -1,40 +1,79 @@
+import { useRef, type PointerEvent } from "react"
+
+import {
+  AsciiTextField,
+  createAsciiPointer,
+} from "~/components/aceternity/ascii-text-field"
 import { FadeIn } from "~/components/aceternity/fade-in"
-import { LazyGlobeDemo } from "~/components/aceternity/lazy-globe-demo"
 import { LandingAuthActions } from "~/components/landing/landing-auth-actions"
-import { RemitXLogo } from "~/components/remitx-logo"
-import { SITE_NAME } from "~/lib/site"
+import {
+  ProductScreen,
+  SEND_PREVIEW,
+  STOKVEL_PREVIEW,
+} from "~/components/landing/product-screen"
+import { Badge } from "~/components/ui/badge"
 
 export function LandingHero() {
+  const pointerRef = useRef(createAsciiPointer())
+  const sectionRef = useRef<HTMLElement>(null)
+
+  function onPointerMove(event: PointerEvent<HTMLElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    pointerRef.current.tx = event.clientX - bounds.left
+    pointerRef.current.ty = event.clientY - bounds.top
+  }
+
+  function onPointerLeave() {
+    pointerRef.current.tx = -2000
+    pointerRef.current.ty = -2000
+  }
+
   return (
-    <section className="relative isolate overflow-x-clip overflow-y-visible border-b border-border bg-background">
-      <div className="relative mx-auto grid min-h-[calc(100svh-4rem)] w-full max-w-6xl items-center gap-10 px-6 py-16 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-12 lg:py-20">
-        <FadeIn className="flex flex-col gap-6">
-          <div className="flex items-center gap-3">
-            <RemitXLogo className="size-12 md:size-14" />
-            <span className="font-heading text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-              {SITE_NAME}
-            </span>
-          </div>
-
-          <h1 className="max-w-xl text-3xl font-semibold tracking-tight text-balance text-foreground md:text-4xl lg:text-5xl">
-            Send ZAR. Land RLUSD for the people who need it.
+    <section
+      ref={sectionRef}
+      className="relative isolate min-h-[calc(100svh-4rem)] overflow-hidden border-b border-border bg-background"
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+    >
+      <AsciiTextField
+        pointerRef={pointerRef}
+        boundsRef={sectionRef}
+        className="absolute inset-0"
+      />
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-16 px-6 py-16 lg:min-h-[calc(100svh-4rem)] lg:grid-cols-2 lg:py-20">
+        <FadeIn
+          data-ascii-safe
+          data-ascii-pad="48"
+          className="flex flex-col gap-6"
+        >
+          <Badge variant="outline" className="w-fit">
+            Remittance and stokvels
+          </Badge>
+          <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-balance text-foreground md:text-6xl lg:text-7xl">
+            Send across a border. Save in a circle.
           </h1>
-
           <p className="max-w-lg text-base text-muted-foreground md:text-lg">
-            Cross-border remittance with fees you see upfront — settle on the
-            XRP Ledger Testnet. Academic prototype. No real funds.
+            RemitX does both. Quote a rand transfer with every fee shown first,
+            or run a rotating stokvel with people you trust. When a round pays
+            out, that payout is a remittance.
           </p>
-
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <LandingAuthActions />
+          <div className="flex flex-wrap items-center gap-3">
+            <LandingAuthActions signUpLabel="Get started" />
           </div>
+          <p className="max-w-md text-sm text-muted-foreground">
+            XRPL EVM Testnet. Academic prototype — no real funds.
+          </p>
         </FadeIn>
 
-        <FadeIn
-          delay={0.12}
-          className="relative h-[min(62vh,34rem)] w-full overflow-visible lg:h-[min(82vh,46rem)]"
-        >
-          <LazyGlobeDemo className="absolute inset-0" />
+        <FadeIn delay={0.12} className="grid items-start gap-4 sm:grid-cols-2">
+          <div data-ascii-safe data-ascii-pad="28">
+            <ProductScreen screen={SEND_PREVIEW} />
+          </div>
+          <div className="sm:pt-14">
+            <div data-ascii-safe data-ascii-pad="28">
+              <ProductScreen screen={STOKVEL_PREVIEW} />
+            </div>
+          </div>
         </FadeIn>
       </div>
     </section>
