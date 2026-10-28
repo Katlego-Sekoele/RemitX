@@ -139,7 +139,7 @@ def _submit_admin(tx: dict[str, Any], w3: Web3, on_signed) -> str:
 
 
 def paused(w3: Web3 | None = None) -> bool:
-    """OpenZeppelin `paused()` on the vault."""
+    """Whether the vault is paused (OpenZeppelin `paused()`)."""
     w3 = w3 or evm_service.get_web3()
     return bool(vault(w3).functions.paused().call())
 
@@ -239,19 +239,19 @@ def finalise(
     contract's reason: `AlreadyFinalised` (already released) or
     `NotYetFinalisable`.
     """
-    w3 = w3 or evm_service.get_web3() # Get the Web3 instance
-    contract = vault(w3) # Get the vault contract instance
+    w3 = w3 or evm_service.get_web3()
+    contract = vault(w3)
+    # Encode the `finalise` call for this stokvel and round
     data = contract.encode_abi(
         "finalise", args=[evm_service.uuid_to_bytes32(stokvel_id), round_]
-    ) # Encode the ABI for the finalise function with the given stokvel_id and round
-    # return the transaction hash after submitting the transaction to the EVM service
+    )
+    # Send it and return the transaction hash
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
 
 
 def is_finalisable(stokvel_id: UUID, round_: int, w3: Web3 | None = None) -> bool:
-    """`isFinalisable(id, round)`: whether `finalise` would succeed now, by
-    the latest block's time (R3-11). Ignores the pause. A read: nothing is
-    sent."""
+    """Whether `finalise` would succeed for this round now. A read only; it
+    does not check the pause."""
     w3 = w3 or evm_service.get_web3()
     return bool(
         vault(w3)
@@ -403,8 +403,8 @@ def start_cycle(
 
 
 def round_finalised(receipt, w3: Web3) -> list[ContractEvent]:
-    """round_finalised takes the receipt of a mined transaction and 
-    returns the RoundFinalised events that the StokvelVault contract 
+    """round_finalised takes the receipt of a mined transaction and
+    returns the RoundFinalised events that the StokvelVault contract
     emitted in it, already decoded and in log order."""
     address = vault(w3).address.lower()
     return [

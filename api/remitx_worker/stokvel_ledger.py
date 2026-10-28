@@ -141,8 +141,8 @@ def record_mined(
 
 
 def scheduled_member(session, cycle_id: uuid.UUID, round_: int) -> uuid.UUID | None:
-    """Looks in the cycle's member list for the member whose payout_position 
-    equals the round number and returns that member's ID. If nobody holds that 
+    """Looks in the cycle's member list for the member whose payout_position
+    equals the round number and returns that member's ID. If nobody holds that
     position, it returns None"""
     return session.scalar(
         select(StokvelCycleMember.member_id).where(
@@ -162,7 +162,7 @@ def ensure_payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout:
     returned. Raises `ReleaseConflict` if no member is scheduled for the round.
     """
     # Check if the payout already exists
-    existing = _payout(session, cycle_id, round_) 
+    existing = _payout(session, cycle_id, round_)
     if existing is not None:
         return existing
     # Check if a member is scheduled for the round
@@ -171,7 +171,8 @@ def ensure_payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout:
         raise ReleaseConflict(
             f"cycle {cycle_id} has no member in payout position {round_}"
         )
-    savepoint = session.begin_nested() # Create a savepoint to allow rollback if the insert fails
+    # Create a savepoint to allow rollback if the insert fails
+    savepoint = session.begin_nested()
     # Try to create the payout row
     try:
         session.add(StokvelPayout(cycle_id=cycle_id, round=round_, member_id=member_id))
@@ -182,13 +183,16 @@ def ensure_payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout:
         existing = _payout(session, cycle_id, round_)
         if existing is None:
             raise
-        return existing # Return the existing row if it was created by another worker
+        # Return the existing row if it was created by another worker
+        return existing
     savepoint.commit()
-    return _payout(session, cycle_id, round_) # return the newly created payout row
+    # Return the newly created payout row
+    return _payout(session, cycle_id, round_)
 
 
 def _payout(session, cycle_id: uuid.UUID, round_: int) -> StokvelPayout | None:
-    """Get the round's payout row, or None if it does not exist yet. Does not create it."""
+    """Get the round's payout row, or None if it does not exist yet. Does not
+    create it."""
     return session.scalar(
         select(StokvelPayout)
         .where(StokvelPayout.cycle_id == cycle_id, StokvelPayout.round == round_)
@@ -230,12 +234,14 @@ def record_pool_release(
             f"round {round_} of cycle {cycle_id} pays member {payout.member_id}, "
             f"but the chain released it to {member_id}"
         )
-    # If the payout is already released, check the chain's release matches the database
+    # If the payout is already released, check the chain's release matches the
+    # database
     if payout.release_status not in RELEASE_IN_FLIGHT:
         return _already_released(payout, tx_hash)
-    # Get the accounts the release moves between and the expected pool amount. 
+    # Get the accounts the release moves between and the expected pool amount.
     stokvel_account_id, treasury_id, expected = _release_accounts(session, cycle_id)
-    # If the pool amount differs from the expected, log a warning but continue to record the release.
+    # If the pool amount differs from the expected, log a warning but continue
+    # to record the release.
     if expected is not None and pool != expected:
         logger.warning(
             "event=stokvel.release_amount_differs cycle_id=%s round=%s "
@@ -247,28 +253,33 @@ def record_pool_release(
         )
 
     now = utcnow()
-    savepoint = session.begin_nested() # Create a savepoint to allow rollback if the update fails
-    
+    # Create a savepoint to allow rollback if the update fails
+    savepoint = session.begin_nested()
+
     # Create a transaction leg for the pool release
     leg = Transaction(
         tx_id=uuid.uuid4(),
         type=TYPE_STOKVEL_POOL_RELEASE,
-        credit_account_id=stokvel_account_id, # From the stokvel's STOKVEL account
-        debit_account_id=treasury_id, # to the Treasury Wallet's UCTUSD account
-        amount=pool, # amount released from the pool in UCTUSD
+        credit_account_id=stokvel_account_id,  # From the stokvel's STOKVEL account
+        debit_account_id=treasury_id,  # to the Treasury Wallet's UCTUSD account
+        amount=pool,  # amount released from the pool in UCTUSD
         currency=CURRENCY_TOKEN,
-        status=TX_STATUS_CONFIRMED, # Mark the leg as confirmed since the release has been mined on-chain
+        # Confirmed, since the release has been mined on-chain
+        status=TX_STATUS_CONFIRMED,
         processed_at=now,
         confirmed_at=now,
     )
     try:
         session.add(leg)
         session.flush()
-        # Check if the payout is still pending or processing, and mark it as released if so. 
-        # If another worker has already recorded the release, this will return None.
+        # Check if the payout is still pending or processing, and mark it as
+        # released if so. If another worker has already recorded the release,
+        # this will return None.
         outcome = _release(session, payout, leg, tx_hash, block_number, now)
         if outcome == RECORDED:
-            _move_pool(session, stokvel_account_id, treasury_id, pool) # Move the pool amount from the stokvel's STOKVEL account to the Treasury Wallet's UCTUSD account
+            # Move the pool from the stokvel's STOKVEL account to the Treasury
+            # Wallet's UCTUSD account
+            _move_pool(session, stokvel_account_id, treasury_id, pool)
     except Exception:
         savepoint.rollback()
         raise
@@ -288,8 +299,10 @@ def _release(session, payout, leg, tx_hash, block_number, now) -> str | None:
         update(StokvelPayout)
         .where(
             StokvelPayout.id == payout.id,
-            StokvelPayout.release_status.in_(RELEASE_IN_FLIGHT), # Pending or processing
+            # Pending or processing
+            StokvelPayout.release_status.in_(RELEASE_IN_FLIGHT),
         )
+        # Add the release transaction leg data to the payout row
         .values(
             release_status=RELEASED,
             release_tx_hash=tx_hash,
@@ -297,17 +310,18 @@ def _release(session, payout, leg, tx_hash, block_number, now) -> str | None:
             release_tx_id=leg.tx_id,
             released_at=now,
             updated_at=now,
-        ) # Add the release transaction leg data to the payout row
+        )
         .execution_options(synchronize_session=False)
     )
-    return RECORDED if released.rowcount == 1 else None 
+    return RECORDED if released.rowcount == 1 else None
 
 
 def _move_pool(session, stokvel_account_id, treasury_id, pool: Decimal) -> None:
-    """Move `pool` from the stokvel's `STOKVEL` account to the Treasury. (update account balances)
+    """Move `pool` from the stokvel's `STOKVEL` account to the Treasury
+    (updates both account balances).
 
-    `STOKVEL` account balance is updated before the Treasury, the same order `record_mined`
-    locks these two rows in.
+    `STOKVEL` account balance is updated before the Treasury, the same order
+    `record_mined` locks these two rows in.
 
     `STOKVEL` can never go below zero (accounts_stokvel_balance_nonneg).
     """
@@ -353,7 +367,8 @@ def _release_accounts(
         .join(StokvelCycle, StokvelCycle.stokvel_id == Stokvel.id)
         .where(StokvelCycle.id == cycle_id)
     ).one()
-    # Check the stokvel has a `STOKVEL` account and the Treasury Wallet's UCTUSD account exists.
+    # Check the stokvel has a `STOKVEL` account and the Treasury Wallet's UCTUSD
+    # account exists.
     if stokvel.account_id is None:
         # Every stokvel gets one when it is created, so this should not happen.
         raise RuntimeError(f"stokvel {stokvel.id} has no STOKVEL account")

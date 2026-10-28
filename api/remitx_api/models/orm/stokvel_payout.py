@@ -159,7 +159,7 @@ class StokvelPayout(Base):
     remittance_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("remittances.remittance_id"), nullable=True, unique=True
     )
-    # The on-chain transaction that burnt the tokens 
+    # The on-chain transaction that burnt the tokens
     burn_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
@@ -169,8 +169,8 @@ class StokvelPayout(Base):
     released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # When the worker last queued a payout for remittance, so it waits a few minutes before
-    # queueing it again
+    # When the worker last queued a payout for remittance, so it waits a few
+    # minutes before queueing it again
     settle_queued_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

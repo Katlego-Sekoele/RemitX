@@ -100,9 +100,9 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
             logger.info("cycle %s does not exist; skipping", cycle_id)
             return "skipped"
         try:
-             # get the payout row for the cycle and round, creating it if missing
+            # get the payout row for the cycle and round, creating it if missing
             payout = ensure_payout(session, target_id, round_)
-        # Contract refused the claim, so another worker is already processing it. Skip.
+        # No member is scheduled for this round, so there is no one to pay. Skip.
         except ReleaseConflict as exc:
             logger.error(
                 "event=stokvel.release_unscheduled cycle_id=%s round=%s: %s",
@@ -121,7 +121,8 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
             .values(release_status=RELEASE_PROCESSING, updated_at=utcnow())
             .execution_options(synchronize_session=False)
         )
-        # If the claim failed, the payout is already claimed. Refresh it to get its status and hash.
+        # If the claim failed, the payout is already claimed. Refresh it to get
+        # its status and hash.
         if claimed.rowcount == 0:
             session.refresh(payout)
             status, tx_hash = payout.release_status, payout.release_tx_hash
@@ -130,13 +131,13 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
     if claimed.rowcount == 0:
         return _resume(self, payout_id, status, tx_hash)
 
-    recorded: list[str] = [] 
+    recorded: list[str] = []
 
     def record(tx_hash: str) -> None:
-        """ Record the signed `finalise`'s hash in the payout row, so a retry waits on it 
-        instead of sending a second `finalise`. Only called once, by the `on_signed` callback. 
-        Raises `_HashNotRecorded` if the payout changed since the claim (e.g. the sync already 
-        recorded it)."""
+        """Record the signed `finalise`'s hash in the payout row, so a retry
+        waits on it instead of sending a second `finalise`. Only called once,
+        by the `on_signed` callback. Raises `_HashNotRecorded` if the payout
+        changed since the claim (e.g. the sync already recorded it)."""
         with session_scope() as session:
             stored = session.execute(
                 update(StokvelPayout)
@@ -151,7 +152,8 @@ def release_pool(self, cycle_id: str, round_: int) -> str:
         if stored.rowcount != 1:
             raise _HashNotRecorded(tx_hash)
         recorded.append(tx_hash)
-    # Try send the signed `finalise` and wait for the receipt. 
+
+    # Try send the signed `finalise` and wait for the receipt.
     # If it fails, give the claim back (`processing -> pending`) for a later try.
     try:
         w3 = evm_service.get_web3()
@@ -384,17 +386,15 @@ def _record(payout_id: uuid.UUID, tx_hash: str, receipt) -> str:
 
 @celery.task(name="stokvel.release_due_rounds")
 def release_due_rounds() -> int:
-    """Runs on a timer and queues `release_pool` for any round that is ready
-    to pay out but has not been released yet.
-
-    For each active cycle, it checks the next unreleased round: is it fully
-    paid, and has its payout time passed? If so, and the contract agrees
-    (`isFinalisable`), it is queued.
+    """Runs on a timer and queues `release_pool` for each round that is due
+    and that the contract agrees can be finalised.
 
     Does nothing while the contract is paused. Returns how many rounds were
     queued."""
     now = utcnow()
     with session_scope() as session:
+        # Get rounds that are past their payout time, fully paid, and not
+        # already being released.
         overdue = _overdue_rounds(session, now)
     if not overdue:
         return 0
@@ -407,7 +407,8 @@ def release_due_rounds() -> int:
         )
         return 0
     queued = 0
-    # Loop over the overdue rounds, checking with the contract if they are finalisable, and enqueueing them for release.
+    # Loop over the overdue rounds, checking with the contract if they are
+    # finalisable, and enqueueing them for release.
     for cycle_id, stokvel_id, round_ in overdue:
         try:
             # Check with the contract if the round is finalisable.
@@ -427,7 +428,7 @@ def release_due_rounds() -> int:
             # contribution the database has confirmed that the chain has not.
             continue
         try:
-            # Try enqueue the release task for this round. 
+            # Try enqueue the release task for this round.
             queue_service.enqueue_release_pool(str(cycle_id), round_)
         except Exception:
             logger.exception(
@@ -444,13 +445,13 @@ def release_due_rounds() -> int:
 
 
 def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, int]]:
-    """Find the rounds ready to release: for each active cycle, its next
-    unreleased round, if its payout time has passed, it is fully paid, and no
-    `release_pool` is already handling it. Returns (cycle id, stokvel id,
-    round) for each.
+    """Return (cycle id, stokvel id, round) for each active cycle whose next
+    unreleased round is past its payout time, fully paid, and not already
+    being released.
 
-    A payout stuck `processing` with no hash for too long is logged for a
-    person: a worker may have crashed after claiming it."""
+    Also logs payouts stuck `processing` with no hash, since a worker may
+    have crashed after claiming one."""
+    # Whether the round already has a released payout
     released = (
         select(StokvelPayout.id)
         .where(
@@ -460,6 +461,7 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
         )
         .exists()
     )
+    # The next unreleased round of each cycle (rounds release in order)
     next_round = (
         select(StokvelRound.cycle_id, func.min(StokvelRound.round).label("round"))
         .where(~released)
@@ -467,6 +469,7 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
         .subquery()
     )
     held_since = now - timedelta(seconds=Config().STOKVEL_RELEASE_STUCK_LOG_SECONDS)
+    # Get the rows of active cycles and their next unreleased rounds.
     rows = session.execute(
         select(
             StokvelCycle.id,
@@ -502,6 +505,9 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
     ).all()
 
     overdue = []
+    # loop through the rows of active cycles and their next unreleased rounds,
+    # checking if they are overdue and fully paid, and logging any that are
+    # stuck in processing with no hash.
     for cycle_id, stokvel_id, total_rounds, round_, status, tx_hash, stale in rows:
         if status == RELEASE_PROCESSING:
             if tx_hash is None and stale:
@@ -518,15 +524,15 @@ def _overdue_rounds(session, now: datetime) -> list[tuple[uuid.UUID, uuid.UUID, 
             continue
         if _fully_paid(session, cycle_id, round_, total_rounds):
             overdue.append((cycle_id, stokvel_id, round_))
+    # Return a list of tuples containing the cycle id, stokvel id, and round
+    # number for each overdue round that is fully paid and not already being
+    # released.
     return overdue
 
 
 def _fully_paid(session, cycle_id: uuid.UUID, round_: int, total_rounds: int) -> bool:
-    """Whether every member has paid `round_` and the round after it (just
-    `round_` if it is the last), as the contract requires.
-
-    There is one round per member, so `total_rounds` is also the number of
-    contributions a round needs."""
+    """Checks in the database whether a round has met the contract's payment
+    rule, before the sweep asks the contract over RPC."""
     rounds = [round_] if round_ + 1 == total_rounds else [round_, round_ + 1]
     paid = dict(
         session.execute(
