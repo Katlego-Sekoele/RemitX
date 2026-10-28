@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -23,8 +23,8 @@ class TrustMeBankLink(Base):
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

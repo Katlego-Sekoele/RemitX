@@ -189,6 +189,16 @@ class TrustMeBankService:
 
         amount_str = _format_amount(amount)
         reference = f"RX-{uuid.uuid4().hex[:10].upper()}"
+        deposit_id = uuid.uuid4()
+        payment = self._client.create_payment(
+            access_token=access_token,
+            idempotency_key=str(deposit_id),
+            debtor_account_id=debtor_account_id,
+            creditor_account_number=self._config.TRUSTMEBANK_SETTLEMENT_ACCOUNT,
+            amount=amount_str,
+            reference=reference,
+            redirect_uri=self._config.TRUSTMEBANK_PAYMENT_REDIRECT_URI,
+        )
         now = datetime.now(UTC)
         transaction = self._transactions.add(
             Transaction(
@@ -202,30 +212,19 @@ class TrustMeBankService:
                 processed_at=now,
             )
         )
-        deposit = self._deposits.add(
+        self._deposits.add(
             Deposit(
+                deposit_id=deposit_id,
                 tx_id=transaction.tx_id,
                 user_id=user_id,
-                user_account_reference=user_account.reference,
+                user_account_reference=reference,
                 payment_method=PAYMENT_METHOD_TRUSTMEBANK,
                 statement_fingerprint=None,
+                trustmebank_payment_id=payment.payment_id,
             )
         )
-        idempotency_key = str(deposit.deposit_id)
-        payment = self._client.create_payment(
-            access_token=access_token,
-            idempotency_key=idempotency_key,
-            debtor_account_id=debtor_account_id,
-            creditor_account_number=self._config.TRUSTMEBANK_SETTLEMENT_ACCOUNT,
-            amount=amount_str,
-            reference=reference,
-            redirect_uri=self._config.TRUSTMEBANK_PAYMENT_REDIRECT_URI,
-        )
-        deposit.trustmebank_payment_id = payment.payment_id
-        deposit.user_account_reference = reference
-        db.session.flush()
         return {
-            "deposit_id": str(deposit.deposit_id),
+            "deposit_id": str(deposit_id),
             "payment_id": payment.payment_id,
             "authorisation_url": payment.authorisation_url,
         }

@@ -19,7 +19,14 @@ not. `tx_id` always points at the one `transactions` row this deposit is:
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from remitx_api.extensions import Base
@@ -60,6 +67,15 @@ class Deposit(Base):
             f"({_CONFIRMED_BY_UUID_SHAPE})",
             name="deposits_confirmed_by_actor",
         ),
+        CheckConstraint(
+            "statement_fingerprint IS NOT NULL OR trustmebank_payment_id IS NOT NULL",
+            name="deposits_source_present",
+        ),
+        Index(
+            "ix_deposits_trustmebank_payment_id",
+            "trustmebank_payment_id",
+            unique=True,
+        ),
         # Admin ids are also enforced in Postgres by
         # validate_deposits_confirmed_by() (see Alembic migration).
     )
@@ -71,9 +87,7 @@ class Deposit(Base):
     # NULL for TrustMeBank-initiated deposits (see trustmebank_payment_id).
     statement_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
     # TrustMeBank payment id; unique when set. Credits only after webhook or poll.
-    trustmebank_payment_id: Mapped[str | None] = mapped_column(
-        Text, nullable=True, unique=True, index=True
-    )
+    trustmebank_payment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     tx_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("transactions.tx_id"), nullable=False
     )
