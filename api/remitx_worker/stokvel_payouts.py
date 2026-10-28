@@ -98,20 +98,23 @@ class _DeploymentFault(Exception):
 
 
 def queue_released_payouts() -> int:
-    """Queue `stokvel.settle_payout` for released payouts whose remittance has
-    not started. Run by the event sync after each run, so a release recorded
-    by the sync or by `release_pool` is paid out within one sync interval, and
-    a lost message is queued again. Returns how many were queued.
+    """Queue `stokvel.settle_payout` for each released payout whose remittance
+    has not started, and return how many were queued.
 
-    `settle_queued_at` marks when a payout was last queued. A payout is due
-    as soon as it is released (never queued yet), then again only
-    `REQUEUE_AFTER` after it was last queued, so a busy worker is not sent a
-    pile of copies. Its own column rather than `updated_at`, so another write
-    to the row (an Administrator action, say) does not delay it. The longest
-    waiting go first (last queued, or released if never), so a few that keep
-    failing cannot keep the rest out.
+    The event sync calls this after every run, so a payout is picked up
+    within one sync interval and a lost message is sent again.
+
+    A payout is due once released, then again only `REQUEUE_AFTER` after it was last
+    queued (`settle_queued_at`), so a busy worker is not sent a pile of
+    copies. That column is separate from `updated_at` so that other writes to
+    the row do not delay it.
+
+    The longest-waiting payouts go first, so a few
+    that keep failing cannot block the rest.
     """
     now = datetime.now(UTC)
+    # The conditions for a payout to be due: released, its remittance not
+    # started, and not queued recently.
     due = (
         StokvelPayout.release_status == RELEASED,
         StokvelPayout.remittance_status == STATUS_PENDING,
@@ -122,6 +125,7 @@ def queue_released_payouts() -> int:
         ),
     )
     with session_scope() as session:
+        # Get the ids of the due payouts, longest-waiting first, up to the limit.
         payout_ids = session.scalars(
             select(StokvelPayout.id)
             .where(*due)
@@ -130,6 +134,8 @@ def queue_released_payouts() -> int:
             )
             .limit(_QUEUE_LIMIT)
         ).all()
+        # If any payouts are due, update their `settle_queued_at` to now so they are not
+        # queued again until `REQUEUE_AFTER`.
         if payout_ids:
             session.execute(
                 update(StokvelPayout)
@@ -137,6 +143,7 @@ def queue_released_payouts() -> int:
                 .values(settle_queued_at=now)
                 .execution_options(synchronize_session=False)
             )
+    # Loop through the payout ids and enqueue a task to settle each payout.
     for payout_id in payout_ids:
         queue_service.enqueue_settle_payout(str(payout_id))
     return len(payout_ids)
@@ -144,15 +151,20 @@ def queue_released_payouts() -> int:
 
 @celery.task(name="stokvel.settle_payout")
 def settle_payout(payout_id: str) -> str:
-    """Create a released payout's quote, legs and remittance (module
-    docstring). Reports what happened, for the log and the tests."""
+    """Turn a released payout into a quote, its legs and a remittance, then
+    hand it to settlement.
+
+    Returns what happened, for the log and the tests: `created`, `skipped`,
+    `not_released`, `already_started`, `rate_unavailable` or `failed`."""
     try:
+        # Get the payout id as a UUID object
         target_id = uuid.UUID(payout_id)
     except (AttributeError, TypeError, ValueError):
         logger.warning("payout id %r is not a valid id; skipping", payout_id)
         return "skipped"
 
     with session_scope() as session:
+        # Get payout row, or None if it does not exist
         payout = session.get(StokvelPayout, target_id)
         if payout is None:
             logger.info("payout %s does not exist; skipping", payout_id)
@@ -163,6 +175,8 @@ def settle_payout(payout_id: str) -> str:
         if payout.remittance_status != STATUS_PENDING or payout.quote_id is not None:
             logger.info("payout %s has already started; skipping", payout_id)
             return "already_started"
+        # Get the member object, stokvel object, pool amount, and beneficiary object for
+        # the payout
         member = session.get(StokvelCycleMember, (payout.cycle_id, payout.member_id))
         stokvel = session.scalar(
             select(Stokvel)
@@ -179,11 +193,16 @@ def settle_payout(payout_id: str) -> str:
         stokvel_id, stokvel_currency = stokvel.id, stokvel.currency
         payout_currency = member.payout_currency
         recipient_id = None if beneficiary is None else beneficiary.linked_user_id
-
+    # If the beneficiary has a problem, mark the payout as failed and return the reason
+    # code.
     if problem is not None:
         return _fail(target_id, problem)
 
     try:
+        # Get the pricing and sender amount for the payout using the pool amount,
+        # stokvel currency, and payout currency.
+        # _price runs `quote_service.price_stokvel_payout` in its own session and
+        # commits.
         pricing, sender_amount = _price(pool, stokvel_currency, payout_currency)
     except (
         exchange_rate_service.RateUnavailableError,
@@ -199,6 +218,7 @@ def settle_payout(payout_id: str) -> str:
         return "rate_unavailable"
 
     try:
+        # Try to create the remittance, quote, and legs for the payout in a new session.
         with session_scope() as session:
             remittance = _create_remittance(
                 session,
@@ -233,6 +253,8 @@ def settle_payout(payout_id: str) -> str:
         pricing.receiver_payout_currency,
     )
     try:
+        # Try to enqueue a task to settle the remittance, which will handle the payout's
+        # legs and final settlement.
         queue_service.enqueue_settle_remittance(str(quote_id))
     except Exception as exc:
         # The remittance is committed and its legs are all pending, which is
@@ -249,15 +271,17 @@ def settle_payout(payout_id: str) -> str:
 
 
 def record_settlement(session, quote_id: uuid.UUID, burn_tx_hash: str | None):
-    """Finish the payout whose remittance `quote_id` is, in `session`, as
-    `confirm_treasury_burn` settles (`burn_tx_hash` given, the burn's receipt
-    confirmed) or fails (None) its legs: `processing -> confirmed`, with the
-    burn hash beside the remittance reference (brief §7.2), or `processing
-    -> failed`, for a person. The release is left as it is.
+    """Finish the payout behind remittance `quote_id`, in `session`.
 
-    Guarded on `processing`, so a replay changes nothing. Returns the
-    payout's id, or None when nothing changed, which is every remittance
-    that is not a stokvel's payout. The caller commits.
+    Called by `confirm_treasury_burn` as it settles or fails the legs. With a
+    `burn_tx_hash` the payout goes `processing -> confirmed` and keeps the
+    hash beside the remittance reference; with None it goes
+    `processing -> failed` for a person to resolve. The release is not
+    touched.
+
+    Only a `processing` payout changes, so a replay does nothing. Returns the
+    payout's id, or None if nothing changed (which includes every remittance
+    that is not a stokvel payout). The caller commits.
     """
     payout_id = session.scalar(
         select(StokvelPayout.id).where(StokvelPayout.quote_id == quote_id)
@@ -282,13 +306,8 @@ def record_settlement(session, quote_id: uuid.UUID, burn_tx_hash: str | None):
 
 
 def _beneficiary_problem(session, member, beneficiary) -> str | None:
-    """Why the member's chosen beneficiary cannot be paid now, as a fixed
-    reason code, or None. A code rather than a sentence with the
-    beneficiary's or recipient's ids in it, so nothing about the people is
-    logged: a person looks the payout up by its id. The payout currency was
-    copied from the beneficiary when it was chosen (R2-09, #231); if they
-    differ now, the member's choice is not what would be paid, so a person
-    decides."""
+    """Return a reason code if the member's chosen beneficiary cannot be paid
+    now, or None if it can."""
     if member.payout_beneficiary_id is None or member.payout_currency is None:
         return "no_payout_beneficiary"
     if beneficiary is None:
@@ -306,13 +325,11 @@ def _beneficiary_problem(session, member, beneficiary) -> str | None:
 
 
 def _price(pool, stokvel_currency: str, payout_currency: str):
-    """`price_stokvel_payout` on a session of its own, bound as the API's
-    request session, which the rate service reads and may write a fetched
-    rate through. Its own commit, so no lock is held while a rate is
-    fetched."""
+    """Run `price_stokvel_payout` in its own session and commit."""
     with session_scope() as session:
         token = set_request_db_session(session)
         try:
+            # Run and return the pricing and sender amount for the payout.
             return quote_service.price_stokvel_payout(
                 pool, stokvel_currency, payout_currency
             )
@@ -323,7 +340,16 @@ def _price(pool, stokvel_currency: str, payout_currency: str):
 def _create_remittance(
     session, payout_id, *, stokvel_id, recipient_id, pricing, sender_amount
 ) -> Remittance:
+    """Create the payout's quote, its four pending remittance transaction legs and
+    its remittance record. Move the payout record from `pending` to `processing`, all in
+    one `session`.
+
+    Raises `_AlreadyStarted` if another delivery got there first (the
+    caller's rollback discards what was made here), or `_DeploymentFault` if
+    the Treasury, bank or token issuer account is missing."""
     now = datetime.now(UTC)
+    # Create the quote for the payout, accepted at once as there is no customer to
+    # accept it.
     quote = Quote(
         stokvel_id=stokvel_id,
         beneficiary_user_id=recipient_id,
@@ -349,7 +375,9 @@ def _create_remittance(
     )
     session.add(quote)
     session.flush()
-
+    # Get the Treasury Wallet account, the beneficiary's token and fiat accounts,
+    # the bank's fiat account, and the token issuer's account. Raise a deployment fault
+    # if any of these are missing.
     try:
         treasury = treasury_account_id(session)
     except RuntimeError as exc:
@@ -374,9 +402,10 @@ def _create_remittance(
             "or token issuer account"
         )
 
+    # Helper function to add a pending leg on this quote.
+    # Nested in here so it can see the quote and session without passing them around.
     def leg(type_, source, destination, amount, currency) -> Transaction:
-        # `credit_account_id` is the source, `debit_account_id` the
-        # destination (transaction.py).
+        """Create one pending transaction leg on this quote, and return it."""
         row = Transaction(
             type=type_,
             credit_account_id=source,
@@ -390,9 +419,17 @@ def _create_remittance(
         return row
 
     tokens = pricing.token_amount
+    # Transaction record for the Treasury Wallet sending tokens to the beneficiary's
+    # token account.
     paid_out = leg(TYPE_REMITTANCE, treasury, beneficiary_token, tokens, CURRENCY_TOKEN)
+    # Transaction record for the beneficiary's token account sending tokens back to the
+    # Treasury Wallet.
     leg(TYPE_REMITTANCE, beneficiary_token, treasury, tokens, CURRENCY_TOKEN)
+    # Transaction record for the Treasury Wallet sending tokens to the token issuer for
+    # burning.
     leg(TYPE_TOKEN_BURN, treasury, issuer, tokens, CURRENCY_TOKEN)
+    # Transaction record for the RemitX bank sending fiat to the beneficiary's fiat
+    # account.
     leg(
         TYPE_BENEFICIARY_PAYOUT,
         bank,
@@ -401,6 +438,8 @@ def _create_remittance(
         pricing.receiver_payout_currency,
     )
     session.flush()
+    # Create the remittance for the payout, linking it to the quote and the first
+    # transaction leg.
     remittance = Remittance(quote_id=quote.quote_id, tx_id=paid_out.tx_id)
     session.add(remittance)
     session.flush()
@@ -428,6 +467,7 @@ def _create_remittance(
 
 
 def _user_account(session, user_id, currency: str):
+    """The user's account id in `currency`, or None if they have none."""
     return session.scalar(
         select(Account.account_id).where(
             Account.user_id == user_id,
@@ -437,8 +477,8 @@ def _user_account(session, user_id, currency: str):
 
 
 def _fail(payout_id: uuid.UUID, reason: str) -> str:
-    """`pending -> failed`, with nothing created, for a person to resolve.
-    `reason` is one of the fixed codes above, never free text."""
+    """Mark the payout record `pending -> failed` without creating anything, and log
+    it for a person to resolve. `reason` is a fixed code, never free text."""
     with session_scope() as session:
         session.execute(
             update(StokvelPayout)
