@@ -467,6 +467,79 @@ export function invitationsAwaitingContinuation(
   )
 }
 
+/** Accepted invitations whose invitee is no longer a member: they chose to
+ * leave after a cycle closed, or were left out when the next one started
+ * (`members` lists current members only). Their invitation stays accepted,
+ * so the invitations card shows them as declining the next cycle instead. */
+export function invitationsOfFormerMembers(
+  detail: Pick<StokvelDetailRead, "members" | "invitations">
+): Set<string> {
+  const current = new Set(detail.members.map((member) => member.user_id))
+  return new Set(
+    detail.invitations
+      .filter(
+        (invitation) =>
+          invitation.status === InvitationStatus.accepted &&
+          !current.has(invitation.invitee_user_id)
+      )
+      .map((invitation) => invitation.invitation_id)
+  )
+}
+
+export type InvitationBadge = {
+  label: string
+  variant: "default" | "secondary" | "outline"
+}
+
+/** Accepted reads as done; the rest as answered with no member. */
+const INVITATION_STATUS_BADGES: Record<
+  InvitationStatus,
+  "default" | "outline"
+> = {
+  pending: "outline",
+  accepted: "default",
+  declined: "outline",
+  revoked: "outline",
+  lapsed: "outline",
+}
+
+/**
+ * The badge on each invitation in the invitations card, by invitation id.
+ * An invitation still waiting for an answer, or accepted by a member of the
+ * closed cycle who hasn't said whether they continue, is pending for the
+ * cycle being set up. One accepted by a member who has since left reads as
+ * declined. Any other shows its own status.
+ */
+export function invitationBadges(
+  detail: Pick<StokvelDetailRead, "members" | "invitations" | "cycle"> &
+    Partial<Pick<StokvelDetailRead, "previous_cycle">>
+): Map<string, InvitationBadge> {
+  const deciding = invitationsAwaitingContinuation(detail)
+  const left = invitationsOfFormerMembers(detail)
+  const nextCycle = formingCycleNumber(detail)
+  return new Map(
+    detail.invitations.map((invitation): [string, InvitationBadge] => {
+      const id = invitation.invitation_id
+      if (invitation.status === InvitationStatus.pending || deciding.has(id)) {
+        return [
+          id,
+          { label: `Pending for cycle ${nextCycle}`, variant: "secondary" },
+        ]
+      }
+      const status = left.has(id)
+        ? InvitationStatus.declined
+        : invitation.status
+      return [
+        id,
+        {
+          label: INVITATION_STATUS_LABELS[status],
+          variant: INVITATION_STATUS_BADGES[status],
+        },
+      ]
+    })
+  )
+}
+
 /**
  * Where the signed-in member stands after a cycle closes (R4-10, #259):
  * `none` when no cycle has closed into a forming one, `organiser` (always
