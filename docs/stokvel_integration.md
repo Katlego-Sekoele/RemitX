@@ -596,6 +596,8 @@ _Roles 1, 2 and 4 to confirm codes and wording._
 
 **Built behind `ENABLE_TRUSTMEBANK` (default off).** When the flag is on and credentials are set, customers can link TrustMeBank through OAuth, initiate a ZAR payment to RemitX's settlement account, approve on TrustMeBank, and receive a credit after a signed `payment.completed` webhook or an authenticated poll. When the flag is off, behaviour is unchanged: deposits come only from CSV reconciliation in `services/deposit_service.py`. Withdrawals through TrustMeBank are not built (#275 closed as not planned).
 
+Cloud Run reads the flag from Terraform (`enable_trustmebank`, default `false`). Set GitHub environment variable `TF_VAR_enable_trustmebank` to `true` on `qa` or `prod` and redeploy to turn it on. The API's OAuth and payment return URLs are that environment's frontend (`/app/accounts/trustmebank/oauth` and `/return`). Those URIs must be registered on the TrustMeBank application.
+
 | Touchpoint | Route / function | Notes |
 |---|---|---|
 | Feature flag | `Config.ENABLE_TRUSTMEBANK` | Also exposed as `GET /trustmebank/status` |
