@@ -29,6 +29,7 @@ import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemMedia,
   ItemTitle,
 } from "~/components/ui/item"
@@ -96,7 +97,10 @@ export function StokvelInvitations({
               invitation={invitation}
               portrait={inviteePortrait(invitation.invitee_name, portraits)}
               awaitingCycle={
-                deciding.has(invitation.invitation_id) ? nextCycle : null
+                invitation.status === InvitationStatus.pending ||
+                deciding.has(invitation.invitation_id)
+                  ? nextCycle
+                  : null
               }
               canRevoke={
                 stokvel.is_organiser &&
@@ -128,9 +132,9 @@ function inviteePortrait(
 /** One invitation and its status. The detail route leaves the reference
  * null for anyone but the Organiser, or when the invitee no longer holds
  * the account, so it is shown only when there is one. `awaitingCycle` is
- * set for an invitation accepted for the closed cycle whose member hasn't
- * said yet whether they join this one: the number of the cycle being set
- * up. */
+ * the number of the cycle being set up, for an invitation still waiting for
+ * an answer and for one accepted for the closed cycle whose member hasn't
+ * said yet whether they join this one. */
 function InvitationRow({
   invitation,
   portrait,
@@ -173,16 +177,17 @@ function InvitationRow({
           {invitation.account_reference ? (
             <AccountReference reference={invitation.account_reference} />
           ) : null}
-        </ItemContent>
-        <ItemActions>
           {pending ? (
-            <Badge variant="secondary">
+            <ItemDescription>
               Invited{" "}
               {formatDistanceToNow(new Date(invitation.created_at), {
                 addSuffix: true,
               })}
-            </Badge>
-          ) : awaitingCycle != null ? (
+            </ItemDescription>
+          ) : null}
+        </ItemContent>
+        <ItemActions>
+          {awaitingCycle != null ? (
             <Badge variant="secondary">Pending for cycle {awaitingCycle}</Badge>
           ) : (
             <Badge variant={STATUS_BADGES[invitation.status]}>
