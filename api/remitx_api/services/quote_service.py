@@ -247,8 +247,7 @@ def token_rates(currency: str) -> TokenRates:
 
 def token_to_fiat(token_amount: Decimal, rates: TokenRates) -> Decimal:
     """What `token_amount` UCTUSD costs in `rates.currency`, to the cent: a
-    stokvel contribution's fiat debit (D13, the fixed token amount at the
-    rate when the member pays). Multiplies by the stored USD quote itself,
+    stokvel contribution's fiat debit. Multiplies by the stored USD quote itself,
     not by dividing by `_token_rate`'s inverse: that is rounded to 8 places,
     which in a currency with a large rate (ZWL) is off by whole units."""
     return round_amount(token_amount * rates.units_per_token)
@@ -326,42 +325,53 @@ def price_remittance(
 def price_stokvel_payout(
     pool: Decimal, stokvel_currency: str, receiver_payout_currency: str
 ) -> tuple[RemittancePricing, Decimal]:
-    """(pricing, sender_amount) for a stokvel's payout of a released pool
-    (R3-05, #242). `RemittancePricing` has no sender amount, since a user's
-    quote is priced from the amount they chose; here it is worked out.
+    """Price a stokvel's payout of a released pool, returning
+    `(pricing, sender_amount)`. `RemittancePricing` has no sender amount, so
+    it comes back separately.
 
-    The pool is a fixed UCTUSD amount, already released to the Treasury
-    Wallet, so `token_amount` is the pool itself, not derived from a fiat
-    amount: the burn must match the release exactly. The quote's sender is the
-    stokvel, in its own currency: `sender_amount` is the pool at the live
-    rate, as a contribution's fiat debit is worked out (`token_to_fiat`). The
-    beneficiary gets that amount converted directly to their payout
-    currency, as in `price_remittance`.
+    - `token_amount` is the pool itself, because the burn must match the
+      release exactly.
+    - The stokvel is the sender, so `sender_amount` is the pool in the
+      stokvel's currency at the live rate (as `token_to_fiat` does for
+      contributions).
+    - The beneficiary gets that converted straight to their payout currency,
+      as in `price_remittance`.
 
-    No fee and no margin: the members paid the payout's fee on top of their
-    contributions (D6, #340), so the beneficiary gets the full pool. No
-    limits apply to a stokvel sender (D8). Looks up (and may fetch and store)
-    rates, so call it before taking any lock.
+    No fee, margin or sending limits: the members already paid the payout's
+    fee with their contributions, and a stokvel has no limits. May
+    fetch and store rates, so call it before taking any lock.
     """
+    # check that the pool is positive, otherwise raise an error
     if pool <= 0:
         raise ValueError("pool must be positive")
+    # Get the token rates for the stokvel fiat currency.
     rates = token_rates(stokvel_currency)
+    # Convert the pool amount to the sender fiat currency using the token rates.
     sender_amount = token_to_fiat(pool, rates)
+    # Get the fiat to token exchange rate for the stokvel fiat currency.
     fiat_to_token_exchange_rate, fiat_to_token_exchange_rate_id = _token_rate(
         stokvel_currency
     )
+    # Get the direct fiat exchange rate for the stokvel fiat currency to the receiver
+    # payout currency.
     fiat_exchange_rate, fiat_exchange_rate_id = _direct_fiat_rate(
         stokvel_currency, receiver_payout_currency
     )
+    # Calculate the receiver amount and payout fee based on the sender amount and fiat
+    # exchange rate.
     receiver_amount = round_amount(sender_amount * fiat_exchange_rate)
+    # Estimate the payout fee using the configured cash out fee rate and minimum cash
+    # out fee.
     payout_fee = max(
         round_amount(Config.CASH_OUT_FEE_RATE * receiver_amount),
         Config.MIN_CASH_OUT_FEE,
     )
+    # Return a RemittancePricing object with the calculated values, along with the
+    # sender_amount.
     return RemittancePricing(
         sender_currency=stokvel_currency,
         sender_amount_zar=to_zar(sender_amount, stokvel_currency, rates=rates),
-        sender_transaction_fee=Decimal("0.00"),
+        sender_transaction_fee=Decimal("0.00"),  # Fees paid before, not at payout time.
         exchange_rate_margin=Decimal("0.00"),
         token_amount=pool,
         token_name=CURRENCY_TOKEN,

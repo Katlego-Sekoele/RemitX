@@ -1,22 +1,24 @@
-"""The worker's wrapper over the StokvelVault contract (doc section 1).
+"""The worker's calls to the StokvelVault contract.
 
-R2-12 (#234) adds `contribute` and the Treasury allowance it needs; R2-13
-(#235) reads the events the sync applies (`fetch_logs`, `decode_log`); R2-10
-(#232) `getStokvel`, `createStokvel` and `startCycle`; R3-04 (#241)
-`finalise` and `round_finalised`; R3-07 (#244) `pause`, `unpause` and
-`paused`; R3-11 (#248) `isFinalisable`. Treasury sends go through
-`evm_service.submit_transaction`; pause and unpause use
-`submit_admin_transaction`. Every send goes through
-`evm_service.submit_transaction`, so it holds the Treasury send lock and can
-store its hash before the send.
+Sends (each returns the transaction hash without waiting for it to be mined):
 
-The ABI is a copy of `contracts/abi/StokvelVault.json`
-(`remitx_worker/abi/StokvelVault.json`): the worker image is built from
-`api/` only, so it cannot read the contracts folder.
-`tests/test_worker_stokvel_contribution.py` fails if the two copies differ.
+- `create_stokvel`, `start_cycle`: register a stokvel and open a cycle
+- `contribute`: pay a member's contribution into a round
+- `finalise`: release a due round's pool to the Treasury Wallet
+- `pause`, `unpause`: stop or resume every stokvel (sent by the vault admin)
 
-IDs: stokvel and member IDs are database UUIDs packed into `bytes32`
-(`evm_service.uuid_to_bytes32`, section 1). Log them in their UUID form.
+`ensure_allowance` lets the vault pull UCTUSD from the Treasury Wallet before
+a `contribute`, and does wait for its approval to be mined.
+
+Reads:
+
+- `get_stokvel`, `paused`, `is_finalisable`: contract state
+- `fetch_logs`, `decode_log`, `round_finalised`: the contract's events
+
+A send the contract would revert raises `ContractRefused` before it is
+signed. Stokvel and member IDs are database UUIDs packed into `bytes32`.
+The ABI is a copy of `contracts/abi/StokvelVault.json`, because the worker
+image cannot read the contracts folder.
 """
 
 import json
@@ -111,7 +113,9 @@ def vault(w3: Web3) -> Contract:
 
 
 def _submit(tx: dict[str, Any], w3: Web3, on_signed) -> str:
-    """`evm_service.submit_transaction`, with a revert at the gas estimate
+    """
+    Function to submit a transaction to the EVM service. It wraps around
+    `evm_service.submit_transaction`, with a revert at the gas estimate
     raised as `ContractRefused`. Nothing is signed or sent in that case."""
     try:
         return evm_service.submit_transaction(tx, w3=w3, on_signed=on_signed)
@@ -122,7 +126,9 @@ def _submit(tx: dict[str, Any], w3: Web3, on_signed) -> str:
 
 
 def _submit_admin(tx: dict[str, Any], w3: Web3, on_signed) -> str:
-    """`evm_service.submit_admin_transaction`, with the same revert handling
+    """
+    Function to submit an admin transaction to the EVM service. It wraps around
+    `evm_service.submit_admin_transaction`, with the same revert handling
     as `_submit`."""
     try:
         return evm_service.submit_admin_transaction(tx, w3=w3, on_signed=on_signed)
@@ -133,7 +139,7 @@ def _submit_admin(tx: dict[str, Any], w3: Web3, on_signed) -> str:
 
 
 def paused(w3: Web3 | None = None) -> bool:
-    """OpenZeppelin `paused()` on the vault."""
+    """Whether the vault is paused (OpenZeppelin `paused()`)."""
     w3 = w3 or evm_service.get_web3()
     return bool(vault(w3).functions.paused().call())
 
@@ -217,29 +223,35 @@ def finalise(
     on_signed=None,
     w3: Web3 | None = None,
 ) -> str:
-    """Send `finalise(id, round)` from the Treasury Wallet and return its hash
-    (R3-04). Submits only: the caller waits on the hash with
-    `evm_service.wait_for_receipt`, then reads the release from the receipt
-    with `round_finalised`.
+    """Ask the contract to release a due round's pool, for when no later
+    contribution arrives to release it.
 
-    The contract releases the round's pool to the Treasury Wallet only if it
-    is the next round to release, it and the next round are fully paid, and
-    its payout time has passed. Otherwise the gas estimate reverts and this
-    raises `ContractRefused` before anything is signed: `AlreadyFinalised`
-    (a `contribute` released it first) or `NotYetFinalisable` (not due).
+    Sends `finalise(id, round)` from the Treasury Wallet and returns the
+    hash without waiting: the caller waits with `evm_service.wait_for_receipt`
+    and reads the release with `round_finalised`.
+
+    The contract only releases a round when:
+    - it is the next round in order
+    - it and the next round are fully paid
+    - its payout time has passed
+
+    If not, nothing is sent and this raises `ContractRefused` with the
+    contract's reason: `AlreadyFinalised` (already released) or
+    `NotYetFinalisable`.
     """
     w3 = w3 or evm_service.get_web3()
     contract = vault(w3)
+    # Encode the `finalise` call for this stokvel and round
     data = contract.encode_abi(
         "finalise", args=[evm_service.uuid_to_bytes32(stokvel_id), round_]
     )
+    # Send it and return the transaction hash
     return _submit({"to": contract.address, "data": data}, w3, on_signed)
 
 
 def is_finalisable(stokvel_id: UUID, round_: int, w3: Web3 | None = None) -> bool:
-    """`isFinalisable(id, round)`: whether `finalise` would succeed now, by
-    the latest block's time (R3-11). Ignores the pause. A read: nothing is
-    sent."""
+    """Whether `finalise` would succeed for this round now. A read only; it
+    does not check the pause."""
     w3 = w3 or evm_service.get_web3()
     return bool(
         vault(w3)
@@ -391,9 +403,9 @@ def start_cycle(
 
 
 def round_finalised(receipt, w3: Web3) -> list[ContractEvent]:
-    """The vault's `RoundFinalised` events in a mined receipt, in log order.
-    A `finalise` releases exactly one round; a `contribute` may release
-    several. Logs from other contracts in the receipt are ignored."""
+    """round_finalised takes the receipt of a mined transaction and
+    returns the RoundFinalised events that the StokvelVault contract
+    emitted in it, already decoded and in log order."""
     address = vault(w3).address.lower()
     return [
         decode_log(log, w3)

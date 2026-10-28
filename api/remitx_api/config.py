@@ -50,24 +50,21 @@ class Config:
     STOKVEL_SYNC_INTERVAL_SECONDS = int(
         os.getenv("STOKVEL_SYNC_INTERVAL_SECONDS", "30")
     )
-    # How often the beat runs `stokvel.register_started_cycles`, which
-    # re-queues `stokvel.start_cycle` for active cycles not yet registered
-    # on-chain (R2-10, #232). Only cycles started at least this long ago, so
-    # a start still in its first task is left to it.
+    # How often the beat runs `stokvel.register_started_cycles` to retry
+    # active cycles not yet registered on-chain. It skips cycles started less
+    # than this long ago, which may still be registering.
     STOKVEL_START_SWEEP_INTERVAL_SECONDS = int(
         os.getenv("STOKVEL_START_SWEEP_INTERVAL_SECONDS", "300")
     )
-    # How often the beat runs `stokvel.release_due_rounds`, which queues
-    # `stokvel.release_pool` for rounds fully paid before their payout time
-    # once that time passes (R3-11, #248). A round goes out within about this
-    # long of its payout time.
+    # How often the beat runs `stokvel.release_due_rounds` to release paid
+    # rounds whose payout time has passed.
     STOKVEL_RELEASE_INTERVAL_SECONDS = int(
         os.getenv("STOKVEL_RELEASE_INTERVAL_SECONDS", "60")
     )
-    # A payout `processing` with no hash for longer than this is logged by
-    # `stokvel.release_due_rounds` for a person. Its own setting, not the
-    # interval: a `release_pool` waiting on the Treasury send lock or an RPC
-    # retry can rightly take longer than a run.
+    # How long a payout can sit `processing` with no hash before
+    # `stokvel.release_due_rounds` logs it for a person. Longer than the
+    # interval, since a `release_pool` waiting on a lock or retry can take a
+    # while.
     STOKVEL_RELEASE_STUCK_LOG_SECONDS = int(
         os.getenv("STOKVEL_RELEASE_STUCK_LOG_SECONDS", "600")
     )

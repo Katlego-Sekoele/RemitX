@@ -406,31 +406,17 @@ def confirm_treasury_burn(
 ) -> str:
     """Record the outcome of `burn_treasury_tokens`'s EVM burn.
 
-    On success, confirm and credit *every* remittance transactions in one commit.
+    - `tx_hash` is set once the burn's receipt confirms it
+    - every transaction for `quote_id` still `pending` or `processing` is
+      confirmed and credited in one commit.
+    - when `tx_hash` is None, it means the burn failed (nothing sent, or it
+      reverted): those transactions are marked `failed` and no balances change.
+    - For a stokvel payout, its `stokvel_payouts` row is marked `confirmed` or
+      `failed` in the same commit (`stokvel_payouts.record_settlement`).
 
-    Guarded on `status IN ('pending', 'processing')`, which catches every
-    transaction that's still waiting that was claimed together by
-    `burn_treasury_tokens`.
-
-    `tx_hash` is given only once the burn's receipt has confirmed it.
-    `tx_hash is None` indicated a token burn failure (nothing sent, or the
-    burn reverted). Therefore, every transaction the `quote_id` is set to
-    `failed`. Only transaction status changes as no account balances were
-    changed.
-
-    A stokvel's payout remittance (R3-06, #243) settles the same way, and
-    its `stokvel_payouts` row is finished in the same commit
-    (`stokvel_payouts.record_settlement`): `confirmed` with the burn hash,
-    or `failed`. Any other remittance has no payout row, and nothing changes.
-
-    A failed group sits and needs manual investigation. Groups stuck in
-    ``processing`` are only logged by ``reclaim_stuck_settlements``; fully
-    ``pending`` groups are re-enqueued by ``reclaim_pending_settlements``.
-
-    `error` (the original exception's message, from `burn_treasury_tokens`)
-    is logged alongside that failure so the worker's log stream shows the
-    actual reason next to the group that got marked `failed`, not just the
-    fact of it.
+    A failed group needs manual investigation. ``reclaim_stuck_settlements``
+    only logs groups stuck in ``processing``; ``reclaim_pending_settlements``
+    re-enqueues fully ``pending`` ones.
     """
     try:
         # get the quote_id as a UUID object
@@ -455,7 +441,7 @@ def confirm_treasury_burn(
                 # Get transactions with the given quote_id and in-flight
                 # status, and update their status to failed
             )
-            # A stokvel's payout fails with its legs (R3-06), in this commit
+            # A stokvel's payout fails with its legs, in this commit
             payout_id = (
                 record_settlement(session, target_id, None) if result.rowcount else None
             )
@@ -520,7 +506,7 @@ def confirm_treasury_burn(
             # transaction row (already stored before the send; the same
             # value, written again)
         )
-        # A stokvel's payout is finished with its legs (R3-06), before the
+        # A stokvel's payout is finished with its legs, before the
         # balances: a release locks its payout before the accounts too.
         payout_id = record_settlement(session, target_id, tx_hash)
 
