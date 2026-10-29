@@ -1,4 +1,5 @@
 module "upstash" {
+  count  = var.redis_url == "" ? 1 : 0
   source = "./modules/upstash_redis"
 
   environment    = var.environment

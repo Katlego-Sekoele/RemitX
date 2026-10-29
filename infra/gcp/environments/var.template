@@ -14,6 +14,8 @@ frontend_custom_domain  = "qa.example.com"
 
 # Same GCP project for QA + prod: on prod.tfvars only:
 # github_deploy_service_account_email = "remitx-github-deploy@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+# And set GitHub secret TF_VAR_redis_url on prod to the QA workspace redis_url output
+# (free Upstash allows one database; Celery queues are settlement-<env>).
 
 upstash_primary_region          = "eu-west-1"
 artifact_registry_repository_id = "remitx"

@@ -7,6 +7,7 @@ gcp_region = "africa-south1"
 
 artifact_registry_repository_id = "remitx"
 upstash_primary_region          = "eu-west-1"
+# redis_url → GitHub secret TF_VAR_redis_url (reuse remitx-gcp-qa output; free Upstash = 1 DB)
 
 frontend_custom_domain = "remitx.tech"
 api_custom_domain      = ""

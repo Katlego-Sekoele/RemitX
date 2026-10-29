@@ -133,6 +133,7 @@ jobs:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
       TF_VAR_upstash_api_key: ${{ secrets.TF_VAR_upstash_api_key }}
+      TF_VAR_redis_url: ${{ secrets.TF_VAR_redis_url }}
       TF_VAR_database_url: ${{ secrets.TF_VAR_database_url }}
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
@@ -169,6 +170,9 @@ jobs:
           fi
           [ -n "${TF_VAR_upstash_api_key}" ]      || missing+=("TF_VAR_upstash_api_key (secret)")
           [ -n "${TF_VAR_upstash_email}" ]        || missing+=("TF_VAR_upstash_email (variable)")
+          if [ "$DEPLOY_ENV" = "prod" ]; then
+            [ -n "${TF_VAR_redis_url}" ] || missing+=("TF_VAR_redis_url (secret; reuse QA Redis URL)")
+          fi
           [ -n "${TF_VAR_database_url}" ]         || missing+=("TF_VAR_database_url (secret)")
           [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key (secret)")
           [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key (variable)")

@@ -56,7 +56,7 @@ output "worker_container_image" {
 }
 
 output "artifact_registry_repository" {
-  value = google_artifact_registry_repository.remitx.name
+  value = local.artifact_registry_repository_name
 }
 
 output "github_deploy_service_account_email" {

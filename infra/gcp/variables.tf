@@ -63,6 +63,17 @@ variable "upstash_primary_region" {
   description = "Upstash Redis primary region (GCP compute uses africa-south1)."
 }
 
+variable "redis_url" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = <<-EOT
+    Optional Celery broker/backend URL. Non-empty skips creating an Upstash database
+    (free Upstash allows one DB). Prod sharing QA Redis: set TF_VAR_redis_url to the
+    remitx-gcp-qa terraform output redis_url. Queues are still namespaced per environment.
+  EOT
+}
+
 variable "clerk_secret_key" {
   type      = string
   sensitive = true

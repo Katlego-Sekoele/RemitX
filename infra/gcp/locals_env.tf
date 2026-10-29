@@ -4,7 +4,7 @@ locals {
     try(data.terraform_remote_state.data.outputs.database_urls[var.environment], ""),
   )
 
-  redis_url = module.upstash.redis_url
+  redis_url = var.redis_url != "" ? var.redis_url : module.upstash[0].redis_url
 
   api_public = (
     var.api_custom_domain != ""
@@ -27,7 +27,8 @@ locals {
   )))
 
   runtime_env = {
-    CELERY_QUEUE       = "settlement"
+    # Environment-suffixed so QA and prod can share one Upstash DB safely.
+    CELERY_QUEUE       = "settlement-${var.environment}"
     CELERY_CONCURRENCY = "2"
   }
 

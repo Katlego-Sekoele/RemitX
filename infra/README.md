@@ -70,12 +70,12 @@ PRs on `infra/**`: Terraform **plan** only (no deploy). Push/manual: full rollou
 On `infra/gcp` apply (per workspace):
 
 - API enablement (Run, Artifact Registry, Firebase, Secret Manager, …)
-- **Artifact Registry** Docker repo (`artifact_registry_repository_id`, default `remitx`)
+- **Artifact Registry** Docker repo (`artifact_registry_repository_id`, default `remitx`) — created once per GCP project; prod that sets `github_deploy_service_account_email` reuses the QA repo
 - Cloud Run services (image/env updated again by deploy jobs)
 - Secret Manager versions for runtime credentials; Cloud Run receives them as
   secret-backed environment variables, never as plaintext service configuration
 - Firebase project + Hosting site (+ custom domain resource when set in tfvars)
-- Upstash Redis database per environment
+- Upstash Redis database when `TF_VAR_redis_url` is unset (QA). Prod on the free plan sets `TF_VAR_redis_url` to the QA `redis_url` output and skips creating a second DB; Celery queues are `settlement-<env>`
 - Service accounts for API and worker; **GitHub deploy** SA `remitx-github-deploy` (created on first apply in a GCP project) plus Run / Artifact Registry / Firebase Hosting IAM on every workspace
 - **One deploy SA per GCP project:** leave `github_deploy_service_account_email` empty (default) so Terraform creates it. If `remitx-gcp-qa` and `remitx-gcp-prod` target the **same** project, set that variable on the prod workspace to the email from `terraform output` after QA apply (so prod does not try to create a second SA)
 
@@ -129,6 +129,14 @@ Terraform manages these project grants after that bootstrap.
 
 Repeat with `remitx-gcp-prod` + `stable` for production. Same GCP project as QA: add `github_deploy_service_account_email = "remitx-github-deploy@<project-id>.iam.gserviceaccount.com"` to `prod.tfvars` and reuse the same `GOOGLE_CREDENTIALS`. Separate GCP projects: leave the variable empty on both.
 
+Same Upstash free tier (one database): after QA apply, copy the Redis URL into the **prod** GitHub secret:
+
+```bash
+make -C infra gcp-init ENV=qa
+cd infra/gcp && TF_WORKSPACE=remitx-gcp-qa terraform output -raw redis_url
+# → GitHub Environment prod secret TF_VAR_redis_url
+```
+
 ---
 
 
@@ -161,6 +169,7 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `GOOGLE_CREDENTIALS`                      | ✓   | JSON key or WIF provider config for `remitx-github-deploy` (SA + IAM from Terraform; key/WIF created once outside TF).                                           |
 | `NEON_API_KEY`                            | ✓   | Neon account API key; storage verify script + `TF_VAR_neon_api_key` on data apply.                                                                               |
 | `TF_VAR_upstash_api_key`                  | ✓   | Upstash Terraform provider API key.                                                                                                                              |
+| `TF_VAR_redis_url`                        | P   | Celery Redis URL. **Prod:** set to `terraform output -raw redis_url` from `remitx-gcp-qa` (reuse QA DB on free Upstash). Leave unset on QA so Terraform creates the DB. |
 | `TF_VAR_database_url`                     | ✓   | SQLAlchemy Postgres URL for **this** environment’s Neon branch; GCP TF fallback until `remitx-data` remote state is wired; also passed as `TF_VAR_database_url`. |
 | `MIGRATIONS_DATABASE_URL`                 | ✓   | Same URL as above for the **migrate** job (`alembic upgrade head`).                                                                                              |
 | `TF_VAR_clerk_secret_key`                 | ✓   | Clerk instance secret (`sk_test_…` / `sk_live_…`); TF Clerk provider + runtime API/worker.                                                                       |
