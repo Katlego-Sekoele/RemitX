@@ -36,26 +36,17 @@ import {
 import { beneficiaryName, beneficiaryShortName } from "~/lib/beneficiaries"
 import { isGoneInvitationError, revokeErrorMessage } from "~/lib/stokvel-errors"
 import {
-  INVITATION_STATUS_LABELS,
   InvitationStatus,
-  formingCycleNumber,
   invalidateStokvels,
+  invitationBadges,
   invitationsAwaitingContinuation,
   invitationsByStatus,
   pendingInvitations,
   stokvelMutations,
+  type InvitationBadge,
   type StokvelDetailInvitationRead,
   type StokvelDetailRead,
 } from "~/lib/stokvels"
-
-/** Accepted reads as done; the rest as answered with no member. */
-const STATUS_BADGES: Record<InvitationStatus, "default" | "outline"> = {
-  pending: "outline",
-  accepted: "default",
-  declined: "outline",
-  revoked: "outline",
-  lapsed: "outline",
-}
 
 /**
  * Every invitation of the stokvel and its status (R4-13, #299; all of them
@@ -73,9 +64,10 @@ export function StokvelInvitations({
   const invitations = invitationsByStatus(stokvel)
   const beneficiaries = useQuery(api.beneficiaries.listMyBeneficiaries())
   if (invitations.length === 0) return null
-  const deciding = invitationsAwaitingContinuation(stokvel)
-  const waiting = pendingInvitations(stokvel).length + deciding.size
-  const nextCycle = formingCycleNumber(stokvel)
+  const waiting =
+    pendingInvitations(stokvel).length +
+    invitationsAwaitingContinuation(stokvel).size
+  const badges = invitationBadges(stokvel)
   const portraits = beneficiaries.data ?? []
 
   return (
@@ -96,12 +88,7 @@ export function StokvelInvitations({
               key={invitation.invitation_id}
               invitation={invitation}
               portrait={inviteePortrait(invitation.invitee_name, portraits)}
-              awaitingCycle={
-                invitation.status === InvitationStatus.pending ||
-                deciding.has(invitation.invitation_id)
-                  ? nextCycle
-                  : null
-              }
+              badge={badges.get(invitation.invitation_id)!}
               canRevoke={
                 stokvel.is_organiser &&
                 invitation.status === InvitationStatus.pending
@@ -131,19 +118,17 @@ function inviteePortrait(
 
 /** One invitation and its status. The detail route leaves the reference
  * null for anyone but the Organiser, or when the invitee no longer holds
- * the account, so it is shown only when there is one. `awaitingCycle` is
- * the number of the cycle being set up, for an invitation still waiting for
- * an answer and for one accepted for the closed cycle whose member hasn't
- * said yet whether they join this one. */
+ * the account, so it is shown only when there is one. `badge` comes from
+ * `invitationBadges`. */
 function InvitationRow({
   invitation,
   portrait,
-  awaitingCycle,
+  badge,
   canRevoke,
 }: {
   invitation: StokvelDetailInvitationRead
   portrait: BeneficiaryRead | { full_name: string; profile_image_url: null }
-  awaitingCycle: number | null
+  badge: InvitationBadge
   canRevoke: boolean
 }) {
   const queryClient = useQueryClient()
@@ -187,13 +172,7 @@ function InvitationRow({
           ) : null}
         </ItemContent>
         <ItemActions>
-          {awaitingCycle != null ? (
-            <Badge variant="secondary">Pending for cycle {awaitingCycle}</Badge>
-          ) : (
-            <Badge variant={STATUS_BADGES[invitation.status]}>
-              {INVITATION_STATUS_LABELS[invitation.status]}
-            </Badge>
-          )}
+          <Badge variant={badge.variant}>{badge.label}</Badge>
           {canRevoke ? (
             <Button
               size="sm"

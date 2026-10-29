@@ -547,6 +547,123 @@ test("accepted invitations of undecided members await the next cycle", async () 
   )
 })
 
+test("accepted invitations of members who left are picked out", async () => {
+  const { invitationsOfFormerMembers } = await import("./stokvels")
+  const member = (id: string) =>
+    ({ member_id: id, user_id: `user-${id}`, in_cycle: true }) as never
+  const invitation = (id: string, status: string, userId: string) =>
+    ({
+      invitation_id: id,
+      status,
+      invitee_user_id: userId,
+    }) as never
+  // Petrus left after cycle 1, so he is no longer in `members`. Sam and Lee
+  // were never members, but their invitations aren't accepted ones.
+  const detail = {
+    members: [member("org"), member("thandi")],
+    invitations: [
+      invitation("i-petrus", "accepted", "user-petrus"),
+      invitation("i-thandi", "accepted", "user-thandi"),
+      invitation("i-sam", "declined", "user-sam"),
+      invitation("i-lee", "pending", "user-lee"),
+    ],
+  }
+  assert.deepEqual([...invitationsOfFormerMembers(detail)], ["i-petrus"])
+  // Invited again after leaving and rejoined: a member again, so neither of
+  // their accepted invitations is picked out.
+  assert.equal(
+    invitationsOfFormerMembers({
+      ...detail,
+      members: [...detail.members, member("petrus")],
+      invitations: [
+        invitation("i-petrus-again", "accepted", "user-petrus"),
+        ...detail.invitations,
+      ],
+    }).size,
+    0
+  )
+  assert.equal(
+    invitationsOfFormerMembers({ members: [], invitations: [] }).size,
+    0
+  )
+})
+
+test("invitationBadges shows a member who left as declined for the cycle", async () => {
+  const { invitationBadges } = await import("./stokvels")
+  const member = (id: string, in_cycle: boolean) =>
+    ({ member_id: id, user_id: `user-${id}`, in_cycle }) as never
+  const invitation = (id: string, status: string, userId: string) =>
+    ({ invitation_id: id, status, invitee_user_id: userId }) as never
+  // Cycle 2 forming. Thandi continued, Petrus hasn't answered, Bongi left.
+  // Lee is newly invited; Sam turned his invitation down; the others were
+  // revoked or lapsed.
+  const detail = {
+    members: [
+      member("org", true),
+      member("thandi", true),
+      member("petrus", false),
+    ],
+    invitations: [
+      invitation("i-thandi", "accepted", "user-thandi"),
+      invitation("i-petrus", "accepted", "user-petrus"),
+      invitation("i-bongi", "accepted", "user-bongi"),
+      invitation("i-lee", "pending", "user-lee"),
+      invitation("i-sam", "declined", "user-sam"),
+      invitation("i-ana", "revoked", "user-ana"),
+      invitation("i-kim", "lapsed", "user-kim"),
+    ],
+    cycle: { cycle_number: 2 } as never,
+    previous_cycle: { cycle_number: 1 } as never,
+  }
+  assert.deepEqual(Object.fromEntries(invitationBadges(detail)), {
+    "i-thandi": { label: "Accepted", variant: "default" },
+    "i-petrus": { label: "Pending for cycle 2", variant: "secondary" },
+    "i-bongi": { label: "Declined for cycle 2", variant: "outline" },
+    "i-lee": { label: "Pending for cycle 2", variant: "secondary" },
+    "i-sam": { label: "Declined", variant: "outline" },
+    "i-ana": { label: "Revoked", variant: "outline" },
+    "i-kim": { label: "Lapsed", variant: "outline" },
+  })
+
+  // Bongi invited again: the new invitation is pending, the old one still
+  // reads as declined until she joins. Sam turned the invitation itself
+  // down, so his has no cycle.
+  const reinvited = invitationBadges({
+    ...detail,
+    invitations: [
+      invitation("i-bongi-again", "pending", "user-bongi"),
+      ...detail.invitations,
+    ],
+  })
+  assert.equal(reinvited.get("i-bongi-again")?.label, "Pending for cycle 2")
+  assert.equal(reinvited.get("i-bongi")?.label, "Declined for cycle 2")
+
+  // Cycle 3 forming: the detail doesn't say when someone left, so Bongi,
+  // who left after cycle 1, is shown against the cycle being set up.
+  const cycle3 = invitationBadges({
+    ...detail,
+    cycle: { cycle_number: 3 } as never,
+    previous_cycle: { cycle_number: 2 } as never,
+  })
+  assert.equal(cycle3.get("i-bongi")?.label, "Declined for cycle 3")
+  assert.equal(cycle3.get("i-lee")?.label, "Pending for cycle 3")
+
+  // Cycle 1, before anyone could leave: accepted means accepted.
+  const cycle1 = invitationBadges({
+    members: [member("org", true), member("thandi", true)],
+    invitations: [
+      invitation("i-thandi", "accepted", "user-thandi"),
+      invitation("i-lee", "pending", "user-lee"),
+    ],
+    cycle: { cycle_number: 1 } as never,
+    previous_cycle: null,
+  })
+  assert.deepEqual(Object.fromEntries(cycle1), {
+    "i-thandi": { label: "Accepted", variant: "default" },
+    "i-lee": { label: "Pending for cycle 1", variant: "secondary" },
+  })
+})
+
 test("formingCycleNumber is the cycle being set up", async () => {
   const { formingCycleNumber } = await import("./stokvels")
   // The forming cycle's own number wins.
