@@ -9,8 +9,9 @@ Clerk account and a beneficiary, it
 2. signs in as them with a Clerk session token (development instances allow
    the Backend API to open one);
 3. calls the target's real API: `POST /quotes`, then `POST /remittances`;
-4. polls `GET /remittances/{id}` while the real worker settles it on the XRPL
-   testnet, and records the real hash.
+4. polls `GET /remittances/{id}` while the real worker settles it by burning
+   UCTUSD from the target's Treasury Wallet on the XRPL EVM Testnet, and
+   records the real hash.
 
 It runs on the real clock, and it stops before a quote would take the run's
 burns past `live_token_budget` uctusd: the treasury is funded by the lecturer
@@ -26,6 +27,7 @@ from decimal import Decimal
 
 import httpx
 
+from remitx_seeder.clerk import can_sign_in
 from remitx_seeder.context import RunContext, SeededPerson
 
 SEND_ZAR = Decimal("200")
@@ -41,19 +43,21 @@ class LiveSend:
     remittance_id: str | None
     token_amount: str | None
     status: str
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     detail: str = ""
 
 
 def _candidates(ctx: RunContext) -> list[SeededPerson]:
+    # Never someone a story owns: the stokvel demo keeps its members' balance
+    # for contributions.
     return [
         person
         for person in ctx.people.values()
         if person.persona.role == "sender"
+        and not person.scripted
         and person.verified
         and person.beneficiaries
-        and person.clerk_user_id
-        and person.clerk_user_id.startswith("user_")
+        and can_sign_in(person.clerk_user_id)
     ]
 
 
@@ -179,7 +183,7 @@ def _one(
             transfer = client.get(f"/remittances/{remittance_id}", headers=headers)
             transfer.raise_for_status()
             body = transfer.json()
-            status, tx_hash = body["status"], body.get("xrpl_tx_hash")
+            status, tx_hash = body["status"], body.get("evm_tx_hash")
             if status in TERMINAL:
                 break
         ctx.count(f"live_tail.{status}")

@@ -107,6 +107,7 @@ def check_remittances(session) -> list[Finding]:
     from remitx_api.models.orm.remittance import Remittance
     from remitx_api.models.orm.transaction import (
         STATUS_CONFIRMED,
+        STATUS_PENDING,
         TYPE_BENEFICIARY_PAYOUT,
         TYPE_FEE,
         TYPE_REMITTANCE,
@@ -143,12 +144,14 @@ def check_remittances(session) -> list[Finding]:
         if len(burn) != 1:
             shape.append(f"{label}: {len(burn)} burn legs")
             continue
-        confirmed = statuses == {STATUS_CONFIRMED}
-        if confirmed != bool(burn[0].xrpl_tx_hash):
-            status_problems.append(
-                f"{label}: burn hash {'missing' if confirmed else 'present'} "
-                f"on a {burn[0].status} group"
-            )
+        # The worker stores the burn's hash before sending it, so a hash
+        # proves nothing about outcome: a processing or failed group may
+        # have one. A confirmed group must; a pending one cannot.
+        has_hash = bool(burn[0].evm_tx_hash)
+        if statuses == {STATUS_CONFIRMED} and not has_hash:
+            status_problems.append(f"{label}: burn hash missing on a confirmed group")
+        elif statuses == {STATUS_PENDING} and has_hash:
+            status_problems.append(f"{label}: burn hash present on a pending group")
         fee_margin = quote.sender_transaction_fee + quote.exchange_rate_margin
         expected = {
             (TYPE_FEE, quote.sender_currency): [fee_margin],
@@ -390,65 +393,59 @@ def synthetic_hash_summary(session) -> Finding:
 
     total = session.scalar(
         select(func.count()).where(
-            Transaction.type == TYPE_TOKEN_BURN, Transaction.xrpl_tx_hash.is_not(None)
+            Transaction.type == TYPE_TOKEN_BURN,
+            Transaction.evm_tx_hash.is_not(None),
         )
     )
     synthetic = session.scalar(
         select(func.count()).where(
             Transaction.type == TYPE_TOKEN_BURN,
-            Transaction.xrpl_tx_hash.like(f"{SYNTHETIC_HASH_PREFIX}%"),
+            Transaction.evm_tx_hash.like(f"{SYNTHETIC_HASH_PREFIX}%"),
         )
     )
     return Finding(
-        check="xrpl.synthetic_hashes",
+        check="chain.synthetic_hashes",
         severity="info",
         ok=True,
         summary=f"{synthetic} of {total} burn hashes are synthetic (seeded, "
-        "not on the XRPL; they start 5EED)",
+        "not on chain; they start 5EED)",
         count=synthetic or 0,
     )
 
 
-def check_treasury_on_chain(session) -> Finding:
-    """The treasury's ledger balance against its real on-chain balance. Needs
-    PLATFORM_WALLET_ADDRESS and network access to the XRPL testnet."""
-    import os
+# Why the check differs on every database that predates the EVM switch. The
+# ledger treasury was seeded by V20260924_1352 from the *XRPL* wallet's trust
+# line and debited ever since; nothing has rebased it to the EVM Treasury
+# Wallet's UCTUSD yet, so until a one-off treasury_funding rebase lands the
+# two sides are unrelated numbers.
+PRE_EVM_LEDGER_NOTE = (
+    "expected until the ledger treasury is rebased: it still starts from the "
+    "XRPL wallet's balance, from before the EVM switch"
+)
 
+
+def check_treasury_on_chain(session) -> Finding:
+    """The treasury's ledger balance against the Treasury Wallet's real UCTUSD
+    balance on the XRPL EVM chain. Needs EVM_TREASURY_ADDRESS and network
+    access to EVM_RPC_URL; reads only, never signs. Differs on any database
+    from before the EVM switch (see PRE_EVM_LEDGER_NOTE)."""
     from remitx_api.config import Config
     from remitx_api.repositories.account_repository import AccountRepository
     from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
-    from xrpl.clients import JsonRpcClient
-    from xrpl.models.requests import AccountLines
+    from remitx_worker import evm_service
 
-    address = os.environ.get("PLATFORM_WALLET_ADDRESS", "")
+    address = Config().EVM_TREASURY_ADDRESS
     if not address:
         return Finding(
             "treasury.on_chain",
             "info",
             True,
-            "Skipped: PLATFORM_WALLET_ADDRESS is not set",
+            "Skipped: EVM_TREASURY_ADDRESS is not set",
         )
     treasury = AccountRepository().get_platform_account_by_label(
         REMITX_TREASURY_WALLET_LABEL
     )
-    config = Config()
-    lines = (
-        JsonRpcClient(config.XRPL_TESTNET_URL)
-        .request(
-            AccountLines(
-                account=address, peer=config.UCTUSD_ISSUER, ledger_index="validated"
-            )
-        )
-        .result.get("lines", [])
-    )
-    on_chain = next(
-        (
-            Decimal(line["balance"])
-            for line in lines
-            if line["currency"] == config.UCTUSD_CURRENCY_CODE_HEX
-        ),
-        Decimal("0"),
-    )
+    on_chain = evm_service.get_token_balance(address)
     ledger = Decimal(treasury.account_balance) if treasury else Decimal("0")
     ok = ledger == on_chain
     return Finding(
@@ -456,7 +453,7 @@ def check_treasury_on_chain(session) -> Finding:
         "warning",
         ok,
         f"Treasury ledger {ledger} uctusd, on chain {on_chain}"
-        + ("" if ok else " (differ)"),
+        + ("" if ok else f" (differ; {PRE_EVM_LEDGER_NOTE})"),
     )
 
 

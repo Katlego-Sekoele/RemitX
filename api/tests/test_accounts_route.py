@@ -459,7 +459,7 @@ def test_history_describes_a_deposit(verified_client):
     assert leg["status"] == "confirmed"
     assert leg["counterparty_name"] is None
     assert leg["remittance_id"] is None
-    assert leg["xrpl_tx_hash"] is None
+    assert leg["evm_tx_hash"] is None
 
 
 def test_history_describes_a_sent_transfer_while_it_is_queued(
@@ -482,7 +482,7 @@ def test_history_describes_a_sent_transfer_while_it_is_queued(
         assert leg["remittance_id"] == remittance["remittance_id"]
         assert leg["status"] == "pending"
         # No hash until the burn has confirmed on-chain.
-        assert leg["xrpl_tx_hash"] is None
+        assert leg["evm_tx_hash"] is None
 
 
 def test_a_settled_transfer_carries_the_burn_hash_on_every_senders_leg(
@@ -497,7 +497,7 @@ def test_a_settled_transfer_carries_the_burn_hash_on_every_senders_leg(
     assert len(legs) == 4
     for leg in legs:
         assert leg["status"] == "confirmed"
-        assert leg["xrpl_tx_hash"] == BURN_HASH
+        assert leg["evm_tx_hash"] == BURN_HASH
 
 
 def test_a_failed_transfer_has_no_hash(verified_client, monkeypatch):
@@ -508,7 +508,7 @@ def test_a_failed_transfer_has_no_hash(verified_client, monkeypatch):
 
     for leg in _history(client, CURRENCY_ZAR):
         assert leg["status"] == "failed"
-        assert leg["xrpl_tx_hash"] is None
+        assert leg["evm_tx_hash"] is None
 
 
 def test_history_describes_a_received_transfer(verified_client, monkeypatch):
@@ -532,7 +532,7 @@ def test_history_describes_a_received_transfer(verified_client, monkeypatch):
     for leg in [payout, *wallet.values()]:
         assert leg["counterparty_name"] == "Verified"
         assert leg["remittance_id"] == remittance["remittance_id"]
-        assert leg["xrpl_tx_hash"] == BURN_HASH
+        assert leg["evm_tx_hash"] == BURN_HASH
     # Nothing of the sender's fee reaches the recipient's history.
     assert all(leg["description"] != "Transfer fee" for leg in wallet.values())
 

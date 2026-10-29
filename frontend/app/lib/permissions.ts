@@ -25,6 +25,8 @@ export const PERMISSIONS = {
   transactionReadAny: "transaction:read_any",
   settlementRetry: "settlement:retry",
   auditRead: "audit:read",
+  stokvelContractPause: "stokvel:contract:pause",
+  stokvelRoundFinalise: "stokvel:round:finalise",
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

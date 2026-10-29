@@ -1,0 +1,16 @@
+{
+  "network": "xrplEvmTestnet",
+  "chainId": 1449000,
+  "contract": "StokvelVault",
+  "address": "0x2f240705314BB79780522635eA47d20072CB8Fe1",
+  "blockNumber": 8995825,
+  "transactionHash": "0xd22e36e80cd70abf7f902fd8da3b4cbfd643227b2c998fe45dfde61eb16ce8fa",
+  "deployedAt": "2026-10-09T12:42:15.969Z",
+  "constructorArgs": {
+    "admin": "0x4948b5bf3C39d63a24918de9B0346B6159f7829C",
+    "operator": "0x6C350A0A9031DE51dF0535e2e88872Cd7330F2e7",
+    "token": "0x7055071C7B79A859d9514e62833BFf041ce71074",
+    "releaseTarget": "0x6C350A0A9031DE51dF0535e2e88872Cd7330F2e7",
+    "maxMembers": 3
+  }
+}

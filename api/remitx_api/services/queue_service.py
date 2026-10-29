@@ -23,6 +23,20 @@ PROCESS_INTEGRATION_MESSAGE = "remitx_worker.tasks.process_integration_message"
 SETTLE_REMITTANCE = "remitx_worker.tasks.settle_remittance"
 BURN_TREASURY_TOKENS = "remitx_worker.tasks.burn_treasury_tokens"
 CONFIRM_TREASURY_BURN = "remitx_worker.tasks.confirm_treasury_burn"
+# The stokvel worker tasks (doc section 4), registered in
+# `remitx_worker.stokvel_tasks` (R2-12, #234).
+SUBMIT_CONTRIBUTION = "stokvel.submit_contribution"
+CONFIRM_CONTRIBUTION = "stokvel.confirm_contribution"
+START_CYCLE = "stokvel.start_cycle"
+# Registered in `remitx_worker.stokvel_release`.
+RELEASE_POOL = "stokvel.release_pool"
+# Registered in `remitx_worker.stokvel_payouts`.
+SETTLE_PAYOUT = "stokvel.settle_payout"
+PAUSE_CONTRACT = "stokvel.pause_contract"
+UNPAUSE_CONTRACT = "stokvel.unpause_contract"
+
+# Admin pause waits on the worker result; long enough for one EVM send.
+CONTRACT_PAUSE_TIMEOUT_SECONDS = 120
 
 # Short on purpose, and not a deadline for the worker to finish booting. The
 # ping exists to make Render's router start a spun-down instance, and that
@@ -34,7 +48,7 @@ WAKE_TIMEOUT_SECONDS = 5
 
 logger = logging.getLogger(__name__)
 
-producer = Celery("remitx_api", broker=Config.REDIS_URL)
+producer = Celery("remitx_api", broker=Config.REDIS_URL, backend=Config.REDIS_URL)
 
 # One thread, never more. A wake is a side effect of enqueueing rather than
 # part of it, and the request that triggered it has already been answered.
@@ -142,9 +156,9 @@ def enqueue_settle_remittance(quote_id: str) -> None:
 
 
 def enqueue_burn_treasury_tokens(quote_id: str) -> None:
-    """Enqueued by `settle_remittance` once its own bookkeeping legs
-    confirm — submits the quote's `burn` leg's XRPL `Payment` and hands the
-    result to `confirm_treasury_burn`.
+    """Enqueued by `settle_remittance` — burns the quote's UCTUSD on the
+    XRPL EVM chain, waits for the receipt, and hands the result to
+    `confirm_treasury_burn`.
     """
     producer.send_task(
         BURN_TREASURY_TOKENS,
@@ -157,11 +171,11 @@ def enqueue_burn_treasury_tokens(quote_id: str) -> None:
 def enqueue_confirm_treasury_burn(
     quote_id: str, tx_hash: str | None, error: str | None = None
 ) -> None:
-    """Enqueued by `burn_treasury_tokens` once the XRPL call has resolved
-    (success or failure).
+    """Enqueued by `burn_treasury_tokens` once the burn has resolved: a
+    confirmed receipt, or a failure (nothing sent, or a revert).
 
     `tx_hash` is `None` for a failed burn, in which case `error` carries the
-    XRPL exception's message so `confirm_treasury_burn` can log it.
+    exception's message so `confirm_treasury_burn` can log it.
     """
     producer.send_task(
         CONFIRM_TREASURY_BURN,
@@ -169,3 +183,86 @@ def enqueue_confirm_treasury_burn(
         queue=Config.CELERY_QUEUE,
     )
     wake_worker()
+
+
+def enqueue_submit_contribution(contribution_id: str) -> None:
+    """Enqueued by `POST /stokvels/{id}/contributions` once the pending
+    contribution and its legs are committed: the worker claims it and sends
+    `contribute` from the Treasury Wallet (R2-12, #234). Only ever needs
+    `contribution_id`, the key its claim is guarded on.
+    """
+    producer.send_task(
+        SUBMIT_CONTRIBUTION,
+        args=[contribution_id],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_confirm_contribution(
+    contribution_id: str,
+    tx_hash: str | None,
+    block_number: int | None = None,
+    error: str | None = None,
+) -> None:
+    """Enqueued by `submit_contribution` once the `contribute` call has
+    resolved: a mined receipt (`tx_hash` and its `block_number`), or a
+    failure (`tx_hash` None, nothing sent or the call reverted, with `error`
+    for the log).
+    """
+    producer.send_task(
+        CONFIRM_CONTRIBUTION,
+        args=[contribution_id, tx_hash, block_number, error],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_start_cycle(cycle_id: str) -> None:
+    """Enqueued by `POST /stokvels/{id}/cycles` once the cycle is committed
+    `active`, and by the worker's `stokvel.register_started_cycles` sweep for
+    one still unregistered: the worker registers it on the contract
+    (`createStokvel` for a new stokvel, then `startCycle`; R2-10, #232). Only
+    ever needs `cycle_id`: the task reads everything else from the database
+    and the chain, so a redelivery repeats nothing.
+    """
+    producer.send_task(START_CYCLE, args=[cycle_id], queue=Config.CELERY_QUEUE)
+    wake_worker()
+
+
+def enqueue_release_pool(cycle_id: str, round_: int) -> None:
+    """Ask the worker to call `finalise` on-chain for a round that became due
+    with time rather than with a contribution. Queued by the scheduled release
+    and by an Administrator's manual release. Safe to send more than once: a
+    round already released or claimed is never sent again."""
+    producer.send_task(
+        RELEASE_POOL,
+        args=[cycle_id, round_],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def enqueue_settle_payout(payout_id: str) -> None:
+    """Ask the worker to create a released payout's quote and remittance.
+    Safe to send more than once: only one delivery creates anything."""
+    producer.send_task(
+        SETTLE_PAYOUT,
+        args=[payout_id],
+        queue=Config.CELERY_QUEUE,
+    )
+    wake_worker()
+
+
+def run_pause_contract() -> str:
+    """Pause every stokvel on-chain; blocks until mined or the worker fails."""
+    result = producer.send_task(PAUSE_CONTRACT, queue=Config.CELERY_QUEUE)
+    wake_worker()
+    return result.get(timeout=CONTRACT_PAUSE_TIMEOUT_SECONDS)
+
+
+def run_unpause_contract() -> str:
+    """Resume the vault; blocks until mined or the worker fails."""
+    result = producer.send_task(UNPAUSE_CONTRACT, queue=Config.CELERY_QUEUE)
+    wake_worker()
+    return result.get(timeout=CONTRACT_PAUSE_TIMEOUT_SECONDS)

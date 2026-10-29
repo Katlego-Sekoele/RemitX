@@ -102,9 +102,10 @@ the replayed time with no change to its code.
 | Cash-out | external bank account through `BankAccountController`; a payout operator verifies, rejects, or leaves it pending; spare balance leaves through `WithdrawalController.request` | real |
 | Cash-in | bank-statement lines, reconciled next working morning by `deposit_service.process_deposits`; mistyped references land pending, and a treasury operator resolves most of them | real |
 | Sends | `QuoteController.create_quote`, then `RemittanceController.confirm`, within KYC limits and available balance | real |
-| Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the XRPL call is simulated |
+| Settlement | the worker's own `settle_remittance` → `burn_treasury_tokens` → `confirm_treasury_burn` | real worker code; the EVM burn and its receipt are simulated |
 | Exchange rates | a replaceable rate provider (`use_rate_provider`) serving a seeded USD/ZAR walk, NAD pegged to ZAR | simulated |
 | Treasury | one `treasury_funding` row per run equal to the simulated burns, so the ledger still matches the chain | direct write |
+| Stokvels (the `demo` scenario) | `StokvelController.create_stokvel`, `StokvelInvitationController.invite` and `accept`, `StokvelSetupController.set_beneficiary` and `set_payout_order`; cycles are left `forming` | real |
 
 Staff act in office hours (SAST, weekdays); customers act mostly in the
 evenings; salaries land on the 25th, at month end or on Fridays, and people
@@ -113,15 +114,16 @@ pending, which is how "waiting for a reviewer", "unmatched deposit" and
 "quote not yet confirmed" states arise naturally.
 
 **Simulated settlements** use synthetic hashes starting `5EED`; they do not
-exist on the XRPL testnet and their explorer links 404. No treasury tokens are
-spent.
+exist on the XRPL EVM Testnet (real hashes start `0x`) and their explorer
+links 404. No treasury tokens are spent, and nothing reaches an EVM RPC.
 
 ### The live tail
 
 Set **Live settlements** above 0 to finish a run with a few real transfers: the
 seeder signs in as a verified sender (a Clerk session through the Backend API),
 calls the target's real API (`POST /quotes`, `POST /remittances`), and waits for
-the real worker to settle on the XRPL testnet. It stops before a quote would
+the real worker to settle by burning UCTUSD on the XRPL EVM Testnet. It stops
+before a quote would
 take the run past its **budget** in uctusd: the treasury is funded by the
 lecturer and RemitX cannot replace what it burns. The target's Redis is only
 reachable inside Render, which is why the live tail goes through the API.
@@ -144,6 +146,47 @@ names per nationality, cities and suburbs, occupations with income and payday,
 corridors (who sends where, how much, how often) and free-text templates.
 Change those to change the population; no code needed.
 
+## The stokvel demo
+
+One command prepares the stokvel demo (R6-03, #268): **Reset**, then seed the
+`demo` scenario. From a terminal:
+
+```bash
+python -m remitx_seeder reset --target local --confirm "reset local"
+python -m remitx_seeder seed --target local --scenario demo
+```
+
+In the UI, pick **demo** on the Seed tab, or turn on **Stokvel demo** in any
+scenario. It adds three members to the run, approved through the ordinary KYC
+review and funded by a reconciled deposit they keep (three rounds of
+contributions and fee shares, with headroom for the live rate, R500 at
+least). A few hours before the window closes, through the stokvel
+controllers, it sets up:
+
+| Stokvel | State |
+|---|---|
+| **Masakhane Savings Club** | All three members, each with a cross-border beneficiary (Zimbabwe, Namibia, the US), payout order set. Its cycle is `forming`: the demo starts it, with rounds a few minutes apart |
+| **Siyakhula Savings Club** | The second and third members, ready, and an invitation to the Organiser still pending. Starting its cycle lapses that invitation |
+
+A second stokvel because the member cap (3) counts accepted members, so a
+full stokvel cannot also hold a pending invitation.
+
+Reset first. A demo seed refuses, before writing anything, when its members
+already exist: a second one would give them numbered emails
+(`stokvel.organiser2`). If any setup step is refused, or falls past the
+window, the run lists it under refusals: a run with no refusals is a demo
+ready to go.
+
+Sign in as `stokvel.organiser`, `stokvel.member2` or `stokvel.member3`
+`+clerk_test@example.com` (code **424242**). They get Clerk accounts right after
+staff, so they can sign in unless the Clerk cap is already used up. The run
+summary's `stokvel_demo` lists both stokvels, their ids and who is who.
+
+`stokvel.contribution_uctusd` (default 2) is the fixed contribution. Every
+contribution pulls it from the Treasury Wallet on-chain, which the lecturer
+funds: a full demo is 3 members × 3 rounds × 2 = 18 uctusd. The seeder itself
+sends nothing on-chain: the cycle is registered when the demo starts it.
+
 ## Verify, Schema, Runs, Reset
 
 - **Verify** checks the business rules over the whole database, seeded or not:
@@ -151,7 +194,12 @@ Change those to change the population; no code needed.
   settle together and match their quote, deposits are consistently owned, KYC
   status matches its history, approvals carry tier, rating and review date,
   every user has correctly named accounts, every beneficiary has a payout
-  account. Every seed run ends with it.
+  account. Every seed run ends with it. With `--chain` it also compares the
+  ledger's treasury balance with the Treasury Wallet's real UCTUSD balance
+  (needs `EVM_TREASURY_ADDRESS`; reads only). On any database from before the
+  EVM switch it reports `(differ)`, and says so: the ledger treasury still
+  starts from the XRPL wallet's balance and needs a one-off rebase to the EVM
+  Treasury Wallet before the comparison means anything.
 - **Schema** reads the live schema: rows per table, which story writes it, and
   columns that are NULL in every row. A table marked *no generator yet* means
   the schema moved on and the seeder has not.
@@ -170,7 +218,7 @@ KYC tiers, risk signals and ratings, onboarding steps, jurisdictions and fee
 settings are read at run time. When something does break:
 
 1. **CI fails the PR that broke it.** The `seeder` job runs a real seed against
-   a throwaway Postgres (fakes for Clerk, storage and the XRPL) and `verify`.
+   a throwaway Postgres (fakes for Clerk, storage and the EVM chain) and `verify`.
 2. A **refusal** in a run (the Runs tab lists them) means a story asked for
    something the rules now forbid: update the story in `remitx_seeder/stories/`.
 3. A **new table** shows as *no generator yet* on the Schema tab: add it to
@@ -187,7 +235,8 @@ remitx_seeder/
   guards.py       the checks above
   engine.py       preflight, planning, replay, top-up, verify
   sim.py          the event loop;  clock.py  time travel
-  stories/        people.py, kyc.py, money.py, timing.py
+  stories/        people.py, kyc.py, money.py, timing.py,
+                  stokvel.py and stokvel_plan.py (the demo)
   settlement.py   real worker tasks, simulated chain
   generators/     identity numbers, phones, personas, SPECIMEN documents
   data/           the JSON that makes people realistic

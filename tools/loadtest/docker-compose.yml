@@ -3,7 +3,7 @@
 # container, network and volume here.
 #
 # The default network is internal: nothing in the stack can reach the
-# internet, so a call to Clerk, the exchange-rate API or the XRPL testnet that
+# internet, so a call to Clerk, the exchange-rate API or an EVM RPC that
 # slipped through would fail instead of leaving the machine.
 
 name: remitx-loadtest
@@ -139,19 +139,19 @@ services:
       timeout: 5s
       retries: 30
 
-  # The real worker, except that the XRPL burn is simulated with a delay
-  # calibrated on QA's real settlements (fake_xrpl_worker.py).
+  # The real worker, except that the EVM burn is simulated with a delay
+  # calibrated on QA's real settlements (fake_evm_worker.py).
   worker:
     <<: *api-runtime
-    command: python /loadtest/fake_xrpl_worker.py
+    command: python /loadtest/fake_evm_worker.py
     environment:
       CELERY_CONCURRENCY: ${LOADTEST_CELERY_CONCURRENCY:-2}
-      # Passed through only when set; fake_xrpl_worker.py has the defaults.
+      # Passed through only when set; fake_evm_worker.py has the defaults.
       LOADTEST_BURN_P50_S:
       LOADTEST_BURN_P95_S:
       LOADTEST_BURN_FAILURE_RATE:
     volumes:
-      - ./fake_xrpl_worker.py:/loadtest/fake_xrpl_worker.py:ro
+      - ./fake_evm_worker.py:/loadtest/fake_evm_worker.py:ro
     cpus: ${LOADTEST_WORKER_CPUS:-0.1}
     # Render free: 0.1 CPU / 512 MB; each Celery process costs ~100 MB.
     mem_limit: ${LOADTEST_WORKER_MEMORY:-512m}

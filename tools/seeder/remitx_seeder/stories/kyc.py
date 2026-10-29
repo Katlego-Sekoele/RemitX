@@ -335,9 +335,10 @@ class KycStory:
         controller = KycController()
         templates = load("templates")
         application = KycApplicationRepository().get_by_id(person.application_id)
-        if (
-            person.force_override
-            or self.ctx.rng.random() < self.ctx.scenario.kyc.override_rate
+        if person.force_override or (
+            not person.force_tier_two
+            and not person.scripted
+            and self.ctx.rng.random() < self.ctx.scenario.kyc.override_rate
         ):
             computed = application.effective_risk_rating or "medium"
             rating = self.ctx.rng.choice(
@@ -347,6 +348,20 @@ class KycStory:
                 person.application_id,
                 rating,
                 reason=self.ctx.rng.choice(templates["override_reasons"][rating]),
+                expected_version=self._version(person),
+                actor_user_id=officer.user_id,
+            )
+            self.ctx.count("kyc.rating_overridden")
+            application = KycApplicationRepository().get_by_id(person.application_id)
+
+        if person.force_tier_two and application.effective_risk_rating not in (
+            "low",
+            "medium",
+        ):
+            controller.override_risk_rating(
+                person.application_id,
+                "medium",
+                reason=self.ctx.rng.choice(templates["override_reasons"]["medium"]),
                 expected_version=self._version(person),
                 actor_user_id=officer.user_id,
             )

@@ -15,7 +15,7 @@ export type LandingAuthActionCopy = {
 }
 
 function GuestLandingActions({
-  signUpLabel = "Start sending",
+  signUpLabel = "Get started",
 }: LandingAuthActionCopy) {
   return (
     <>
@@ -36,7 +36,7 @@ function GuestLandingActions({
 
 /** Hero/footer CTAs — Clerk widgets only when `ClerkProvider` is up. */
 export function LandingAuthActions({
-  signUpLabel = "Start sending",
+  signUpLabel = "Get started",
 }: LandingAuthActionCopy) {
   const clerkMounted = useClerkMounted()
 

@@ -3,62 +3,65 @@ import { FeaturesSectionCards } from "~/components/aceternity/features-section-c
 
 const FEATURES = [
   {
-    title: "Fees you can actually read",
+    title: "Fees on the quote",
     description:
-      "Fixed remittance fee, percentage fee, FX margin, and cash-out fee — shown before you confirm.",
+      "Remittance fee, FX margin, and what the recipient gets — shown before you confirm a send or a stokvel payout.",
   },
   {
-    title: "Limits that protect you",
+    title: "Cash-in, then settle",
     description:
-      "Daily and monthly caps by KYC level. Unverified sends nothing; verified unlocks real headroom.",
+      "The test token burns only after simulated rand cash-in is confirmed.",
   },
   {
-    title: "KYC before big sends",
+    title: "One payout, even on retry",
     description:
-      "Simplified identity collection with admin approve/reject — gates how much you can remit.",
+      "The worker treats a duplicate message as the same payout, so a transfer or a round is credited once.",
   },
   {
-    title: "Cash-in first, always",
+    title: "Limits by KYC",
     description:
-      "RLUSD never moves until simulated ZAR payment is confirmed. No premature settlement.",
+      "Daily and monthly caps follow your verification level, for sends and for contributions.",
   },
   {
-    title: "Async ledger settlement",
+    title: "The contract holds the pool",
     description:
-      "Transfers run through a queue so the UI stays snappy while Testnet does the heavy lifting.",
+      "Stokvel contributions sit in the vault on the XRPL EVM Testnet until the round's rules are met.",
   },
   {
-    title: "No double-crediting",
+    title: "A round pays abroad",
     description:
-      "Duplicate-message protection on the worker so a retry cannot pay the recipient twice.",
+      "The member scheduled for that round names a beneficiary. The payout is a remittance to them.",
   },
   {
     title: "Keys stay encrypted",
     description:
-      "XRPL private keys are encrypted at rest and never returned by the API or dumped in logs.",
+      "The treasury key is encrypted at rest. The API never returns it, and it is not written to logs.",
   },
   {
-    title: "Built for the course brief",
+    title: "Testnet, on purpose",
     description:
-      "Queue-backed settlement, encrypted keys, and KYC gates — the graded remittance path end to end.",
+      "UCTUSD stands in for RLUSD. Academic prototype — no real customer funds.",
   },
 ]
 
 export function TrustNote() {
   return (
-    <section className="border-t border-border bg-muted/40 px-6 py-20 lg:py-28">
+    <section
+      id="why"
+      className="scroll-mt-24 border-b border-border bg-muted/40 px-6 py-20 lg:py-28"
+    >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-12">
         <FadeIn>
-          <div className="flex flex-col gap-3">
+          <div className="flex max-w-2xl flex-col gap-3">
             <p className="text-sm font-semibold tracking-wide text-primary uppercase">
-              Why RemitX
+              Why both can share a platform
             </p>
-            <h2 className="max-w-2xl font-heading text-3xl font-semibold tracking-tight text-balance text-foreground md:text-4xl">
-              Remittance muscle without the black box.
+            <h2 className="font-heading text-3xl font-semibold tracking-tight text-balance text-foreground md:text-4xl">
+              The circle uses the same rails as a send.
             </h2>
-            <p className="max-w-xl text-base text-muted-foreground md:text-lg">
-              Built like a serious fintech product for individuals — clear
-              quotes, gated limits, and settlement you can trust.
+            <p className="text-base text-muted-foreground md:text-lg">
+              Quotes, limits, cash-in, and settlement serve a transfer you start
+              yourself and a stokvel round paying one member.
             </p>
           </div>
         </FadeIn>

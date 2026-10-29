@@ -173,6 +173,31 @@ export const ADMIN_ROUTE_INDEX: readonly AdminRouteIndex[] = [
     ],
   },
   {
+    label: "Stokvels",
+    order: 23,
+    icon: "UsersFourIcon",
+    childItems: [
+      {
+        route: {
+          path: "admin/stokvel-contract",
+          module: "routes/admin/stokvel-contract.tsx",
+        },
+        label: "Contract",
+        permission: "stokvel:contract:pause",
+        childItems: [],
+      },
+      {
+        route: {
+          path: "admin/stokvel-rounds",
+          module: "routes/admin/stokvel-rounds.tsx",
+        },
+        label: "Rounds",
+        permission: "stokvel:round:finalise",
+        childItems: [],
+      },
+    ],
+  },
+  {
     label: "Treasury",
     order: 25,
     icon: "VaultIcon",

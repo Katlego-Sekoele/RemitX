@@ -1,9 +1,9 @@
 """S3-compatible object storage: Neon Object Storage in the cloud, MinIO locally.
 
-Uploaded KYC documents are the only untrusted binary input this platform
-accepts, and the one class of data the brief's data-protection criteria care
-about most. Two properties are worth naming, because the rest of this module is
-machinery in service of them:
+Uploaded KYC documents, and a stokvel's cover photo, are the untrusted binary
+inputs this platform accepts. KYC documents are the class of data the brief's
+data-protection criteria care about most. Two properties are worth naming,
+because the rest of this module is machinery in service of them:
 
 **Writes go through the API; reads do not.** The API receives the upload,
 validates it and puts the object here itself, so nothing reaches the bucket

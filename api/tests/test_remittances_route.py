@@ -235,7 +235,7 @@ def test_the_sender_lists_and_reads_their_transfer(verified_client):
     assert body["counterparty_user_id"] == str(recipient_id)
     assert body["status"] == "pending"
     assert body["settled_at"] is None
-    assert body["xrpl_tx_hash"] is None
+    assert body["evm_tx_hash"] is None
     assert body["timeline_step"] == 2
     assert len(body["timeline"]) == 4
     assert body["timeline"][0]["title"] == "Quote accepted"
@@ -318,7 +318,7 @@ def test_status_and_hash_follow_a_confirmed_settlement(
         _act_as(client, reader)
         body = client.get(f"{ENDPOINT}/{remittance_id}").json()
         assert body["status"] == "confirmed"
-        assert body["xrpl_tx_hash"] == "A1B2C3D4E5F6"
+        assert body["evm_tx_hash"] == "A1B2C3D4E5F6"
         assert body["settled_at"] is not None
 
 
@@ -332,5 +332,5 @@ def test_status_follows_a_failed_settlement_without_a_hash(
 
     body = client.get(f"{ENDPOINT}/{remittance_id}").json()
     assert body["status"] == "failed"
-    assert body["xrpl_tx_hash"] is None
+    assert body["evm_tx_hash"] is None
     assert body["settled_at"] is None

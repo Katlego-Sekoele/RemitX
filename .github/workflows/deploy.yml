@@ -3,11 +3,14 @@ name: Deploy
 on:
   pull_request:
     branches: [main, stable]
-    paths: ["infra/**"]
+    paths:
+      - "infra/**"
+      - "scripts/neon-storage/**"
   push:
     branches: [main, stable]
     paths:
       - "infra/**"
+      - "scripts/neon-storage/**"
       - "api/**"
       - "frontend/**"
       # A change to the pipeline itself has to exercise the pipeline.
@@ -35,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       infra: ${{ steps.resolve.outputs.infra }}
+      infra_data: ${{ steps.resolve.outputs.infra_data }}
       api: ${{ steps.resolve.outputs.api }}
       frontend: ${{ steps.resolve.outputs.frontend }}
       deploy_env: ${{ steps.resolve.outputs.deploy_env }}
@@ -49,6 +53,8 @@ jobs:
           filters: |
             infra:
               - "infra/**"
+            infra_data:
+              - "infra/data/**"
             api:
               - "api/**"
             frontend:
@@ -59,31 +65,31 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           FILTER_INFRA: ${{ steps.filter.outputs.infra }}
+          FILTER_INFRA_DATA: ${{ steps.filter.outputs.infra_data }}
           FILTER_API: ${{ steps.filter.outputs.api }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
           BASE_REF: ${{ github.base_ref }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           if [ "$EVENT" = "pull_request" ]; then
-            # Path filters only decide whether a PR should plan Terraform.
             infra="$FILTER_INFRA"
+            infra_data="$FILTER_INFRA_DATA"
             api="$FILTER_API"
             frontend="$FILTER_FRONTEND"
-          else
-            # Push and manual runs roll out everything. Gating migrate or
-            # deploys on api/** / frontend/** left infra-only changes (CORS,
-            # env vars) applied in Terraform but never picked up: Render
-            # auto-deploy is off and skip_deploy_after_service_update is on.
-            infra=true
-            api=true
-            frontend=true
-          fi
-
-          # A pull_request run is plan-only; everything else rolls out.
-          if [ "$EVENT" = "pull_request" ]; then
             rollout=false
             branch="$BASE_REF"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            infra=true
+            infra_data=true
+            api=true
+            frontend=true
+            rollout=true
+            branch="$REF_NAME"
           else
+            infra=true
+            infra_data="$FILTER_INFRA_DATA"
+            api=true
+            frontend=true
             rollout=true
             branch="$REF_NAME"
           fi
@@ -99,13 +105,14 @@ jobs:
 
           {
             echo "infra=$infra"
+            echo "infra_data=$infra_data"
             echo "api=$api"
             echo "frontend=$frontend"
             echo "rollout=$rollout"
             echo "deploy_env=$deploy_env"
           } >> "$GITHUB_OUTPUT"
 
-          echo "$branch -> $deploy_env (rollout=$rollout, infra=$infra, api=$api, frontend=$frontend)"
+          echo "$branch -> $deploy_env (rollout=$rollout, infra_data=$infra_data)"
 
   ci:
     needs: changes
@@ -113,144 +120,113 @@ jobs:
 
   terraform:
     needs: [changes, ci]
-    # Terraform runs on every rollout, not only when infra/** changed. It is
-    # declarative, so a run that changes nothing plans empty and costs one job
-    # — and gating it on infra/** left the stack impossible to create: the one
-    # push that introduced the Render services had a red `ci`, so `terraform`
-    # was skipped, and every push after it was skipped again by the paths
-    # filter while the deploy jobs below kept looking for services Terraform
-    # had never applied. Running it always also keeps Render env vars in step
-    # with the environment secrets.
     if: needs.changes.outputs.rollout == 'true' || needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
-      TF_VAR_hcp_organization: ${{ vars.TF_CLOUD_ORGANIZATION }}
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
       TF_VAR_tfe_token: ${{ secrets.TF_API_TOKEN }}
-      # HCP remote runs forward TF_VAR_* as Terraform inputs, not RENDER_*.
-      TF_VAR_render_api_key: ${{ secrets.RENDER_API_KEY }}
-      TF_VAR_render_owner_id: ${{ secrets.RENDER_OWNER_ID }}
+      # Actions resolves organization + repository + selected environment
+      # variables here. Scripts use this instead of calling the Variables API.
+      GITHUB_VARIABLES_JSON: ${{ toJSON(vars) }}
+      TF_VAR_gcloud_application_default_credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
+      TF_VAR_upstash_api_key: ${{ secrets.TF_VAR_upstash_api_key }}
       TF_VAR_database_url: ${{ secrets.TF_VAR_database_url }}
       TF_VAR_clerk_secret_key: ${{ secrets.TF_VAR_clerk_secret_key }}
-      TF_VAR_clerk_publishable_key: ${{ secrets.TF_VAR_clerk_publishable_key }}
       TF_VAR_xrpl_encryption_key: ${{ secrets.TF_VAR_xrpl_encryption_key }}
       TF_VAR_platform_wallet_seed_encrypted: ${{ secrets.TF_VAR_platform_wallet_seed_encrypted }}
       TF_VAR_exchange_rate_api_key: ${{ secrets.TF_VAR_exchange_rate_api_key }}
-      # Non-secret FX and XRPL settings. GitHub environment variables, not
-      # secrets: addresses, the public testnet URL, fees, and limits.
-      TF_VAR_platform_wallet_address: ${{ vars.TF_VAR_platform_wallet_address }}
-      TF_VAR_xrpl_testnet_url: ${{ vars.TF_VAR_xrpl_testnet_url }}
-      TF_VAR_uctusd_issuer: ${{ vars.TF_VAR_uctusd_issuer }}
-      TF_VAR_uctusd_currency_code_hex: ${{ vars.TF_VAR_uctusd_currency_code_hex }}
-      TF_VAR_uctusd_currency_code: ${{ vars.TF_VAR_uctusd_currency_code }}
-      TF_VAR_uctusd_trust_limit: ${{ vars.TF_VAR_uctusd_trust_limit }}
-      TF_VAR_uctusd_distributor_address: ${{ vars.TF_VAR_uctusd_distributor_address }}
-      TF_VAR_rate_fixing_interval_hours: ${{ vars.TF_VAR_rate_fixing_interval_hours }}
-      TF_VAR_max_rate_staleness_hours: ${{ vars.TF_VAR_max_rate_staleness_hours }}
-      TF_VAR_quote_ttl_minutes: ${{ vars.TF_VAR_quote_ttl_minutes }}
-      TF_VAR_fixed_fee_zar: ${{ vars.TF_VAR_fixed_fee_zar }}
-      TF_VAR_percentage_fee_rate: ${{ vars.TF_VAR_percentage_fee_rate }}
-      TF_VAR_fx_margin_rate: ${{ vars.TF_VAR_fx_margin_rate }}
-      TF_VAR_cash_out_fee_rate: ${{ vars.TF_VAR_cash_out_fee_rate }}
-      TF_VAR_min_cash_out_fee: ${{ vars.TF_VAR_min_cash_out_fee }}
-      TF_VAR_daily_limit_zar_unverified: ${{ vars.TF_VAR_daily_limit_zar_unverified }}
-      TF_VAR_monthly_limit_zar_unverified: ${{ vars.TF_VAR_monthly_limit_zar_unverified }}
-      TF_VAR_daily_limit_zar: ${{ vars.TF_VAR_daily_limit_zar }}
-      TF_VAR_monthly_limit_zar: ${{ vars.TF_VAR_monthly_limit_zar }}
-      # Deliberately absent from the required list below: with no bucket
-      # credential the API starts normally and only the KYC document routes
-      # answer 503, so a missing one must not block the whole rollout.
       TF_VAR_object_storage_access_key_id: ${{ secrets.TF_VAR_object_storage_access_key_id }}
       TF_VAR_object_storage_secret_access_key: ${{ secrets.TF_VAR_object_storage_secret_access_key }}
+      TF_VAR_evm_encryption_key: ${{ secrets.TF_VAR_evm_encryption_key }}
+      TF_VAR_evm_treasury_key_encrypted: ${{ secrets.TF_VAR_evm_treasury_key_encrypted }}
+      TF_VAR_evm_stokvel_admin_key_encrypted: ${{ secrets.TF_VAR_evm_stokvel_admin_key_encrypted }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
 
-      # Every one of these is a required Terraform input. A missing one
-      # otherwise surfaces as an opaque "No value for required variable" from
-      # a remote HCP run, so name it here instead.
-      - name: Require HCP organization and Terraform inputs
+      - name: Load GitHub environment variables for Terraform
+        run: ./scripts/github-tf-env.sh "${{ needs.changes.outputs.deploy_env }}" >> "$GITHUB_ENV"
+
+      - name: Require GitHub environment config
         env:
           DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+          INFRA_DATA: ${{ needs.changes.outputs.infra_data }}
+          ROLLOUT: ${{ needs.changes.outputs.rollout }}
         run: |
+          ./scripts/github-tf-env-check.sh "$DEPLOY_ENV"
           missing=()
-          [ -n "${TF_CLOUD_ORGANIZATION}" ]       || missing+=("TF_CLOUD_ORGANIZATION (variable)")
           [ -n "${TF_TOKEN_app_terraform_io}" ]   || missing+=("TF_API_TOKEN")
-          [ -n "${TF_VAR_render_api_key}" ]       || missing+=("RENDER_API_KEY")
-          [ -n "${TF_VAR_render_owner_id}" ]      || missing+=("RENDER_OWNER_ID")
-          [ -n "${TF_VAR_database_url}" ]         || missing+=("TF_VAR_database_url")
-          [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key")
-          [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key")
+          [ -n "${TF_VAR_gcloud_application_default_credentials_json}" ] || missing+=("GOOGLE_CREDENTIALS (secret)")
+          [ -n "${TF_VAR_gcp_project_id}" ]       || missing+=("GCP_PROJECT_ID (variable)")
+          [ -n "${TF_VAR_hcp_organization}" ]     || missing+=("TF_CLOUD_ORGANIZATION (variable)")
+          if [ "$DEPLOY_ENV" = "prod" ]; then
+            [ -n "${TF_VAR_billing_account_id}" ]  || missing+=("TF_VAR_billing_account_id (variable)")
+            [ -n "${TF_VAR_budget_alert_emails}" ] || missing+=("BUDGET_ALERT_EMAILS (secret)")
+          fi
+          if [ "$ROLLOUT" = "true" ] || [ "$INFRA_DATA" = "true" ]; then
+            [ -n "${NEON_API_KEY}" ] || missing+=("NEON_API_KEY (secret)")
+            [ -n "${TF_VAR_neon_project_id}" ] || missing+=("NEON_PROJECT_ID (variable)")
+          fi
+          [ -n "${TF_VAR_upstash_api_key}" ]      || missing+=("TF_VAR_upstash_api_key (secret)")
+          [ -n "${TF_VAR_upstash_email}" ]        || missing+=("TF_VAR_upstash_email (variable)")
+          [ -n "${TF_VAR_database_url}" ]         || missing+=("TF_VAR_database_url (secret)")
+          [ -n "${TF_VAR_clerk_secret_key}" ]     || missing+=("TF_VAR_clerk_secret_key (secret)")
+          [ -n "${TF_VAR_clerk_publishable_key}" ]|| missing+=("TF_VAR_clerk_publishable_key (variable)")
           [ -n "${TF_VAR_xrpl_encryption_key}" ]  || missing+=("TF_VAR_xrpl_encryption_key")
           [ -n "${TF_VAR_platform_wallet_seed_encrypted}" ] || missing+=("TF_VAR_platform_wallet_seed_encrypted")
           [ -n "${TF_VAR_exchange_rate_api_key}" ] || missing+=("TF_VAR_exchange_rate_api_key")
-          [ -n "${TF_VAR_platform_wallet_address}" ] || missing+=("TF_VAR_platform_wallet_address (variable)")
-          [ -n "${TF_VAR_xrpl_testnet_url}" ] || missing+=("TF_VAR_xrpl_testnet_url (variable)")
-          [ -n "${TF_VAR_uctusd_issuer}" ] || missing+=("TF_VAR_uctusd_issuer (variable)")
-          [ -n "${TF_VAR_uctusd_currency_code_hex}" ] || missing+=("TF_VAR_uctusd_currency_code_hex (variable)")
-          [ -n "${TF_VAR_uctusd_currency_code}" ] || missing+=("TF_VAR_uctusd_currency_code (variable)")
-          [ -n "${TF_VAR_uctusd_trust_limit}" ] || missing+=("TF_VAR_uctusd_trust_limit (variable)")
-          [ -n "${TF_VAR_uctusd_distributor_address}" ] || missing+=("TF_VAR_uctusd_distributor_address (variable)")
-          [ -n "${TF_VAR_rate_fixing_interval_hours}" ] || missing+=("TF_VAR_rate_fixing_interval_hours (variable)")
-          [ -n "${TF_VAR_max_rate_staleness_hours}" ] || missing+=("TF_VAR_max_rate_staleness_hours (variable)")
-          [ -n "${TF_VAR_quote_ttl_minutes}" ] || missing+=("TF_VAR_quote_ttl_minutes (variable)")
-          [ -n "${TF_VAR_fixed_fee_zar}" ] || missing+=("TF_VAR_fixed_fee_zar (variable)")
-          [ -n "${TF_VAR_percentage_fee_rate}" ] || missing+=("TF_VAR_percentage_fee_rate (variable)")
-          [ -n "${TF_VAR_fx_margin_rate}" ] || missing+=("TF_VAR_fx_margin_rate (variable)")
-          [ -n "${TF_VAR_cash_out_fee_rate}" ] || missing+=("TF_VAR_cash_out_fee_rate (variable)")
-          [ -n "${TF_VAR_min_cash_out_fee}" ] || missing+=("TF_VAR_min_cash_out_fee (variable)")
-          [ -n "${TF_VAR_daily_limit_zar_unverified}" ] || missing+=("TF_VAR_daily_limit_zar_unverified (variable)")
-          [ -n "${TF_VAR_monthly_limit_zar_unverified}" ] || missing+=("TF_VAR_monthly_limit_zar_unverified (variable)")
-          [ -n "${TF_VAR_daily_limit_zar}" ] || missing+=("TF_VAR_daily_limit_zar (variable)")
-          [ -n "${TF_VAR_monthly_limit_zar}" ] || missing+=("TF_VAR_monthly_limit_zar (variable)")
+          [ -n "${TF_VAR_platform_wallet_address}" ] || missing+=("TF_VAR_platform_wallet_address")
+          [ -n "${TF_VAR_fixed_fee_zar}" ] || missing+=("TF_VAR_fixed_fee_zar")
 
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Set these on the '${DEPLOY_ENV}' GitHub environment: ${missing[*]}"
-            echo "See infra/README.md for the full list." >&2
+            echo "::error::Missing on '${DEPLOY_ENV}' (variables via github-tf-env.sh, secrets in deploy.yml): ${missing[*]}"
             exit 1
           fi
 
-      # Env roots read remitx-shared via terraform_remote_state. A PR-only
-      # plan leaves that workspace empty, so apply shared on every run.
-      - name: Terraform shared
-        working-directory: infra/shared
-        run: |
-          terraform init -input=false
-          terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.rollout == 'true'
+        with:
+          node-version: "22"
 
-      - name: Terraform environment
-        working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
+      - name: Install Neon CLI
+        if: needs.changes.outputs.rollout == 'true'
+        run: npm install --global neon@latest
+
+      - name: Neon object storage (verify)
+        if: needs.changes.outputs.rollout == 'true'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ needs.changes.outputs.deploy_env == 'qa' && vars.NEON_QA_BRANCH_ID || vars.NEON_PROD_BRANCH_ID }}
+        run: make -C infra neon-storage-verify ENV=${{ needs.changes.outputs.deploy_env }}
+
+      - name: Terraform data (Neon)
+        if: needs.changes.outputs.infra_data == 'true'
         env:
           ROLLOUT: ${{ needs.changes.outputs.rollout }}
+          ENV: ${{ needs.changes.outputs.deploy_env }}
         run: |
-          terraform init -input=false
           if [ "$ROLLOUT" = "true" ]; then
-            terraform apply -auto-approve -input=false -var-file=non-secret.tfvars
+            make -C infra data-apply-ci ENV="$ENV"
           else
-            terraform plan -input=false -var-file=non-secret.tfvars
+            make -C infra data-plan ENV="$ENV"
           fi
 
-      # Free-tier web services cannot be updated through the Render
-      # Terraform provider (maintenance_mode on every PATCH). Env vars
-      # are ignored on the resource and written here instead.
-      - name: Sync web service env vars
-        if: needs.changes.outputs.rollout == 'true'
-        working-directory: infra/envs/${{ needs.changes.outputs.deploy_env }}
+      - name: Terraform GCP
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          ROLLOUT: ${{ needs.changes.outputs.rollout }}
           DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
         run: |
-          api_env="$(terraform output -json api_env_vars)"
-          worker_env="$(terraform output -json worker_env_vars)"
-          RENDER_SYNC_ENV_JSON="$api_env" \
-            SERVICE_NAME="remitx-${DEPLOY_ENV}-api" \
-            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
-          RENDER_SYNC_ENV_JSON="$worker_env" \
-            SERVICE_NAME="remitx-${DEPLOY_ENV}-worker" \
-            "${GITHUB_WORKSPACE}/.github/scripts/render-sync-env.sh"
+          if [ "$ROLLOUT" = "true" ]; then
+            make -C infra gcp-apply-ci ENV="$DEPLOY_ENV"
+          else
+            make -C infra gcp-plan ENV="$DEPLOY_ENV"
+          fi
 
   migrate:
     needs: [changes, ci, terraform]
@@ -314,17 +290,41 @@ jobs:
       needs.terraform.result == 'success' &&
       needs.migrate.result == 'success'
     runs-on: ubuntu-latest
-    # render-deploy.sh waits for the Render deploy to reach `live`, and a free
-    # plan Docker build is slow. Keep this above the script's own timeout so
-    # the script reports the failure instead of the runner killing the job.
     timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-api
+      DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: africa-south1
+      SERVICE_ROLE: api
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: .github/scripts/render-deploy.sh
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Rollout preflight
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ needs.changes.outputs.deploy_env == 'qa' && vars.NEON_QA_BRANCH_ID || vars.NEON_PROD_BRANCH_ID }}
+        run: make -C deploy preflight
+
+      - name: Build and push API image
+        env:
+          AR_REPO: ${{ vars.GCP_ARTIFACT_REGISTRY_REPO }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: make -C deploy push-api
+
+      - run: make -C deploy deploy-cloud-run
 
   deploy-worker:
     needs: [changes, ci, terraform, migrate]
@@ -338,11 +338,38 @@ jobs:
     timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-worker
+      DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: africa-south1
+      SERVICE_ROLE: worker
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: .github/scripts/render-deploy.sh
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Rollout preflight
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ needs.changes.outputs.deploy_env == 'qa' && vars.NEON_QA_BRANCH_ID || vars.NEON_PROD_BRANCH_ID }}
+        run: make -C deploy preflight
+
+      - name: Build and push worker image
+        env:
+          AR_REPO: ${{ vars.GCP_ARTIFACT_REGISTRY_REPO }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: make -C deploy push-worker
+
+      - run: make -C deploy deploy-cloud-run
 
   deploy-frontend:
     needs: [changes, ci, terraform, migrate]
@@ -356,8 +383,35 @@ jobs:
     timeout-minutes: 40
     environment: ${{ needs.changes.outputs.deploy_env }}
     env:
-      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      SERVICE_NAME: remitx-${{ needs.changes.outputs.deploy_env }}-web
+      DEPLOY_ENV: ${{ needs.changes.outputs.deploy_env }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: .github/scripts/render-deploy.sh
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Rollout preflight
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ needs.changes.outputs.deploy_env == 'qa' && vars.NEON_QA_BRANCH_ID || vars.NEON_PROD_BRANCH_ID }}
+        run: make -C deploy preflight
+
+      - run: npm install -g firebase-tools
+
+      - run: make -C deploy deploy-frontend

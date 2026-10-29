@@ -121,7 +121,7 @@ def get_accounts_history(
             description=leg.description,
             counterparty_name=leg.counterparty_name,
             remittance_id=leg.remittance_id,
-            xrpl_tx_hash=leg.xrpl_tx_hash,
+            evm_tx_hash=leg.evm_tx_hash,
         )
         for leg in legs
     ]

@@ -9,7 +9,7 @@ export type LandingAuthActionCopy = {
 }
 
 function GuestLandingActions({
-  signUpLabel = "Start sending",
+  signUpLabel = "Get started",
 }: LandingAuthActionCopy) {
   return (
     <>
@@ -30,7 +30,7 @@ function GuestLandingActions({
 
 /** Rendered only under `ClerkTree` (see `LandingAuthActions`). */
 export function ClerkLandingAuthActions({
-  signUpLabel = "Start sending",
+  signUpLabel = "Get started",
 }: LandingAuthActionCopy) {
   const { isSignedIn } = useAuth()
 

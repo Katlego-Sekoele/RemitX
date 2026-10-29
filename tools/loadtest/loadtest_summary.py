@@ -53,6 +53,9 @@ class RunSummary:
     description: str
     burn_p50_s: float
     burn_p95_s: float
+    # Where the burn timings were measured (the profile's burn.calibrated_on);
+    # "Testnet" for runs from before the field existed
+    burn_calibrated_on: str
     locust_steps: list[int]
     compute: list[ComputeSummary]
     bottleneck: str
@@ -84,6 +87,7 @@ def build_summary(run_dir: Path) -> RunSummary:
     profile_path = run_dir / "profile.json"
     profile = json.loads(profile_path.read_text()) if profile_path.is_file() else {}
     burn = profile.get("burn") or {}
+    burn_calibrated_on = str(burn.get("calibrated_on") or "Testnet")
     locust = profile.get("locust") or {}
     steps = list(locust.get("steps") or [])
     compute_list = [c for c in (profile.get("compute") or []) if isinstance(c, dict)]
@@ -130,9 +134,12 @@ def build_summary(run_dir: Path) -> RunSummary:
         description=str(profile.get("description") or ""),
         burn_p50_s=float(burn.get("p50_s") or 0),
         burn_p95_s=float(burn.get("p95_s") or 0),
+        burn_calibrated_on=burn_calibrated_on,
         locust_steps=steps,
         compute=computes,
-        bottleneck=_bottleneck_text(computes, float(burn.get("p50_s") or 0)),
+        bottleneck=_bottleneck_text(
+            computes, float(burn.get("p50_s") or 0), burn_calibrated_on
+        ),
     )
 
 
@@ -301,7 +308,11 @@ def _final_totals(directory: Path) -> dict[str, float]:
     }
 
 
-def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
+def _bottleneck_text(
+    computes: list[ComputeSummary], burn_p50_s: float, calibrated_on: str
+) -> str:
+    # Always says where the timing came from, so a stale one is visible
+    burn = f"~{burn_p50_s:.1f} s p50 (calibrated on {calibrated_on})"
     if not computes:
         return "No compute results were found for this run."
     at_10 = []
@@ -325,7 +336,7 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
                 f"{fast[0].name} (API {fast[0].api_cpus} CPU). "
                 f"That gap points to API CPU starvation under the smaller "
                 f"compute cap, not Postgres or the settlement queue. "
-                f"Calibrated RLUSD burn remains ~{burn_p50_s:.1f} s p50 on Testnet; "
+                f"Calibrated UCTUSD burn remains {burn}; "
                 f"queue throughput follows worker capacity and burn delay."
             )
     first = at_10[0] if at_10 else None
@@ -335,7 +346,7 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
             f"HTTP median at 10 users is already {p.http_median_ms:.0f} ms on "
             f"{c.name} (API {c.api_cpus} CPU). Latency climbs further as Locust "
             f"steps up concurrent users while RPS stays low — the API process is "
-            f"the saturation point. Calibrated RLUSD burn is ~{burn_p50_s:.1f} s p50."
+            f"the saturation point. Calibrated UCTUSD burn is {burn}."
         )
     if first:
         c, p = first
@@ -343,8 +354,8 @@ def _bottleneck_text(computes: list[ComputeSummary], burn_p50_s: float) -> str:
             f"Under {c.name} (API {c.api_cpus} CPU), HTTP median at 10 users is "
             f"{p.http_median_ms:.0f} ms with peak HTTP RPS "
             f"{c.peak_http_rps:.1f}. Settlement end-to-end rate at peak users is "
-            f"{c.settle_throughput_at_peak_users:.2f}/s; RLUSD burn calibration "
-            f"is {burn_p50_s:.1f} s p50. Watch how median and RPS move across "
+            f"{c.settle_throughput_at_peak_users:.2f}/s; UCTUSD burn calibration "
+            f"is {burn}. Watch how median and RPS move across "
             f"the Locust user steps for concurrency behaviour."
         )
     return "Insufficient plateau data to identify a bottleneck."

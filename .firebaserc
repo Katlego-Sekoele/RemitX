@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "remitx-gcp"
+  },
+  "targets": {
+    "remitx-gcp": {
+      "hosting": {
+        "remitx-qa-web": ["remitx-qa-web"],
+        "remitx-prod-web": ["remitx-prod-web"]
+      }
+    }
+  }
+}

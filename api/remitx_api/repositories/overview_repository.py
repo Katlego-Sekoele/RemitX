@@ -34,7 +34,9 @@ class TransferFact:
     created_at: datetime
     status: str
     confirmed_at: datetime | None
-    sender_user_id: uuid.UUID
+    # None when a stokvel sent it (`Quote.stokvel_id`).
+    sender_user_id: uuid.UUID | None
+    stokvel_id: uuid.UUID | None
     beneficiary_user_id: uuid.UUID
     sender_amount: Decimal
     sender_currency: str
@@ -157,6 +159,7 @@ class OverviewRepository:
                 settlement.status,
                 settlement.confirmed_at,
                 Quote.sender_user_id,
+                Quote.stokvel_id,
                 Quote.beneficiary_user_id,
                 Quote.sender_amount,
                 Quote.sender_currency,
@@ -174,7 +177,8 @@ class OverviewRepository:
             )
             .join(Quote, Quote.quote_id == Remittance.quote_id)
             .join(settlement, settlement.tx_id == Remittance.tx_id)
-            .join(sender, sender.id == Quote.sender_user_id)
+            # Outer: a stokvel's payout has no sender user, and still counts.
+            .outerjoin(sender, sender.id == Quote.sender_user_id)
             .join(recipient, recipient.id == Quote.beneficiary_user_id)
         )
 
@@ -186,6 +190,7 @@ def _fact(row) -> TransferFact:
         status,
         confirmed_at,
         sender_user_id,
+        stokvel_id,
         beneficiary_user_id,
         sender_amount,
         sender_currency,
@@ -207,6 +212,7 @@ def _fact(row) -> TransferFact:
         status=status,
         confirmed_at=None if confirmed_at is None else _as_utc(confirmed_at),
         sender_user_id=sender_user_id,
+        stokvel_id=stokvel_id,
         beneficiary_user_id=beneficiary_user_id,
         sender_amount=_decimal(sender_amount),
         sender_currency=sender_currency,

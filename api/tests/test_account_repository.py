@@ -132,3 +132,46 @@ def test_available_balance_excludes_own_processing_outgoing_legs(app_context):
     db.session.commit()
 
     assert account_repo.get_available_balance(sender_zar.account_id) == Decimal("700")
+
+
+def test_available_balances_for_accounts_matches_per_account_read(app_context):
+    account_repo = AccountRepository()
+    sender = UserController().ensure_provisioned(
+        "user_grouped", lambda: "grouped@example.com", lambda: "Grouped"
+    )
+    other = UserController().ensure_provisioned(
+        "user_grouped_other", lambda: "grouped_other@example.com", lambda: "Other"
+    )
+    sender_zar = account_repo.get_user_account(sender.id, CURRENCY_ZAR)
+    sender_token = account_repo.get_user_account(sender.id, CURRENCY_TOKEN)
+    other_zar = account_repo.get_user_account(other.id, CURRENCY_ZAR)
+    account_repo.increase_balance(sender_zar.account_id, Decimal("1000"))
+    account_repo.increase_balance(sender_token.account_id, Decimal("500"))
+
+    for source, status, amount in (
+        (sender_zar, STATUS_PENDING, "300"),
+        (sender_token, STATUS_PROCESSING, "120"),
+    ):
+        db.session.add(
+            Transaction(
+                type=TYPE_REMITTANCE,
+                credit_account_id=source.account_id,
+                debit_account_id=other_zar.account_id,
+                amount=Decimal(amount),
+                currency=source.account_currency,
+                status=status,
+            )
+        )
+    db.session.commit()
+
+    result = account_repo.available_balances_for_accounts(
+        [sender_zar.account_id, sender_token.account_id, other_zar.account_id]
+    )
+
+    for account in (sender_zar, sender_token):
+        assert account.account_balance - result[
+            account.account_id
+        ] == account_repo.get_available_balance(account.account_id)
+    assert result[sender_zar.account_id] == Decimal("300")
+    assert result[sender_token.account_id] == Decimal("120")
+    assert other_zar.account_id not in result

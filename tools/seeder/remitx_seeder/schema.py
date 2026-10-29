@@ -33,6 +33,13 @@ COVERAGE = {
     "exchange_rates": "money (historical rate provider)",
     "bank_accounts": "money (cash-out)",
     "withdrawals": "money (cash-out)",
+    # The stokvel demo leaves its stokvels forming, so rounds, contributions
+    # and payouts stay empty; those come from the demo itself (#269, #270).
+    "stokvels": "stokvel (demo scenario)",
+    "stokvel_members": "stokvel (demo scenario)",
+    "stokvel_invitations": "stokvel (demo scenario)",
+    "stokvel_cycles": "stokvel (demo scenario, forming)",
+    "stokvel_cycle_members": "stokvel (demo scenario)",
 }
 
 REFERENCE_TABLES = {

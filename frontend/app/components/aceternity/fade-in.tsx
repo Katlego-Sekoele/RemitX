@@ -9,11 +9,19 @@ type FadeInProps = {
   children: ReactNode
   className?: string
   delay?: number
+  "data-ascii-safe"?: boolean
+  "data-ascii-pad"?: string
 }
 
-export function FadeIn({ children, className, delay = 0 }: FadeInProps) {
+export function FadeIn({
+  children,
+  className,
+  delay = 0,
+  ...rest
+}: FadeInProps) {
   return (
     <motion.div
+      {...rest}
       className={cn(className)}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}

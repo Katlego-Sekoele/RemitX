@@ -8,11 +8,11 @@ from remitx_api.errors.accounts import KycNotApprovedToOpenAccountError
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
     TYPE_USER,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.quote import Quote
@@ -30,6 +30,7 @@ from remitx_api.repositories.account_repository import AccountRepository
 from remitx_api.repositories.kyc_application_repository import KycApplicationRepository
 from remitx_api.repositories.quote_repository import QuoteRepository
 from remitx_api.repositories.remittance_repository import RemittanceRepository
+from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.repositories.user_repository import UserRepository
 
@@ -74,7 +75,7 @@ def _display_order(account: Account) -> tuple[int, str]:
 _PLATFORM_TYPE_ORDER = (
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
 )
 
@@ -140,13 +141,13 @@ class AccountTransactionView:
     confirmed_at: datetime | None
     # What the leg was, from this account's owner's point of view.
     description: str
-    # The other customer in a transfer; None off a transfer, or when that
-    # person has no name on file.
+    # The other customer in a transfer, or the stokvel that paid a payout;
+    # None off a transfer, or when neither has a name the caller may see.
     counterparty_name: str | None
     remittance_id: uuid.UUID | None
     # The transfer's burn hash on the XRPL Testnet, on every leg of a
     # confirmed transfer.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,7 @@ class _Transfer:
     sent: bool
     counterparty_name: str | None
     remittance_id: uuid.UUID | None
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
 
 
 def describe_leg(
@@ -186,6 +187,8 @@ def describe_leg(
     name = transfer.counterparty_name
     sent_to = f"Sent to {name}" if name else "Sent to a recipient"
     received_from = f"Received from {name}" if name else "Received from a sender"
+    if transfer.quote.stokvel_id and name:
+        received_from = f"Stokvel payout from {name}"
 
     if leg_type == TYPE_BENEFICIARY_PAYOUT:
         return received_from if name else "Payout"
@@ -212,6 +215,7 @@ class AccountController:
         self._quotes = QuoteRepository()
         self._remittances = RemittanceRepository()
         self._users = UserRepository()
+        self._stokvels = StokvelRepository()
 
     def open_account(self, user_id: uuid.UUID, currency: str) -> AccountView:
         """Open a fiat payout account the caller does not hold yet."""
@@ -245,6 +249,9 @@ class AccountController:
         accounts = sorted(
             self._accounts.list_user_accounts(user_id), key=_display_order
         )
+        in_flight = self._accounts.available_balances_for_accounts(
+            [account.account_id for account in accounts]
+        )
         return [
             AccountView(
                 account_id=account.account_id,
@@ -253,7 +260,8 @@ class AccountController:
                 kind=account_kind(account.account_currency),
                 balance=_money(account.account_balance),
                 available_balance=_money(
-                    self._accounts.get_available_balance(account.account_id)
+                    account.account_balance
+                    - in_flight.get(account.account_id, Decimal("0"))
                 ),
             )
             for account in accounts
@@ -289,7 +297,7 @@ class AccountController:
         wallets = [
             account
             for account in self._accounts.list_platform_accounts()
-            if account.type == TYPE_XRPL_WALLET
+            if account.type == TYPE_EVM_WALLET
             and account.account_currency == CURRENCY_TOKEN
         ]
         available = sum(
@@ -351,8 +359,12 @@ class AccountController:
         remittance_ids = self._remittances.get_ids_by_quote_ids(quote_ids, user_id)
         burn_hashes = self._transactions.get_burn_hashes(quote_ids, user_id)
         users = self._users.get_many(
-            {q.sender_user_id for q in quotes.values()}
+            # A stokvel's payout has no sender user.
+            {q.sender_user_id for q in quotes.values() if q.sender_user_id}
             | {q.beneficiary_user_id for q in quotes.values()}
+        )
+        stokvel_names = self._stokvels.get_stokvel_names(
+            {q.stokvel_id for q in quotes.values() if q.stokvel_id}
         )
 
         transfers = {}
@@ -367,10 +379,10 @@ class AccountController:
                 counterparty_name=(
                     short_display_name(other.first_name, other.last_name)
                     if other
-                    else None
+                    else stokvel_names.get(quote.stokvel_id)
                 ),
                 remittance_id=remittance_ids.get(quote_id),
-                xrpl_tx_hash=burn_hashes.get(quote_id),
+                evm_tx_hash=burn_hashes.get(quote_id),
             )
         return transfers
 
@@ -400,8 +412,8 @@ class AccountController:
             remittance_id=transfer.remittance_id if transfer else None,
             # Every leg of a transfer confirms in the same commit as the burn
             # hash is recorded, so a confirmed leg's hash is the transfer's.
-            xrpl_tx_hash=(
-                transfer.xrpl_tx_hash
+            evm_tx_hash=(
+                transfer.evm_tx_hash
                 if transfer and leg.status == STATUS_CONFIRMED
                 else None
             ),

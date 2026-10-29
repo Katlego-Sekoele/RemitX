@@ -41,9 +41,7 @@ def test_list_stuck_requires_transaction_read():
 
 def test_retry_requires_settlement_retry_permission(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        queue_service, "enqueue_settle_remittance", calls.append
-    )
+    monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
 
     with rbac_client(
         make_user("stuck-reader"),
@@ -56,9 +54,7 @@ def test_retry_requires_settlement_retry_permission(monkeypatch):
 
 def test_retry_enqueue_for_fully_pending_group(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        queue_service, "enqueue_settle_remittance", calls.append
-    )
+    monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
 
     with rbac_client(
         make_user("treasury"),
@@ -91,9 +87,7 @@ def test_retry_enqueue_for_fully_pending_group(monkeypatch):
 
 def test_retry_refuses_processing_group(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        queue_service, "enqueue_settle_remittance", calls.append
-    )
+    monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
 
     with rbac_client(
         make_user("treasury-2"),
@@ -118,9 +112,7 @@ def test_retry_refuses_processing_group(monkeypatch):
 
 def test_reclaim_pending_enqueues_all_safe_groups(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        queue_service, "enqueue_settle_remittance", calls.append
-    )
+    monkeypatch.setattr(queue_service, "enqueue_settle_remittance", calls.append)
 
     with rbac_client(
         make_user("treasury-3"),

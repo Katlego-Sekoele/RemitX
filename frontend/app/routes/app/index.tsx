@@ -48,28 +48,26 @@ export default function AppHome() {
         <Welcome verified={verified} loaded={onboarding.data !== undefined} />
         <BalanceSummary />
         <DashboardInsights />
-        {onboarding.data ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent transfers</CardTitle>
-              <CardDescription>
-                Your last {RECENT_LIMIT}, sent and received.
-              </CardDescription>
-              <CardAction>
-                <Button
-                  nativeButton={false}
-                  variant="link"
-                  render={<Link to={TRANSFERS_PATH} />}
-                >
-                  See all
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              <RecentTransfers limit={RECENT_LIMIT} />
-            </CardContent>
-          </Card>
-        ) : null}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent transfers</CardTitle>
+            <CardDescription>
+              Your last {RECENT_LIMIT}, sent and received.
+            </CardDescription>
+            <CardAction>
+              <Button
+                nativeButton={false}
+                variant="link"
+                render={<Link to={TRANSFERS_PATH} />}
+              >
+                See all
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <RecentTransfers limit={RECENT_LIMIT} />
+          </CardContent>
+        </Card>
       </div>
     </AppPageFrame>
   )

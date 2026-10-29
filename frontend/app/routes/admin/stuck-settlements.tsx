@@ -1,16 +1,15 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState } from "react"
 import { Link } from "react-router"
-import { toast } from "sonner"
-
 import { api, TransactionStatus, type StuckSettlementRead } from "~/client"
 import { CopyButton } from "~/components/accounts/copy-button"
 import { QueryError } from "~/components/accounts/query-error"
 import { AdminPageFrame } from "~/components/admin/admin-page-frame"
 import { ForbiddenPage } from "~/components/admin/forbidden-page"
 import { formatDateTime } from "~/components/admin/kyc-review/format"
-import { XrplHash } from "~/components/transfers/xrpl-hash"
+import { ChainTxHash } from "~/components/chain/tx-hash"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,7 +55,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip"
-import { errorMessage } from "~/hooks/use-onboarding"
 import { useHasPermission } from "~/hooks/use-permissions"
 import { PERMISSIONS } from "~/lib/permissions"
 import { canRetryEnqueue, recoveryKindCopy } from "~/lib/settlement-recovery"
@@ -98,17 +96,16 @@ function StuckSettlementsPage() {
 
   const reclaim = useMutation({
     ...api.admin.operations.reclaimPendingSettlements(),
-    onSuccess: (data) => {
-      const count = data.requeued_quote_ids.length
-      toast.success(
-        count === 0
+    toast: {
+      success: (data) => {
+        const count = data.requeued_quote_ids.length
+        return count === 0
           ? "No fully pending groups were re-enqueued"
           : `Re-enqueued ${count} settlement${count === 1 ? "" : "s"}`
-      )
-      refresh()
+      },
     },
-    onError: (error) => {
-      toast.error(errorMessage(error))
+    onSuccess: () => {
+      refresh()
     },
   })
 
@@ -257,12 +254,9 @@ function StuckSettlementRow({
 
   const retry = useMutation({
     ...api.admin.operations.retrySettlementEnqueue(),
+    toast: "Settlement job re-enqueued",
     onSuccess: () => {
-      toast.success("Settlement job re-enqueued")
       onRetried()
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error))
     },
     onSettled: () => setRetrying(false),
   })
@@ -318,8 +312,8 @@ function StuckSettlementRow({
         </Tooltip>
       </TableCell>
       <TableCell>
-        {row.burn_xrpl_tx_hash ? (
-          <XrplHash hash={row.burn_xrpl_tx_hash} />
+        {row.burn_evm_tx_hash ? (
+          <ChainTxHash hash={row.burn_evm_tx_hash} />
         ) : (
           "—"
         )}

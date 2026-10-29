@@ -11,6 +11,7 @@ from remitx_api.repositories.remittance_repository import (
     RemittanceRecord,
     RemittanceRepository,
 )
+from remitx_api.repositories.stokvel_repository import StokvelRepository
 from remitx_api.repositories.transaction_repository import TransactionRepository
 from remitx_api.services import remittance_service
 from remitx_api.services.transfer_timeline import TimelineStage, transfer_timeline
@@ -50,7 +51,8 @@ class TransferView:
     remittance_id: uuid.UUID
     quote_id: uuid.UUID
     direction: str
-    counterparty_user_id: uuid.UUID
+    # None for a payout received from a stokvel, which has no sender user.
+    counterparty_user_id: uuid.UUID | None
     counterparty_name: str | None
     # The settlement leg's: pending, processing, confirmed or failed.
     status: str
@@ -58,7 +60,7 @@ class TransferView:
     processed_at: datetime | None
     settled_at: datetime | None
     # The burn leg's, once the group has confirmed.
-    xrpl_tx_hash: str | None
+    evm_tx_hash: str | None
     sender_amount: Decimal | None
     sender_currency: str
     sender_transaction_fee: Decimal | None
@@ -75,17 +77,22 @@ class TransferView:
     timeline: list[TimelineStage]
 
 
-def _full_name(user: User) -> str | None:
+def _full_name(user: User | None) -> str | None:
+    if user is None:
+        return None
     return " ".join(part for part in (user.first_name, user.last_name) if part) or None
 
 
-def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferView:
+def _transfer_view(
+    record: RemittanceRecord, caller_id: uuid.UUID, stokvel_name: str | None
+) -> TransferView:
     quote = record.quote
     sent = quote.sender_user_id == caller_id
     leg = record.settlement_leg
     confirmed = leg.status == STATUS_CONFIRMED
     burn = record.burn_leg
     settled_at = leg.confirmed_at if confirmed else None
+    counterparty = record.recipient if sent else record.sender
     timeline, timeline_step = transfer_timeline(
         leg.status,
         record.remittance.created_at,
@@ -96,13 +103,13 @@ def _transfer_view(record: RemittanceRecord, caller_id: uuid.UUID) -> TransferVi
         remittance_id=record.remittance.remittance_id,
         quote_id=quote.quote_id,
         direction=DIRECTION_SENT if sent else DIRECTION_RECEIVED,
-        counterparty_user_id=(record.recipient if sent else record.sender).id,
-        counterparty_name=_full_name(record.recipient if sent else record.sender),
+        counterparty_user_id=counterparty.id if counterparty else None,
+        counterparty_name=_full_name(counterparty) if counterparty else stokvel_name,
         status=leg.status,
         created_at=record.remittance.created_at,
         processed_at=leg.processed_at,
         settled_at=settled_at,
-        xrpl_tx_hash=burn.xrpl_tx_hash if confirmed and burn is not None else None,
+        evm_tx_hash=burn.evm_tx_hash if confirmed and burn is not None else None,
         sender_amount=quote.sender_amount if sent else None,
         sender_currency=quote.sender_currency,
         sender_transaction_fee=quote.sender_transaction_fee if sent else None,
@@ -125,12 +132,17 @@ class RemittanceController:
         self._quotes = QuoteRepository()
         self._transactions = TransactionRepository()
         self._remittances = RemittanceRepository()
+        self._stokvels = StokvelRepository()
 
     def list_transfers(self, user_id: uuid.UUID, limit: int) -> list[TransferView]:
         """The caller's transfers, sent and received, newest first."""
+        records = self._remittances.list_for_user(user_id, limit)
+        names = self._stokvels.get_stokvel_names(
+            {r.quote.stokvel_id for r in records if r.quote.stokvel_id}
+        )
         return [
-            _transfer_view(record, user_id)
-            for record in self._remittances.list_for_user(user_id, limit)
+            _transfer_view(record, user_id, names.get(record.quote.stokvel_id))
+            for record in records
         ]
 
     def get_transfer(
@@ -140,7 +152,9 @@ class RemittanceController:
         record = self._remittances.get_for_user(remittance_id, user_id)
         if record is None:
             raise UnknownRemittanceError(remittance_id)
-        return _transfer_view(record, user_id)
+        stokvel_id = record.quote.stokvel_id
+        names = self._stokvels.get_stokvel_names({stokvel_id} if stokvel_id else set())
+        return _transfer_view(record, user_id, names.get(stokvel_id))
 
     def confirm(self, sender_user_id: uuid.UUID, quote_id: uuid.UUID) -> RemittanceView:
         remittance = remittance_service.confirm_remittance(sender_user_id, quote_id)

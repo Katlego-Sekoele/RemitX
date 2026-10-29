@@ -1,7 +1,7 @@
 # Load test
 
 Load-tests the API with [Locust](https://locust.io) on a throwaway copy of the
-stack, without calling Clerk, the exchange-rate API or the XRPL testnet.
+stack, without calling Clerk, the exchange-rate API or the XRPL EVM Testnet.
 
 ```bash
 make loadtest
@@ -29,7 +29,7 @@ Each run writes to `tools/loadtest/results/<timestamp>/`:
 
 Everything about a run lives in one JSON file under
 [`profiles/`](profiles/): how many people to seed, the Locust step shape, the
-simulated XRPL burn, API/worker limits, and an optional **compute** sweep.
+simulated EVM burn, API/worker limits, and an optional **compute** sweep.
 
 ```bash
 make loadtest                          # profiles/default.json (single compute)
@@ -44,7 +44,7 @@ block for the seeder, and feeds the rest into the stack.
 |---|---|
 | `seed` | Seeder scenario (senders, KYC/money rates, …) |
 | `locust` | `steps`, `step_seconds`, `spawn_rate` |
-| `burn` | Simulated XRPL delay (`p50_s`, `p95_s`) and `failure_rate` |
+| `burn` | Simulated EVM burn delay (`p50_s`, `p95_s`), `failure_rate`, and `calibrated_on` (where the timings were measured; required, and shown beside them in every report) |
 | `api` / `worker` / `postgres` | Single-run limits when `compute` is omitted. With a sweep: top-level `api` and `worker` are forbidden; top-level `postgres` holds only `max_connections` (shared). |
 | `compute` | Optional list of full steps `{ name, api, worker, postgres }`. Seed once; recreate Postgres + API + worker per step; same Locust user ramp. Order small→large so the starved case sees the cleaner DB first. |
 | `database_pool` | SQLAlchemy QueuePool per process (fixed for the run). |
@@ -77,7 +77,7 @@ Later compute steps see remittances left by earlier ones. Prefer ordering
 |---|---|
 | Clerk | The API verifies session tokens with `CLERK_JWT_KEY`, the throwaway public key, and Locust signs its own tokens with the private half. There is no secret key, so the API never calls Clerk. |
 | Exchange-rate API | Rates are stored with a far-future expiry, and no API key is set. |
-| XRPL testnet | The worker's one XRPL call is simulated (`fake_xrpl_worker.py`) with a delay calibrated on QA. No wallet is configured. |
+| XRPL EVM Testnet | The worker's chain calls are simulated (`fake_evm_worker.py`): the burn returns a `10AD…` hash at once and the wait for its receipt takes a delay calibrated on QA. `get_web3` raises, and no treasury key is configured. |
 
 The stack's Docker network is also `internal`: nothing in it can reach the
 internet, so a partner call that slipped through would fail, not leave.
@@ -91,7 +91,7 @@ internet, so a partner call that slipped through would fail, not leave.
 - API response times (HTTP-only; SETTLE excluded)
 - Requests processed per second
 - Message-queue throughput (`SETTLE` / `end to end` settlements/s)
-- RLUSD transaction processing time (calibrated `burn` + in-run `chain + confirm`)
+- UCTUSD transaction processing time (calibrated `burn` + in-run `chain + confirm`)
 - Transaction success and failure rates
 - Behaviour under concurrent use (curves vs Locust user steps × compute)
 - A short bottleneck explanation
@@ -116,20 +116,31 @@ there if you want the live view; the in-repo files are the source of truth.
   `end to end` is settlements per second: the queue's throughput.
 - Locust **Aggregated** mixes SETTLE into medians — prefer the canvas / HTTP-only figures.
 
-## Calibrating the simulated XRPL burn
+## Calibrating the simulated EVM burn
 
-Run [`qa_xrpl_timings.sql`](qa_xrpl_timings.sql) in the Neon SQL editor on the
-QA branch. It measures real testnet settlements, skips the seeder's simulated
-ones, and drops outliers such as the worker-wake bug's multi-hour waits
+Run [`qa_burn_timings.sql`](qa_burn_timings.sql) in the Neon SQL editor on the
+QA branch. It measures real EVM settlements (hashes starting `0x`), which
+skips the seeder's simulated ones and the XRP Ledger burns from before the
+switch-over, and drops outliers such as the worker-wake bug's multi-hour waits
 (anything outside Tukey's far-out fences). Put its `burn_p50_s` and
-`burn_p95_s` in the profile's `burn` section:
+`burn_p95_s` in the profile's `burn` section, and say where they came from:
 
 ```json
-"burn": { "p50_s": 4.2, "p95_s": 7.9, "failure_rate": 0 }
+"burn": {
+  "p50_s": 4.2,
+  "p95_s": 7.9,
+  "failure_rate": 0,
+  "calibrated_on": "XRPL EVM Testnet, QA 2026-10"
+}
 ```
 
-Report the query's real testnet figures as the RLUSD transaction processing
+Report the query's real testnet figures as the UCTUSD transaction processing
 time; the load test's own SETTLE rows show how the queue behaves under load.
+
+The committed defaults (p50 8.61 s, p95 10.24 s) were measured on the XRP
+Ledger, before the switch to EVM, so their `calibrated_on` is
+`"XRP Ledger, pre-EVM"` and every report says so. Recalibrate once QA has
+real EVM burns.
 
 ## Files
 
@@ -143,6 +154,6 @@ time; the load test's own SETTLE rows show how the queue behaves under load.
 | `docker-compose.yml` | The throwaway stack |
 | `loadtest.env` | Stack credentials for the seeder's `loadtest` target. Nothing secret |
 | `prepare.py` | Rates, signing keys and the people list, after seeding |
-| `fake_xrpl_worker.py` | The real worker with a simulated XRPL burn |
+| `fake_evm_worker.py` | The real worker with a simulated EVM burn |
 | `locustfile.py` | What the simulated people do, and the stepped load |
-| `qa_xrpl_timings.sql` | Real settlement timings from QA, outliers removed |
+| `qa_burn_timings.sql` | Real EVM settlement timings from QA, outliers removed |

@@ -18,6 +18,10 @@ quote's rates and locked on the quote (`Quote.sender_amount_zar`).
 limits, and `require_can_send` is the one rule `create_quote` (early, so the
 sender hears it before committing) and `confirm_remittance` (the real gate,
 since two quotes can be issued against one allowance) both apply.
+
+A stokvel contribution meets the monthly limit only, never the daily one
+(`require_within_monthly_limit`): a round is due once in the month, not on a
+particular day. Joining a stokvel checks the same, for one contribution.
 """
 
 from __future__ import annotations
@@ -96,14 +100,34 @@ def require_within_limits(
     limit, remaining = (
         (LIMIT_MONTHLY, monthly) if monthly <= daily else (LIMIT_DAILY, daily)
     )
-    estimate = None
-    if currency != CURRENCY_ZAR:
-        # Rounded down, so sending the estimate itself would fit.
-        estimate = (
-            (remaining * amount / amount_zar).quantize(CENTS, rounding=ROUND_DOWN),
-            currency,
-        )
+    estimate = _estimate(remaining, amount_zar, amount=amount, currency=currency)
     raise LimitExceededError(limit, remaining, estimate=estimate)
+
+
+def require_within_monthly_limit(
+    standing: KycStanding, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> None:
+    """Refuse a stokvel contribution worth `amount_zar` in rand that doesn't
+    fit what is left of the month. The daily limit is not checked."""
+    monthly = standing.monthly_remaining_zar
+    if amount_zar <= monthly:
+        return
+    estimate = _estimate(monthly, amount_zar, amount=amount, currency=currency)
+    raise LimitExceededError(LIMIT_MONTHLY, monthly, estimate=estimate)
+
+
+def _estimate(
+    remaining: Decimal, amount_zar: Decimal, *, amount: Decimal, currency: str
+) -> tuple[Decimal, str] | None:
+    """What `remaining` rand is worth in `currency`, at the rate of a send of
+    `amount` worth `amount_zar`; None for rand itself."""
+    if currency == CURRENCY_ZAR:
+        return None
+    # Rounded down, so sending the estimate itself would fit.
+    return (
+        (remaining * amount / amount_zar).quantize(CENTS, rounding=ROUND_DOWN),
+        currency,
+    )
 
 
 def require_can_send(

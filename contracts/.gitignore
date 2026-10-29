@@ -1,0 +1,10 @@
+# Deployer key lives here (see hardhat.config.ts); never commit it.
+.env
+node_modules/
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+# Records of throwaway local-node deploys (npx hardhat node).
+deployments/localhost.json

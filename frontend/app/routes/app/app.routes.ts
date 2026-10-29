@@ -84,6 +84,13 @@ export const APP_ROUTE_INDEX: readonly AppRouteIndex[] = [
     icon: "ArrowsLeftRightIcon",
   },
   {
+    // A stokvel's own page, app/stokvels/:stokvelId, is in routes.ts.
+    route: { path: "app/stokvels", module: "routes/app/stokvels.tsx" },
+    label: "Stokvels",
+    order: 18,
+    icon: "UsersFourIcon",
+  },
+  {
     route: {
       path: "app/beneficiaries",
       module: "routes/app/beneficiaries.tsx",

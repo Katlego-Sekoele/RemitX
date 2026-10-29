@@ -4,7 +4,7 @@ and what tests load.
 One bank account and one fee revenue account per country RemitX settles fiat
 in, each in that country's currency (a ZAR fee can no more land in a USD
 revenue account than a ZAR deposit could land in the USD bank account), plus
-the XRPL treasury wallet and the uctusd issuer it is funded from and burns
+the EVM treasury wallet and the uctusd issuer it is funded from and burns
 back to. None of them belongs to a user: `accounts.user_id` is set on `USER`
 rows only.
 
@@ -27,17 +27,17 @@ from remitx_api.models.orm.account import (
     CURRENCY_USD,
     CURRENCY_ZAR,
     CURRENCY_ZWL,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
     TYPE_PLATFORM_FIAT,
     TYPE_PLATFORM_REVENUE,
-    TYPE_XRPL_WALLET,
 )
 
 # Fixed namespace for uuid5, so a seeded account has the same id in every
 # environment and a migration can remove exactly the rows it inserted.
 PLATFORM_ACCOUNT_NAMESPACE = uuid.UUID("5651721a-81c4-4806-84f9-e4294e7dc411")
 
-TREASURY_WALLET_LABEL = "RemitX XRPL Treasury Wallet"
+TREASURY_WALLET_LABEL = "RemitX Treasury Wallet"
 # The issuing address (ECO5040W clarifications): source of the treasury
 # wallet's one-time pre-funding, destination of every withdrawal burn. Read
 # from config, the same as `remittance_service.TOKEN_ISSUER_LABEL`, so the
@@ -74,7 +74,7 @@ PLATFORM_ACCOUNT_SEEDS: tuple[PlatformAccountSeed, ...] = (
         for key, label, currency in _COUNTRIES
     ),
     PlatformAccountSeed(
-        "treasury_wallet", TREASURY_WALLET_LABEL, TYPE_XRPL_WALLET, CURRENCY_TOKEN
+        "treasury_wallet", TREASURY_WALLET_LABEL, TYPE_EVM_WALLET, CURRENCY_TOKEN
     ),
     *(
         PlatformAccountSeed(

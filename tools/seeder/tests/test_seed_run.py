@@ -170,9 +170,9 @@ def test_settlement_used_only_synthetic_hashes_and_topped_up_the_treasury(run):
         row[0]
         for row in query(
             run,
-            select(Transaction.xrpl_tx_hash).where(
+            select(Transaction.evm_tx_hash).where(
                 Transaction.type == TYPE_TOKEN_BURN,
-                Transaction.xrpl_tx_hash.is_not(None),
+                Transaction.evm_tx_hash.is_not(None),
             ),
         )
     ]
@@ -229,6 +229,84 @@ def test_verify_catches_a_broken_ledger(run):
         db.close_session(token)
     assert not report.ok
     assert [f.check for f in report.errors] == ["ledger.balances"]
+
+
+_TREASURY_ADDRESS = "0x6C350A0A9031DE51dF0535e2e88872Cd7330F2e7"
+
+
+def _treasury_on_chain_finding(
+    run, monkeypatch, *, address=_TREASURY_ADDRESS, chain_offset=None, fails=None
+):
+    """`verify --chain`'s treasury finding, with the EVM balance read faked as
+    the ledger's treasury balance plus `chain_offset`, or raising `fails`.
+    Returns the finding, the addresses read and the ledger balance."""
+    from remitx_api.repositories.account_repository import AccountRepository
+    from remitx_api.services.remittance_service import REMITX_TREASURY_WALLET_LABEL
+    from remitx_worker import evm_service
+
+    from remitx_seeder.verify import run_verify
+
+    monkeypatch.setenv("EVM_TREASURY_ADDRESS", address)
+    db = run["db"]
+    token = db.open_session()
+    try:
+        ledger = Decimal(
+            AccountRepository()
+            .get_platform_account_by_label(REMITX_TREASURY_WALLET_LABEL)
+            .account_balance
+        )
+        read = []
+
+        def fake_balance(addr, w3=None):
+            read.append(addr)
+            if fails is not None:
+                raise fails
+            return ledger + (chain_offset or Decimal("0"))
+
+        monkeypatch.setattr(evm_service, "get_token_balance", fake_balance)
+        report = run_verify(db.session, check_chain=True)
+    finally:
+        db.close_session(token)
+    (finding,) = [f for f in report.findings if f.check == "treasury.on_chain"]
+    return finding, read, ledger
+
+
+def test_verify_chain_is_skipped_without_a_treasury_address(run, monkeypatch):
+    finding, read, _ = _treasury_on_chain_finding(run, monkeypatch, address="")
+    assert finding.ok and "EVM_TREASURY_ADDRESS" in finding.summary
+    assert read == []
+
+
+def test_verify_chain_compares_the_ledger_treasury_with_the_evm_wallet(
+    run, monkeypatch
+):
+    from remitx_seeder.verify import PRE_EVM_LEDGER_NOTE
+
+    finding, read, ledger = _treasury_on_chain_finding(run, monkeypatch)
+    assert read == [_TREASURY_ADDRESS]
+    assert finding.ok and "differ" not in finding.summary
+    # The figure compared is the treasury account's, not some other account's
+    assert f"Treasury ledger {ledger} uctusd, on chain {ledger}" in finding.summary
+
+    finding, _, ledger = _treasury_on_chain_finding(
+        run, monkeypatch, chain_offset=Decimal("1")
+    )
+    assert not finding.ok and finding.severity == "warning"
+    assert f"Treasury ledger {ledger} uctusd, on chain {ledger + 1}" in finding.summary
+    # Says why it differs on a database from before the EVM switch
+    assert PRE_EVM_LEDGER_NOTE in finding.summary
+
+
+def test_verify_chain_is_skipped_when_the_rpc_cannot_be_reached(run, monkeypatch):
+    """What a developer without network access to the testnet sees first."""
+    finding, read, _ = _treasury_on_chain_finding(
+        run, monkeypatch, fails=ConnectionError("rpc.testnet.xrplevm.org unreachable")
+    )
+    assert read == [_TREASURY_ADDRESS]
+    assert finding.ok and finding.severity == "info"
+    assert finding.summary == (
+        "Skipped: ConnectionError: rpc.testnet.xrplevm.org unreachable"
+    )
 
 
 def test_the_live_tail_signs_in_calls_the_api_and_respects_its_budget(run):
@@ -305,7 +383,7 @@ def test_the_live_tail_signs_in_calls_the_api_and_respects_its_budget(run):
             return httpx.Response(200, json={"remittance_id": "r1"})
         if request.url.path == "/remittances/r1":
             return httpx.Response(
-                200, json={"status": "confirmed", "xrpl_tx_hash": "ABC123"}
+                200, json={"status": "confirmed", "evm_tx_hash": "ABC123"}
             )
         return httpx.Response(404)
 

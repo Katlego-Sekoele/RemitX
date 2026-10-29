@@ -4,14 +4,21 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from remitx_api.errors.settlement_recovery import SettlementNotRetryableError
 from remitx_api.extensions import db
 from remitx_api.models.orm.transaction import (
     STATUS_CONFIRMED,
     STATUS_PROCESSING,
+    TYPE_TOKEN_BURN,
     Transaction,
 )
 from remitx_api.repositories.remittance_repository import RemittanceRepository
-from remitx_api.services import queue_service, remittance_service
+from remitx_api.services import (
+    queue_service,
+    remittance_service,
+    settlement_recovery_service,
+)
+from remitx_api.settlement_recovery_queries import pending_settlement_quote_ids
 from remitx_worker import db as worker_db
 from remitx_worker.reclaim import (
     SETTLE_REMITTANCE,
@@ -171,3 +178,32 @@ def test_stale_processing_is_logged_not_enqueued(
     assert count == 1
     assert sent == []
     assert str(quote_id) in caplog.text
+
+
+def test_a_processing_group_with_a_burn_hash_is_never_re_enqueued(
+    app_context, worker_on_app_db, settle_enqueue_calls, monkeypatch
+):
+    """A burn that was signed (its hash stored) may be on chain. Neither the
+    reclaim query nor the admin retry may hand it back to settlement, which
+    could only end in a second burn."""
+    quote_id = _confirm_quote(settle_enqueue_calls)
+    db.session.execute(
+        update(Transaction)
+        .where(Transaction.quote_id == quote_id)
+        .values(status=STATUS_PROCESSING, processed_at=datetime.now(UTC))
+    )
+    db.session.execute(
+        update(Transaction)
+        .where(
+            Transaction.quote_id == quote_id,
+            Transaction.type == TYPE_TOKEN_BURN,
+        )
+        .values(evm_tx_hash="0x" + "be" * 32, xrpl_tx_hash="0x" + "be" * 32)
+    )
+    db.session.commit()
+
+    assert pending_settlement_quote_ids(db.session, min_age_seconds=0) == []
+    with pytest.raises(SettlementNotRetryableError):
+        settlement_recovery_service.retry_enqueue(quote_id)
+    assert settlement_recovery_service.reclaim_fully_pending() == []
+    assert settle_enqueue_calls == []

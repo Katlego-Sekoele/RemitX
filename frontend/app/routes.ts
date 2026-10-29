@@ -24,6 +24,8 @@ export default [
         },
       ]).map(({ path, module }) => route(path, module)),
       route("app/transfers/:remittanceId", "routes/app/transfer.tsx"),
+      route("app/stokvels/new", "routes/app/stokvel-new.tsx"),
+      route("app/stokvels/:stokvelId", "routes/app/stokvel.tsx"),
       layout("routes/app/verification/layout.tsx", [
         route(
           "app/profile/verification/new",

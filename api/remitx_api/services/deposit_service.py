@@ -164,9 +164,7 @@ def _statement_currency(row: dict) -> str | None:
     return currency if currency in STATEMENT_CURRENCIES else None
 
 
-def _try_parse_statement_datetime(
-    value, processed_at: datetime
-) -> datetime | None:
+def _try_parse_statement_datetime(value, processed_at: datetime) -> datetime | None:
     """Parse a statement date cell to a timezone-aware UTC datetime, or None
     if it can't be parsed.
 
@@ -234,12 +232,12 @@ def process_deposits(
         reference = (row.get("reference") or "").strip() or None
         try:
             deposit, skip = _create_deposit(
-            row,
-            deposit_repo,
-            transaction_repo,
-            account_repo,
-            occurrence_next,
-            actor_user_id=actor_user_id,
+                row,
+                deposit_repo,
+                transaction_repo,
+                account_repo,
+                occurrence_next,
+                actor_user_id=actor_user_id,
             )
         except Exception:
             logger.error(
@@ -250,7 +248,7 @@ def process_deposits(
                 exc_info=True,
             )
             raise
-        
+
         if deposit is not None:
             touched.append(deposit)
         elif skip is not None:

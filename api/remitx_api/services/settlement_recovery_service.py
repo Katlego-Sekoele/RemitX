@@ -48,7 +48,7 @@ class StuckSettlement:
     pending_leg_count: int
     processing_leg_count: int
     failed_leg_count: int
-    burn_xrpl_tx_hash: str | None
+    burn_evm_tx_hash: str | None
     processed_at: datetime | None
     recovery_kind: SettlementRecoveryKind
 
@@ -82,9 +82,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
     for remittance, settlement_leg in rows:
         legs = list(
             db.session.scalars(
-                select(Transaction).where(
-                    Transaction.quote_id == remittance.quote_id
-                )
+                select(Transaction).where(Transaction.quote_id == remittance.quote_id)
             )
         )
         counts = {
@@ -98,7 +96,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
             if leg.status in counts:
                 counts[leg.status] += 1
             if leg.type == TYPE_TOKEN_BURN:
-                burn_hash = leg.xrpl_tx_hash
+                burn_hash = leg.evm_tx_hash
                 processed_at = leg.processed_at
         results.append(
             StuckSettlement(
@@ -109,7 +107,7 @@ def list_stuck_settlements(limit: int = 100) -> list[StuckSettlement]:
                 pending_leg_count=counts[STATUS_PENDING],
                 processing_leg_count=counts[STATUS_PROCESSING],
                 failed_leg_count=counts[STATUS_FAILED],
-                burn_xrpl_tx_hash=burn_hash,
+                burn_evm_tx_hash=burn_hash,
                 processed_at=(
                     _as_utc(processed_at) if processed_at is not None else None
                 ),
@@ -129,9 +127,7 @@ def get_stuck_settlement(quote_id: uuid.UUID) -> StuckSettlement | None:
 def retry_enqueue(quote_id: uuid.UUID) -> None:
     """Re-queue ``settle_remittance`` when every leg is still ``pending``."""
     legs = list(
-        db.session.scalars(
-            select(Transaction).where(Transaction.quote_id == quote_id)
-        )
+        db.session.scalars(select(Transaction).where(Transaction.quote_id == quote_id))
     )
     if not legs:
         raise UnknownSettlementQuoteError(quote_id)

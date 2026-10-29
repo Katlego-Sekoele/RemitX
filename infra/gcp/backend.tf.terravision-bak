@@ -1,0 +1,8 @@
+terraform {
+  cloud {
+    workspaces {
+      # CI: terraform init -cloud-workspace=remitx-gcp-qa|remitx-gcp-prod
+      name = "remitx-gcp-qa"
+    }
+  }
+}

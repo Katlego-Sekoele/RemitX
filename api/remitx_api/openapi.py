@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPBearer
+from pydantic import ConfigDict, Field
 
 from remitx_api.models.schemas.base import Schema
 
@@ -51,6 +52,7 @@ class Tag:
     ACCOUNTS = "accounts"
     BANK_ACCOUNTS = "bank_accounts"
     WITHDRAWALS = "withdrawals"
+    STOKVELS = "stokvels"
     KYC_ONBOARDING = "kyc.onboarding"
     KYC_DOCUMENTS = "kyc.documents"
     ADMIN_ROLES = "admin.roles"
@@ -63,6 +65,8 @@ class Tag:
     ADMIN_KYC_APPLICATIONS = "admin.kyc.applications"
     ADMIN_KYC_DOCUMENTS = "admin.kyc.documents"
     ADMIN_AUDIT = "admin.audit"
+    ADMIN_STOKVEL_CONTRACT = "admin.stokvel_contract"
+    ADMIN_STOKVELS = "admin.stokvels"
 
 
 TAGS: list[dict[str, str]] = [
@@ -99,6 +103,13 @@ TAGS: list[dict[str, str]] = [
     {
         "name": Tag.WITHDRAWALS,
         "description": "Requesting a withdrawal from a fiat account to a bank account.",
+    },
+    {
+        "name": Tag.STOKVELS,
+        "description": (
+            "Savings groups the caller organises or belongs to, and their "
+            "invitations to join one."
+        ),
     },
     {
         "name": Tag.KYC_ONBOARDING,
@@ -147,6 +158,14 @@ TAGS: list[dict[str, str]] = [
             "Privileged actions and sensitive reads — who did what, to whom, and when."
         ),
     },
+    {
+        "name": Tag.ADMIN_STOKVEL_CONTRACT,
+        "description": "Emergency pause and resume for every stokvel on the vault.",
+    },
+    {
+        "name": Tag.ADMIN_STOKVELS,
+        "description": "Administrator actions on one stokvel.",
+    },
 ]
 
 
@@ -165,7 +184,19 @@ class ErrorResponse(Schema):
     """Every refusal that is not a validation failure: ``HTTPException`` and
     ``DomainError`` both answer in this shape."""
 
+    # `code` is sent only when the refusal has one, so it is optional here,
+    # unlike the response fields `Schema` marks required.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=False)
+
     detail: str
+    code: str | None = Field(
+        default=None,
+        description=(
+            "Machine-readable reason, on refusals that have one "
+            "(`DomainError.code`), e.g. `contribution_already_paid`. Absent "
+            "otherwise."
+        ),
+    )
 
 
 def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
@@ -180,6 +211,7 @@ def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         422: "The request body failed validation.",
         502: "Object storage failed.",
         503: "A service the request depends on is unavailable.",
+        504: "The upstream call did not finish in time.",
     }
     return {
         code: {"model": ErrorResponse, "description": descriptions[code]}

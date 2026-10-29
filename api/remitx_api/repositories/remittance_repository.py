@@ -32,7 +32,9 @@ class RemittanceRecord:
     # Always inserted with the group; outer-joined so a group missing one
     # still lists rather than vanishing.
     burn_leg: Transaction | None
-    sender: User
+    # None when a stokvel sent it (`Quote.stokvel_id`): outer-joined so its
+    # payout still lists for the recipient.
+    sender: User | None
     recipient: User
 
 
@@ -170,6 +172,6 @@ class RemittanceRepository(Repository[Remittance, uuid.UUID]):
                     burn.type == TYPE_TOKEN_BURN,
                 ),
             )
-            .join(sender, sender.id == Quote.sender_user_id)
+            .outerjoin(sender, sender.id == Quote.sender_user_id)
             .join(recipient, recipient.id == Quote.beneficiary_user_id)
         )

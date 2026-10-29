@@ -1,3 +1,4 @@
+import pytest
 from remitx_api.config import Config, TestConfig
 
 
@@ -13,3 +14,68 @@ def test_clerk_secret_key_reads_env(monkeypatch):
 
 def test_test_config_supplies_a_fake_secret():
     assert TestConfig().CLERK_SECRET_KEY == "sk_test_fake"
+
+
+EVM_DEFAULTS = {
+    "EVM_RPC_URL": "https://rpc.testnet.xrplevm.org",
+    "EVM_CHAIN_ID": 1449000,
+    "EVM_EXPLORER_URL": "https://explorer.testnet.xrplevm.org",
+    "UCTUSD_CONTRACT_ADDRESS": "0x7055071C7B79A859d9514e62833BFf041ce71074",
+    "UCTUSD_EVM_DECIMALS": 18,
+    "EVM_TREASURY_ADDRESS": "",
+    "STOKVEL_CONTRACT_ADDRESS": "",
+}
+
+
+def test_evm_settings_default_to_the_xrpl_evm_testnet(monkeypatch):
+    for name in EVM_DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
+
+    config = Config()
+
+    for name, default in EVM_DEFAULTS.items():
+        assert getattr(config, name) == default
+
+
+def test_evm_settings_read_env(monkeypatch):
+    overrides = {
+        "EVM_RPC_URL": "http://localhost:8545",
+        "EVM_CHAIN_ID": "31337",
+        "EVM_EXPLORER_URL": "http://localhost:4000",
+        "UCTUSD_CONTRACT_ADDRESS": "0x" + "11" * 20,
+        "UCTUSD_EVM_DECIMALS": "6",
+        "EVM_TREASURY_ADDRESS": "0x" + "22" * 20,
+        "STOKVEL_CONTRACT_ADDRESS": "0x" + "33" * 20,
+    }
+    for name, value in overrides.items():
+        monkeypatch.setenv(name, value)
+
+    config = Config()
+
+    assert config.EVM_CHAIN_ID == 31337
+    assert config.UCTUSD_EVM_DECIMALS == 6
+    for name in (
+        "EVM_RPC_URL",
+        "EVM_EXPLORER_URL",
+        "UCTUSD_CONTRACT_ADDRESS",
+        "EVM_TREASURY_ADDRESS",
+        "STOKVEL_CONTRACT_ADDRESS",
+    ):
+        assert getattr(config, name) == overrides[name]
+
+
+def test_max_stokvel_members_defaults_to_three(monkeypatch):
+    monkeypatch.delenv("MAX_STOKVEL_MEMBERS", raising=False)
+    assert Config().MAX_STOKVEL_MEMBERS == 3
+
+
+def test_max_stokvel_members_reads_env(monkeypatch):
+    monkeypatch.setenv("MAX_STOKVEL_MEMBERS", "12")
+    assert Config().MAX_STOKVEL_MEMBERS == 12
+
+
+@pytest.mark.parametrize("value", ["1", "256"])
+def test_max_stokvel_members_rejects_out_of_range(monkeypatch, value):
+    monkeypatch.setenv("MAX_STOKVEL_MEMBERS", value)
+    with pytest.raises(ValueError, match="MAX_STOKVEL_MEMBERS"):
+        _ = Config().MAX_STOKVEL_MEMBERS

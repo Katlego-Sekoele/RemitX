@@ -21,9 +21,9 @@ from remitx_api.extensions import Base, build_engine
 from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
+    TYPE_EVM_WALLET,
     TYPE_EXTERNAL,
     TYPE_USER,
-    TYPE_XRPL_WALLET,
     Account,
 )
 from remitx_api.models.orm.exchange_rate import ExchangeRate
@@ -148,7 +148,7 @@ def quote_with_pending_burn_leg(session_factory):
         sender_token = _account(session, type_=TYPE_USER, currency=CURRENCY_TOKEN)
         beneficiary_token = _account(session, type_=TYPE_USER, currency=CURRENCY_TOKEN)
         treasury = _account(
-            session, type_=TYPE_XRPL_WALLET, currency=CURRENCY_TOKEN, balance="1000"
+            session, type_=TYPE_EVM_WALLET, currency=CURRENCY_TOKEN, balance="1000"
         )
         issuer = _account(session, type_=TYPE_EXTERNAL, currency=CURRENCY_TOKEN)
         quote_id = _quote(

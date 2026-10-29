@@ -9,10 +9,12 @@ from remitx_api.models.orm.account import (
     CURRENCY_TOKEN,
     CURRENCY_ZAR,
     PAYOUT_CURRENCIES,
+    TYPE_STOKVEL,
     TYPE_USER,
     Account,
     create_account_reference,
 )
+from remitx_api.models.orm.stokvel import Stokvel
 from remitx_api.models.orm.transaction import (
     STATUS_PENDING,
     STATUS_PROCESSING,
@@ -31,11 +33,38 @@ class AccountRepository(Repository[Account, uuid.UUID]):
         return db.session.scalars(select(Account).where(Account.label == label)).first()
 
     def list_platform_accounts(self) -> list[Account]:
-        """Every account that isn't a customer's: RemitX's own, and the
-        external counterparties it settles against."""
+        """Every account that isn't a customer's or a stokvel's: RemitX's
+        own, and the external counterparties it settles against."""
         return db.session.scalars(
-            select(Account).where(Account.type != TYPE_USER)
+            select(Account).where(Account.type.not_in((TYPE_USER, TYPE_STOKVEL)))
         ).all()
+
+    def create_stokvel_account(self, stokvel: Stokvel) -> Account:
+        """Create `stokvel`'s `STOKVEL` account, in the token, and link it
+        from `stokvel.account_id`. Flushes only: the caller commits it with
+        whatever else makes up the stokvel.
+
+        The label comes from the stokvel's id, not its name, so it can never
+        collide with a platform account's label (those are lookup keys).
+        """
+        account = Account(
+            type=TYPE_STOKVEL,
+            account_currency=CURRENCY_TOKEN,
+            label=f"Stokvel {stokvel.id}",
+        )
+        db.session.add(account)
+        db.session.flush()
+        stokvel.account_id = account.account_id
+        db.session.flush()
+        return account
+
+    def get_stokvel_account(self, stokvel_id: uuid.UUID) -> Account | None:
+        """The `STOKVEL` account of a stokvel, or None if it has none yet."""
+        return db.session.scalars(
+            select(Account)
+            .join(Stokvel, Stokvel.account_id == Account.account_id)
+            .where(Stokvel.id == stokvel_id)
+        ).first()
 
     def get_platform_account(self, type_: str, currency: str) -> Account | None:
         """A platform account by `type` and currency — e.g. the
@@ -209,6 +238,16 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             .values(account_balance=Account.account_balance - amount)
         )
 
+    def sum_stokvel_balances(self) -> Decimal:
+        """Token on every `STOKVEL` account: unreleased pools, in the
+        contract, not in the Treasury Wallet."""
+        total = db.session.scalar(
+            select(func.coalesce(func.sum(Account.account_balance), 0)).where(
+                Account.type == TYPE_STOKVEL,
+            )
+        )
+        return Decimal(str(total))
+
     def sum_user_balances(self, currency: str) -> Decimal:
         """Ledger balances of every customer account in `currency`.
 
@@ -243,6 +282,32 @@ class AccountRepository(Repository[Account, uuid.UUID]):
             )
         )
         return account.account_balance - pending_outgoing
+
+    def available_balances_for_accounts(
+        self, account_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """In-flight outgoing amount per account, for a list read.
+
+        One grouped statement instead of one per account, since each
+        statement is a network round trip to the database. Accounts with no
+        pending or processing legs are absent; treat a missing id as zero.
+        Counts the same statuses as `get_available_balance`: add a status to
+        both. Unlocked, like `get_available_balance`.
+        """
+        if not account_ids:
+            return {}
+        rows = db.session.execute(
+            select(
+                Transaction.credit_account_id,
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .where(
+                Transaction.credit_account_id.in_(account_ids),
+                Transaction.status.in_((STATUS_PENDING, STATUS_PROCESSING)),
+            )
+            .group_by(Transaction.credit_account_id)
+        ).all()
+        return {account_id: Decimal(str(total)) for account_id, total in rows}
 
     def get_available_balance_locked(self, account_id: uuid.UUID) -> Decimal:
         """Like `get_available_balance`, but takes a `SELECT ... FOR UPDATE`

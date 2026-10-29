@@ -250,7 +250,22 @@ def seed_section() -> None:
                                 maximum=1 if f.name.endswith("_rate") else None,
                                 fmt="%.2f",
                             )
-            ui.label("Live tail (real settlements through the API and XRPL)").classes(
+            ui.label("Stokvel demo").classes("text-md font-medium mt-2")
+            with ui.row().classes("items-center gap-4 flex-wrap"):
+                ui.switch(
+                    "Three members, ready to start, and a pending invitation",
+                    value=scenario.stokvel.enabled,
+                    on_change=set_nested("stokvel", "enabled", bool),
+                )
+                _number(
+                    "Contribution (uctusd)",
+                    scenario.stokvel.contribution_uctusd,
+                    set_nested("stokvel", "contribution_uctusd"),
+                    step=0.5,
+                    maximum=100,
+                    fmt="%.2f",
+                )
+            ui.label("Live tail (real settlements through the API and EVM)").classes(
                 "text-md font-medium mt-2"
             )
             with ui.row().classes("gap-4 flex-wrap"):
@@ -351,6 +366,11 @@ def render_summary(container, summary: dict) -> None:
                     f"{refusal['error']}: {refusal['message']}"
                 ).classes("text-sm")
         render_findings(container, summary["verify"])
+        if summary.get("stokvel_demo"):
+            ui.label("Stokvel demo: who to sign in as").classes("text-md font-medium")
+            ui.code(
+                json.dumps(summary["stokvel_demo"], indent=2), language="json"
+            ).classes("w-full")
         if summary.get("live_tail"):
             ui.label("Live tail").classes("text-md font-medium")
             ui.code(

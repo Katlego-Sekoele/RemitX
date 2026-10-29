@@ -13,6 +13,10 @@ from remitx_api.routes.admin.kyc_documents import (
 )
 from remitx_api.routes.admin.operations import router as admin_operations_router
 from remitx_api.routes.admin.roles import router as admin_roles_router
+from remitx_api.routes.admin.stokvel_contract import (
+    router as admin_stokvel_contract_router,
+)
+from remitx_api.routes.admin.stokvels import router as admin_stokvels_router
 from remitx_api.routes.admin.user_roles import router as admin_user_roles_router
 from remitx_api.routes.admin.withdrawals import router as admin_withdrawals_router
 from remitx_api.routes.bank_accounts import router as bank_accounts_router
@@ -27,6 +31,10 @@ from remitx_api.routes.kyc_documents import router as kyc_documents_router
 from remitx_api.routes.me import router as me_router
 from remitx_api.routes.quotes import router as quotes_router
 from remitx_api.routes.remittances import router as remittances_router
+from remitx_api.routes.stokvel_invitations import (
+    router as stokvel_invitations_router,
+)
+from remitx_api.routes.stokvels import router as stokvels_router
 from remitx_api.routes.withdrawals import router as withdrawals_router
 
 
@@ -46,6 +54,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(dashboard_router)
     app.include_router(bank_accounts_router)
     app.include_router(withdrawals_router)
+    app.include_router(stokvels_router)
+    app.include_router(stokvel_invitations_router)
 
     # Admin — mounted under /admin with a permission declared on the router.
     app.include_router(admin_audit_router)
@@ -58,3 +68,5 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(admin_withdrawals_router)
     app.include_router(admin_kyc_router)
     app.include_router(admin_kyc_documents_router)
+    app.include_router(admin_stokvel_contract_router)
+    app.include_router(admin_stokvels_router)

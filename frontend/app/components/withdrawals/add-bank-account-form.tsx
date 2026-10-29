@@ -1,8 +1,7 @@
 import { PlusIcon } from "@phosphor-icons/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "~/hooks/use-mutation"
 import { useState, type ComponentProps, type ReactNode } from "react"
-import { toast } from "sonner"
-
 import { api, PayoutCurrency } from "~/client"
 import { Alert, AlertDescription } from "~/components/ui/alert"
 import { Button } from "~/components/ui/button"
@@ -95,11 +94,12 @@ export function AddBankAccountForm({
   const [submitted, setSubmitted] = useState(false)
   const add = useMutation({
     ...api.bank_accounts.addBankAccount(),
-    onSuccess: async (account) => {
+    toast: {
+      success: (account) => `${account.bank_name} account added`,
+      description: "We'll verify it before you can withdraw into it.",
+    },
+    onSuccess: async () => {
       await invalidateBankAccounts(queryClient)
-      toast.success(`${account.bank_name} account added`, {
-        description: "We'll verify it before you can withdraw into it.",
-      })
       onAdded()
     },
   })
