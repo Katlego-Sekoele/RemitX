@@ -47,36 +47,6 @@ variable "additional_cors_origins" {
   default = ""
 }
 
-variable "billing_account_id" {
-  type        = string
-  default     = ""
-  description = "GCP billing account id; required when environment is prod."
-}
-
-variable "budget_alert_emails" {
-  type        = string
-  default     = ""
-  description = "Comma-separated emails for GCP budget notifications (prod only)."
-}
-
-variable "monthly_budget_amount" {
-  type        = number
-  default     = 10
-  description = "Monthly GCP project spend planning target in USD (alerts only; does not stop billing). Also the segment size for budget alert steps. Neon/Upstash/Clerk are outside this filter."
-}
-
-variable "budget_alert_step_usd" {
-  type        = number
-  default     = 2
-  description = "Prod budget emails on each whole-dollar step of project spend (continues past monthly_budget_amount)."
-}
-
-variable "budget_alert_coverage_usd" {
-  type        = number
-  default     = 100
-  description = "Keep budget step emails through this monthly project spend (default $2…$100 in $2 steps when target is $10)."
-}
-
 variable "upstash_email" {
   type        = string
   description = "Upstash account email (provider auth). GitHub variable TF_VAR_upstash_email."

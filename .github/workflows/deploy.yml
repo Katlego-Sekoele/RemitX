@@ -130,7 +130,6 @@ jobs:
       # variables here. Scripts use this instead of calling the Variables API.
       GITHUB_VARIABLES_JSON: ${{ toJSON(vars) }}
       TF_VAR_gcloud_application_default_credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
-      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
       TF_VAR_upstash_api_key: ${{ secrets.TF_VAR_upstash_api_key }}
@@ -164,10 +163,6 @@ jobs:
           [ -n "${TF_VAR_gcloud_application_default_credentials_json}" ] || missing+=("GOOGLE_CREDENTIALS (secret)")
           [ -n "${TF_VAR_gcp_project_id}" ]       || missing+=("GCP_PROJECT_ID (variable)")
           [ -n "${TF_VAR_hcp_organization}" ]     || missing+=("TF_CLOUD_ORGANIZATION (variable)")
-          if [ "$DEPLOY_ENV" = "prod" ]; then
-            [ -n "${TF_VAR_billing_account_id}" ]  || missing+=("TF_VAR_billing_account_id (variable)")
-            [ -n "${TF_VAR_budget_alert_emails}" ] || missing+=("BUDGET_ALERT_EMAILS (secret)")
-          fi
           if [ "$ROLLOUT" = "true" ] || [ "$INFRA_DATA" = "true" ]; then
             [ -n "${NEON_API_KEY}" ] || missing+=("NEON_API_KEY (secret)")
             [ -n "${TF_VAR_neon_project_id}" ] || missing+=("NEON_PROJECT_ID (variable)")

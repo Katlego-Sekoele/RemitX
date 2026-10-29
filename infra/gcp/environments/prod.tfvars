@@ -15,8 +15,6 @@ object_storage_endpoint_url = "https://br-round-wave-b226igl6.storage.c-6.eu-cen
 object_storage_bucket       = "remitx-prod-kyc-documents"
 object_storage_region       = "eu-central-1"
 
-# billing_account_id, budget_alert_emails → GitHub (prod)
-
 api_container_image    = "gcr.io/cloudrun/hello"
 worker_container_image = "gcr.io/cloudrun/hello"
 

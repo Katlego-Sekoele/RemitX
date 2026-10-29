@@ -40,7 +40,6 @@ required_keys=(
 if [ "$DEPLOY_ENV" = "qa" ]; then
   required_keys+=(NEON_QA_BRANCH_ID)
 elif [ "$DEPLOY_ENV" = "prod" ]; then
-  required_keys+=(TF_VAR_billing_account_id)
   required_keys+=(NEON_PROD_BRANCH_ID)
 fi
 

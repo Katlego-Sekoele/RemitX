@@ -4,9 +4,7 @@ locals {
     "artifactregistry.googleapis.com",
     "firebase.googleapis.com",
     "firebasehosting.googleapis.com",
-    "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
-    "cloudbilling.googleapis.com",
     "iam.googleapis.com",
   ]
 }

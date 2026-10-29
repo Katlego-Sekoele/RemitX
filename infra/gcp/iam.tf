@@ -40,7 +40,6 @@ locals {
     "roles/run.admin",
     "roles/artifactregistry.admin",
     "roles/firebase.admin",
-    "roles/monitoring.notificationChannelEditor",
     "roles/secretmanager.admin",
   ]
 }

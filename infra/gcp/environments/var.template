@@ -12,8 +12,6 @@ gcp_region     = "africa-south1"
 api_custom_domain       = "api.qa.example.com"
 frontend_custom_domain  = "qa.example.com"
 
-# Prod only: billing_account_id, budget_alert_emails (secret), monthly_budget_amount, budget_alert_step_usd, budget_alert_coverage_usd
-
 # Same GCP project for QA + prod: on prod.tfvars only:
 # github_deploy_service_account_email = "remitx-github-deploy@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 

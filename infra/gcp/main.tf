@@ -52,19 +52,3 @@ module "firebase" {
 
   depends_on = [google_project_service.this]
 }
-
-
-module "billing" {
-  count  = var.environment == "prod" ? 1 : 0
-  source = "./modules/budget_alerts"
-
-  project_number            = data.google_project.current.number
-  billing_account_id        = var.billing_account_id
-  budget_amount_usd         = var.monthly_budget_amount
-  budget_alert_step_usd     = var.budget_alert_step_usd
-  budget_alert_coverage_usd = var.budget_alert_coverage_usd
-  alert_emails              = var.budget_alert_emails
-  display_name              = "remitx-gcp"
-
-  depends_on = [google_project_service.this]
-}

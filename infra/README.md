@@ -69,14 +69,13 @@ PRs on `infra/**`: Terraform **plan** only (no deploy). Push/manual: full rollou
 
 On `infra/gcp` apply (per workspace):
 
-- API enablement (Run, Artifact Registry, Firebase, Monitoring, …)
+- API enablement (Run, Artifact Registry, Firebase, Secret Manager, …)
 - **Artifact Registry** Docker repo (`artifact_registry_repository_id`, default `remitx`)
 - Cloud Run services (image/env updated again by deploy jobs)
 - Secret Manager versions for runtime credentials; Cloud Run receives them as
   secret-backed environment variables, never as plaintext service configuration
 - Firebase project + Hosting site (+ custom domain resource when set in tfvars)
 - Upstash Redis database per environment
-- GCP billing budget + email channels (**prod workspace only**): **$10** planning target, emails every **$2** of project spend through **$100** by default (`monthly_budget_amount`, `budget_alert_step_usd`, `budget_alert_coverage_usd`; requires `BUDGET_ALERT_EMAILS` + `TF_VAR_billing_account_id`)
 - Service accounts for API and worker; **GitHub deploy** SA `remitx-github-deploy` (created on first apply in a GCP project) plus Run / Artifact Registry / Firebase Hosting IAM on every workspace
 - **One deploy SA per GCP project:** leave `github_deploy_service_account_email` empty (default) so Terraform creates it. If `remitx-gcp-qa` and `remitx-gcp-prod` target the **same** project, set that variable on the prod workspace to the email from `terraform output` after QA apply (so prod does not try to create a second SA)
 
@@ -118,7 +117,7 @@ for role in \
   roles/run.admin \
   roles/artifactregistry.admin \
   roles/firebase.admin \
-  roles/monitoring.notificationChannelEditor
+  roles/secretmanager.admin
 do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
     --member="serviceAccount:${SA}" \
@@ -126,9 +125,7 @@ do
 done
 ```
 
-Terraform manages these project grants after that bootstrap. Production budget
-resources additionally require `roles/billing.costsManager` on the **billing
-account**, granted once outside this project stack.
+Terraform manages these project grants after that bootstrap.
 
 Repeat with `remitx-gcp-prod` + `stable` for production. Same GCP project as QA: add `github_deploy_service_account_email = "remitx-github-deploy@<project-id>.iam.gserviceaccount.com"` to `prod.tfvars` and reuse the same `GOOGLE_CREDENTIALS`. Separate GCP projects: leave the variable empty on both.
 
@@ -163,7 +160,6 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `TF_API_TOKEN`                            | ✓   | HCP Terraform API token (`TF_TOKEN_app_terraform_io` / `TF_VAR_tfe_token`).                                                                                      |
 | `GOOGLE_CREDENTIALS`                      | ✓   | JSON key or WIF provider config for `remitx-github-deploy` (SA + IAM from Terraform; key/WIF created once outside TF).                                           |
 | `NEON_API_KEY`                            | ✓   | Neon account API key; storage verify script + `TF_VAR_neon_api_key` on data apply.                                                                               |
-| `BUDGET_ALERT_EMAILS`                     | P   | Comma-separated emails → `TF_VAR_budget_alert_emails` (GCP budget; prod TF only).                                                                                |
 | `TF_VAR_upstash_api_key`                  | ✓   | Upstash Terraform provider API key.                                                                                                                              |
 | `TF_VAR_database_url`                     | ✓   | SQLAlchemy Postgres URL for **this** environment’s Neon branch; GCP TF fallback until `remitx-data` remote state is wired; also passed as `TF_VAR_database_url`. |
 | `MIGRATIONS_DATABASE_URL`                 | ✓   | Same URL as above for the **migrate** job (`alembic upgrade head`).                                                                                              |
@@ -188,12 +184,8 @@ Create two [GitHub Actions environments](https://docs.github.com/en/actions/depl
 | `TF_CLOUD_ORGANIZATION`               | ✓   | HCP Terraform organization name (also `TF_VAR_hcp_organization`).                                                                 |
 | `GCP_PROJECT_ID`                      | ✓   | GCP project id → `TF_VAR_gcp_project_id` and all `gcloud` / Firebase deploys.                                                     |
 | `GCP_ARTIFACT_REGISTRY_REPO`          | O   | Docker repository id in Artifact Registry (default `remitx` if unset; must match `artifact_registry_repository_id` in tfvars).    |
-| `TF_VAR_billing_account_id`           | P   | GCP billing account id (`012345-ABCDEF-ABCDEF`) for budget resource.                                                              |
 | `TF_VAR_clerk_publishable_key`        | ✓   | Clerk publishable key (`pk_test_…` / `pk_live_…`); TF output → `VITE_CLERK_PUBLISHABLE_KEY`.                                    |
 | `TF_VAR_upstash_email`                | ✓   | Email on the Upstash account (Terraform provider auth; not sensitive).                                                            |
-| `TF_VAR_monthly_budget_amount`        | P   | Monthly GCP **project** spend target in USD (default **10**; segment size for alerts; does not stop billing).                     |
-| `TF_VAR_budget_alert_step_usd`        | P   | Budget email every N USD of **current** spend (default **2**; continues past the target).                                         |
-| `TF_VAR_budget_alert_coverage_usd`    | P   | Last spend level for step alerts (default **100**; must be a multiple of `monthly_budget_amount`).                                |
 | `NEON_ORG_ID`                         | ✓   | Neon organization id → `TF_VAR_neon_org_id` on data apply.                                                                        |
 | `NEON_PROJECT_ID`                     | ✓   | Neon project id → storage verify + `TF_VAR_neon_project_id`.                                                                      |
 | `NEON_QA_BRANCH_ID`                   | ✓*  | Branch id for QA storage verify when `deploy_env=qa`. Set on **both** environments so the workflow expression can resolve either. |
